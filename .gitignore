@@ -1,0 +1,90 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build output
+dist/
+release/
+out/
+*.js.map
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+
+# Electron
+*.asar
+.electron-builder.cache/
+
+# Code signing certificates (NEVER COMMIT!)
+*.pfx
+*.p12
+*.cer
+*.crt
+*.pem
+certificate.pfx
+certificate.p12
+certificates/
+
+# Build artifacts
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+*.snap
+
+# Update metadata
+latest.yml
+latest-mac.yml
+latest-linux.yml
+app-update.yml
+dev-app-update.yml
+
+# Temporary and backup files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Cache
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+
+# Playwright
+playwright-report/
+test-results/
+.playwright/
+
+# Temporary output files
+nul
