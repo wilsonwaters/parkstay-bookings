@@ -233,7 +233,7 @@ export class STQService {
 
     // If stay exceeds max stay, need multiple bookings
     if (numNights > maxStayNights) {
-      let currentDate = new Date(targetStartDate);
+      const currentDate = new Date(targetStartDate);
       while (currentDate < targetEndDate) {
         // Calculate threshold date (180 days before this segment)
         const thresholdDate = new Date(currentDate);

@@ -5,3 +5,4 @@ export * from './stq.types';
 export * from './notification.types';
 export * from './api.types';
 export * from './common.types';
+export * from './gmail.types';

@@ -10,6 +10,14 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import BookingsList from './pages/Bookings/BookingsList';
 import BookingDetail from './pages/Bookings/BookingDetail';
+import WatchesPage from './pages/Watches';
+import CreateWatch from './pages/Watches/CreateWatch';
+import EditWatch from './pages/Watches/EditWatch';
+import SkipTheQueuePage from './pages/SkipTheQueue';
+import CreateSTQ from './pages/SkipTheQueue/CreateSTQ';
+import Settings from './pages/Settings';
+import ErrorBoundary from './components/ErrorBoundary';
+import LoadingSpinner from './components/LoadingSpinner';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -46,29 +54,34 @@ const App: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner size="lg" text="Loading..." fullScreen />;
   }
 
   if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />;
+    return (
+      <ErrorBoundary>
+        <Login onLogin={handleLogin} />
+      </ErrorBoundary>
+    );
   }
 
   return (
-    <MainLayout onLogout={handleLogout}>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/bookings" element={<BookingsList />} />
-        <Route path="/bookings/:id" element={<BookingDetail />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </MainLayout>
+    <ErrorBoundary>
+      <MainLayout onLogout={handleLogout}>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/bookings" element={<BookingsList />} />
+          <Route path="/bookings/:id" element={<BookingDetail />} />
+          <Route path="/watches" element={<WatchesPage />} />
+          <Route path="/watches/create" element={<CreateWatch />} />
+          <Route path="/watches/:id/edit" element={<EditWatch />} />
+          <Route path="/skip-the-queue" element={<SkipTheQueuePage />} />
+          <Route path="/skip-the-queue/create" element={<CreateSTQ />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </MainLayout>
+    </ErrorBoundary>
   );
 };
 

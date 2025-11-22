@@ -7,5 +7,6 @@
     "outDir": "dist/renderer",
     "types": ["vite/client"]
   },
-  "include": ["src/renderer/**/*", "src/shared/**/*"]
+  "include": ["src/renderer/**/*", "src/shared/**/*", "src/preload/**/*"],
+  "exclude": ["node_modules", "dist", "release", "**/*.test.ts", "**/*.test.tsx", "tests/**/*"]
 }

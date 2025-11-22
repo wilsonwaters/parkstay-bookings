@@ -34,6 +34,7 @@ export interface BookingParams {
   siteId: string;
   arrivalDate: string;
   departureDate: string;
+  siteType?: string;
   numGuests: number;
   customerInfo: CustomerInfo;
 }

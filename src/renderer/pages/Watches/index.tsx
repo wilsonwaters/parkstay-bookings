@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Watch } from '@shared/types';
+import LoadingSpinner from '../../components/LoadingSpinner';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import ToastContainer, { useToast } from '../../components/Toast';
 
 /**
  * Watches Page
@@ -9,6 +12,12 @@ export default function WatchesPage() {
   const [watches, setWatches] = useState<Watch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: number | null }>({
+    isOpen: false,
+    id: null,
+  });
+  const { toasts, removeToast, success, error: showError } = useToast();
 
   useEffect(() => {
     loadWatches();
@@ -17,12 +26,18 @@ export default function WatchesPage() {
   const loadWatches = async () => {
     try {
       setLoading(true);
-      // This would call the IPC API
-      // const result = await window.api.watch.list(userId);
-      // setWatches(result.data);
-      setWatches([]);
+      setError(null);
+      // Get current user ID - for now we'll use userId 1
+      // In a real app, this would come from auth context
+      const result = await window.api.watch.list(1);
+      if (result.success && result.data) {
+        setWatches(result.data);
+      } else {
+        setError(result.error || 'Failed to load watches');
+      }
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'An error occurred while loading watches');
+      showError('Failed to load watches');
     } finally {
       setLoading(false);
     }
@@ -30,67 +45,104 @@ export default function WatchesPage() {
 
   const handleActivate = async (id: number) => {
     try {
-      // await window.api.watch.activate(id);
-      await loadWatches();
+      setActionLoading(id);
+      const result = await window.api.watch.activate(id);
+      if (result.success) {
+        success('Watch activated successfully');
+        await loadWatches();
+      } else {
+        showError(result.error || 'Failed to activate watch');
+      }
     } catch (err: any) {
-      setError(err.message);
+      showError(err.message || 'An error occurred while activating watch');
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const handleDeactivate = async (id: number) => {
     try {
-      // await window.api.watch.deactivate(id);
-      await loadWatches();
+      setActionLoading(id);
+      const result = await window.api.watch.deactivate(id);
+      if (result.success) {
+        success('Watch deactivated successfully');
+        await loadWatches();
+      } else {
+        showError(result.error || 'Failed to deactivate watch');
+      }
     } catch (err: any) {
-      setError(err.message);
+      showError(err.message || 'An error occurred while deactivating watch');
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const handleExecute = async (id: number) => {
     try {
-      // await window.api.watch.execute(id);
-      alert('Watch executed successfully');
+      setActionLoading(id);
+      const result = await window.api.watch.execute(id);
+      if (result.success) {
+        success('Watch executed successfully');
+      } else {
+        showError(result.error || 'Failed to execute watch');
+      }
     } catch (err: any) {
-      setError(err.message);
+      showError(err.message || 'An error occurred while executing watch');
+    } finally {
+      setActionLoading(null);
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this watch?')) return;
+  const handleDelete = async () => {
+    if (!deleteConfirm.id) return;
 
     try {
-      // await window.api.watch.delete(id);
-      await loadWatches();
+      setActionLoading(deleteConfirm.id);
+      const result = await window.api.watch.delete(deleteConfirm.id);
+      if (result.success) {
+        success('Watch deleted successfully');
+        await loadWatches();
+      } else {
+        showError(result.error || 'Failed to delete watch');
+      }
     } catch (err: any) {
-      setError(err.message);
+      showError(err.message || 'An error occurred while deleting watch');
+    } finally {
+      setActionLoading(null);
+      setDeleteConfirm({ isOpen: false, id: null });
     }
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-lg">Loading watches...</div>
-      </div>
-    );
+    return <LoadingSpinner size="lg" text="Loading watches..." fullScreen />;
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Watches</h1>
-        <button
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          onClick={() => {
-            /* Navigate to create watch page */
-          }}
-        >
-          Create Watch
-        </button>
-      </div>
+    <>
+      <div className="p-6">
+        <div className="mb-6 flex justify-between items-center">
+          <h1 className="text-3xl font-bold">Watches</h1>
+          <button
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            onClick={() => {
+              /* Navigate to create watch page */
+            }}
+          >
+            Create Watch
+          </button>
+        </div>
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-100 text-red-700 rounded">{error}</div>
-      )}
+        {error && (
+          <div className="mb-4 p-4 bg-red-100 text-red-700 rounded flex items-center justify-between">
+            <span>{error}</span>
+            <button
+              onClick={loadWatches}
+              className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
       {watches.length === 0 ? (
         <div className="text-center py-12">
@@ -146,27 +198,31 @@ export default function WatchesPage() {
                 {watch.isActive ? (
                   <button
                     onClick={() => handleDeactivate(watch.id)}
-                    className="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+                    disabled={actionLoading === watch.id}
+                    className="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Deactivate
+                    {actionLoading === watch.id ? 'Processing...' : 'Deactivate'}
                   </button>
                 ) : (
                   <button
                     onClick={() => handleActivate(watch.id)}
-                    className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                    disabled={actionLoading === watch.id}
+                    className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Activate
+                    {actionLoading === watch.id ? 'Processing...' : 'Activate'}
                   </button>
                 )}
                 <button
                   onClick={() => handleExecute(watch.id)}
-                  className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  disabled={actionLoading === watch.id}
+                  className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Check Now
+                  {actionLoading === watch.id ? 'Checking...' : 'Check Now'}
                 </button>
                 <button
-                  onClick={() => handleDelete(watch.id)}
-                  className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                  onClick={() => setDeleteConfirm({ isOpen: true, id: watch.id })}
+                  disabled={actionLoading === watch.id}
+                  className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Delete
                 </button>
@@ -175,6 +231,22 @@ export default function WatchesPage() {
           ))}
         </div>
       )}
-    </div>
+      </div>
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        title="Delete Watch"
+        message="Are you sure you want to delete this watch? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteConfirm({ isOpen: false, id: null })}
+      />
+
+      {/* Toast Notifications */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+    </>
   );
 }

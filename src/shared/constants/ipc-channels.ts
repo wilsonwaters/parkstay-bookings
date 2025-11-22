@@ -53,6 +53,16 @@ export const IPC_CHANNELS = {
   SETTINGS_SET: 'settings:set',
   SETTINGS_GET_ALL: 'settings:get-all',
 
+  // Gmail
+  GMAIL_SET_CREDENTIALS: 'gmail:set-credentials',
+  GMAIL_GET_CREDENTIALS: 'gmail:get-credentials',
+  GMAIL_AUTHORIZE: 'gmail:authorize',
+  GMAIL_CHECK_AUTH_STATUS: 'gmail:check-auth-status',
+  GMAIL_REVOKE_AUTH: 'gmail:revoke-auth',
+  GMAIL_WAIT_FOR_EMAIL: 'gmail:wait-for-email',
+  GMAIL_GET_RECENT_EMAILS: 'gmail:get-recent-emails',
+  GMAIL_TEST_SEARCH: 'gmail:test-search',
+
   // Events (main -> renderer)
   NOTIFICATION_CREATED: 'notification:created',
   BOOKING_UPDATED: 'booking:updated',

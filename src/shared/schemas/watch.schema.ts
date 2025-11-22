@@ -12,9 +12,9 @@ export const watchSchema = z
     numGuests: z.number().int().min(1).max(50),
     preferredSites: z.array(z.string()).optional(),
     siteType: z.string().max(50).optional(),
-    checkIntervalMinutes: z.number().int().min(1).max(60).default(5),
-    autoBook: z.boolean().default(false),
-    notifyOnly: z.boolean().default(true),
+    checkIntervalMinutes: z.number().int().min(1).max(60),
+    autoBook: z.boolean(),
+    notifyOnly: z.boolean(),
     maxPrice: z.number().positive().optional(),
     notes: z.string().max(500).optional(),
   })

@@ -7,6 +7,11 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Booking } from '../../../shared/types';
 import { format } from 'date-fns';
+import LoadingSpinner from '../../components/LoadingSpinner';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import ToastContainer, { useToast } from '../../components/Toast';
+import ImportBookingForm from '../../components/forms/ImportBookingForm';
+import ManualBookingForm from '../../components/forms/ManualBookingForm';
 
 const BookingsList: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -16,6 +21,13 @@ const BookingsList: React.FC = () => {
   const [filter, setFilter] = useState<'all' | 'upcoming' | 'past' | 'cancelled'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [, setAddMode] = useState<'import' | 'manual'>('import');
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: number | null }>({
+    isOpen: false,
+    id: null,
+  });
+  const { toasts, removeToast, success, error: showError } = useToast();
 
   useEffect(() => {
     loadBookings();
@@ -38,8 +50,35 @@ const BookingsList: React.FC = () => {
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred');
+      showError('Failed to load bookings');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleBookingSuccess = async () => {
+    success('Booking added successfully');
+    setShowAddForm(false);
+    setShowImportModal(false);
+    await loadBookings();
+  };
+
+  const handleDeleteBooking = async () => {
+    if (!deleteConfirm.id) return;
+
+    try {
+      const response = await window.api.booking.delete(deleteConfirm.id);
+
+      if (response.success) {
+        success('Booking deleted successfully');
+        await loadBookings();
+      } else {
+        showError(response.error || 'Failed to delete booking');
+      }
+    } catch (err: any) {
+      showError(err.message || 'An error occurred while deleting booking');
+    } finally {
+      setDeleteConfirm({ isOpen: false, id: null });
     }
   };
 
@@ -99,33 +138,41 @@ const BookingsList: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading bookings...</p>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner size="lg" text="Loading bookings..." fullScreen />;
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header Actions */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Your Bookings</h2>
-          <p className="mt-1 text-sm text-gray-600">
-            Manage your camping bookings ({filteredBookings.length} of {bookings.length})
-          </p>
+    <>
+      <div className="space-y-6">
+        {/* Header Actions */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Your Bookings</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Manage your camping bookings ({filteredBookings.length} of {bookings.length})
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setAddMode('import');
+                setShowImportModal(true);
+              }}
+              className="btn-secondary"
+            >
+              Import Booking
+            </button>
+            <button
+              onClick={() => {
+                setAddMode('manual');
+                setShowAddForm(true);
+              }}
+              className="btn-primary"
+            >
+              + Add Booking
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => setShowAddForm(true)}
-          className="btn-primary"
-        >
-          + Add Booking
-        </button>
-      </div>
 
       {/* Filters and Search */}
       <div className="card">
@@ -260,24 +307,48 @@ const BookingsList: React.FC = () => {
         </div>
       )}
 
-      {/* Add Booking Modal (placeholder) */}
-      {showAddForm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold mb-4">Add Booking</h3>
-            <p className="text-gray-600 mb-4">
-              This feature requires the full form implementation.
-            </p>
-            <button
-              onClick={() => setShowAddForm(false)}
-              className="btn-secondary w-full"
-            >
-              Close
-            </button>
+        {/* Add Manual Booking Modal */}
+        {showAddForm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <h3 className="text-lg font-semibold mb-4">Add Manual Booking</h3>
+              <ManualBookingForm
+                onSuccess={handleBookingSuccess}
+                onCancel={() => setShowAddForm(false)}
+              />
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+
+        {/* Import Booking Modal */}
+        {showImportModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full">
+              <h3 className="text-lg font-semibold mb-4">Import Booking</h3>
+              <ImportBookingForm
+                onSuccess={handleBookingSuccess}
+                onCancel={() => setShowImportModal(false)}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        title="Delete Booking"
+        message="Are you sure you want to delete this booking? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        onConfirm={handleDeleteBooking}
+        onCancel={() => setDeleteConfirm({ isOpen: false, id: null })}
+      />
+
+      {/* Toast Notifications */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+    </>
   );
 };
 

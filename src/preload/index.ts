@@ -18,6 +18,10 @@ import {
   APIResponse,
   SettingValueType,
   SettingCategory,
+  OAuth2Credentials,
+  GmailAuthStatus,
+  OTPResult,
+  GmailMessage,
 } from '../shared/types';
 
 // Define the API that will be exposed to the renderer
@@ -151,6 +155,37 @@ const api = {
 
     deleteAll: (userId: number): Promise<APIResponse<number>> =>
       ipcRenderer.invoke(IPC_CHANNELS.NOTIFICATION_DELETE_ALL, userId),
+  },
+
+  // Gmail APIs
+  gmail: {
+    setCredentials: (credentials: OAuth2Credentials): Promise<APIResponse<boolean>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GMAIL_SET_CREDENTIALS, credentials),
+
+    getCredentials: (): Promise<APIResponse<OAuth2Credentials | null>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GMAIL_GET_CREDENTIALS),
+
+    authorize: (): Promise<APIResponse<boolean>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GMAIL_AUTHORIZE),
+
+    checkAuthStatus: (): Promise<APIResponse<GmailAuthStatus>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GMAIL_CHECK_AUTH_STATUS),
+
+    revokeAuth: (): Promise<APIResponse<boolean>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GMAIL_REVOKE_AUTH),
+
+    waitForEmail: (
+      fromEmail: string,
+      subject: string,
+      timeout?: number
+    ): Promise<APIResponse<OTPResult>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GMAIL_WAIT_FOR_EMAIL, fromEmail, subject, timeout),
+
+    getRecentEmails: (maxResults?: number): Promise<APIResponse<GmailMessage[]>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GMAIL_GET_RECENT_EMAILS, maxResults),
+
+    testSearch: (fromEmail: string, subject: string): Promise<APIResponse<GmailMessage[]>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GMAIL_TEST_SEARCH, fromEmail, subject),
   },
 
   // Event listeners

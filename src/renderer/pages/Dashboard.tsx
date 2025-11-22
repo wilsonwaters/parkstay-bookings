@@ -7,19 +7,26 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Booking } from '../../shared/types';
 import { format } from 'date-fns';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const Dashboard: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     loadBookings();
   }, []);
 
-  const loadBookings = async () => {
+  const loadBookings = async (refresh = false) => {
     try {
-      setIsLoading(true);
+      if (refresh) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      setError('');
       const response = await window.api.booking.list();
 
       if (response.success && response.data) {
@@ -31,6 +38,7 @@ const Dashboard: React.FC = () => {
       setError(err.message || 'An error occurred');
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -49,37 +57,49 @@ const Dashboard: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="rounded-md bg-red-50 p-4">
-        <div className="flex">
-          <div className="ml-3">
-            <h3 className="text-sm font-medium text-red-800">{error}</h3>
-          </div>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner size="lg" text="Loading dashboard..." fullScreen />;
   }
 
   return (
     <div className="space-y-6">
-      {/* Welcome Message */}
+      {/* Welcome Message with Refresh */}
       <div className="card">
-        <h2 className="text-2xl font-bold text-gray-900">Welcome to ParkStay Bookings</h2>
-        <p className="mt-2 text-gray-600">
-          Manage your WA Parks & Wildlife camping bookings in one place
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Welcome to ParkStay Bookings</h2>
+            <p className="mt-2 text-gray-600">
+              Manage your WA Parks & Wildlife camping bookings in one place
+            </p>
+          </div>
+          <button
+            onClick={() => loadBookings(true)}
+            disabled={isRefreshing}
+            className="btn-secondary flex items-center gap-2"
+          >
+            <span className={isRefreshing ? 'animate-spin' : ''}>🔄</span>
+            {isRefreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
+        </div>
       </div>
+
+      {/* Error Message */}
+      {error && (
+        <div className="rounded-md bg-red-50 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex">
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">{error}</h3>
+              </div>
+            </div>
+            <button
+              onClick={() => loadBookings(true)}
+              className="text-sm text-red-600 hover:text-red-500 font-medium"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

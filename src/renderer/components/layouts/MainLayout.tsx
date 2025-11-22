@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import NotificationBell from '../NotificationBell';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -74,10 +75,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, onLogout }) => {
               </h2>
             </div>
             <div className="flex items-center space-x-4">
-              <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors relative">
-                <span className="text-2xl">🔔</span>
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-              </button>
+              <NotificationBell />
             </div>
           </div>
         </header>

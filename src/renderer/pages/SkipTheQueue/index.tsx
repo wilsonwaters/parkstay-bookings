@@ -1,5 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { SkipTheQueueEntry } from '@shared/types';
+import LoadingSpinner from '../../components/LoadingSpinner';
+import ConfirmDialog from '../../components/ConfirmDialog';
+import ToastContainer, { useToast } from '../../components/Toast';
 
 /**
  * Skip The Queue Page
@@ -9,6 +12,12 @@ export default function SkipTheQueuePage() {
   const [entries, setEntries] = useState<SkipTheQueueEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<number | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: number | null }>({
+    isOpen: false,
+    id: null,
+  });
+  const { toasts, removeToast, success, error: showError } = useToast();
 
   useEffect(() => {
     loadEntries();
@@ -17,12 +26,18 @@ export default function SkipTheQueuePage() {
   const loadEntries = async () => {
     try {
       setLoading(true);
-      // This would call the IPC API
-      // const result = await window.api.stq.list(userId);
-      // setEntries(result.data);
-      setEntries([]);
+      setError(null);
+      // Get current user ID - for now we'll use userId 1
+      // In a real app, this would come from auth context
+      const result = await window.api.stq.list(1);
+      if (result.success && result.data) {
+        setEntries(result.data);
+      } else {
+        setError(result.error || 'Failed to load STQ entries');
+      }
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'An error occurred while loading STQ entries');
+      showError('Failed to load STQ entries');
     } finally {
       setLoading(false);
     }
@@ -30,72 +45,109 @@ export default function SkipTheQueuePage() {
 
   const handleActivate = async (id: number) => {
     try {
-      // await window.api.stq.activate(id);
-      await loadEntries();
+      setActionLoading(id);
+      const result = await window.api.stq.activate(id);
+      if (result.success) {
+        success('STQ entry activated successfully');
+        await loadEntries();
+      } else {
+        showError(result.error || 'Failed to activate STQ entry');
+      }
     } catch (err: any) {
-      setError(err.message);
+      showError(err.message || 'An error occurred while activating STQ entry');
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const handleDeactivate = async (id: number) => {
     try {
-      // await window.api.stq.deactivate(id);
-      await loadEntries();
+      setActionLoading(id);
+      const result = await window.api.stq.deactivate(id);
+      if (result.success) {
+        success('STQ entry deactivated successfully');
+        await loadEntries();
+      } else {
+        showError(result.error || 'Failed to deactivate STQ entry');
+      }
     } catch (err: any) {
-      setError(err.message);
+      showError(err.message || 'An error occurred while deactivating STQ entry');
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const handleExecute = async (id: number) => {
     try {
-      // await window.api.stq.execute(id);
-      alert('STQ check executed successfully');
+      setActionLoading(id);
+      const result = await window.api.stq.execute(id);
+      if (result.success) {
+        success('STQ check executed successfully');
+      } else {
+        showError(result.error || 'Failed to execute STQ check');
+      }
     } catch (err: any) {
-      setError(err.message);
+      showError(err.message || 'An error occurred while executing STQ check');
+    } finally {
+      setActionLoading(null);
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this STQ entry?')) return;
+  const handleDelete = async () => {
+    if (!deleteConfirm.id) return;
 
     try {
-      // await window.api.stq.delete(id);
-      await loadEntries();
+      setActionLoading(deleteConfirm.id);
+      const result = await window.api.stq.delete(deleteConfirm.id);
+      if (result.success) {
+        success('STQ entry deleted successfully');
+        await loadEntries();
+      } else {
+        showError(result.error || 'Failed to delete STQ entry');
+      }
     } catch (err: any) {
-      setError(err.message);
+      showError(err.message || 'An error occurred while deleting STQ entry');
+    } finally {
+      setActionLoading(null);
+      setDeleteConfirm({ isOpen: false, id: null });
     }
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-lg">Loading Skip The Queue entries...</div>
-      </div>
-    );
+    return <LoadingSpinner size="lg" text="Loading Skip The Queue entries..." fullScreen />;
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-6 flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Skip The Queue</h1>
-          <p className="text-gray-600 mt-1">
-            Automatically rebook cancelled bookings
-          </p>
+    <>
+      <div className="p-6">
+        <div className="mb-6 flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold">Skip The Queue</h1>
+            <p className="text-gray-600 mt-1">
+              Automatically rebook cancelled bookings
+            </p>
+          </div>
+          <button
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            onClick={() => {
+              /* Navigate to create STQ page */
+            }}
+          >
+            Create STQ Entry
+          </button>
         </div>
-        <button
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          onClick={() => {
-            /* Navigate to create STQ page */
-          }}
-        >
-          Create STQ Entry
-        </button>
-      </div>
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-100 text-red-700 rounded">{error}</div>
-      )}
+        {error && (
+          <div className="mb-4 p-4 bg-red-100 text-red-700 rounded flex items-center justify-between">
+            <span>{error}</span>
+            <button
+              onClick={loadEntries}
+              className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
       {entries.length === 0 ? (
         <div className="text-center py-12">
@@ -167,27 +219,31 @@ export default function SkipTheQueuePage() {
                   {entry.isActive ? (
                     <button
                       onClick={() => handleDeactivate(entry.id)}
-                      className="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+                      disabled={actionLoading === entry.id}
+                      className="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Deactivate
+                      {actionLoading === entry.id ? 'Processing...' : 'Deactivate'}
                     </button>
                   ) : (
                     <button
                       onClick={() => handleActivate(entry.id)}
-                      className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                      disabled={actionLoading === entry.id}
+                      className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Activate
+                      {actionLoading === entry.id ? 'Processing...' : 'Activate'}
                     </button>
                   )}
                   <button
                     onClick={() => handleExecute(entry.id)}
-                    className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                    disabled={actionLoading === entry.id}
+                    className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Check Now
+                    {actionLoading === entry.id ? 'Checking...' : 'Check Now'}
                   </button>
                   <button
-                    onClick={() => handleDelete(entry.id)}
-                    className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                    onClick={() => setDeleteConfirm({ isOpen: true, id: entry.id })}
+                    disabled={actionLoading === entry.id}
+                    className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Delete
                   </button>
@@ -197,6 +253,22 @@ export default function SkipTheQueuePage() {
           ))}
         </div>
       )}
-    </div>
+      </div>
+
+      {/* Confirm Delete Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        title="Delete STQ Entry"
+        message="Are you sure you want to delete this Skip The Queue entry? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteConfirm({ isOpen: false, id: null })}
+      />
+
+      {/* Toast Notifications */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+    </>
   );
 }
