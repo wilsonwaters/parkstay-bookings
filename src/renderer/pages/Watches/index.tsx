@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Watch } from '@shared/types';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -9,6 +10,7 @@ import ToastContainer, { useToast } from '../../components/Toast';
  * Lists all watches and allows creating new ones
  */
 export default function WatchesPage() {
+  const navigate = useNavigate();
   const [watches, setWatches] = useState<Watch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -124,9 +126,7 @@ export default function WatchesPage() {
           <h1 className="text-3xl font-bold">Watches</h1>
           <button
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            onClick={() => {
-              /* Navigate to create watch page */
-            }}
+            onClick={() => navigate('/watches/create')}
           >
             Create Watch
           </button>
@@ -149,9 +149,7 @@ export default function WatchesPage() {
           <p className="text-gray-500 mb-4">No watches found</p>
           <button
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            onClick={() => {
-              /* Navigate to create watch page */
-            }}
+            onClick={() => navigate('/watches/create')}
           >
             Create Your First Watch
           </button>
@@ -194,7 +192,13 @@ export default function WatchesPage() {
                 )}
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => navigate(`/watches/${watch.id}`)}
+                  className="px-3 py-1 bg-primary-600 text-white rounded hover:bg-primary-700"
+                >
+                  View
+                </button>
                 {watch.isActive ? (
                   <button
                     onClick={() => handleDeactivate(watch.id)}
@@ -218,6 +222,13 @@ export default function WatchesPage() {
                   className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {actionLoading === watch.id ? 'Checking...' : 'Check Now'}
+                </button>
+                <button
+                  onClick={() => navigate(`/watches/${watch.id}/edit`)}
+                  disabled={actionLoading === watch.id}
+                  className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Edit
                 </button>
                 <button
                   onClick={() => setDeleteConfirm({ isOpen: true, id: watch.id })}

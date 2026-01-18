@@ -112,7 +112,8 @@ async function initializeApp(): Promise<void> {
       watchService,
       stqService,
       notificationService,
-      jobScheduler
+      jobScheduler,
+      parkStayService
     );
 
     // Start job scheduler

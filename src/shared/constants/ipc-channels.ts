@@ -63,6 +63,11 @@ export const IPC_CHANNELS = {
   GMAIL_GET_RECENT_EMAILS: 'gmail:get-recent-emails',
   GMAIL_TEST_SEARCH: 'gmail:test-search',
 
+  // ParkStay API
+  PARKSTAY_SEARCH_CAMPGROUNDS: 'parkstay:search-campgrounds',
+  PARKSTAY_GET_ALL_CAMPGROUNDS: 'parkstay:get-all-campgrounds',
+  PARKSTAY_CHECK_AVAILABILITY: 'parkstay:check-availability',
+
   // Events (main -> renderer)
   NOTIFICATION_CREATED: 'notification:created',
   BOOKING_UPDATED: 'booking:updated',

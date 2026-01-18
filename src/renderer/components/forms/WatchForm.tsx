@@ -4,10 +4,17 @@
  */
 
 import { useForm } from 'react-hook-form';
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { watchSchema, WatchSchemaType } from '../../../shared/schemas/watch.schema';
 import { Watch } from '../../../shared/types';
+
+interface Campground {
+  id: number;
+  name: string;
+  type: string;
+  coordinates?: [number, number];
+}
 
 interface WatchFormProps {
   initialData?: Partial<Watch>;
@@ -38,9 +45,11 @@ const WatchForm: React.FC<WatchFormProps> = ({
   submitLabel = 'Create Watch',
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [campgroundSearchQuery, setCampgroundSearchQuery] = useState('');
-  const [showCampgroundSearch, setShowCampgroundSearch] = useState(false);
+  const [allCampgrounds, setAllCampgrounds] = useState<Campground[]>([]);
+  const [filteredCampgrounds, setFilteredCampgrounds] = useState<Campground[]>([]);
+  const [isLoadingCampgrounds, setIsLoadingCampgrounds] = useState(false);
+  const [campgroundError, setCampgroundError] = useState<string | null>(null);
 
   const {
     register,
@@ -68,8 +77,41 @@ const WatchForm: React.FC<WatchFormProps> = ({
   });
 
   const autoBook = watch('autoBook');
-  const parkName = watch('parkName');
   const campgroundName = watch('campgroundName');
+
+  // Load all campgrounds on mount
+  useEffect(() => {
+    loadCampgrounds();
+  }, []);
+
+  // Filter campgrounds when search query changes
+  useEffect(() => {
+    if (campgroundSearchQuery.length >= 2) {
+      const filtered = allCampgrounds.filter((cg) =>
+        cg.name.toLowerCase().includes(campgroundSearchQuery.toLowerCase())
+      );
+      setFilteredCampgrounds(filtered.slice(0, 10)); // Limit to 10 results
+    } else {
+      setFilteredCampgrounds([]);
+    }
+  }, [campgroundSearchQuery, allCampgrounds]);
+
+  const loadCampgrounds = async () => {
+    try {
+      setIsLoadingCampgrounds(true);
+      setCampgroundError(null);
+      const response = await window.api.parkstay.getAllCampgrounds();
+      if (response.success && response.data) {
+        setAllCampgrounds(response.data);
+      } else {
+        setCampgroundError(response.error || 'Failed to load campgrounds');
+      }
+    } catch (error: any) {
+      setCampgroundError(error.message || 'Failed to load campgrounds');
+    } finally {
+      setIsLoadingCampgrounds(false);
+    }
+  };
 
   const handleFormSubmit = async (data: WatchSchemaType) => {
     try {
@@ -82,18 +124,14 @@ const WatchForm: React.FC<WatchFormProps> = ({
     }
   };
 
-  // Mock campground search - in real app this would call API
-  const handleParkSelect = (parkId: string, parkName: string) => {
-    setValue('parkId', parkId);
-    setValue('parkName', parkName);
-    setSearchQuery('');
-    setShowCampgroundSearch(true);
-  };
-
-  const handleCampgroundSelect = (campgroundId: string, campgroundName: string) => {
-    setValue('campgroundId', campgroundId);
-    setValue('campgroundName', campgroundName);
+  const handleCampgroundSelect = (campground: Campground) => {
+    setValue('campgroundId', String(campground.id));
+    setValue('campgroundName', campground.name);
+    // Set park info to same as campground for now (ParkStay doesn't have separate park hierarchy)
+    setValue('parkId', String(campground.id));
+    setValue('parkName', campground.name);
     setCampgroundSearchQuery('');
+    setFilteredCampgrounds([]);
   };
 
   return (
@@ -115,15 +153,27 @@ const WatchForm: React.FC<WatchFormProps> = ({
         )}
       </div>
 
-      {/* Park Search */}
+      {/* Campground Search */}
       <div>
-        <label htmlFor="parkSearch" className="block text-sm font-medium text-gray-700 mb-1">
-          Select Park *
+        <label htmlFor="campgroundSearch" className="block text-sm font-medium text-gray-700 mb-1">
+          Select Campground *
         </label>
+        {campgroundError && (
+          <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
+            {campgroundError}
+            <button
+              type="button"
+              onClick={loadCampgrounds}
+              className="ml-2 underline hover:no-underline"
+            >
+              Retry
+            </button>
+          </div>
+        )}
         <div className="relative">
-          {parkName ? (
+          {campgroundName ? (
             <div className="flex items-center justify-between p-3 border border-gray-300 rounded-md bg-gray-50">
-              <span className="text-gray-900">{parkName}</span>
+              <span className="text-gray-900">{campgroundName}</span>
               <button
                 type="button"
                 onClick={() => {
@@ -131,7 +181,6 @@ const WatchForm: React.FC<WatchFormProps> = ({
                   setValue('parkName', '');
                   setValue('campgroundId', '');
                   setValue('campgroundName', '');
-                  setShowCampgroundSearch(false);
                 }}
                 className="text-sm text-red-600 hover:text-red-700"
               >
@@ -141,108 +190,41 @@ const WatchForm: React.FC<WatchFormProps> = ({
           ) : (
             <>
               <input
-                id="parkSearch"
+                id="campgroundSearch"
                 type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={campgroundSearchQuery}
+                onChange={(e) => setCampgroundSearchQuery(e.target.value)}
                 className="input"
-                placeholder="Search for a park..."
+                placeholder={isLoadingCampgrounds ? 'Loading campgrounds...' : 'Type at least 2 characters to search...'}
+                disabled={isLoadingCampgrounds}
               />
-              {searchQuery && (
+              {filteredCampgrounds.length > 0 && (
                 <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-                  <button
-                    type="button"
-                    onClick={() => handleParkSelect('park-1', 'Rottnest Island')}
-                    className="w-full px-4 py-2 text-left hover:bg-gray-50"
-                  >
-                    <div className="font-medium">Rottnest Island</div>
-                    <div className="text-sm text-gray-600">Popular island destination</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleParkSelect('park-2', 'Karijini National Park')}
-                    className="w-full px-4 py-2 text-left hover:bg-gray-50"
-                  >
-                    <div className="font-medium">Karijini National Park</div>
-                    <div className="text-sm text-gray-600">Outback gorges and pools</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleParkSelect('park-3', 'Cape Range National Park')}
-                    className="w-full px-4 py-2 text-left hover:bg-gray-50"
-                  >
-                    <div className="font-medium">Cape Range National Park</div>
-                    <div className="text-sm text-gray-600">Coastal camping near Exmouth</div>
-                  </button>
+                  {filteredCampgrounds.map((campground) => (
+                    <button
+                      key={campground.id}
+                      type="button"
+                      onClick={() => handleCampgroundSelect(campground)}
+                      className="w-full px-4 py-2 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                    >
+                      <div className="font-medium">{campground.name}</div>
+                      <div className="text-sm text-gray-600">{campground.type}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {campgroundSearchQuery.length >= 2 && filteredCampgrounds.length === 0 && !isLoadingCampgrounds && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg p-4 text-center text-gray-500">
+                  No campgrounds found matching "{campgroundSearchQuery}"
                 </div>
               )}
             </>
           )}
         </div>
-        {errors.parkName && (
-          <p className="mt-1 text-sm text-red-600">{errors.parkName.message}</p>
+        {errors.campgroundName && (
+          <p className="mt-1 text-sm text-red-600">{errors.campgroundName.message}</p>
         )}
       </div>
-
-      {/* Campground Search */}
-      {showCampgroundSearch && (
-        <div>
-          <label htmlFor="campgroundSearch" className="block text-sm font-medium text-gray-700 mb-1">
-            Select Campground *
-          </label>
-          <div className="relative">
-            {campgroundName ? (
-              <div className="flex items-center justify-between p-3 border border-gray-300 rounded-md bg-gray-50">
-                <span className="text-gray-900">{campgroundName}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setValue('campgroundId', '');
-                    setValue('campgroundName', '');
-                  }}
-                  className="text-sm text-red-600 hover:text-red-700"
-                >
-                  Change
-                </button>
-              </div>
-            ) : (
-              <>
-                <input
-                  id="campgroundSearch"
-                  type="text"
-                  value={campgroundSearchQuery}
-                  onChange={(e) => setCampgroundSearchQuery(e.target.value)}
-                  className="input"
-                  placeholder="Search for a campground..."
-                />
-                {campgroundSearchQuery && (
-                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-                    <button
-                      type="button"
-                      onClick={() => handleCampgroundSelect('cg-1', 'Kingstown Barracks')}
-                      className="w-full px-4 py-2 text-left hover:bg-gray-50"
-                    >
-                      <div className="font-medium">Kingstown Barracks</div>
-                      <div className="text-sm text-gray-600">Tent and caravan sites</div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleCampgroundSelect('cg-2', 'Main Campground')}
-                      className="w-full px-4 py-2 text-left hover:bg-gray-50"
-                    >
-                      <div className="font-medium">Main Campground</div>
-                      <div className="text-sm text-gray-600">Large family campground</div>
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-          {errors.campgroundName && (
-            <p className="mt-1 text-sm text-red-600">{errors.campgroundName.message}</p>
-          )}
-        </div>
-      )}
 
       {/* Date Range */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -157,6 +157,26 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.NOTIFICATION_DELETE_ALL, userId),
   },
 
+  // ParkStay APIs
+  parkstay: {
+    searchCampgrounds: (query: string): Promise<APIResponse<any[]>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PARKSTAY_SEARCH_CAMPGROUNDS, query),
+
+    getAllCampgrounds: (): Promise<APIResponse<any[]>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PARKSTAY_GET_ALL_CAMPGROUNDS),
+
+    checkAvailability: (
+      campgroundId: string,
+      params: {
+        arrivalDate: string;
+        departureDate: string;
+        numGuests: number;
+        siteType?: string;
+      }
+    ): Promise<APIResponse<any>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PARKSTAY_CHECK_AVAILABILITY, campgroundId, params),
+  },
+
   // Gmail APIs
   gmail: {
     setCredentials: (credentials: OAuth2Credentials): Promise<APIResponse<boolean>> =>

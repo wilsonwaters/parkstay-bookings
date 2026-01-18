@@ -202,7 +202,7 @@ export class ParkStayService {
     try {
       // Real endpoint: GET /api/account/
       // Returns user info if authenticated, 401 if not
-      await this.client.get('/api/account/');
+      await this.client.get('/account/');
       return true;
     } catch {
       this.session = null;
@@ -223,7 +223,7 @@ export class ParkStayService {
     try {
       // Real endpoint: POST /api/accounts/logout/
       // Requires CSRF token
-      await this.client.post('/api/accounts/logout/');
+      await this.client.post('/accounts/logout/');
     } catch (error) {
       console.error('Logout failed:', error);
     } finally {
@@ -235,48 +235,51 @@ export class ParkStayService {
   /**
    * Search campgrounds
    *
-   * Real endpoint: GET /api/search_suggest/
+   * Real endpoint: GET /api/search_suggest
    * Public endpoint (no authentication required).
-   * Used for autocomplete/typeahead functionality.
+   * Returns GeoJSON FeatureCollection with all campgrounds.
    *
-   * Query Parameters:
-   * - q: Search query string (minimum 2 characters)
+   * Response format (GeoJSON):
+   * {
+   *   "type": "FeatureCollection",
+   *   "features": [{
+   *     "type": "Point",
+   *     "properties": {
+   *       "type": "Campground",
+   *       "id": 34,
+   *       "name": "Lane Poole Reserve",
+   *       "zoom_level": 12
+   *     },
+   *     "coordinates": [116.092, -32.8053]
+   *   }]
+   * }
    *
-   * Example: GET /api/search_suggest/?q=lane
-   *
-   * Response format (array of results):
-   * [{
-   *   "id": 34,
-   *   "name": "Lane Poole Reserve",
-   *   "type": "campground",
-   *   "park_id": 12,
-   *   "park_name": "Lane Poole Reserve",
-   *   "region": "Perth Hills",
-   *   "site_count": 45,
-   *   "min_price": 11.00,
-   *   "max_price": 22.00
-   * }]
-   *
-   * @param query - Search query (minimum 2 characters recommended)
+   * @param query - Search query (filters client-side if provided)
    * @returns Promise<CampgroundSearchResult[]> - Array of matching campgrounds
    */
   async searchCampgrounds(query: string): Promise<CampgroundSearchResult[]> {
     try {
-      // Real endpoint: GET /api/search_suggest/?q={query}
-      const response = await this.client.get('/api/search_suggest/', {
-        params: { q: query },
-      });
+      // Real endpoint: GET /api/search_suggest (returns GeoJSON)
+      const response = await this.client.get('/search_suggest');
 
-      return response.data.map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        parkId: item.park_id,
-        parkName: item.park_name,
-        region: item.region,
-        description: item.description,
-        facilities: item.facilities,
-        imageUrl: item.image_url,
+      // Parse GeoJSON FeatureCollection
+      const features = response.data.features || [];
+      let campgrounds: CampgroundSearchResult[] = features.map((feature: any) => ({
+        id: String(feature.properties?.id || ''),
+        name: feature.properties?.name || 'Unknown',
+        type: feature.properties?.type || 'Campground',
+        coordinates: feature.coordinates as [number, number] | undefined,
       }));
+
+      // Filter by query if provided
+      if (query && query.length >= 2) {
+        const lowerQuery = query.toLowerCase();
+        campgrounds = campgrounds.filter((cg) =>
+          cg.name.toLowerCase().includes(lowerQuery)
+        );
+      }
+
+      return campgrounds;
     } catch (error) {
       console.error('Search campgrounds failed:', error);
       throw new Error('Failed to search campgrounds');
@@ -286,82 +289,91 @@ export class ParkStayService {
   /**
    * Check availability for a campground
    *
-   * Real endpoint: GET /api/campground_availability/{campground_id}/
-   * Requires authentication (session cookies).
+   * Real endpoint: GET /api/campground_availabilty_view/ (note: typo in URL is intentional)
+   * Public endpoint but session cookies help with rate limiting.
    *
    * Query Parameters:
-   * - arrival: Date string (YYYY-MM-DD)
-   * - departure: Date string (YYYY-MM-DD)
-   * - num_adult: Number of adults (1-50)
-   * - num_child: Number of children (optional, default 0)
-   * - num_infant: Number of infants (optional, default 0)
+   * - format: json
+   * - arrival: Date string (YYYY/MM/DD - slash separated)
+   * - departure: Date string (YYYY/MM/DD - slash separated)
    * - gear_type: Site type filter ("tent", "campervan", "caravan", "all")
+   * - features: JSON array []
+   * - featurescs: JSON array []
    *
-   * Example: GET /api/campground_availability/34/?arrival=2025-06-15&departure=2025-06-18&num_adult=2&gear_type=tent
+   * Example: GET /api/campground_availabilty_view/?format=json&arrival=2026/01/18&departure=2026/01/19&gear_type=all
    *
-   * Business Rules:
-   * - Maximum 180 days advance booking
-   * - Maximum 14 nights during peak season
-   * - Maximum 28 nights during off-peak season
-   * - Arrival date cannot be in the past
-   * - Departure must be after arrival
-   *
-   * Error Responses:
-   * - 400: "Bookings can be made up to 180 days in advance"
-   * - 400: "Arrival date cannot be in the past"
-   * - 400: "Maximum stay is 14 nights during peak season"
-   * - 401: Authentication required
+   * Response format:
+   * {
+   *   "campground": {},
+   *   "campground_available": {
+   *     "31": { "sites": [136, 137, ...], "total_available": 24, "total_bookable": 13 },
+   *     ...
+   *   }
+   * }
    *
    * @param campgroundId - ID of the campground
    * @param params - Search parameters (dates, guests, site type)
-   * @returns Promise<AvailabilityCheckResult> - Availability data for all sites
+   * @returns Promise<AvailabilityCheckResult> - Availability data for the campground
    */
   async checkAvailability(
     campgroundId: string,
     params: SearchParams
   ): Promise<AvailabilityCheckResult> {
     try {
-      // Real endpoint: GET /api/campground_availability/{campground_id}/
-      // Requires authentication
-      const response = await this.client.get(`/api/campground_availability/${campgroundId}/`, {
+      // Format dates as YYYY/MM/DD (slash-separated as required by ParkStay)
+      const formatDate = (dateStr: string) => {
+        // Handle both YYYY-MM-DD and Date objects
+        const date = new Date(dateStr);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}/${month}/${day}`;
+      };
+
+      // Real endpoint: GET /api/campground_availabilty_view/ (note: typo is intentional)
+      const response = await this.client.get('/campground_availabilty_view/', {
         params: {
-          arrival: params.arrivalDate,
-          departure: params.departureDate,
-          num_adult: params.numGuests,
-          num_child: 0,
+          format: 'json',
+          arrival: formatDate(params.arrivalDate),
+          departure: formatDate(params.departureDate),
           gear_type: params.siteType || 'all',
+          features: '[]',
+          featurescs: '[]',
         },
       });
 
-      const sites: CampsiteAvailability[] = response.data.map((site: any) => ({
-        siteId: site.id,
-        siteName: site.name,
-        siteType: site.type,
-        maxOccupancy: site.max_occupancy,
-        dates: site.availability.map((dateAvail: any) => ({
-          date: dateAvail.date,
-          available: dateAvail.available,
-          price: dateAvail.price,
-          bookable: dateAvail.bookable,
-        })),
+      // Get availability for the specific campground
+      const campgroundAvailable = response.data.campground_available || {};
+      const campgroundData = campgroundAvailable[campgroundId];
+
+      if (!campgroundData) {
+        return {
+          available: false,
+          sites: [],
+          totalAvailable: 0,
+          lowestPrice: undefined,
+        };
+      }
+
+      // Map site IDs to CampsiteAvailability format
+      const sites: CampsiteAvailability[] = (campgroundData.sites || []).map((siteId: number) => ({
+        siteId: String(siteId),
+        siteName: `Site ${siteId}`,
+        siteType: params.siteType || 'all',
+        maxOccupancy: params.numGuests,
+        dates: [{
+          date: params.arrivalDate,
+          available: true,
+          price: 0, // Price not available in this endpoint
+          bookable: true,
+        }],
       }));
 
-      const availableSites = sites.filter((site) =>
-        site.dates.every((date) => date.available && date.bookable)
-      );
-
-      const lowestPrice =
-        availableSites.length > 0
-          ? Math.min(
-              ...availableSites.flatMap((site) => site.dates.map((d) => d.price))
-            )
-          : undefined;
-
       return {
-        available: availableSites.length > 0,
+        available: campgroundData.total_bookable > 0,
         sites,
-        totalAvailable: availableSites.length,
-        lowestPrice,
+        totalAvailable: campgroundData.total_available || 0,
+        lowestPrice: undefined, // Price not available in this endpoint
       };
     } catch (error) {
       console.error('Check availability failed:', error);
@@ -401,7 +413,7 @@ export class ParkStayService {
   ): Promise<CampsiteAvailability> {
     try {
       // Real endpoint: GET /api/campsite_availability/{site_id}/
-      const response = await this.client.get(`/api/campsite_availability/${siteId}/`, {
+      const response = await this.client.get(`/campsite_availability/${siteId}/`, {
         params: {
           arrival: arrivalDate,
           departure: departureDate,
@@ -476,7 +488,7 @@ export class ParkStayService {
     try {
       // Real endpoint: POST /api/bookings/
       // Requires authentication and CSRF token in X-CSRFToken header
-      const response = await this.client.post('/api/bookings/', {
+      const response = await this.client.post('/bookings/', {
         campground_id: params.campgroundId,
         campsite_id: params.siteId,
         arrival: params.arrivalDate,
@@ -534,7 +546,7 @@ export class ParkStayService {
   async getBookingDetails(bookingReference: string): Promise<any> {
     try {
       // Real endpoint: GET /api/bookings/{booking_number}/
-      const response = await this.client.get(`/api/bookings/${bookingReference}/`);
+      const response = await this.client.get(`/bookings/${bookingReference}/`);
       return response.data;
     } catch (error) {
       console.error('Get booking details failed:', error);
@@ -582,7 +594,7 @@ export class ParkStayService {
     try {
       // Real endpoint: POST /api/bookings/{booking_number}/cancel/
       // Requires CSRF token
-      await this.client.post(`/api/bookings/${bookingReference}/cancel/`);
+      await this.client.post(`/bookings/${bookingReference}/cancel/`);
     } catch (error) {
       console.error('Cancel booking failed:', error);
       throw new Error('Failed to cancel booking');
@@ -624,7 +636,7 @@ export class ParkStayService {
     try {
       // Real endpoint: PUT /api/bookings/{booking_number}/
       // Requires CSRF token
-      const response = await this.client.put(`/api/bookings/${bookingReference}/`, {
+      const response = await this.client.put(`/bookings/${bookingReference}/`, {
         arrival: params.newArrivalDate,
         departure: params.newDepartureDate,
       });
@@ -688,7 +700,7 @@ export class ParkStayService {
   async checkQueue(): Promise<QueueSessionInfo> {
     try {
       // Real endpoint: GET /api/queue/status/
-      const response = await this.client.get('/api/queue/status/');
+      const response = await this.client.get('/queue/status/');
 
       this.queueSession = {
         sitequeueSessionCookie: response.data.session_id,

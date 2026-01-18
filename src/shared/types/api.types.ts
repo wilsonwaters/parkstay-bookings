@@ -57,18 +57,21 @@ export interface BookingResult {
 export interface CampgroundSearchResult {
   id: string;
   name: string;
-  parkId: string;
-  parkName: string;
-  region: string;
+  parkId?: string;
+  parkName?: string;
+  region?: string;
   description?: string;
   facilities?: string[];
   imageUrl?: string;
+  type?: string; // Campground type from GeoJSON
+  coordinates?: [number, number]; // [longitude, latitude] from GeoJSON
 }
 
 export interface AvailabilityCheckResult {
   available: boolean;
   sites: CampsiteAvailability[];
   totalAvailable: number;
+  totalBookable?: number;
   lowestPrice?: number;
 }
 

@@ -117,9 +117,12 @@ export function registerWatchHandlers(
     IPC_CHANNELS.WATCH_EXECUTE,
     async (_event: IpcMainInvokeEvent, id: number) => {
       try {
+        console.log(`[Watch Handler] Executing watch ${id}`);
         const result = await jobScheduler.executeWatchNow(id);
+        console.log(`[Watch Handler] Watch ${id} execution result:`, JSON.stringify(result, null, 2));
         return { success: true, data: result };
       } catch (error: any) {
+        console.error(`[Watch Handler] Watch ${id} execution error:`, error);
         return { success: false, error: error.message };
       }
     }

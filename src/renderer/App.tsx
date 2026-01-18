@@ -13,6 +13,7 @@ import BookingDetail from './pages/Bookings/BookingDetail';
 import WatchesPage from './pages/Watches';
 import CreateWatch from './pages/Watches/CreateWatch';
 import EditWatch from './pages/Watches/EditWatch';
+import WatchDetail from './pages/Watches/WatchDetail';
 import SkipTheQueuePage from './pages/SkipTheQueue';
 import CreateSTQ from './pages/SkipTheQueue/CreateSTQ';
 import Settings from './pages/Settings';
@@ -74,6 +75,7 @@ const App: React.FC = () => {
           <Route path="/bookings/:id" element={<BookingDetail />} />
           <Route path="/watches" element={<WatchesPage />} />
           <Route path="/watches/create" element={<CreateWatch />} />
+          <Route path="/watches/:id" element={<WatchDetail />} />
           <Route path="/watches/:id/edit" element={<EditWatch />} />
           <Route path="/skip-the-queue" element={<SkipTheQueuePage />} />
           <Route path="/skip-the-queue/create" element={<CreateSTQ />} />

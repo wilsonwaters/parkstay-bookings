@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+// Get today's date at midnight for comparison
+const getTodayMidnight = () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+};
+
 export const watchSchema = z
   .object({
     name: z.string().min(1).max(200),
@@ -7,22 +14,30 @@ export const watchSchema = z
     parkName: z.string().min(1).max(200),
     campgroundId: z.string().min(1),
     campgroundName: z.string().min(1).max(200),
-    arrivalDate: z.date().min(new Date()),
+    arrivalDate: z.date().refine((date) => date >= getTodayMidnight(), {
+      message: 'Arrival date must be today or in the future',
+    }),
     departureDate: z.date(),
     numGuests: z.number().int().min(1).max(50),
     preferredSites: z.array(z.string()).optional(),
-    siteType: z.string().max(50).optional(),
+    siteType: z.preprocess(
+      (val) => (Array.isArray(val) ? val.join(',') : val),
+      z.string().max(200).optional()
+    ),
     checkIntervalMinutes: z.number().int().min(1).max(60),
     autoBook: z.boolean(),
     notifyOnly: z.boolean(),
-    maxPrice: z.number().positive().optional(),
+    maxPrice: z.preprocess(
+      (val) => (val === '' || val === undefined || Number.isNaN(val) ? undefined : val),
+      z.number().positive().optional()
+    ),
     notes: z.string().max(500).optional(),
   })
   .refine((data) => data.departureDate > data.arrivalDate, {
     message: 'Departure date must be after arrival date',
     path: ['departureDate'],
   })
-  .refine((data) => !(data.autoBook && data.arrivalDate < new Date()), {
+  .refine((data) => !(data.autoBook && data.arrivalDate < getTodayMidnight()), {
     message: 'Cannot auto-book for past dates',
     path: ['autoBook'],
   });

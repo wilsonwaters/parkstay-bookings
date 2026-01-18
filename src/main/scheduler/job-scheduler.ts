@@ -188,9 +188,10 @@ export class JobScheduler {
   /**
    * Execute a watch immediately (outside of schedule)
    */
-  async executeWatchNow(watchId: number): Promise<void> {
+  async executeWatchNow(watchId: number): Promise<any> {
     console.log(`Executing watch ${watchId} immediately`);
-    await this.watchService.execute(watchId);
+    const result = await this.watchService.execute(watchId);
+    return result;
   }
 
   /**

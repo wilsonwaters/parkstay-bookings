@@ -3,6 +3,7 @@ import { STQService } from '../services/stq/stq.service';
 import { NotificationService } from '../services/notification/notification.service';
 import { AuthService } from '../services/auth/AuthService';
 import { BookingService } from '../services/booking/BookingService';
+import { ParkStayService } from '../services/parkstay/parkstay.service';
 import { SettingsRepository } from '../database/repositories/SettingsRepository';
 import { JobScheduler } from '../scheduler/job-scheduler';
 import { GmailOTPService } from '../services/gmail/GmailOTPService';
@@ -13,6 +14,7 @@ import { registerAuthHandlers } from './handlers/auth.handlers';
 import { registerBookingHandlers } from './handlers/booking.handlers';
 import { registerSettingsHandlers } from './handlers/settings.handlers';
 import { registerGmailHandlers } from './handlers/gmail.handlers';
+import { registerParkStayHandlers } from './handlers/parkstay.handlers';
 
 /**
  * Register all IPC handlers
@@ -24,7 +26,8 @@ export function registerIPCHandlers(
   watchService: WatchService,
   stqService: STQService,
   notificationService: NotificationService,
-  jobScheduler: JobScheduler
+  jobScheduler: JobScheduler,
+  parkStayService?: ParkStayService
 ): void {
   console.log('Registering IPC handlers...');
 
@@ -38,6 +41,11 @@ export function registerIPCHandlers(
   registerSTQHandlers(stqService, jobScheduler);
   registerNotificationHandlers(notificationService);
   registerGmailHandlers(gmailService);
+
+  // Register ParkStay handlers if service provided
+  if (parkStayService) {
+    registerParkStayHandlers(parkStayService);
+  }
 
   console.log('IPC handlers registered');
 }
