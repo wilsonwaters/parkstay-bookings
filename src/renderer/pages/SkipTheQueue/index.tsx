@@ -3,6 +3,7 @@ import { SkipTheQueueEntry } from '@shared/types';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import ToastContainer, { useToast } from '../../components/Toast';
+import ComingSoonBanner from '../../components/ComingSoonBanner';
 
 /**
  * Skip The Queue Page
@@ -120,6 +121,9 @@ export default function SkipTheQueuePage() {
   return (
     <>
       <div className="p-6">
+        {/* Coming Soon Banner */}
+        <ComingSoonBanner featureName="Skip The Queue" />
+
         <div className="mb-6 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold">Skip The Queue</h1>

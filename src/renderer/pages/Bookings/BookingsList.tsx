@@ -12,6 +12,7 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import ToastContainer, { useToast } from '../../components/Toast';
 import ImportBookingForm from '../../components/forms/ImportBookingForm';
 import ManualBookingForm from '../../components/forms/ManualBookingForm';
+import ComingSoonBanner from '../../components/ComingSoonBanner';
 
 const BookingsList: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -144,6 +145,9 @@ const BookingsList: React.FC = () => {
   return (
     <>
       <div className="space-y-6">
+        {/* Coming Soon Banner */}
+        <ComingSoonBanner featureName="Bookings" />
+
         {/* Header Actions */}
         <div className="flex items-center justify-between">
           <div>

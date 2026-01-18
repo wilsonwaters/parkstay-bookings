@@ -21,9 +21,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, onLogout }) => {
 
   const navItems = [
     { path: '/', label: 'Dashboard', icon: '📊' },
-    { path: '/bookings', label: 'Bookings', icon: '🏕️' },
+    { path: '/bookings', label: 'Bookings', icon: '🏕️', disabled: true },
     { path: '/watches', label: 'Watches', icon: '👁️' },
-    { path: '/skip-the-queue', label: 'Skip The Queue', icon: '⚡' },
+    { path: '/skip-the-queue', label: 'Skip The Queue', icon: '⚡', disabled: true },
     { path: '/settings', label: 'Settings', icon: '⚙️' },
   ];
 
@@ -44,11 +44,18 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, onLogout }) => {
               className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
                 isActive(item.path)
                   ? 'bg-primary-50 text-primary-700 font-medium'
+                  : item.disabled
+                  ? 'text-gray-400'
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
               <span className="text-xl">{item.icon}</span>
-              <span>{item.label}</span>
+              <span className="flex-1">{item.label}</span>
+              {item.disabled && (
+                <span className="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full">
+                  Soon
+                </span>
+              )}
             </Link>
           ))}
         </nav>
