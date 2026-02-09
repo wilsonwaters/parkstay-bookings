@@ -1,7 +1,7 @@
 # WA ParkStay Bookings - User Guide
 
-**Version:** 1.0
-**Last Updated:** 2025-10-31
+**Version:** 1.0.0
+**Last Updated:** 2026-02-09
 
 ## Table of Contents
 
@@ -21,19 +21,29 @@
 
 Welcome to WA ParkStay Bookings! This desktop application helps you automate campground bookings on the Western Australia Parks and Wildlife Service ParkStay system.
 
+> **Note:** Some features are still being finalized. The Bookings import page and Skip The Queue page are temporarily disabled in the sidebar while they are being completed. Watches, notifications, and settings are fully functional.
+
 ### What Can This App Do?
 
 **Automated Availability Monitoring:**
 - Set up watches to monitor campsite availability
-- Get notified when sites become available
+- Get notified when sites become available (desktop and email notifications)
 - Optionally auto-book when availability is found
 
-**Skip The Queue:**
+**Queue Handling:**
+- The app automatically handles ParkStay's DBCA queue system
+- Queue position is tracked and persisted across app restarts
+
+**Email Notifications:**
+- Receive email alerts when watches find availability
+- Configure SMTP settings or use Gmail OAuth2 in the Settings page
+
+**Skip The Queue (coming soon):**
 - Automatically rebook cancelled reservations
 - Stay in the queue for high-demand campsites
 - Continuous monitoring until successful
 
-**Booking Management:**
+**Booking Management (coming soon):**
 - View all your bookings in one place
 - Import existing ParkStay bookings
 - Sync with ParkStay automatically
@@ -264,9 +274,11 @@ When a watch finds availability:
 **Notification:**
 - Desktop notification appears
 - Sound plays (if enabled)
+- Email notification sent (if configured in Settings)
 - Watch status shows "Available"
 
 **Available Sites:**
+- The AvailabilityGrid shows available sites visually
 - List of available sites matching criteria
 - Price per night for each site
 - Total cost for your dates
@@ -280,6 +292,8 @@ When a watch finds availability:
 ---
 
 ## Using Skip The Queue
+
+> **Note:** The Skip The Queue page is temporarily disabled in the sidebar while it is being finalized. The underlying service is implemented and will be re-enabled soon.
 
 Skip The Queue (STQ) helps you rebook cancelled reservations automatically.
 
@@ -417,6 +431,20 @@ Stay informed with the application's notification system.
 - Customizable sound
 - Can be disabled in Settings
 
+**Email Notifications:**
+- Receive email alerts for watch results and important events
+- Configure SMTP settings in the Settings page (Email Settings card)
+- Supports any SMTP provider (Gmail, Outlook, custom servers)
+- Use the "Test Connection" button to verify your email setup
+- Alternatively, set up Gmail OAuth2 for automatic OTP extraction (see Settings)
+
+### Queue System
+
+When accessing ParkStay during busy periods, the DBCA website may place you in a queue. The app handles this automatically:
+- Queue position is tracked and displayed via the QueueStatus component
+- Queue sessions are persisted in the database, so your position is maintained even if the app restarts
+- No manual intervention is needed — the app waits in the queue and proceeds automatically
+
 ### Managing Notifications
 
 **Viewing Notifications:**
@@ -473,6 +501,21 @@ Customize the application to your preferences.
 - STQ success notifications
 - Error notifications
 - System notifications
+
+### Email / SMTP Settings
+
+**Email Configuration (in Settings page):**
+- SMTP server address and port
+- Authentication credentials
+- Sender and recipient email addresses
+- TLS/SSL configuration
+- Test connection button to verify setup
+- SMTP setup instructions are provided in the app for common providers
+
+**Gmail OAuth2:**
+- Connect your Gmail account for OTP code extraction
+- OAuth2 flow handled in-app
+- See the Gmail setup documentation for details
 
 ### Watch Settings
 
@@ -677,7 +720,7 @@ A: Data should persist across updates. Check backup location or contact support.
 If you need additional assistance:
 
 1. **Check Documentation**: Re-read relevant sections of this guide
-2. **Search Issues**: Look through [GitHub Issues](https://github.com/your-username/parkstay-bookings/issues)
+2. **Search Issues**: Look through [GitHub Issues](https://github.com/wilsonwaters/parkstay-bookings/issues)
 3. **Ask Question**: Create a new issue with the "question" label
 4. **Report Bug**: Create an issue with detailed information
 5. **Contact Support**: Email support@example.com (if applicable)
@@ -703,4 +746,4 @@ Happy camping!
 - [Installation Guide](./installation.md) - Installation and setup help
 - [Development Guide](./development.md) - Contributing to the project
 - [Architecture Documentation](./architecture/) - Technical details
-- [GitHub Repository](https://github.com/your-username/parkstay-bookings) - Source code and issues
+- [GitHub Repository](https://github.com/wilsonwaters/parkstay-bookings) - Source code and issues

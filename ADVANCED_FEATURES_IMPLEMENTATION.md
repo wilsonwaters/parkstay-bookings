@@ -1,8 +1,8 @@
 # WA ParkStay Bookings - Advanced Features Implementation
 
-**Date:** 2025-10-31
+**Date:** 2026-02-09
 **Agent:** Advanced Features Agent
-**Status:** Complete
+**Status:** Complete (with subsequent additions: Notification Providers, Queue Service, Gmail OAuth2)
 
 ## Overview
 
@@ -457,38 +457,56 @@ Tables: users, bookings, watches, skip_the_queue_entries, notifications, job_log
    - Need detail pages
    - Need settings UI
 
-## Next Steps
+## Additional Features Implemented After Initial Phase
 
-1. **Core Features Agent:**
-   - Complete authentication service
-   - Implement booking repository
-   - Add user repository
-   - Create remaining IPC handlers
+### Notification Providers System
+- **NotificationDispatcher** (`src/main/services/notification/notification-dispatcher.ts`): Pluggable provider architecture
+- **Base Provider** (`src/main/services/notification/providers/base.provider.ts`): Abstract base class for notification providers
+- **Email SMTP Provider** (`src/main/services/notification/providers/email-smtp.provider.ts`): Send email notifications via SMTP
+- **NotificationProviderRepository** (`src/main/database/repositories/notification-provider.repository.ts`): Provider config storage with AES-256-GCM encryption
+- Database migration v3 added `notification_providers` and `notification_delivery_logs` tables
 
-2. **Integration:**
-   - Test Watch + ParkStay API integration
-   - Test STQ + ParkStay API integration
-   - Test job scheduler execution
-   - Test notification delivery
+### Queue Service
+- **QueueService** (`src/main/services/queue/queue.service.ts`): Handles DBCA queue system automatically
+- Persists queue session across app restarts
+- Database migration v4 added `queue_session` table
+- **QueueStatus** component (`src/renderer/components/QueueStatus.tsx`): Displays queue position in UI
+- IPC handlers for queue operations (`src/main/ipc/handlers/queue.handlers.ts`)
 
-3. **UI Development:**
-   - Complete watch creation form
-   - Complete STQ creation form
-   - Settings page implementation
-   - Notification center UI
-   - Dashboard with active watches/STQ
+### Gmail OAuth2 Integration
+- **GmailOTPService** (`src/main/services/gmail/GmailOTPService.ts`): Extracts OTP codes from ParkStay emails
+- **OAuth2 Handler** (`src/main/services/gmail/oauth2-handler.ts`): Manages Gmail OAuth2 authentication flow
+- IPC handlers for Gmail operations (`src/main/ipc/handlers/gmail.handlers.ts`)
+- Gmail types (`src/shared/types/gmail.types.ts`)
 
-4. **Testing:**
-   - Unit tests for all services
-   - Integration tests
-   - E2E tests with real UI
+### Settings UI
+- **Settings Page** (`src/renderer/pages/Settings.tsx`): Full settings management
+- **EmailSettingsCard** (`src/renderer/components/settings/EmailSettingsCard.tsx`): SMTP email configuration
+- **SMTPSetupInstructions** (`src/renderer/components/settings/SMTPSetupInstructions.tsx`): Setup help for users
 
-5. **Refinement:**
-   - Fine-tune check intervals
-   - Optimize database queries
-   - Improve error messages
-   - Add logging
-   - Performance optimization
+### Additional UI Components
+- **AvailabilityGrid** (`src/renderer/components/AvailabilityGrid.tsx`): Visual availability display
+- **ComingSoonBanner** (`src/renderer/components/ComingSoonBanner.tsx`): Banner for features being finalized
+- **WatchForm** (`src/renderer/components/forms/WatchForm.tsx`): Watch creation/editing form
+- **STQForm** (`src/renderer/components/forms/STQForm.tsx`): STQ creation form
+- Watch detail, edit, and create pages (`src/renderer/pages/Watches/`)
+- STQ create page (`src/renderer/pages/SkipTheQueue/CreateSTQ.tsx`)
+
+## Remaining Work
+
+1. **Re-enable UI pages:**
+   - Remove ComingSoonBanner from Bookings page in sidebar
+   - Remove ComingSoonBanner from Skip The Queue page in sidebar
+
+2. **Real-world API testing:**
+   - Test against live ParkStay API
+   - Refine authentication flow (full Azure AD B2C OAuth2/OIDC)
+   - Adjust rate limiting based on actual ParkStay behavior
+
+3. **Distribution:**
+   - Auto-update mechanism
+   - Packaged installers for Windows and macOS
+   - Code signing
 
 ## File Structure Created
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document summarizes the core features implementation for the WA ParkStay Bookings application. The implementation follows the architecture specifications in `docs/architecture/`.
+This document summarizes the implementation status of the WA ParkStay Bookings application. The application follows the architecture specifications in `docs/architecture/`.
 
 ## What's Been Implemented
 
@@ -14,7 +14,9 @@ This document summarizes the core features implementation for the WA ParkStay Bo
   - TypeScript 5+ for type safety
   - Better-sqlite3 for database
   - Winston for logging
-  - All other dependencies from architecture
+  - googleapis for Gmail OAuth2
+  - nodemailer for email notifications
+  - Zod for schema validation
 
 - **TypeScript Configuration**: Three separate configs
   - `tsconfig.json`: Base configuration
@@ -33,14 +35,20 @@ This document summarizes the core features implementation for the WA ParkStay Bo
 
 ### 2. Database Layer ✅
 
-**Database Manager** (`src/main/database/Database.ts`):
-- SQLite connection management
+**Database Connection** (`src/main/database/connection.ts`):
+- SQLite connection management with WAL mode
 - Automatic initialization
-- Migration system (currently at version 1)
+- Migration system (currently at version 4)
 - Database seeding with default settings
-- Backup and optimization methods
+- Transaction support
 
-**Complete Schema** (7 tables):
+**Migrations (4 versions):**
+1. Initial schema with all core tables
+2. `last_availability` JSON column on watches
+3. `notification_providers` and `notification_delivery_logs` tables
+4. `queue_session` table for DBCA queue persistence
+
+**Complete Schema** (9 tables):
 1. **users**: Stores encrypted user credentials
 2. **bookings**: Camping bookings with full details
 3. **watches**: Availability watch configurations
@@ -48,6 +56,9 @@ This document summarizes the core features implementation for the WA ParkStay Bo
 5. **notifications**: In-app notifications
 6. **job_logs**: Job execution logs
 7. **settings**: Application configuration
+8. **notification_providers**: Email/notification provider configs (encrypted)
+9. **notification_delivery_logs**: Notification delivery tracking
+10. **queue_session**: DBCA queue position persistence
 
 **Indexes**: All tables have proper indexes on frequently queried columns
 
@@ -55,7 +66,7 @@ This document summarizes the core features implementation for the WA ParkStay Bo
 
 ### 3. Repository Pattern ✅
 
-**Base Repository** (`BaseRepository.ts`):
+**Base Repository** (`base.repository.ts`):
 - Generic CRUD operations
 - JSON parsing/serialization
 - Date handling
@@ -63,54 +74,67 @@ This document summarizes the core features implementation for the WA ParkStay Bo
 
 **Implemented Repositories**:
 
-1. **UserRepository**:
-   - Create user with encrypted credentials
-   - Find by email or ID
-   - Update credentials securely
-   - Update profile information
-   - Get first user (single-user app)
-
-2. **BookingRepository**:
-   - Full CRUD operations
-   - Find by user, reference, status
-   - Filter upcoming/past bookings
-   - Automatic night calculation
-   - Status updates
-   - Sync tracking
-
-3. **SettingsRepository**:
-   - Get/set individual settings
-   - Type-safe value parsing
-   - Get by category
-   - Get all as object
-   - Reset to defaults
+1. **UserRepository**: Create, find, update, delete users
+2. **BookingRepository**: Full CRUD, filtering, status management
+3. **SettingsRepository**: Type-safe get/set, category filtering
+4. **WatchRepository**: CRUD, activation, due-for-check queries
+5. **STQRepository**: CRUD, attempt tracking, success marking
+6. **NotificationRepository**: CRUD, read/unread, cleanup
+7. **NotificationProviderRepository**: Provider config management
 
 ### 4. Core Services ✅
 
 **AuthService** (`src/main/services/auth/AuthService.ts`):
-- **Encryption**: AES-256-GCM encryption
-- **Key Derivation**: Machine-specific key using PBKDF2
-- **Credential Storage**: Secure local storage
-- **Operations**:
-  - Store credentials
-  - Get credentials (with decryption)
-  - Update credentials
-  - Delete credentials
-  - Validate credential format
+- AES-256-GCM encryption
+- Machine-specific key derivation using PBKDF2
+- Secure credential storage and retrieval
 
 **BookingService** (`src/main/services/booking/BookingService.ts`):
-- **CRUD Operations**: Create, read, update, delete bookings
-- **Business Logic**:
-  - Input validation
-  - Duplicate checking
-  - Date validation
-  - Status management
-- **Querying**:
-  - List all bookings
-  - Filter by status
-  - Get upcoming/past bookings
-  - Statistics calculation
-- **Integration Hooks**: Placeholders for ParkStay API sync
+- CRUD operations with validation
+- Duplicate checking, date validation, status management
+
+**WatchService** (`src/main/services/watch/watch.service.ts`):
+- Watch CRUD and activation/deactivation
+- Availability checking with site/type/price filters
+- Notification triggering and auto-booking support
+
+**STQService** (`src/main/services/stq/stq.service.ts`):
+- STQ entry management
+- Rebooking attempts with tracking
+- 180-day booking window calculations
+
+**ParkStayService** (`src/main/services/parkstay/parkstay.service.ts`):
+- Authentication (login, validate, logout)
+- Search & availability checking
+- Booking operations (create, get, cancel, update)
+- Queue system handling
+- Rate limiting and retry logic
+
+**QueueService** (`src/main/services/queue/queue.service.ts`):
+- DBCA queue system handling
+- Session persistence across app restarts
+- Queue position tracking
+
+**NotificationService** (`src/main/services/notification/notification.service.ts`):
+- Desktop notifications (Electron)
+- In-app notifications (database stored)
+- Multi-channel delivery
+
+**NotificationDispatcher** (`src/main/services/notification/notification-dispatcher.ts`):
+- Pluggable provider system
+- Email SMTP provider (`providers/email-smtp.provider.ts`)
+- Encrypted provider configuration
+
+**GmailOTPService** (`src/main/services/gmail/GmailOTPService.ts`):
+- Gmail OAuth2 authentication
+- OTP code extraction from ParkStay emails
+- Token management
+
+**JobScheduler** (`src/main/scheduler/job-scheduler.ts`):
+- Cron-based scheduling for watches and STQ
+- Configurable intervals per job
+- Manual execution support
+- Daily cleanup job
 
 ### 5. IPC Bridge ✅
 
@@ -118,99 +142,77 @@ This document summarizes the core features implementation for the WA ParkStay Bo
 - Context isolation enabled
 - Secure API exposure via contextBridge
 - Type-safe API definitions
-- Event listener support
 
-**IPC Handlers**:
-
-1. **auth.handlers.ts**:
-   - Store/get/update/delete credentials
-   - Validate session
-   - Error handling
-
-2. **booking.handlers.ts**:
-   - All CRUD operations
-   - Import/sync operations
-   - User ID injection
-
-3. **settings.handlers.ts**:
-   - Get/set/getAll settings
-   - Type-safe value handling
-
-**Window Type Declaration**: TypeScript support for `window.api`
+**IPC Handlers** (10 handler files in `src/main/ipc/handlers/`):
+1. `auth.handlers.ts`: Credential management
+2. `booking.handlers.ts`: Booking CRUD
+3. `gmail.handlers.ts`: Gmail OAuth2 operations
+4. `notification.handlers.ts`: Notification management
+5. `notification-provider.handlers.ts`: Provider configuration
+6. `parkstay.handlers.ts`: ParkStay API operations
+7. `queue.handlers.ts`: Queue system operations
+8. `settings.handlers.ts`: Settings management
+9. `stq.handlers.ts`: STQ operations
+10. `watch.handlers.ts`: Watch operations
 
 ### 6. React UI ✅
 
-**Application Structure**:
-- **main.tsx**: Entry point with React Query setup
-- **App.tsx**: Root component with routing and authentication
-- **MainLayout.tsx**: Application shell with sidebar and header
-
 **Pages Implemented**:
 
-1. **Login Page** (`pages/Login.tsx`):
-   - Email/password input
-   - Optional profile fields
-   - Credential validation
-   - Encrypted storage
-   - Security notice
-
-2. **Dashboard Page** (`pages/Dashboard.tsx`):
-   - Statistics overview (total, upcoming, past, cancelled)
-   - Upcoming bookings preview
-   - Quick action buttons
-   - Loading and error states
-
-3. **Bookings List** (`pages/Bookings/BookingsList.tsx`):
-   - Display all bookings
-   - Filter by status (all, upcoming, past, cancelled)
-   - Search functionality
-   - Status badges
-   - Loading and empty states
-
-4. **Booking Detail** (`pages/Bookings/BookingDetail.tsx`):
-   - Full booking information
-   - Check-in/out dates
-   - Guest and site details
-   - Reference number
-   - Cancel/delete actions
-   - Metadata display
+1. **Login Page** (`pages/Login.tsx`): Credential input and encrypted storage
+2. **Dashboard** (`pages/Dashboard.tsx`): Statistics, upcoming bookings, quick actions
+3. **Watches** (`pages/Watches/`): List, create, edit, detail views
+4. **Skip The Queue** (`pages/SkipTheQueue/`): List and create views
+5. **Bookings** (`pages/Bookings/`): List and detail views
+6. **Settings** (`pages/Settings.tsx`): Account, notifications, email/SMTP configuration
 
 **Components**:
-- Responsive design
-- Tailwind CSS styling
-- Loading spinners
-- Error messages
-- Status badges
-- Modal dialogs
+- `AvailabilityGrid.tsx`: Visual availability display
+- `ComingSoonBanner.tsx`: Banner for disabled features
+- `ConfirmDialog.tsx`: Confirmation modals
+- `ErrorBoundary.tsx`: React error boundary
+- `LoadingSpinner.tsx`: Loading states
+- `NotificationBell.tsx`: Header notification icon
+- `NotificationList.tsx`: Notification panel
+- `QueueStatus.tsx`: Queue position display
+- `Toast.tsx`: Toast notifications
+- `forms/WatchForm.tsx`: Watch creation/edit form
+- `forms/STQForm.tsx`: STQ creation form
+- `forms/ImportBookingForm.tsx`: Booking import form
+- `forms/ManualBookingForm.tsx`: Manual booking entry
+- `settings/EmailSettingsCard.tsx`: SMTP configuration
+- `settings/SMTPSetupInstructions.tsx`: Setup help
 
-### 7. Error Handling & Logging ✅
+### 7. Shared Code ✅
+
+**Types** (`src/shared/types/`):
+- `common.types.ts`, `booking.types.ts`, `watch.types.ts`, `stq.types.ts`
+- `notification.types.ts`, `notification-provider.types.ts`
+- `api.types.ts`, `gmail.types.ts`, `queue.types.ts`
+
+**Constants** (`src/shared/constants/`):
+- `app-constants.ts`: Booking windows, stay limits, intervals, timezone
+- `ipc-channels.ts`: IPC channel definitions
+
+**Validation Schemas** (`src/shared/schemas/`):
+- Zod schemas for bookings, watches, STQ, users, settings
+
+### 8. Error Handling & Logging ✅
 
 **Winston Logger** (`src/main/utils/logger.ts`):
 - Console output in development
 - File logging in production
 - Separate error logs
-- Exception and rejection handling
-- Configurable log levels
-- Automatic log rotation (5MB max, 5-10 files)
+- Automatic log rotation
 
-**Error Handling**:
-- Try-catch blocks in all services
-- Proper error propagation
-- User-friendly error messages
-- Detailed error logging
-- API response format with success/error
+### 9. Testing ✅
 
-### 8. Electron Main Process ✅
-
-**Main Entry Point** (`src/main/index.ts`):
-- Database initialization
-- Service setup
-- Repository injection
-- IPC handler registration
-- Window management
-- Lifecycle handling
-- Graceful shutdown
-- Uncaught exception handling
+**Unit Tests** (`tests/unit/services/`): auth, booking, watch, notification
+**Integration Tests** (`tests/integration/`): database, auth-flow
+**E2E Tests** (`tests/e2e/`): login, bookings
+**Component Tests** (co-located): ConfirmDialog, LoadingSpinner, Toast
+**Schema Tests** (co-located): user, booking, watch schemas
+**Test Infrastructure**: fixtures, helpers, mock-api, database-helper
 
 ## File Structure
 
@@ -219,39 +221,105 @@ parkstay-bookings/
 ├── src/
 │   ├── main/
 │   │   ├── database/
-│   │   │   ├── Database.ts
+│   │   │   ├── connection.ts
+│   │   │   ├── schema.sql
 │   │   │   └── repositories/
+│   │   │       ├── base.repository.ts
 │   │   │       ├── BaseRepository.ts
-│   │   │       ├── UserRepository.ts
 │   │   │       ├── BookingRepository.ts
+│   │   │       ├── UserRepository.ts
 │   │   │       ├── SettingsRepository.ts
+│   │   │       ├── watch.repository.ts
+│   │   │       ├── stq.repository.ts
+│   │   │       ├── notification.repository.ts
+│   │   │       ├── notification-provider.repository.ts
 │   │   │       └── index.ts
 │   │   ├── services/
 │   │   │   ├── auth/
 │   │   │   │   └── AuthService.ts
-│   │   │   └── booking/
-│   │   │       └── BookingService.ts
+│   │   │   ├── booking/
+│   │   │   │   └── BookingService.ts
+│   │   │   ├── gmail/
+│   │   │   │   ├── GmailOTPService.ts
+│   │   │   │   ├── oauth2-handler.ts
+│   │   │   │   └── index.ts
+│   │   │   ├── notification/
+│   │   │   │   ├── notification.service.ts
+│   │   │   │   ├── notification-dispatcher.ts
+│   │   │   │   └── providers/
+│   │   │   │       ├── base.provider.ts
+│   │   │   │       ├── email-smtp.provider.ts
+│   │   │   │       └── index.ts
+│   │   │   ├── parkstay/
+│   │   │   │   └── parkstay.service.ts
+│   │   │   ├── queue/
+│   │   │   │   └── queue.service.ts
+│   │   │   ├── stq/
+│   │   │   │   └── stq.service.ts
+│   │   │   └── watch/
+│   │   │       └── watch.service.ts
+│   │   ├── scheduler/
+│   │   │   └── job-scheduler.ts
 │   │   ├── ipc/
-│   │   │   └── handlers/
-│   │   │       ├── auth.handlers.ts
-│   │   │       ├── booking.handlers.ts
-│   │   │       └── settings.handlers.ts
+│   │   │   ├── handlers/
+│   │   │   │   ├── auth.handlers.ts
+│   │   │   │   ├── booking.handlers.ts
+│   │   │   │   ├── gmail.handlers.ts
+│   │   │   │   ├── notification.handlers.ts
+│   │   │   │   ├── notification-provider.handlers.ts
+│   │   │   │   ├── parkstay.handlers.ts
+│   │   │   │   ├── queue.handlers.ts
+│   │   │   │   ├── settings.handlers.ts
+│   │   │   │   ├── stq.handlers.ts
+│   │   │   │   └── watch.handlers.ts
+│   │   │   └── index.ts
 │   │   ├── utils/
-│   │   │   └── logger.ts
+│   │   │   ├── logger.ts
+│   │   │   └── browser-headers.ts
 │   │   └── index.ts
 │   ├── preload/
 │   │   ├── index.ts
 │   │   └── window.d.ts
 │   ├── renderer/
 │   │   ├── components/
-│   │   │   └── layouts/
-│   │   │       └── MainLayout.tsx
+│   │   │   ├── AvailabilityGrid.tsx
+│   │   │   ├── ComingSoonBanner.tsx
+│   │   │   ├── ConfirmDialog.tsx
+│   │   │   ├── ErrorBoundary.tsx
+│   │   │   ├── LoadingSpinner.tsx
+│   │   │   ├── NotificationBell.tsx
+│   │   │   ├── NotificationList.tsx
+│   │   │   ├── QueueStatus.tsx
+│   │   │   ├── Toast.tsx
+│   │   │   ├── index.ts
+│   │   │   ├── forms/
+│   │   │   │   ├── ImportBookingForm.tsx
+│   │   │   │   ├── ManualBookingForm.tsx
+│   │   │   │   ├── STQForm.tsx
+│   │   │   │   └── WatchForm.tsx
+│   │   │   ├── layouts/
+│   │   │   │   └── MainLayout.tsx
+│   │   │   └── settings/
+│   │   │       ├── EmailSettingsCard.tsx
+│   │   │       ├── SMTPSetupInstructions.tsx
+│   │   │       └── index.ts
 │   │   ├── pages/
-│   │   │   ├── Login.tsx
 │   │   │   ├── Dashboard.tsx
-│   │   │   └── Bookings/
-│   │   │       ├── BookingsList.tsx
-│   │   │       └── BookingDetail.tsx
+│   │   │   ├── Login.tsx
+│   │   │   ├── Settings.tsx
+│   │   │   ├── Bookings/
+│   │   │   │   ├── BookingsList.tsx
+│   │   │   │   └── BookingDetail.tsx
+│   │   │   ├── SkipTheQueue/
+│   │   │   │   ├── index.tsx
+│   │   │   │   └── CreateSTQ.tsx
+│   │   │   └── Watches/
+│   │   │       ├── index.tsx
+│   │   │       ├── CreateWatch.tsx
+│   │   │       ├── EditWatch.tsx
+│   │   │       └── WatchDetail.tsx
+│   │   ├── utils/
+│   │   │   └── electron-check.ts
 │   │   ├── styles/
 │   │   │   └── index.css
 │   │   ├── App.tsx
@@ -259,19 +327,69 @@ parkstay-bookings/
 │   │   └── index.html
 │   └── shared/
 │       ├── constants/
-│       │   └── ipc-channels.ts
-│       └── types/
-│           └── index.ts (re-exports all types)
+│       │   ├── app-constants.ts
+│       │   ├── ipc-channels.ts
+│       │   └── index.ts
+│       ├── types/
+│       │   ├── common.types.ts
+│       │   ├── booking.types.ts
+│       │   ├── watch.types.ts
+│       │   ├── stq.types.ts
+│       │   ├── notification.types.ts
+│       │   ├── notification-provider.types.ts
+│       │   ├── api.types.ts
+│       │   ├── gmail.types.ts
+│       │   ├── queue.types.ts
+│       │   └── index.ts
+│       └── schemas/
+│           ├── booking.schema.ts
+│           ├── watch.schema.ts
+│           ├── stq.schema.ts
+│           ├── user.schema.ts
+│           ├── settings.schema.ts
+│           └── index.ts
+├── tests/
+│   ├── unit/services/
+│   │   ├── auth.test.ts
+│   │   ├── booking.test.ts
+│   │   ├── watch.test.ts
+│   │   └── notification.test.ts
+│   ├── integration/
+│   │   ├── database.test.ts
+│   │   └── auth-flow.test.ts
+│   ├── e2e/
+│   │   ├── login.spec.ts
+│   │   └── bookings.spec.ts
+│   ├── fixtures/
+│   │   ├── users.ts
+│   │   ├── bookings.ts
+│   │   ├── watches.ts
+│   │   └── stq.ts
+│   ├── utils/
+│   │   ├── database-helper.ts
+│   │   ├── mock-api.ts
+│   │   └── test-helpers.ts
+│   └── setup.ts
+├── docs/
+│   ├── architecture/
+│   ├── parkstay-api/
+│   ├── gmail-otp-setup.md
+│   ├── gmail-otp-quick-start.md
+│   ├── gmail-usage-examples.md
+│   ├── GMAIL-INTEGRATION-SUMMARY.md
+│   ├── IMPLEMENTATION_PLAN.md
+│   ├── ADVANCED_FEATURES_GUIDE.md
+│   ├── user-guide.md
+│   ├── installation.md
+│   ├── development.md
+│   └── ...
+├── resources/
 ├── package.json
 ├── tsconfig.json
-├── tsconfig.main.json
-├── tsconfig.renderer.json
 ├── vite.config.ts
+├── jest.config.js
 ├── tailwind.config.js
-├── postcss.config.js
-├── .eslintrc.json
-├── .prettierrc
-└── .gitignore
+└── electron-builder.json
 ```
 
 ## How to Run
@@ -285,17 +403,13 @@ npm install
 ```bash
 npm run dev
 ```
-This runs:
-- TypeScript compiler in watch mode for main process
-- Vite dev server for renderer process
-- Then run `npm start` in another terminal to start Electron
+This uses concurrently to run both the TypeScript compiler for the main process and the Vite dev server for the renderer process together.
 
 ### Build for Production
 ```bash
 npm run build        # Build both main and renderer
-npm run build:all    # Build and package for all platforms
-npm run build:win    # Build and package for Windows
-npm run build:mac    # Build and package for macOS
+npm run dist:win     # Build and package for Windows
+npm run dist:mac     # Build and package for macOS
 ```
 
 ## Features
@@ -303,31 +417,40 @@ npm run build:mac    # Build and package for macOS
 ### Implemented
 ✅ User authentication with encrypted credentials (AES-256-GCM)
 ✅ Booking management (CRUD operations)
-✅ SQLite database with migrations
+✅ SQLite database with migrations (version 4)
 ✅ IPC communication (main ↔ renderer)
 ✅ React UI with routing
 ✅ Login page with credential storage
 ✅ Dashboard with statistics
 ✅ Bookings list with filtering
 ✅ Booking detail view
-✅ Settings storage
+✅ Settings storage and UI
 ✅ Error handling and logging
+✅ Watch system for availability monitoring
+✅ Skip The Queue rebooking automation
+✅ Job scheduler (node-cron)
+✅ ParkStay API integration
+✅ Notification system (desktop + in-app)
+✅ Notification dispatcher with email SMTP provider
+✅ Gmail OAuth2 integration for OTP
+✅ Queue service for DBCA queue handling
+✅ Settings page with email configuration
+✅ Zod schema validation
+✅ Test suite (unit, integration, E2E)
 
-### Not Yet Implemented (Future)
-⏳ ParkStay API integration
-⏳ Watch system for availability monitoring
-⏳ Skip The Queue rebooking automation
-⏳ Job scheduler (node-cron)
-⏳ Notification system
-⏳ System tray integration
-⏳ Auto-updates
+### Remaining Work
+⏳ Re-enable Bookings page in sidebar (currently shows ComingSoonBanner)
+⏳ Re-enable Skip The Queue page in sidebar (currently shows ComingSoonBanner)
+⏳ Real-world ParkStay API testing and refinement
+⏳ Auto-update mechanism
+⏳ Packaged installers for distribution
 
 ## Security
 
 - **Credential Encryption**: AES-256-GCM with machine-specific keys
 - **Context Isolation**: Enabled in Electron
 - **No Node Integration**: Disabled in renderer
-- **Secure IPC**: All communication validated
+- **Secure IPC**: All communication validated with Zod schemas
 - **Local Storage**: All data stored locally, never sent to external servers
 
 ## Database
@@ -339,53 +462,6 @@ npm run build:mac    # Build and package for macOS
 
 - **Logs Location**: `<userData>/logs/`
 
-## Next Steps
+---
 
-To complete the application, implement:
-
-1. **ParkStay API Integration**:
-   - HTTP client with session management
-   - HTML parsing (if needed)
-   - Login/logout flows
-   - Booking sync
-   - Search functionality
-
-2. **Watch System**:
-   - Watch repository
-   - Watch service
-   - Job scheduler integration
-   - Availability checking
-
-3. **Skip The Queue**:
-   - STQ repository
-   - STQ service
-   - Rebooking logic
-
-4. **Job Scheduler**:
-   - Cron job setup
-   - Job queue
-   - Retry logic
-   - Error handling
-
-5. **Notifications**:
-   - Desktop notifications
-   - In-app notification UI
-   - System tray integration
-
-6. **Additional UI**:
-   - Watches page
-   - STQ page
-   - Settings page
-   - Notification bell
-
-## Notes
-
-This implementation provides a solid foundation with:
-- Clean architecture
-- Type safety throughout
-- Secure credential storage
-- Proper error handling
-- Production-ready logging
-- Well-structured code
-
-The core booking management system is fully functional and ready for use. The remaining features (watches, STQ, scheduler) follow the same patterns and can be implemented following the existing code structure.
+**Last Updated:** 2026-02-09

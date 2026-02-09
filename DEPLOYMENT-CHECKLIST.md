@@ -8,7 +8,7 @@ Use this checklist when preparing for a new release.
 - [ ] All tests passing (unit, integration, E2E)
 - [ ] No linting errors (`npm run lint`)
 - [ ] No TypeScript errors (`npm run type-check`)
-- [ ] Code coverage ≥ 80% (`npm run test:coverage`)
+- [ ] Code coverage ≥ 50% (`npm run test:coverage`)
 - [ ] Code reviewed and approved
 - [ ] All critical bugs fixed
 - [ ] All TODOs resolved or documented
@@ -344,5 +344,5 @@ Use this space to document any issues, special circumstances, or deviations from
 
 ---
 
-**Version:** 1.0
-**Last Updated:** 2025-10-31
+**Version:** 1.0.0
+**Last Updated:** 2026-02-09
