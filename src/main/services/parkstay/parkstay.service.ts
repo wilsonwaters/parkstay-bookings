@@ -11,8 +11,9 @@ import {
   CampsiteAvailability,
   QueueSessionInfo,
 } from '@shared/types';
-import { PARKSTAY_API_BASE_URL } from '@shared/constants';
+import { PARKSTAY_API_BASE_URL, PARKSTAY_BASE_URL } from '@shared/constants';
 import { QueueService } from '../queue/queue.service';
+import { getParkstayApiHeaders } from '../../utils/browser-headers';
 
 /**
  * ParkStay API Service
@@ -65,17 +66,18 @@ export class ParkStayService {
     this.client = axios.create({
       baseURL: PARKSTAY_API_BASE_URL,
       timeout: 30000,
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        Accept: 'application/json',
-        'Accept-Language': 'en-AU,en;q=0.9',
-      },
+      headers: getParkstayApiHeaders(),
       withCredentials: true,
     });
 
-    // Add request interceptor for session handling
+    // Add request interceptor for session handling and browser-like Origin header
     this.client.interceptors.request.use((config) => {
+      // Chrome sends Origin on state-changing same-origin requests
+      const method = config.method?.toUpperCase();
+      if (method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+        config.headers.Origin = PARKSTAY_BASE_URL;
+      }
+
       if (this.session && this.session.cookies) {
         const cookieString = Object.entries(this.session.cookies)
           .map(([key, value]) => `${key}=${value}`)

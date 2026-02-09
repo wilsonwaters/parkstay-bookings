@@ -29,6 +29,7 @@ import {
   QUEUE_MAX_RETRIES,
   QUEUE_RETRY_DELAY_MS,
 } from '@shared/constants';
+import { getQueueApiHeaders } from '../../utils/browser-headers';
 
 const DEFAULT_CONFIG: QueueServiceConfig = {
   pollIntervalMs: QUEUE_POLL_INTERVAL_MS,
@@ -53,12 +54,7 @@ export class QueueService extends EventEmitter {
     this.client = axios.create({
       baseURL: QUEUE_API_BASE_URL,
       timeout: 30000,
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        Accept: 'application/json',
-        'Accept-Language': 'en-AU,en;q=0.9',
-      },
+      headers: getQueueApiHeaders(),
     });
 
     // Load persisted session on startup
