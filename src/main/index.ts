@@ -7,7 +7,9 @@ import { app, BrowserWindow } from 'electron';
 import path from 'path';
 import { initializeDatabase, closeDatabase, getDatabase } from './database/connection';
 import { ParkStayService } from './services/parkstay/parkstay.service';
+import { QueueService } from './services/queue/queue.service';
 import { NotificationService } from './services/notification/notification.service';
+import { NotificationDispatcher } from './services/notification/notification-dispatcher';
 import { WatchService } from './services/watch/watch.service';
 import { STQService } from './services/stq/stq.service';
 import { AuthService } from './services/auth/AuthService';
@@ -18,10 +20,12 @@ import { logger } from './utils/logger';
 import { SettingsRepository } from './database/repositories/SettingsRepository';
 import { UserRepository } from './database/repositories/UserRepository';
 import { BookingRepository } from './database/repositories/BookingRepository';
+import { NotificationProviderRepository } from './database/repositories/notification-provider.repository';
 
 // Global references
 let mainWindow: BrowserWindow | null = null;
 let jobScheduler: JobScheduler | null = null;
+let queueService: QueueService | null = null;
 
 /**
  * Create main window
@@ -92,12 +96,19 @@ async function initializeApp(): Promise<void> {
     const userRepository = new UserRepository(db);
     const bookingRepository = new BookingRepository(db);
     const settingsRepository = new SettingsRepository(db);
+    const notificationProviderRepository = new NotificationProviderRepository(db);
+
+    // Create notification dispatcher for pluggable providers
+    const notificationDispatcher = new NotificationDispatcher(notificationProviderRepository);
+
+    // Create queue service (handles DBCA queue system)
+    queueService = new QueueService();
 
     // Create services
-    const parkStayService = new ParkStayService();
+    const parkStayService = new ParkStayService(queueService);
     const authService = new AuthService(userRepository);
     const bookingService = new BookingService(bookingRepository);
-    const notificationService = new NotificationService();
+    const notificationService = new NotificationService(notificationDispatcher);
     const watchService = new WatchService(parkStayService, notificationService);
     const stqService = new STQService(parkStayService, notificationService);
 
@@ -113,7 +124,10 @@ async function initializeApp(): Promise<void> {
       stqService,
       notificationService,
       jobScheduler,
-      parkStayService
+      parkStayService,
+      notificationProviderRepository,
+      notificationDispatcher,
+      queueService
     );
 
     // Start job scheduler
@@ -168,6 +182,11 @@ app.on('before-quit', () => {
   // Stop job scheduler
   if (jobScheduler) {
     jobScheduler.stop();
+  }
+
+  // Clean up queue service
+  if (queueService) {
+    queueService.destroy();
   }
 
   // Close database connection

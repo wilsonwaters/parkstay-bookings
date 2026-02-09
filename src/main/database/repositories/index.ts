@@ -6,3 +6,4 @@ export * from './SettingsRepository';
 export * from './watch.repository';
 export * from './stq.repository';
 export * from './notification.repository';
+export * from './notification-provider.repository';

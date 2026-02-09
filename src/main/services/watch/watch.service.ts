@@ -156,6 +156,20 @@ export class WatchService {
       // Update watch status
       this.watchRepo.updateLastResult(watchId, found ? WatchResult.FOUND : WatchResult.NOT_FOUND, found);
 
+      // Update last availability results (store even if empty to show "no sites available")
+      const availability: AvailabilityResult[] = matchingSites.map((site) => ({
+        siteId: site.siteId,
+        siteName: site.siteName,
+        siteType: site.siteType,
+        available: true,
+        price: site.dates[0]?.price || 0,
+        dates: {
+          arrival: watch.arrivalDate,
+          departure: watch.departureDate,
+        },
+      }));
+      this.watchRepo.updateLastAvailability(watchId, availability);
+
       // Update check timestamps
       const nextCheck = new Date();
       nextCheck.setMinutes(nextCheck.getMinutes() + watch.checkIntervalMinutes);
@@ -177,18 +191,6 @@ export class WatchService {
           this.watchRepo.deactivate(watchId);
         }
       }
-
-      const availability: AvailabilityResult[] = matchingSites.map((site) => ({
-        siteId: site.siteId,
-        siteName: site.siteName,
-        siteType: site.siteType,
-        available: true,
-        price: site.dates[0]?.price || 0,
-        dates: {
-          arrival: watch.arrivalDate,
-          departure: watch.departureDate,
-        },
-      }));
 
       return {
         watchId,

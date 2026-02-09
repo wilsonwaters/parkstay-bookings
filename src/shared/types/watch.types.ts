@@ -18,6 +18,7 @@ export interface Watch {
   lastCheckedAt?: Date;
   nextCheckAt?: Date;
   lastResult?: WatchResult;
+  lastAvailability?: AvailabilityResult[];
   foundCount: number;
   autoBook: boolean;
   notifyOnly: boolean;

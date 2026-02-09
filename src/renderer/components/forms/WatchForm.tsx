@@ -31,11 +31,10 @@ const SITE_TYPES = [
 ];
 
 const CHECK_INTERVALS = [
-  { value: 5, label: '5 minutes' },
-  { value: 10, label: '10 minutes' },
-  { value: 15, label: '15 minutes' },
-  { value: 30, label: '30 minutes' },
-  { value: 60, label: '60 minutes' },
+  { value: 60, label: 'Every hour' },
+  { value: 240, label: 'Every 4 hours' },
+  { value: 720, label: 'Every 12 hours' },
+  { value: 1440, label: 'Once daily' },
 ];
 
 const WatchForm: React.FC<WatchFormProps> = ({
@@ -68,7 +67,7 @@ const WatchForm: React.FC<WatchFormProps> = ({
       arrivalDate: initialData?.arrivalDate || new Date(),
       departureDate: initialData?.departureDate || new Date(),
       numGuests: initialData?.numGuests || 2,
-      checkIntervalMinutes: initialData?.checkIntervalMinutes || 5,
+      checkIntervalMinutes: initialData?.checkIntervalMinutes || 60,
       autoBook: initialData?.autoBook || false,
       notifyOnly: initialData?.notifyOnly !== undefined ? initialData.notifyOnly : true,
       maxPrice: initialData?.maxPrice,

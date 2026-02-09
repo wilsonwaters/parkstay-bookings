@@ -72,6 +72,8 @@ export class JobScheduler {
 
   /**
    * Schedule a watch
+   * Uses the watch creation time to offset when jobs run within the interval
+   * to distribute server load across time rather than all at :00
    */
   scheduleWatch(watch: Watch): void {
     const jobId = `watch-${watch.id}`;
@@ -83,8 +85,33 @@ export class JobScheduler {
       return;
     }
 
-    // Create cron expression for interval (every N minutes)
-    const cronExpression = `*/${watch.checkIntervalMinutes} * * * *`;
+    // Use creation time to determine the minute/hour offset for scheduling
+    const createdAt = new Date(watch.createdAt);
+    const minute = createdAt.getMinutes();
+    const hour = createdAt.getHours();
+
+    // Create cron expression based on interval
+    // This distributes load by using the watch's creation time as the run time offset
+    let cronExpression: string;
+    const intervalMinutes = watch.checkIntervalMinutes;
+
+    if (intervalMinutes <= 60) {
+      // Hourly: run at the same minute each hour
+      cronExpression = `${minute} * * * *`;
+    } else if (intervalMinutes <= 240) {
+      // 4 hours: run at specific hours based on creation hour
+      const hourOffset = hour % 4;
+      const hours = [0, 4, 8, 12, 16, 20].map(h => (h + hourOffset) % 24).sort((a, b) => a - b);
+      cronExpression = `${minute} ${hours.join(',')} * * *`;
+    } else if (intervalMinutes <= 720) {
+      // 12 hours: run twice daily at offset hours
+      const hourOffset = hour % 12;
+      const hours = [hourOffset, (hourOffset + 12) % 24].sort((a, b) => a - b);
+      cronExpression = `${minute} ${hours.join(',')} * * *`;
+    } else {
+      // 24 hours: run once daily at the creation hour/minute
+      cronExpression = `${minute} ${hour} * * *`;
+    }
 
     const task = cron.schedule(
       cronExpression,
@@ -98,6 +125,7 @@ export class JobScheduler {
       },
       {
         scheduled: true,
+        timezone: 'Australia/Perth',
       }
     );
 
@@ -108,7 +136,7 @@ export class JobScheduler {
       relatedId: watch.id,
     });
 
-    console.log(`Scheduled watch ${watch.id} with interval ${watch.checkIntervalMinutes} minutes`);
+    console.log(`Scheduled watch ${watch.id} with cron "${cronExpression}" (interval ${watch.checkIntervalMinutes} min)`);
   }
 
   /**

@@ -6,6 +6,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import NotificationBell from '../NotificationBell';
+import QueueStatus from '../QueueStatus';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -90,6 +91,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, onLogout }) => {
         {/* Page Content */}
         <main className="flex-1 overflow-auto p-6">{children}</main>
       </div>
+
+      {/* Queue Status Indicator */}
+      <QueueStatus />
     </div>
   );
 };

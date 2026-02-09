@@ -12,6 +12,7 @@ import {
   QueueSessionInfo,
 } from '@shared/types';
 import { PARKSTAY_API_BASE_URL } from '@shared/constants';
+import { QueueService } from '../queue/queue.service';
 
 /**
  * ParkStay API Service
@@ -57,8 +58,10 @@ export class ParkStayService {
   private client: AxiosInstance;
   private session: ParkStaySessionToken | null = null;
   private queueSession: QueueSessionInfo | null = null;
+  private queueService: QueueService | null = null;
 
-  constructor() {
+  constructor(queueService?: QueueService) {
+    this.queueService = queueService || null;
     this.client = axios.create({
       baseURL: PARKSTAY_API_BASE_URL,
       timeout: 30000,
@@ -80,10 +83,17 @@ export class ParkStayService {
         config.headers.Cookie = cookieString;
       }
 
-      // Add queue session cookie if present
-      if (this.queueSession?.sitequeueSessionCookie) {
+      // Add queue session cookie from QueueService if available
+      const queueCookie = this.queueService?.getSessionCookie();
+      if (queueCookie) {
         const existingCookies = config.headers.Cookie || '';
-        config.headers.Cookie = `${existingCookies}; sitequeuesession=${this.queueSession.sitequeueSessionCookie}`;
+        const separator = existingCookies ? '; ' : '';
+        config.headers.Cookie = `${existingCookies}${separator}sitequeuesession=${queueCookie}`;
+      } else if (this.queueSession?.sitequeueSessionCookie) {
+        // Fallback to legacy queueSession if no QueueService
+        const existingCookies = config.headers.Cookie || '';
+        const separator = existingCookies ? '; ' : '';
+        config.headers.Cookie = `${existingCookies}${separator}sitequeuesession=${this.queueSession.sitequeueSessionCookie}`;
       }
 
       return config;
@@ -230,6 +240,43 @@ export class ParkStayService {
       this.session = null;
       this.queueSession = null;
     }
+  }
+
+  /**
+   * Set the QueueService instance
+   * Call this to enable queue-aware API calls
+   */
+  setQueueService(queueService: QueueService): void {
+    this.queueService = queueService;
+  }
+
+  /**
+   * Ensure we have an active queue session before making API calls
+   * This will wait in the queue if necessary
+   *
+   * @returns Promise<void> - Resolves when queue session is active
+   * @throws Error if unable to obtain queue access
+   */
+  async ensureQueueAccess(): Promise<void> {
+    if (!this.queueService) {
+      // No queue service configured, proceed without queue check
+      return;
+    }
+
+    // If already active, nothing to do
+    if (this.queueService.isSessionActive()) {
+      return;
+    }
+
+    // Wait for active session (waits indefinitely per user preference)
+    console.log('Waiting for queue access...');
+    const result = await this.queueService.waitForActive();
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to obtain queue access');
+    }
+
+    console.log('Queue access obtained');
   }
 
   /**

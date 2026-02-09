@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { EmailSettingsCard } from '../components/settings';
 
 type TabType = 'account' | 'gmail' | 'notifications' | 'app' | 'advanced';
 
@@ -373,6 +374,11 @@ const Settings: React.FC = () => {
                     </p>
                   </div>
                 </div>
+              </div>
+
+              {/* Email Notifications Section */}
+              <div className="pt-6 border-t border-gray-200">
+                <EmailSettingsCard />
               </div>
             </div>
           )}

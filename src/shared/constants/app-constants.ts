@@ -58,3 +58,11 @@ export const MAX_NOTIFICATIONS_PER_USER = 1000;
 
 // Currency
 export const DEFAULT_CURRENCY = 'AUD';
+
+// Queue System
+export const QUEUE_API_BASE_URL = 'https://queue.dbca.wa.gov.au';
+export const QUEUE_GROUP = 'parkstayv2';
+export const QUEUE_POLL_INTERVAL_MS = 5000; // 5 seconds (matches official client)
+export const QUEUE_SESSION_REFRESH_BUFFER_MS = 120000; // Refresh 2 minutes before expiry
+export const QUEUE_MAX_RETRIES = 3;
+export const QUEUE_RETRY_DELAY_MS = 2000;

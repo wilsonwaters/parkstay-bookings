@@ -190,6 +190,18 @@ export class WatchRepository extends BaseRepository<Watch> {
     stmt.run(result, found ? 1 : 0, id);
   }
 
+  /**
+   * Update last availability results
+   */
+  updateLastAvailability(id: number, availability: any[]): void {
+    const stmt = this.db.prepare(`
+      UPDATE watches
+      SET last_availability = ?
+      WHERE id = ?
+    `);
+    stmt.run(JSON.stringify(availability), id);
+  }
+
   protected mapToModel(row: any): Watch {
     return {
       id: row.id,
@@ -209,6 +221,7 @@ export class WatchRepository extends BaseRepository<Watch> {
       lastCheckedAt: this.parseDate(row.last_checked_at),
       nextCheckAt: this.parseDate(row.next_check_at),
       lastResult: row.last_result as WatchResult | undefined,
+      lastAvailability: this.parseJson(row.last_availability),
       foundCount: row.found_count,
       autoBook: Boolean(row.auto_book),
       notifyOnly: Boolean(row.notify_only),
@@ -237,6 +250,7 @@ export class WatchRepository extends BaseRepository<Watch> {
       last_checked_at: this.formatDate(model.lastCheckedAt),
       next_check_at: this.formatDate(model.nextCheckAt),
       last_result: model.lastResult,
+      last_availability: this.stringifyJson(model.lastAvailability),
       found_count: model.foundCount,
       auto_book: model.autoBook ? 1 : 0,
       notify_only: model.notifyOnly ? 1 : 0,

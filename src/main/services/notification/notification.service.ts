@@ -1,8 +1,10 @@
 import { Notification, NotificationInput, Watch, SkipTheQueueEntry } from '@shared/types';
 import { NotificationType, RelatedType } from '@shared/types/common.types';
 import { NotificationRepository } from '../../database/repositories';
+import { NotificationDispatcher } from './notification-dispatcher';
 import { Notification as ElectronNotification, app } from 'electron';
 import * as path from 'path';
+import { logger } from '../../utils/logger';
 
 /**
  * Notification Service
@@ -10,17 +12,24 @@ import * as path from 'path';
  */
 export class NotificationService {
   private notificationRepo: NotificationRepository;
+  private dispatcher: NotificationDispatcher | null = null;
   private soundEnabled: boolean = true;
   private desktopEnabled: boolean = true;
 
-  constructor() {
+  constructor(dispatcher?: NotificationDispatcher) {
     this.notificationRepo = new NotificationRepository();
+    this.dispatcher = dispatcher || null;
   }
 
   /**
    * Create a notification
+   * @param input - Notification data to store
+   * @param dispatchMeta - Optional metadata for external providers (email, etc.)
    */
-  async notify(input: NotificationInput): Promise<Notification> {
+  async notify(
+    input: NotificationInput,
+    dispatchMeta?: { campgroundName?: string }
+  ): Promise<Notification> {
     // Store notification in database
     const notification = this.notificationRepo.create(input);
 
@@ -37,6 +46,22 @@ export class NotificationService {
     // Send to renderer process via IPC
     this.sendToRenderer(notification);
 
+    // Dispatch to all enabled external providers (email, etc.)
+    if (this.dispatcher) {
+      try {
+        await this.dispatcher.dispatch({
+          title: notification.title,
+          message: notification.message,
+          actionUrl: notification.actionUrl,
+          type: notification.type,
+          campgroundName: dispatchMeta?.campgroundName,
+        });
+      } catch (error) {
+        logger.error('Error dispatching notification to providers:', error);
+        // Don't throw - we don't want provider failures to break the main notification flow
+      }
+    }
+
     return notification;
   }
 
@@ -47,15 +72,18 @@ export class NotificationService {
     const sitesText = availability.length === 1 ? '1 site' : `${availability.length} sites`;
     const message = `Found ${sitesText} available at ${watch.campgroundName} for ${watch.arrivalDate.toLocaleDateString()} - ${watch.departureDate.toLocaleDateString()}`;
 
-    await this.notify({
-      userId: watch.userId,
-      type: NotificationType.WATCH_FOUND,
-      title: 'Availability Found!',
-      message,
-      relatedId: watch.id,
-      relatedType: RelatedType.WATCH,
-      actionUrl: `/watches/${watch.id}`,
-    });
+    await this.notify(
+      {
+        userId: watch.userId,
+        type: NotificationType.WATCH_FOUND,
+        title: 'Availability Found!',
+        message,
+        relatedId: watch.id,
+        relatedType: RelatedType.WATCH,
+        actionUrl: `/watches/${watch.id}`,
+      },
+      { campgroundName: watch.campgroundName }
+    );
   }
 
   /**

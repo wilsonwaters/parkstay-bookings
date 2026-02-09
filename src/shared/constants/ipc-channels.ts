@@ -68,11 +68,26 @@ export const IPC_CHANNELS = {
   PARKSTAY_GET_ALL_CAMPGROUNDS: 'parkstay:get-all-campgrounds',
   PARKSTAY_CHECK_AVAILABILITY: 'parkstay:check-availability',
 
+  // Notification Providers
+  PROVIDER_LIST: 'provider:list',
+  PROVIDER_GET: 'provider:get',
+  PROVIDER_CONFIGURE: 'provider:configure',
+  PROVIDER_ENABLE: 'provider:enable',
+  PROVIDER_DISABLE: 'provider:disable',
+  PROVIDER_TEST: 'provider:test',
+
+  // Queue
+  QUEUE_CHECK: 'queue:check',
+  QUEUE_WAIT: 'queue:wait',
+  QUEUE_GET_STATUS: 'queue:get-status',
+  QUEUE_CLEAR: 'queue:clear',
+
   // Events (main -> renderer)
   NOTIFICATION_CREATED: 'notification:created',
   BOOKING_UPDATED: 'booking:updated',
   WATCH_RESULT: 'watch:result',
   STQ_RESULT: 'stq:result',
+  QUEUE_STATUS_UPDATE: 'queue:status-update',
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

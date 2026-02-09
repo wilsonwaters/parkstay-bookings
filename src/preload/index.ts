@@ -22,6 +22,12 @@ import {
   GmailAuthStatus,
   OTPResult,
   GmailMessage,
+  NotificationProvider,
+  NotificationProviderInput,
+  NotificationChannel,
+  TestConnectionResult,
+  QueueSession,
+  QueueStatusEvent,
 } from '../shared/types';
 
 // Define the API that will be exposed to the renderer
@@ -208,6 +214,49 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.GMAIL_TEST_SEARCH, fromEmail, subject),
   },
 
+  // Notification Provider APIs
+  notificationProvider: {
+    list: (): Promise<APIResponse<NotificationProvider[]>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROVIDER_LIST),
+
+    get: (channel: NotificationChannel): Promise<APIResponse<NotificationProvider | null>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROVIDER_GET, channel),
+
+    configure: (input: NotificationProviderInput): Promise<APIResponse<NotificationProvider>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROVIDER_CONFIGURE, input),
+
+    enable: (channel: NotificationChannel): Promise<APIResponse<boolean>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROVIDER_ENABLE, channel),
+
+    disable: (channel: NotificationChannel): Promise<APIResponse<boolean>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROVIDER_DISABLE, channel),
+
+    test: (channel: NotificationChannel): Promise<APIResponse<TestConnectionResult>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PROVIDER_TEST, channel),
+  },
+
+  // Queue APIs
+  queue: {
+    check: (): Promise<APIResponse<QueueSession>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.QUEUE_CHECK),
+
+    wait: (): Promise<APIResponse<QueueSession>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.QUEUE_WAIT),
+
+    getStatus: (): Promise<
+      APIResponse<{
+        session: QueueSession | null;
+        isActive: boolean;
+        isExpired: boolean;
+        isWaiting: boolean;
+        estimatedWait: string;
+        expiryRemaining: string;
+      }>
+    > => ipcRenderer.invoke(IPC_CHANNELS.QUEUE_GET_STATUS),
+
+    clear: (): Promise<APIResponse<void>> => ipcRenderer.invoke(IPC_CHANNELS.QUEUE_CLEAR),
+  },
+
   // Event listeners
   on: {
     bookingUpdated: (callback: (booking: Booking) => void) => {
@@ -227,6 +276,10 @@ const api = {
     stqResult: (callback: (result: any) => void) => {
       ipcRenderer.on(IPC_CHANNELS.STQ_RESULT, (_event, result) => callback(result));
     },
+
+    queueStatusUpdate: (callback: (event: QueueStatusEvent) => void) => {
+      ipcRenderer.on(IPC_CHANNELS.QUEUE_STATUS_UPDATE, (_event, data) => callback(data));
+    },
   },
 
   // Remove event listeners
@@ -245,6 +298,10 @@ const api = {
 
     stqResult: () => {
       ipcRenderer.removeAllListeners(IPC_CHANNELS.STQ_RESULT);
+    },
+
+    queueStatusUpdate: () => {
+      ipcRenderer.removeAllListeners(IPC_CHANNELS.QUEUE_STATUS_UPDATE);
     },
   },
 };

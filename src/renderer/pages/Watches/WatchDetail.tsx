@@ -46,6 +46,16 @@ const WatchDetail: React.FC = () => {
     loadWatch();
   }, [loadWatch]);
 
+  // Auto-refresh watch data every 30 seconds to show updated availability
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!isChecking) {
+        loadWatch();
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [loadWatch, isChecking]);
+
   // Check availability now
   const handleCheckNow = async () => {
     if (!watch) return;
@@ -331,9 +341,44 @@ const WatchDetail: React.FC = () => {
           </div>
         )}
 
-        {/* Availability Grid */}
+        {/* Stored Availability Info (when no manual check has been done) */}
+        {!executionResult && watch.lastAvailability && watch.lastAvailability.length > 0 && (
+          <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200">
+            <div className="flex items-center">
+              <svg className="h-5 w-5 text-blue-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+              <span className="text-blue-800 font-medium">
+                Last check found {watch.lastAvailability.length} matching site(s)
+              </span>
+              {watch.lastCheckedAt && (
+                <span className="ml-auto text-sm text-gray-500">
+                  As of {format(new Date(watch.lastCheckedAt), 'PPp')}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {!executionResult && (!watch.lastAvailability || watch.lastAvailability.length === 0) && watch.lastCheckedAt && (
+          <div className="mb-4 p-3 rounded-lg bg-gray-50 border border-gray-200">
+            <div className="flex items-center">
+              <svg className="h-5 w-5 text-gray-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+              <span className="text-gray-700">
+                No matching availability found in last check
+              </span>
+              <span className="ml-auto text-sm text-gray-500">
+                As of {format(new Date(watch.lastCheckedAt), 'PPp')}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Availability Grid - show executionResult if available, otherwise show stored lastAvailability */}
         <AvailabilityGrid
-          watchResults={executionResult?.availability}
+          watchResults={executionResult?.availability || watch.lastAvailability}
           availabilityData={availabilityData || undefined}
           arrivalDate={watch.arrivalDate}
           departureDate={watch.departureDate}

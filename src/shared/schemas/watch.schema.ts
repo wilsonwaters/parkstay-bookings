@@ -24,7 +24,10 @@ export const watchSchema = z
       (val) => (Array.isArray(val) ? val.join(',') : val),
       z.string().max(200).optional()
     ),
-    checkIntervalMinutes: z.number().int().min(1).max(60),
+    checkIntervalMinutes: z.number().int().refine(
+      (val) => [60, 240, 720, 1440].includes(val),
+      { message: 'Check interval must be 1 hour, 4 hours, 12 hours, or 24 hours' }
+    ),
     autoBook: z.boolean(),
     notifyOnly: z.boolean(),
     maxPrice: z.preprocess(
