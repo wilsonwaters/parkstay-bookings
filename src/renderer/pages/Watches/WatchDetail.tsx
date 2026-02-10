@@ -7,7 +7,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { Watch, WatchExecutionResult } from '../../../shared/types/watch.types';
-import { AvailabilityCheckResult } from '../../../shared/types/api.types';
 import AvailabilityGrid from '../../components/AvailabilityGrid';
 
 const WatchDetail: React.FC = () => {
@@ -19,7 +18,6 @@ const WatchDetail: React.FC = () => {
   const [isChecking, setIsChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [executionResult, setExecutionResult] = useState<WatchExecutionResult | null>(null);
-  const [availabilityData, setAvailabilityData] = useState<AvailabilityCheckResult | null>(null);
 
   // Load watch data
   const loadWatch = useCallback(async () => {
@@ -70,36 +68,6 @@ const WatchDetail: React.FC = () => {
       if (response.success && response.data) {
         setExecutionResult(response.data);
         // Reload watch to get updated lastCheckedAt
-        loadWatch();
-      } else {
-        setError(response.error || 'Failed to check availability');
-      }
-    } catch (err: any) {
-      setError(err.message || 'An error occurred while checking availability');
-    } finally {
-      setIsChecking(false);
-    }
-  };
-
-  // Direct availability check (more detailed)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleDetailedCheck = async () => {
-    if (!watch) return;
-
-    try {
-      setIsChecking(true);
-      setError(null);
-
-      const response = await window.api.parkstay.checkAvailability(watch.campgroundId, {
-        arrivalDate: watch.arrivalDate.toString(),
-        departureDate: watch.departureDate.toString(),
-        numGuests: watch.numGuests,
-        siteType: watch.siteType,
-      });
-
-      if (response.success && response.data) {
-        setAvailabilityData(response.data);
-        // Reload watch to update timestamp
         loadWatch();
       } else {
         setError(response.error || 'Failed to check availability');
@@ -380,7 +348,6 @@ const WatchDetail: React.FC = () => {
         {/* Availability Grid - show executionResult if available, otherwise show stored lastAvailability */}
         <AvailabilityGrid
           watchResults={executionResult?.availability || watch.lastAvailability}
-          availabilityData={availabilityData || undefined}
           arrivalDate={watch.arrivalDate}
           departureDate={watch.departureDate}
           isLoading={isChecking}

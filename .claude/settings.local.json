@@ -33,7 +33,14 @@
       "mcp__chrome-devtools__take_screenshot",
       "Bash(npm run typecheck:*)",
       "WebFetch(domain:www.humanlayer.dev)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh workflow:*)",
+      "Bash(gh run view:*)",
+      "Bash(ls:*)",
+      "Bash(git checkout:*)",
+      "Bash(gh run watch:*)",
+      "Bash(gh pr checks:*)"
     ],
     "deny": [],
     "ask": []

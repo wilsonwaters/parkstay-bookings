@@ -57,7 +57,7 @@ const WatchForm: React.FC<WatchFormProps> = ({
     setValue,
     formState: { errors },
   } = useForm<WatchSchemaType>({
-    resolver: zodResolver(watchSchema),
+    resolver: zodResolver(watchSchema) as any,
     defaultValues: {
       name: initialData?.name || '',
       parkId: initialData?.parkId || '',
