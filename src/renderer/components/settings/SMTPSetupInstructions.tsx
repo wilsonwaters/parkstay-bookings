@@ -18,14 +18,15 @@ const SMTPSetupInstructions: React.FC<SMTPSetupInstructionsProps> = ({ preset })
       <div className="mt-4 rounded-md bg-gray-50 p-4 border border-gray-200">
         <h4 className="text-sm font-medium text-gray-900 mb-2">Custom SMTP Server</h4>
         <p className="text-sm text-gray-600">
-          Enter your SMTP server details. Contact your email provider for the correct
-          host, port, and security settings.
+          Enter your SMTP server details. Contact your email provider for the correct host, port,
+          and security settings.
         </p>
       </div>
     );
   }
 
-  const instructions = preset === SMTPPreset.GMAIL ? getGmailInstructions() : getOutlookInstructions();
+  const instructions =
+    preset === SMTPPreset.GMAIL ? getGmailInstructions() : getOutlookInstructions();
 
   return (
     <div className="mt-4 rounded-md bg-blue-50 border border-blue-200">
@@ -38,11 +39,11 @@ const SMTPSetupInstructions: React.FC<SMTPSetupInstructionsProps> = ({ preset })
           <span className="text-blue-600">
             {preset === SMTPPreset.GMAIL ? (
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"/>
+                <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z" />
               </svg>
             ) : (
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z"/>
+                <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z" />
               </svg>
             )}
           </span>
@@ -165,14 +166,14 @@ function getOutlookInstructions(): Instructions {
         text: 'Click "Create a new app password"',
       },
       {
-        text: 'Microsoft will generate a password for you. Copy it immediately as it won\'t be shown again.',
+        text: "Microsoft will generate a password for you. Copy it immediately as it won't be shown again.",
       },
       {
         text: 'Use this generated password in the App Password field above',
       },
     ],
     notes:
-      'If you don\'t see the App passwords option, your organization may have disabled it. Contact your IT administrator.',
+      "If you don't see the App passwords option, your organization may have disabled it. Contact your IT administrator.",
   };
 }
 

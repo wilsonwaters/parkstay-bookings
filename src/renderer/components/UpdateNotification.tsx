@@ -64,17 +64,12 @@ const UpdateNotification: React.FC = () => {
           <div className="flex-1">
             {state === 'available' && (
               <>
-                <p className="text-sm font-medium text-gray-900">
-                  Update Available
-                </p>
+                <p className="text-sm font-medium text-gray-900">Update Available</p>
                 <p className="text-sm text-gray-600 mt-1">
                   Version {version} is ready to download.
                 </p>
                 <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={handleDownload}
-                    className="btn-primary text-sm px-3 py-1.5"
-                  >
+                  <button onClick={handleDownload} className="btn-primary text-sm px-3 py-1.5">
                     Download
                   </button>
                   <button
@@ -89,9 +84,7 @@ const UpdateNotification: React.FC = () => {
 
             {state === 'downloading' && (
               <>
-                <p className="text-sm font-medium text-gray-900">
-                  Downloading Update...
-                </p>
+                <p className="text-sm font-medium text-gray-900">Downloading Update...</p>
                 <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
                   <div
                     className="bg-primary-600 h-2 rounded-full transition-all duration-300"
@@ -104,17 +97,12 @@ const UpdateNotification: React.FC = () => {
 
             {state === 'downloaded' && (
               <>
-                <p className="text-sm font-medium text-gray-900">
-                  Update Ready
-                </p>
+                <p className="text-sm font-medium text-gray-900">Update Ready</p>
                 <p className="text-sm text-gray-600 mt-1">
                   Version {version} is ready. Restart to apply.
                 </p>
                 <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={handleInstall}
-                    className="btn-primary text-sm px-3 py-1.5"
-                  >
+                  <button onClick={handleInstall} className="btn-primary text-sm px-3 py-1.5">
                     Restart Now
                   </button>
                   <button
@@ -129,9 +117,7 @@ const UpdateNotification: React.FC = () => {
 
             {state === 'error' && (
               <>
-                <p className="text-sm font-medium text-red-800">
-                  Update Error
-                </p>
+                <p className="text-sm font-medium text-red-800">Update Error</p>
                 <p className="text-sm text-red-600 mt-1">{error}</p>
                 <button
                   onClick={() => setDismissed(true)}
@@ -149,7 +135,12 @@ const UpdateNotification: React.FC = () => {
               className="text-gray-400 hover:text-gray-600 ml-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           )}

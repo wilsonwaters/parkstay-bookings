@@ -9,7 +9,14 @@ import { IPC_CHANNELS } from '@shared/constants/ipc-channels';
 import { logger } from '../../utils/logger';
 
 export interface UpdateStatus {
-  state: 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
+  state:
+    | 'idle'
+    | 'checking'
+    | 'available'
+    | 'not-available'
+    | 'downloading'
+    | 'downloaded'
+    | 'error';
   version?: string;
   releaseNotes?: string;
   percent?: number;

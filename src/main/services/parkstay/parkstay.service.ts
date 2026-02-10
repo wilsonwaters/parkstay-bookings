@@ -323,9 +323,7 @@ export class ParkStayService {
       // Filter by query if provided
       if (query && query.length >= 2) {
         const lowerQuery = query.toLowerCase();
-        campgrounds = campgrounds.filter((cg) =>
-          cg.name.toLowerCase().includes(lowerQuery)
-        );
+        campgrounds = campgrounds.filter((cg) => cg.name.toLowerCase().includes(lowerQuery));
       }
 
       return campgrounds;
@@ -410,12 +408,14 @@ export class ParkStayService {
         siteName: `Site ${siteId}`,
         siteType: params.siteType || 'all',
         maxOccupancy: params.numGuests,
-        dates: [{
-          date: params.arrivalDate,
-          available: true,
-          price: 0, // Price not available in this endpoint
-          bookable: true,
-        }],
+        dates: [
+          {
+            date: params.arrivalDate,
+            available: true,
+            price: 0, // Price not available in this endpoint
+            bookable: true,
+          },
+        ],
       }));
 
       return {

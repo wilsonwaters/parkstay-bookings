@@ -9,16 +9,16 @@ import { BookingService } from '../../services/booking/BookingService';
 import { Booking, BookingInput, APIResponse } from '@shared/types';
 import { logger } from '../../utils/logger';
 
-export function registerBookingHandlers(bookingService: BookingService, getUserId: () => number): void {
+export function registerBookingHandlers(
+  bookingService: BookingService,
+  getUserId: () => number
+): void {
   /**
    * Create new booking
    */
   ipcMain.handle(
     IPC_CHANNELS.BOOKING_CREATE,
-    async (
-      _event: IpcMainInvokeEvent,
-      input: BookingInput
-    ): Promise<APIResponse<Booking>> => {
+    async (_event: IpcMainInvokeEvent, input: BookingInput): Promise<APIResponse<Booking>> => {
       try {
         const userId = getUserId();
         const booking = await bookingService.createBooking(userId, input);
@@ -191,10 +191,7 @@ export function registerBookingHandlers(bookingService: BookingService, getUserI
    */
   ipcMain.handle(
     IPC_CHANNELS.BOOKING_IMPORT,
-    async (
-      _event: IpcMainInvokeEvent,
-      bookingReference: string
-    ): Promise<APIResponse<Booking>> => {
+    async (_event: IpcMainInvokeEvent, bookingReference: string): Promise<APIResponse<Booking>> => {
       try {
         const userId = getUserId();
         const booking = await bookingService.importBooking(userId, bookingReference);

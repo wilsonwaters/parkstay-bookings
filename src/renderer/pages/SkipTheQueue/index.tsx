@@ -153,110 +153,96 @@ export default function SkipTheQueuePage() {
           </div>
         )}
 
-      {entries.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-gray-500 mb-4">No Beat the Crowd entries found</p>
-          <button
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            onClick={() => {
-              /* Navigate to create STQ page */
-            }}
-          >
-            Create Your First Entry
-          </button>
-        </div>
-      ) : (
-        <div className="grid gap-4">
-          {entries.map((entry) => (
-            <div
-              key={entry.id}
-              className="border rounded-lg p-4 bg-white shadow-sm"
+        {entries.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-500 mb-4">No Beat the Crowd entries found</p>
+            <button
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              onClick={() => {
+                /* Navigate to create STQ page */
+              }}
             >
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <h3 className="text-xl font-semibold">
-                    {entry.bookingReference}
-                  </h3>
-                  {entry.newBookingReference && (
-                    <p className="text-green-600 font-medium">
-                      Rebooked: {entry.newBookingReference}
-                    </p>
+              Create Your First Entry
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-4">
+            {entries.map((entry) => (
+              <div key={entry.id} className="border rounded-lg p-4 bg-white shadow-sm">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <h3 className="text-xl font-semibold">{entry.bookingReference}</h3>
+                    {entry.newBookingReference && (
+                      <p className="text-green-600 font-medium">
+                        Rebooked: {entry.newBookingReference}
+                      </p>
+                    )}
+                  </div>
+                  <span
+                    className={`px-2 py-1 rounded text-sm ${
+                      entry.successDate
+                        ? 'bg-green-100 text-green-800'
+                        : entry.isActive
+                          ? 'bg-blue-100 text-blue-800'
+                          : 'bg-gray-100 text-gray-800'
+                    }`}
+                  >
+                    {entry.successDate ? 'Success' : entry.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+
+                <div className="mb-3 text-sm text-gray-600">
+                  <p>Check Interval: {entry.checkIntervalMinutes} minutes</p>
+                  <p>
+                    Attempts: {entry.attemptsCount} / {entry.maxAttempts}
+                  </p>
+                  {entry.lastCheckedAt && (
+                    <p>Last Checked: {new Date(entry.lastCheckedAt).toLocaleString()}</p>
+                  )}
+                  {entry.successDate && (
+                    <p>Success Date: {new Date(entry.successDate).toLocaleString()}</p>
                   )}
                 </div>
-                <span
-                  className={`px-2 py-1 rounded text-sm ${
-                    entry.successDate
-                      ? 'bg-green-100 text-green-800'
-                      : entry.isActive
-                      ? 'bg-blue-100 text-blue-800'
-                      : 'bg-gray-100 text-gray-800'
-                  }`}
-                >
-                  {entry.successDate
-                    ? 'Success'
-                    : entry.isActive
-                    ? 'Active'
-                    : 'Inactive'}
-                </span>
-              </div>
 
-              <div className="mb-3 text-sm text-gray-600">
-                <p>Check Interval: {entry.checkIntervalMinutes} minutes</p>
-                <p>
-                  Attempts: {entry.attemptsCount} / {entry.maxAttempts}
-                </p>
-                {entry.lastCheckedAt && (
-                  <p>
-                    Last Checked:{' '}
-                    {new Date(entry.lastCheckedAt).toLocaleString()}
-                  </p>
-                )}
-                {entry.successDate && (
-                  <p>
-                    Success Date: {new Date(entry.successDate).toLocaleString()}
-                  </p>
+                {!entry.successDate && (
+                  <div className="flex gap-2">
+                    {entry.isActive ? (
+                      <button
+                        onClick={() => handleDeactivate(entry.id)}
+                        disabled={actionLoading === entry.id}
+                        className="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {actionLoading === entry.id ? 'Processing...' : 'Deactivate'}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleActivate(entry.id)}
+                        disabled={actionLoading === entry.id}
+                        className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {actionLoading === entry.id ? 'Processing...' : 'Activate'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleExecute(entry.id)}
+                      disabled={actionLoading === entry.id}
+                      className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {actionLoading === entry.id ? 'Checking...' : 'Check Now'}
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirm({ isOpen: true, id: entry.id })}
+                      disabled={actionLoading === entry.id}
+                      className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 )}
               </div>
-
-              {!entry.successDate && (
-                <div className="flex gap-2">
-                  {entry.isActive ? (
-                    <button
-                      onClick={() => handleDeactivate(entry.id)}
-                      disabled={actionLoading === entry.id}
-                      className="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {actionLoading === entry.id ? 'Processing...' : 'Deactivate'}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleActivate(entry.id)}
-                      disabled={actionLoading === entry.id}
-                      className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {actionLoading === entry.id ? 'Processing...' : 'Activate'}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleExecute(entry.id)}
-                    disabled={actionLoading === entry.id}
-                    className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {actionLoading === entry.id ? 'Checking...' : 'Check Now'}
-                  </button>
-                  <button
-                    onClick={() => setDeleteConfirm({ isOpen: true, id: entry.id })}
-                    disabled={actionLoading === entry.id}
-                    className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Delete
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Confirm Delete Dialog */}

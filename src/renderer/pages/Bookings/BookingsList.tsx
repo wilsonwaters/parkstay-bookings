@@ -178,138 +178,135 @@ const BookingsList: React.FC = () => {
           </div>
         </div>
 
-      {/* Filters and Search */}
-      <div className="card">
-        <div className="flex flex-col sm:flex-row gap-4">
-          {/* Filter Tabs */}
-          <div className="flex space-x-2">
-            {[
-              { key: 'all', label: 'All' },
-              { key: 'upcoming', label: 'Upcoming' },
-              { key: 'past', label: 'Past' },
-              { key: 'cancelled', label: 'Cancelled' },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setFilter(tab.key as any)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  filter === tab.key
-                    ? 'bg-primary-100 text-primary-700'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+        {/* Filters and Search */}
+        <div className="card">
+          <div className="flex flex-col sm:flex-row gap-4">
+            {/* Filter Tabs */}
+            <div className="flex space-x-2">
+              {[
+                { key: 'all', label: 'All' },
+                { key: 'upcoming', label: 'Upcoming' },
+                { key: 'past', label: 'Past' },
+                { key: 'cancelled', label: 'Cancelled' },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setFilter(tab.key as any)}
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    filter === tab.key
+                      ? 'bg-primary-100 text-primary-700'
+                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
-          {/* Search */}
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="Search by park, campground, or reference..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="input w-full"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Error Message */}
-      {error && (
-        <div className="rounded-md bg-red-50 p-4">
-          <div className="flex">
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">{error}</h3>
-              <button
-                onClick={loadBookings}
-                className="mt-2 text-sm text-red-600 hover:text-red-500"
-              >
-                Try again
-              </button>
+            {/* Search */}
+            <div className="flex-1">
+              <input
+                type="text"
+                placeholder="Search by park, campground, or reference..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="input w-full"
+              />
             </div>
           </div>
         </div>
-      )}
 
-      {/* Bookings List */}
-      {filteredBookings.length === 0 ? (
-        <div className="card text-center py-12">
-          <div className="text-6xl mb-4">🏕️</div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No bookings found</h3>
-          <p className="text-gray-600 mb-4">
-            {searchQuery
-              ? 'Try adjusting your search or filters'
-              : 'Get started by adding your first booking'}
-          </p>
-          {!searchQuery && (
-            <button
-              onClick={() => setShowAddForm(true)}
-              className="btn-primary"
-            >
-              Add Your First Booking
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {filteredBookings.map((booking) => (
-            <Link
-              key={booking.id}
-              to={`/bookings/${booking.id}`}
-              className="card hover:shadow-lg transition-shadow"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{booking.parkName}</h3>
-                      <p className="text-sm text-gray-600">{booking.campgroundName}</p>
-                    </div>
-                    {getStatusBadge(booking.status)}
-                  </div>
+        {/* Error Message */}
+        {error && (
+          <div className="rounded-md bg-red-50 p-4">
+            <div className="flex">
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">{error}</h3>
+                <button
+                  onClick={loadBookings}
+                  className="mt-2 text-sm text-red-600 hover:text-red-500"
+                >
+                  Try again
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-                  <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <p className="text-gray-500">Check-in</p>
-                      <p className="font-medium text-gray-900">
-                        {format(new Date(booking.arrivalDate), 'MMM d, yyyy')}
-                      </p>
+        {/* Bookings List */}
+        {filteredBookings.length === 0 ? (
+          <div className="card text-center py-12">
+            <div className="text-6xl mb-4">🏕️</div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No bookings found</h3>
+            <p className="text-gray-600 mb-4">
+              {searchQuery
+                ? 'Try adjusting your search or filters'
+                : 'Get started by adding your first booking'}
+            </p>
+            {!searchQuery && (
+              <button onClick={() => setShowAddForm(true)} className="btn-primary">
+                Add Your First Booking
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4">
+            {filteredBookings.map((booking) => (
+              <Link
+                key={booking.id}
+                to={`/bookings/${booking.id}`}
+                className="card hover:shadow-lg transition-shadow"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900">{booking.parkName}</h3>
+                        <p className="text-sm text-gray-600">{booking.campgroundName}</p>
+                      </div>
+                      {getStatusBadge(booking.status)}
                     </div>
-                    <div>
-                      <p className="text-gray-500">Check-out</p>
-                      <p className="font-medium text-gray-900">
-                        {format(new Date(booking.departureDate), 'MMM d, yyyy')}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500">Duration</p>
-                      <p className="font-medium text-gray-900">{booking.numNights} nights</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500">Guests</p>
-                      <p className="font-medium text-gray-900">{booking.numGuests}</p>
-                    </div>
-                  </div>
 
-                  {booking.siteNumber && (
-                    <div className="mt-3">
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-primary-100 text-primary-800">
-                        Site {booking.siteNumber}
-                      </span>
+                    <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <p className="text-gray-500">Check-in</p>
+                        <p className="font-medium text-gray-900">
+                          {format(new Date(booking.arrivalDate), 'MMM d, yyyy')}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Check-out</p>
+                        <p className="font-medium text-gray-900">
+                          {format(new Date(booking.departureDate), 'MMM d, yyyy')}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Duration</p>
+                        <p className="font-medium text-gray-900">{booking.numNights} nights</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-500">Guests</p>
+                        <p className="font-medium text-gray-900">{booking.numGuests}</p>
+                      </div>
                     </div>
-                  )}
 
-                  <div className="mt-3 text-xs text-gray-500">
-                    Reference: {booking.bookingReference}
+                    {booking.siteNumber && (
+                      <div className="mt-3">
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-primary-100 text-primary-800">
+                          Site {booking.siteNumber}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="mt-3 text-xs text-gray-500">
+                      Reference: {booking.bookingReference}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
+              </Link>
+            ))}
+          </div>
+        )}
 
         {/* Add Manual Booking Modal */}
         {showAddForm && (

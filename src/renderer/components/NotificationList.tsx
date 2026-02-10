@@ -74,10 +74,7 @@ const NotificationList: React.FC<NotificationListProps> = ({
               {isLoading ? '...' : '🔄'}
             </button>
             {notifications.length > 0 && (
-              <button
-                onClick={onClearAll}
-                className="text-sm text-red-600 hover:text-red-700"
-              >
+              <button onClick={onClearAll} className="text-sm text-red-600 hover:text-red-700">
                 Clear All
               </button>
             )}
@@ -107,16 +104,12 @@ const NotificationList: React.FC<NotificationListProps> = ({
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  <span
-                    className={`text-2xl ${getNotificationColor(notification.type)}`}
-                  >
+                  <span className={`text-2xl ${getNotificationColor(notification.type)}`}>
                     {getNotificationIcon(notification.type)}
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
-                      <h4 className="text-sm font-semibold text-gray-900">
-                        {notification.title}
-                      </h4>
+                      <h4 className="text-sm font-semibold text-gray-900">{notification.title}</h4>
                       <button
                         onClick={() => onDelete(notification.id)}
                         className="text-gray-400 hover:text-gray-600 text-sm"
@@ -124,9 +117,7 @@ const NotificationList: React.FC<NotificationListProps> = ({
                         ✕
                       </button>
                     </div>
-                    <p className="text-sm text-gray-600 mt-1">
-                      {notification.message}
-                    </p>
+                    <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
                     <div className="flex items-center justify-between mt-2">
                       <span className="text-xs text-gray-500">
                         {format(new Date(notification.createdAt), 'MMM d, h:mm a')}

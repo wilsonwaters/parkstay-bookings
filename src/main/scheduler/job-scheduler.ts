@@ -101,7 +101,7 @@ export class JobScheduler {
     } else if (intervalMinutes <= 240) {
       // 4 hours: run at specific hours based on creation hour
       const hourOffset = hour % 4;
-      const hours = [0, 4, 8, 12, 16, 20].map(h => (h + hourOffset) % 24).sort((a, b) => a - b);
+      const hours = [0, 4, 8, 12, 16, 20].map((h) => (h + hourOffset) % 24).sort((a, b) => a - b);
       cronExpression = `${minute} ${hours.join(',')} * * *`;
     } else if (intervalMinutes <= 720) {
       // 12 hours: run twice daily at offset hours
@@ -136,7 +136,9 @@ export class JobScheduler {
       relatedId: watch.id,
     });
 
-    console.log(`Scheduled watch ${watch.id} with cron "${cronExpression}" (interval ${watch.checkIntervalMinutes} min)`);
+    console.log(
+      `Scheduled watch ${watch.id} with cron "${cronExpression}" (interval ${watch.checkIntervalMinutes} min)`
+    );
   }
 
   /**
@@ -182,9 +184,7 @@ export class JobScheduler {
       relatedId: entry.id,
     });
 
-    console.log(
-      `Scheduled STQ ${entry.id} with interval ${entry.checkIntervalMinutes} minutes`
-    );
+    console.log(`Scheduled STQ ${entry.id} with interval ${entry.checkIntervalMinutes} minutes`);
   }
 
   /**

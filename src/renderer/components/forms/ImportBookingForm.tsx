@@ -81,12 +81,7 @@ const ImportBookingForm: React.FC<ImportBookingFormProps> = ({ onSuccess, onCanc
 
       {/* Form Actions */}
       <div className="flex items-center justify-end space-x-3 pt-4 border-t">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isLoading}
-          className="btn-secondary"
-        >
+        <button type="button" onClick={onCancel} disabled={isLoading} className="btn-secondary">
           Cancel
         </button>
         <button type="submit" disabled={isLoading || !reference.trim()} className="btn-primary">

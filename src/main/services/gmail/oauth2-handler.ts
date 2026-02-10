@@ -105,7 +105,8 @@ export class OAuth2Handler {
         if (!this.initializeClient()) {
           return {
             success: false,
-            error: 'OAuth2 credentials not configured. Please set up your Google Cloud project first.',
+            error:
+              'OAuth2 credentials not configured. Please set up your Google Cloud project first.',
           };
         }
       }

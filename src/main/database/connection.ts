@@ -32,8 +32,7 @@ function runMigrations(database: Database.Database): void {
 
   // Get current version
   const currentVersion =
-    (database.prepare('SELECT MAX(version) as version FROM migrations').get() as any)
-      ?.version || 0;
+    (database.prepare('SELECT MAX(version) as version FROM migrations').get() as any)?.version || 0;
 
   console.log(`Current database migration version: ${currentVersion}`);
 

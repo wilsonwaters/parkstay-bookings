@@ -182,11 +182,7 @@ export function registerNotificationProviderHandlers(
         const result = await dispatcher.testProvider(channel);
 
         // Update provider status in database
-        providerRepository.updateLastTested(
-          channel,
-          result.success,
-          result.error
-        );
+        providerRepository.updateLastTested(channel, result.success, result.error);
 
         return {
           success: true,

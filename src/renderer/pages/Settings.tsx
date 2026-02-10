@@ -204,7 +204,8 @@ const Settings: React.FC = () => {
                   ParkStay Account Credentials
                 </h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  Enter your ParkStay login credentials for auto-booking and Skip The Queue features.
+                  Enter your ParkStay login credentials for auto-booking and Skip The Queue
+                  features.
                 </p>
               </div>
 
@@ -225,7 +226,10 @@ const Settings: React.FC = () => {
                 </div>
 
                 <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="password"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     Password
                   </label>
                   <div className="relative">
@@ -250,8 +254,8 @@ const Settings: React.FC = () => {
 
                 <div className="rounded-md bg-blue-50 p-4 border border-blue-200">
                   <p className="text-sm text-blue-800">
-                    Your credentials are encrypted and stored securely on your device. They are never
-                    sent to any third-party servers.
+                    Your credentials are encrypted and stored securely on your device. They are
+                    never sent to any third-party servers.
                   </p>
                 </div>
 
@@ -278,7 +282,8 @@ const Settings: React.FC = () => {
               <div>
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Gmail OTP Integration</h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  Connect your Gmail account to automatically retrieve OTP codes from ParkStay emails.
+                  Connect your Gmail account to automatically retrieve OTP codes from ParkStay
+                  emails.
                 </p>
               </div>
 
@@ -300,9 +305,7 @@ const Settings: React.FC = () => {
                   </div>
                   <span
                     className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      gmailAuthorized
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-gray-100 text-gray-800'
+                      gmailAuthorized ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                     }`}
                   >
                     {gmailAuthorized ? 'Authorized' : 'Not Authorized'}
@@ -349,7 +352,9 @@ const Settings: React.FC = () => {
                     checked={desktopNotifications}
                     onChange={(e) => {
                       setDesktopNotifications(e.target.checked);
-                      showSuccessToast('Desktop notifications ' + (e.target.checked ? 'enabled' : 'disabled'));
+                      showSuccessToast(
+                        'Desktop notifications ' + (e.target.checked ? 'enabled' : 'disabled')
+                      );
                     }}
                     className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded mt-1"
                   />
@@ -367,15 +372,15 @@ const Settings: React.FC = () => {
                     checked={soundEnabled}
                     onChange={(e) => {
                       setSoundEnabled(e.target.checked);
-                      showSuccessToast('Notification sounds ' + (e.target.checked ? 'enabled' : 'disabled'));
+                      showSuccessToast(
+                        'Notification sounds ' + (e.target.checked ? 'enabled' : 'disabled')
+                      );
                     }}
                     className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded mt-1"
                   />
                   <div className="ml-3">
                     <p className="font-medium text-gray-900">Sound Notifications</p>
-                    <p className="text-sm text-gray-500">
-                      Play a sound when notifications appear
-                    </p>
+                    <p className="text-sm text-gray-500">Play a sound when notifications appear</p>
                   </div>
                 </div>
               </div>
@@ -404,7 +409,9 @@ const Settings: React.FC = () => {
                     checked={launchOnStartup}
                     onChange={(e) => {
                       setLaunchOnStartup(e.target.checked);
-                      showSuccessToast('Launch on startup ' + (e.target.checked ? 'enabled' : 'disabled'));
+                      showSuccessToast(
+                        'Launch on startup ' + (e.target.checked ? 'enabled' : 'disabled')
+                      );
                     }}
                     className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded mt-1"
                   />
@@ -422,7 +429,9 @@ const Settings: React.FC = () => {
                     checked={minimizeToTray}
                     onChange={(e) => {
                       setMinimizeToTray(e.target.checked);
-                      showSuccessToast('Minimize to tray ' + (e.target.checked ? 'enabled' : 'disabled'));
+                      showSuccessToast(
+                        'Minimize to tray ' + (e.target.checked ? 'enabled' : 'disabled')
+                      );
                     }}
                     className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded mt-1"
                   />
@@ -449,7 +458,10 @@ const Settings: React.FC = () => {
 
               <div className="space-y-4">
                 <div>
-                  <label htmlFor="logLevel" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label
+                    htmlFor="logLevel"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
                     Log Level
                   </label>
                   <select

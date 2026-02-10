@@ -192,11 +192,7 @@ export class AuthService {
     try {
       const key = await this.getEncryptionKey();
 
-      const decipher = crypto.createDecipheriv(
-        'aes-256-gcm',
-        key,
-        Buffer.from(data.iv, 'hex')
-      );
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(data.iv, 'hex'));
 
       decipher.setAuthTag(Buffer.from(data.authTag, 'hex'));
 

@@ -35,23 +35,16 @@ class ErrorBoundary extends Component<Props, State> {
           <div className="max-w-md w-full space-y-8">
             <div className="text-center">
               <div className="text-6xl mb-4">⚠️</div>
-              <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                Something went wrong
-              </h2>
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">Something went wrong</h2>
               <p className="text-gray-600 mb-4">
                 We&apos;re sorry, but something unexpected happened.
               </p>
               {this.state.error && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-left mb-4">
-                  <p className="text-sm font-mono text-red-800">
-                    {this.state.error.message}
-                  </p>
+                  <p className="text-sm font-mono text-red-800">{this.state.error.message}</p>
                 </div>
               )}
-              <button
-                onClick={() => window.location.reload()}
-                className="btn-primary"
-              >
+              <button onClick={() => window.location.reload()} className="btn-primary">
                 Reload Application
               </button>
             </div>

@@ -86,7 +86,9 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">OS</span>
-                <span className="text-gray-900 font-mono text-right">{appInfo.os} ({appInfo.arch})</span>
+                <span className="text-gray-900 font-mono text-right">
+                  {appInfo.os} ({appInfo.arch})
+                </span>
               </div>
             </div>
           </div>
@@ -95,13 +97,17 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => {
         <div className="flex flex-col gap-2">
           <div className="flex gap-2">
             <button
-              onClick={() => window.open('https://github.com/wilsonwaters/parkstay-bookings', '_blank')}
+              onClick={() =>
+                window.open('https://github.com/wilsonwaters/parkstay-bookings', '_blank')
+              }
               className="btn-secondary text-sm flex-1"
             >
               GitHub
             </button>
             <button
-              onClick={() => window.open('https://github.com/wilsonwaters/parkstay-bookings/issues', '_blank')}
+              onClick={() =>
+                window.open('https://github.com/wilsonwaters/parkstay-bookings/issues', '_blank')
+              }
               className="btn-secondary text-sm flex-1"
             >
               Report Issue
@@ -115,9 +121,7 @@ const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        <p className="text-xs text-gray-400 text-center mt-4">
-          MIT License
-        </p>
+        <p className="text-xs text-gray-400 text-center mt-4">MIT License</p>
       </div>
     </div>
   );

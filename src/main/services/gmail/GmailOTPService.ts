@@ -103,12 +103,7 @@ export class GmailOTPService {
    * Poll Gmail for emails matching criteria
    */
   private async pollForEmail(options: EmailPollOptions): Promise<OTPResult> {
-    const {
-      fromEmail,
-      subject,
-      timeout = 60000,
-      pollInterval = 2000,
-    } = options;
+    const { fromEmail, subject, timeout = 60000, pollInterval = 2000 } = options;
 
     const startTime = Date.now();
     const maxTime = startTime + timeout;

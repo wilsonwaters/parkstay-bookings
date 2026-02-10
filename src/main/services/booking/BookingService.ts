@@ -111,9 +111,7 @@ export class BookingService {
 
       // Validate updates if dates are being changed
       if (updates.arrivalDate || updates.departureDate) {
-        const arrival = updates.arrivalDate
-          ? new Date(updates.arrivalDate)
-          : existing.arrivalDate;
+        const arrival = updates.arrivalDate ? new Date(updates.arrivalDate) : existing.arrivalDate;
         const departure = updates.departureDate
           ? new Date(updates.departureDate)
           : existing.departureDate;

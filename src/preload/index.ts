@@ -58,8 +58,7 @@ const api = {
     get: (id: number): Promise<APIResponse<Booking | null>> =>
       ipcRenderer.invoke(IPC_CHANNELS.BOOKING_GET, id),
 
-    list: (): Promise<APIResponse<Booking[]>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.BOOKING_LIST),
+    list: (): Promise<APIResponse<Booking[]>> => ipcRenderer.invoke(IPC_CHANNELS.BOOKING_LIST),
 
     update: (id: number, updates: Partial<BookingInput>): Promise<APIResponse<Booking>> =>
       ipcRenderer.invoke(IPC_CHANNELS.BOOKING_UPDATE, id, updates),
@@ -70,8 +69,7 @@ const api = {
     sync: (id: number): Promise<APIResponse<Booking>> =>
       ipcRenderer.invoke(IPC_CHANNELS.BOOKING_SYNC, id),
 
-    syncAll: (): Promise<APIResponse<boolean>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.BOOKING_SYNC_ALL),
+    syncAll: (): Promise<APIResponse<boolean>> => ipcRenderer.invoke(IPC_CHANNELS.BOOKING_SYNC_ALL),
 
     import: (bookingReference: string): Promise<APIResponse<Booking>> =>
       ipcRenderer.invoke(IPC_CHANNELS.BOOKING_IMPORT, bookingReference),
@@ -237,8 +235,7 @@ const api = {
 
   // Updater APIs
   updater: {
-    checkForUpdates: (): Promise<APIResponse<any>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK),
+    checkForUpdates: (): Promise<APIResponse<any>> => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK),
 
     downloadUpdate: (): Promise<APIResponse<boolean>> =>
       ipcRenderer.invoke(IPC_CHANNELS.UPDATE_DOWNLOAD),
@@ -246,14 +243,12 @@ const api = {
     installUpdate: (): Promise<APIResponse<boolean>> =>
       ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL),
 
-    getStatus: (): Promise<APIResponse<any>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.UPDATE_GET_STATUS),
+    getStatus: (): Promise<APIResponse<any>> => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_GET_STATUS),
   },
 
   // App APIs
   app: {
-    getInfo: (): Promise<APIResponse<any>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.APP_GET_INFO),
+    getInfo: (): Promise<APIResponse<any>> => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_INFO),
 
     openLogsFolder: (): Promise<APIResponse<boolean>> =>
       ipcRenderer.invoke(IPC_CHANNELS.APP_OPEN_LOGS_FOLDER),
@@ -261,11 +256,9 @@ const api = {
 
   // Queue APIs
   queue: {
-    check: (): Promise<APIResponse<QueueSession>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.QUEUE_CHECK),
+    check: (): Promise<APIResponse<QueueSession>> => ipcRenderer.invoke(IPC_CHANNELS.QUEUE_CHECK),
 
-    wait: (): Promise<APIResponse<QueueSession>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.QUEUE_WAIT),
+    wait: (): Promise<APIResponse<QueueSession>> => ipcRenderer.invoke(IPC_CHANNELS.QUEUE_WAIT),
 
     getStatus: (): Promise<
       APIResponse<{
@@ -313,7 +306,14 @@ const api = {
       ipcRenderer.on(IPC_CHANNELS.UPDATE_DOWNLOADED, (_event, data) => callback(data));
     },
 
-    updateProgress: (callback: (data: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void) => {
+    updateProgress: (
+      callback: (data: {
+        percent: number;
+        bytesPerSecond: number;
+        transferred: number;
+        total: number;
+      }) => void
+    ) => {
       ipcRenderer.on(IPC_CHANNELS.UPDATE_PROGRESS, (_event, data) => callback(data));
     },
 

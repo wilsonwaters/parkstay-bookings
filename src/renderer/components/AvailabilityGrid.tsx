@@ -119,9 +119,7 @@ const AvailabilityGrid: React.FC<AvailabilityGridProps> = ({
           <span className="text-lg font-semibold text-gray-900">
             {availableSites.length} site{availableSites.length !== 1 ? 's' : ''} available
           </span>
-          <span className="text-gray-500 ml-2">
-            of {sites.length} total
-          </span>
+          <span className="text-gray-500 ml-2">of {sites.length} total</span>
         </div>
         {availabilityData?.lowestPrice && (
           <div className="text-right">
@@ -150,15 +148,17 @@ const AvailabilityGrid: React.FC<AvailabilityGridProps> = ({
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Type
                   </th>
-                  {dates.length <= 14 && dates.map((date) => (
-                    <th
-                      key={date.toISOString()}
-                      className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap"
-                    >
-                      {format(date, 'EEE')}<br />
-                      {format(date, 'd MMM')}
-                    </th>
-                  ))}
+                  {dates.length <= 14 &&
+                    dates.map((date) => (
+                      <th
+                        key={date.toISOString()}
+                        className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap"
+                      >
+                        {format(date, 'EEE')}
+                        <br />
+                        {format(date, 'd MMM')}
+                      </th>
+                    ))}
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Total Price
                   </th>
@@ -181,33 +181,31 @@ const AvailabilityGrid: React.FC<AvailabilityGridProps> = ({
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                       {site.siteType}
                     </td>
-                    {dates.length <= 14 && dates.map((date) => {
-                      const dateKey = format(date, 'yyyy-MM-dd');
-                      const dayAvail = site.dateAvailability?.get(dateKey);
-                      return (
-                        <td
-                          key={dateKey}
-                          className="px-2 py-3 text-center"
-                        >
-                          {dayAvail ? (
-                            <span
-                              className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-medium ${
-                                dayAvail.available
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-red-100 text-red-800'
-                              }`}
-                              title={dayAvail.available ? `$${dayAvail.price}` : 'Unavailable'}
-                            >
-                              {dayAvail.available ? '$' + dayAvail.price : 'X'}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-100 text-green-800">
-                              ✓
-                            </span>
-                          )}
-                        </td>
-                      );
-                    })}
+                    {dates.length <= 14 &&
+                      dates.map((date) => {
+                        const dateKey = format(date, 'yyyy-MM-dd');
+                        const dayAvail = site.dateAvailability?.get(dateKey);
+                        return (
+                          <td key={dateKey} className="px-2 py-3 text-center">
+                            {dayAvail ? (
+                              <span
+                                className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-medium ${
+                                  dayAvail.available
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-red-100 text-red-800'
+                                }`}
+                                title={dayAvail.available ? `$${dayAvail.price}` : 'Unavailable'}
+                              >
+                                {dayAvail.available ? '$' + dayAvail.price : 'X'}
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-100 text-green-800">
+                                ✓
+                              </span>
+                            )}
+                          </td>
+                        );
+                      })}
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-medium text-green-600">
                       {site.price ? `$${site.price.toFixed(2)}` : '-'}
                     </td>
@@ -241,7 +239,12 @@ const AvailabilityGrid: React.FC<AvailabilityGridProps> = ({
               viewBox="0 0 24 24"
               stroke="currentColor"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
             </svg>
           </summary>
           <div className="mt-2 overflow-x-auto">

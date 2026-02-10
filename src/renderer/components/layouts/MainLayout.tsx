@@ -46,8 +46,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, onLogout }) => {
                 isActive(item.path)
                   ? 'bg-primary-50 text-primary-700 font-medium'
                   : item.disabled
-                  ? 'text-gray-400'
-                  : 'text-gray-700 hover:bg-gray-100'
+                    ? 'text-gray-400'
+                    : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
               <span className="text-xl">{item.icon}</span>

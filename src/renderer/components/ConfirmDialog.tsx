@@ -29,9 +29,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   if (!isOpen) return null;
 
   const confirmButtonClass =
-    confirmVariant === 'danger'
-      ? 'bg-red-600 hover:bg-red-700 text-white'
-      : 'btn-primary';
+    confirmVariant === 'danger' ? 'bg-red-600 hover:bg-red-700 text-white' : 'btn-primary';
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
