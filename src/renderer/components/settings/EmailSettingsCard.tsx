@@ -404,7 +404,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
                 required
               />
               <p className="mt-1 text-xs text-gray-500">
-                This is the email you'll send notifications from
+                This is the email you&apos;ll send notifications from
               </p>
             </div>
           )}

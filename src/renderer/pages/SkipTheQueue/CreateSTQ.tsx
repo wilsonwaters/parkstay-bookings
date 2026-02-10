@@ -159,7 +159,7 @@ const CreateSTQ: React.FC = () => {
               3
             </span>
             <span>
-              You'll receive a notification with your new booking details
+              You&apos;ll receive a notification with your new booking details
             </span>
           </li>
           <li className="flex items-start">

@@ -108,7 +108,7 @@ const CreateWatch: React.FC = () => {
             <div className="ml-3">
               <h4 className="text-sm font-medium text-blue-900">How it works</h4>
               <p className="mt-1 text-sm text-blue-700">
-                We'll check availability at your specified interval and notify you when sites
+                We&apos;ll check availability at your specified interval and notify you when sites
                 become available. Enable auto-booking to secure sites automatically.
               </p>
             </div>

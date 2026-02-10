@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { format, eachDayOfInterval, parseISO } from 'date-fns';
-import { CampsiteAvailability, AvailabilityCheckResult } from '../../shared/types/api.types';
+import { AvailabilityCheckResult } from '../../shared/types/api.types';
 import { AvailabilityResult } from '../../shared/types/watch.types';
 
 interface AvailabilityGridProps {
@@ -102,7 +102,7 @@ const AvailabilityGrid: React.FC<AvailabilityGridProps> = ({
         </svg>
         <h3 className="mt-2 text-sm font-medium text-gray-900">No availability data</h3>
         <p className="mt-1 text-sm text-gray-500">
-          Click "Check Now" to fetch current availability
+          Click &quot;Check Now&quot; to fetch current availability
         </p>
       </div>
     );

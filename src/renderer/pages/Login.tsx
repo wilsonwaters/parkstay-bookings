@@ -83,7 +83,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     <div className="mt-3 text-sm text-yellow-700">
                       <p className="font-semibold mb-2">To run this application:</p>
                       <ol className="list-decimal list-inside space-y-1">
-                        <li>Keep this dev server running (don't stop it)</li>
+                        <li>Keep this dev server running (don&apos;t stop it)</li>
                         <li>Open a new terminal</li>
                         <li>Run: <code className="bg-yellow-100 px-1 rounded">npm start</code></li>
                         <li>The Electron app will open automatically</li>

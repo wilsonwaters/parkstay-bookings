@@ -82,6 +82,7 @@ const WatchDetail: React.FC = () => {
   };
 
   // Direct availability check (more detailed)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleDetailedCheck = async () => {
     if (!watch) return;
 

@@ -73,7 +73,7 @@ const ImportBookingForm: React.FC<ImportBookingFormProps> = ({ onSuccess, onCanc
             <h4 className="text-sm font-medium text-blue-900">How to find your reference</h4>
             <p className="mt-1 text-sm text-blue-700">
               Your booking reference is in the confirmation email you received from ParkStay.
-              It's usually a combination of letters and numbers (e.g., ABC123XYZ).
+              It&apos;s usually a combination of letters and numbers (e.g., ABC123XYZ).
             </p>
           </div>
         </div>

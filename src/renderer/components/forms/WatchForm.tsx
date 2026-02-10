@@ -4,7 +4,7 @@
  */
 
 import { useForm } from 'react-hook-form';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { watchSchema, WatchSchemaType } from '../../../shared/schemas/watch.schema';
 import { Watch } from '../../../shared/types';
@@ -214,7 +214,7 @@ const WatchForm: React.FC<WatchFormProps> = ({
               )}
               {campgroundSearchQuery.length >= 2 && filteredCampgrounds.length === 0 && !isLoadingCampgrounds && (
                 <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg p-4 text-center text-gray-500">
-                  No campgrounds found matching "{campgroundSearchQuery}"
+                  No campgrounds found matching &quot;{campgroundSearchQuery}&quot;
                 </div>
               )}
             </>

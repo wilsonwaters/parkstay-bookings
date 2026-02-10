@@ -238,7 +238,7 @@ export class QueueService extends EventEmitter {
 
     try {
       // Initial check
-      let session = await this.checkOrCreateSession(sessionKey);
+      const session = await this.checkOrCreateSession(sessionKey);
 
       // If already active, return immediately
       if (session.status === 'Active') {
