@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { EmailSettingsCard } from '../components/settings';
+import AboutDialog from '../components/AboutDialog';
 
 type TabType = 'account' | 'gmail' | 'notifications' | 'app' | 'advanced';
 
@@ -35,6 +36,9 @@ const Settings: React.FC = () => {
   // Advanced settings
   const [logLevel, setLogLevel] = useState('info');
   const [databasePath] = useState('');
+
+  // About dialog
+  const [showAbout, setShowAbout] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -499,11 +503,23 @@ const Settings: React.FC = () => {
                     </button>
                   </div>
                 </div>
+
+                <div className="pt-4 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => setShowAbout(true)}
+                    className="btn-secondary text-sm"
+                  >
+                    About WA ParkStay Bookings
+                  </button>
+                </div>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      <AboutDialog isOpen={showAbout} onClose={() => setShowAbout(false)} />
     </div>
   );
 };

@@ -1,7 +1,7 @@
 # WA ParkStay Bookings - Release Process
 
-**Version:** 1.0
-**Last Updated:** 2025-10-31
+**Version:** 1.0.0
+**Last Updated:** 2026-02-10
 
 ## Table of Contents
 
@@ -307,7 +307,7 @@ gh release create v1.2.0 \
 
 ```bash
 # Test downloads
-wget https://github.com/your-org/parkstay-bookings/releases/download/v1.2.0/ParkStay-Setup-1.2.0.exe
+wget https://github.com/wilsonwaters/parkstay-bookings/releases/download/v1.2.0/ParkStay-Setup-1.2.0.exe
 
 # Test installation on clean system
 # Test auto-update from previous version
@@ -430,7 +430,7 @@ npx standard-version
 ```json
 {
   "provider": "github",
-  "owner": "your-org",
+  "owner": "wilsonwaters",
   "repo": "parkstay-bookings",
   "releaseType": "release"
 }

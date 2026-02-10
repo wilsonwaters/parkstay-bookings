@@ -21,20 +21,19 @@ import { SettingsRepository } from './database/repositories/SettingsRepository';
 import { UserRepository } from './database/repositories/UserRepository';
 import { BookingRepository } from './database/repositories/BookingRepository';
 import { NotificationProviderRepository } from './database/repositories/notification-provider.repository';
+import { AutoUpdaterService } from './services/updater/auto-updater.service';
 
 // Global references
 let mainWindow: BrowserWindow | null = null;
 let jobScheduler: JobScheduler | null = null;
 let queueService: QueueService | null = null;
+let autoUpdaterService: AutoUpdaterService | null = null;
 
 /**
  * Create main window
  */
 function createWindow(): void {
   const preloadPath = path.resolve(__dirname, '../preload/index.js');
-  console.log('__dirname:', __dirname);
-  console.log('Preload path:', preloadPath);
-  console.log('Preload exists:', require('fs').existsSync(preloadPath));
 
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -78,7 +77,11 @@ function createWindow(): void {
     mainWindow = null;
   });
 
-  console.log('Main window created');
+  // Initialize auto-updater after window creation
+  if (autoUpdaterService) {
+    autoUpdaterService.setWindow(mainWindow);
+    autoUpdaterService.scheduleUpdateCheck();
+  }
 }
 
 /**
@@ -86,7 +89,7 @@ function createWindow(): void {
  */
 async function initializeApp(): Promise<void> {
   try {
-    console.log('Initializing application...');
+    logger.info('Initializing application...');
 
     // Initialize database
     initializeDatabase();
@@ -112,6 +115,9 @@ async function initializeApp(): Promise<void> {
     const watchService = new WatchService(parkStayService, notificationService);
     const stqService = new STQService(parkStayService, notificationService);
 
+    // Create auto-updater service
+    autoUpdaterService = new AutoUpdaterService();
+
     // Create job scheduler
     jobScheduler = new JobScheduler(watchService, stqService);
 
@@ -127,15 +133,16 @@ async function initializeApp(): Promise<void> {
       parkStayService,
       notificationProviderRepository,
       notificationDispatcher,
-      queueService
+      queueService,
+      autoUpdaterService
     );
 
     // Start job scheduler
     jobScheduler.start();
 
-    console.log('Application initialized successfully');
+    logger.info('Application initialized successfully');
   } catch (error) {
-    console.error('Failed to initialize application:', error);
+    logger.error('Failed to initialize application:', error);
     throw error;
   }
 }
@@ -177,7 +184,7 @@ app.on('activate', () => {
  * Before quit event
  */
 app.on('before-quit', () => {
-  console.log('Application shutting down...');
+  logger.info('Application shutting down...');
 
   // Stop job scheduler
   if (jobScheduler) {
@@ -192,14 +199,14 @@ app.on('before-quit', () => {
   // Close database connection
   closeDatabase();
 
-  console.log('Application shut down successfully');
+  logger.info('Application shut down successfully');
 });
 
 /**
  * Handle uncaught exceptions
  */
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught exception:', error);
+  logger.error('Uncaught exception:', error);
   app.quit();
 });
 
@@ -207,5 +214,5 @@ process.on('uncaughtException', (error) => {
  * Handle unhandled promise rejections
  */
 process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled promise rejection:', reason);
+  logger.error('Unhandled promise rejection:', reason);
 });

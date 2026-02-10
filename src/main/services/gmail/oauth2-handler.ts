@@ -10,6 +10,7 @@ import { shell } from 'electron';
 import { OAuth2Credentials, OAuth2Tokens, OAuth2FlowResult } from '@shared/types/gmail.types';
 import { logger } from '../../utils/logger';
 import http from 'http';
+import { AddressInfo } from 'net';
 import url from 'url';
 
 const STORAGE_KEY = 'gmail_oauth_tokens';
@@ -126,19 +127,9 @@ export class OAuth2Handler {
         };
       }
 
-      // Generate authorization URL
-      const authUrl = this.oauth2Client.generateAuthUrl({
-        access_type: 'offline',
-        scope: SCOPES,
-        prompt: 'consent', // Force consent screen to get refresh token
-      });
-
       logger.info('Starting OAuth2 flow...');
 
-      // Open auth URL in browser
-      await shell.openExternal(authUrl);
-
-      // Start local server to receive callback
+      // Start callback server first to get assigned port, then generate auth URL
       const newTokens = await this.startCallbackServer();
 
       // Store tokens
@@ -161,7 +152,8 @@ export class OAuth2Handler {
   }
 
   /**
-   * Start local HTTP server to receive OAuth2 callback
+   * Start local HTTP server to receive OAuth2 callback.
+   * Uses port 0 to let the OS assign an available port, avoiding conflicts.
    */
   private startCallbackServer(): Promise<OAuth2Tokens> {
     return new Promise((resolve, reject) => {
@@ -235,8 +227,22 @@ export class OAuth2Handler {
         }
       });
 
-      server.listen(3000, () => {
-        logger.info('OAuth2 callback server listening on port 3000');
+      // Use port 0 to let the OS assign an available port
+      server.listen(0, async () => {
+        const port = (server.address() as AddressInfo).port;
+        logger.info(`OAuth2 callback server listening on port ${port}`);
+
+        // Generate auth URL with the dynamic port redirect URI
+        const redirectUri = `http://localhost:${port}`;
+        if (this.oauth2Client) {
+          const authUrl = this.oauth2Client.generateAuthUrl({
+            access_type: 'offline',
+            scope: SCOPES,
+            prompt: 'consent',
+            redirect_uri: redirectUri,
+          });
+          await shell.openExternal(authUrl);
+        }
       });
 
       // Timeout after 5 minutes

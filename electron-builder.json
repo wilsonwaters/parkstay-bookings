@@ -1,7 +1,7 @@
 {
   "appId": "com.parkstay.bookings",
   "productName": "WA ParkStay Bookings",
-  "copyright": "Copyright © 2025",
+  "copyright": "Copyright © 2025-2026",
   "asar": true,
   "directories": {
     "output": "release",
@@ -44,13 +44,11 @@
     "darkModeSupport": true,
     "minimumSystemVersion": "10.15.0",
     "type": "distribution",
-    "notarize": {
-      "teamId": "TEAM_ID_PLACEHOLDER"
-    },
     "artifactName": "${productName}-${version}-${arch}.${ext}",
     "publish": {
-      "provider": "generic",
-      "url": "https://your-update-server.com/releases/mac"
+      "provider": "github",
+      "owner": "wilsonwaters",
+      "repo": "parkstay-bookings"
     }
   },
   "dmg": {
@@ -80,7 +78,7 @@
     "target": [
       {
         "target": "nsis",
-        "arch": ["x64", "ia32"]
+        "arch": ["x64"]
       },
       {
         "target": "portable",
@@ -91,12 +89,12 @@
     "artifactName": "${productName}-Setup-${version}.${ext}",
     "requestedExecutionLevel": "asInvoker",
     "signingHashAlgorithms": ["sha256"],
-    "sign": "./scripts/sign-windows.js",
     "signDlls": false,
-    "verifyUpdateCodeSignature": true,
+    "verifyUpdateCodeSignature": false,
     "publish": {
-      "provider": "generic",
-      "url": "https://your-update-server.com/releases/windows"
+      "provider": "github",
+      "owner": "wilsonwaters",
+      "repo": "parkstay-bookings"
     }
   },
   "nsis": {
@@ -105,9 +103,9 @@
     "allowElevation": true,
     "installerIcon": "resources/icons/icon.ico",
     "uninstallerIcon": "resources/icons/icon.ico",
-    "installerHeader": "resources/icons/installer-header.bmp",
-    "installerSidebar": "resources/icons/installer-sidebar.bmp",
-    "uninstallerSidebar": "resources/icons/installer-sidebar.bmp",
+    "installerHeader": "resources/icons/installer-header.png",
+    "installerSidebar": "resources/icons/installer-sidebar.png",
+    "uninstallerSidebar": "resources/icons/installer-sidebar.png",
     "createDesktopShortcut": "always",
     "createStartMenuShortcut": true,
     "shortcutName": "${productName}",
@@ -153,15 +151,16 @@
     "artifactName": "${productName}-${version}-${arch}.${ext}",
     "synopsis": "Automated campground booking for WA ParkStay",
     "description": "Desktop application for automating campground bookings on the Western Australia Parks and Wildlife Service ParkStay system.",
-    "maintainer": "your-email@example.com",
+    "maintainer": "wilsonwaters@users.noreply.github.com",
     "vendor": "WA ParkStay Bookings",
     "publish": {
-      "provider": "generic",
-      "url": "https://your-update-server.com/releases/linux"
+      "provider": "github",
+      "owner": "wilsonwaters",
+      "repo": "parkstay-bookings"
     }
   },
   "appImage": {
-    "license": "LICENSE.txt",
+    "license": "LICENSE",
     "artifactName": "${productName}-${version}-${arch}.${ext}"
   },
   "deb": {
@@ -187,42 +186,11 @@
     "fpm": ["--rpm-compression", "xz"],
     "artifactName": "${productName}-${version}-${arch}.${ext}"
   },
-  "snap": {
-    "confinement": "strict",
-    "grade": "stable",
-    "summary": "Automated campground booking for WA ParkStay",
-    "plugs": [
-      "default",
-      "network",
-      "network-bind",
-      "home",
-      "desktop",
-      "desktop-legacy",
-      "x11"
-    ]
-  },
-  "protocols": [
-    {
-      "name": "parkstay-bookings",
-      "schemes": ["parkstay"],
-      "role": "Viewer"
-    }
-  ],
-  "fileAssociations": [
-    {
-      "ext": "parkstay",
-      "name": "ParkStay Booking File",
-      "role": "Editor",
-      "icon": "resources/icons/file-icon.icns"
-    }
-  ],
   "publish": {
-    "provider": "generic",
-    "url": "https://your-update-server.com/releases"
+    "provider": "github",
+    "owner": "wilsonwaters",
+    "repo": "parkstay-bookings"
   },
-  "afterSign": "scripts/notarize.js",
-  "afterPack": "scripts/after-pack.js",
-  "beforeBuild": "scripts/before-build.js",
   "compression": "maximum",
   "removePackageScripts": true,
   "npmRebuild": true,

@@ -62,7 +62,7 @@ src/
 ```
 
 **Service initialization chain** (in `src/main/index.ts`):
-Database → Repositories → NotificationDispatcher → QueueService → ParkStayService → AuthService → BookingService → NotificationService → WatchService → STQService → JobScheduler → IPC Handlers
+Database → Repositories → NotificationDispatcher → QueueService → ParkStayService → AuthService → BookingService → NotificationService → WatchService → STQService → AutoUpdaterService → JobScheduler → IPC Handlers
 
 ## Database
 
@@ -97,6 +97,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 | NotificationService | `src/main/services/notification/notification.service.ts` | Desktop/in-app notifications |
 | NotificationDispatcher | `src/main/services/notification/notification-dispatcher.ts` | External providers (email) |
 | GmailOTPService | `src/main/services/gmail/GmailOTPService.ts` | Gmail OAuth2 OTP extraction |
+| AutoUpdaterService | `src/main/services/updater/auto-updater.service.ts` | Auto-updates via GitHub Releases |
 | JobScheduler | `src/main/scheduler/job-scheduler.ts` | Cron-based job execution |
 
 ## Notification System
@@ -110,7 +111,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 ## IPC Pattern
 
 - Channels defined in `src/shared/constants/ipc-channels.ts`
-- Handlers in `src/main/ipc/handlers/` (10 handler files: auth, booking, gmail, notification, notification-provider, parkstay, queue, settings, stq, watch)
+- Handlers in `src/main/ipc/handlers/` (12 handler files: app, auth, booking, gmail, notification, notification-provider, parkstay, queue, settings, stq, updater, watch)
 - Exposed to renderer via `src/preload/index.ts`
 
 ## UI Status
@@ -118,7 +119,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 - **Active pages:** Dashboard, Watches, Settings, Login
 - **Disabled in sidebar:** Bookings and Skip The Queue show `ComingSoonBanner` (being finalized)
 - **Settings page** includes email/SMTP configuration (`EmailSettingsCard`)
-- **Key components:** AvailabilityGrid, QueueStatus, NotificationBell, WatchForm, STQForm
+- **Key components:** AvailabilityGrid, QueueStatus, NotificationBell, WatchForm, STQForm, UpdateNotification, AboutDialog
 
 ## Testing
 

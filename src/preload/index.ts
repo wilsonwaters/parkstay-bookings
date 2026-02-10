@@ -235,6 +235,30 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.PROVIDER_TEST, channel),
   },
 
+  // Updater APIs
+  updater: {
+    checkForUpdates: (): Promise<APIResponse<any>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK),
+
+    downloadUpdate: (): Promise<APIResponse<boolean>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.UPDATE_DOWNLOAD),
+
+    installUpdate: (): Promise<APIResponse<boolean>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL),
+
+    getStatus: (): Promise<APIResponse<any>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.UPDATE_GET_STATUS),
+  },
+
+  // App APIs
+  app: {
+    getInfo: (): Promise<APIResponse<any>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.APP_GET_INFO),
+
+    openLogsFolder: (): Promise<APIResponse<boolean>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.APP_OPEN_LOGS_FOLDER),
+  },
+
   // Queue APIs
   queue: {
     check: (): Promise<APIResponse<QueueSession>> =>
@@ -280,6 +304,22 @@ const api = {
     queueStatusUpdate: (callback: (event: QueueStatusEvent) => void) => {
       ipcRenderer.on(IPC_CHANNELS.QUEUE_STATUS_UPDATE, (_event, data) => callback(data));
     },
+
+    updateAvailable: (callback: (data: { version: string; releaseNotes?: string }) => void) => {
+      ipcRenderer.on(IPC_CHANNELS.UPDATE_AVAILABLE, (_event, data) => callback(data));
+    },
+
+    updateDownloaded: (callback: (data: { version: string }) => void) => {
+      ipcRenderer.on(IPC_CHANNELS.UPDATE_DOWNLOADED, (_event, data) => callback(data));
+    },
+
+    updateProgress: (callback: (data: { percent: number; bytesPerSecond: number; transferred: number; total: number }) => void) => {
+      ipcRenderer.on(IPC_CHANNELS.UPDATE_PROGRESS, (_event, data) => callback(data));
+    },
+
+    updateError: (callback: (data: { error: string }) => void) => {
+      ipcRenderer.on(IPC_CHANNELS.UPDATE_ERROR, (_event, data) => callback(data));
+    },
   },
 
   // Remove event listeners
@@ -302,6 +342,22 @@ const api = {
 
     queueStatusUpdate: () => {
       ipcRenderer.removeAllListeners(IPC_CHANNELS.QUEUE_STATUS_UPDATE);
+    },
+
+    updateAvailable: () => {
+      ipcRenderer.removeAllListeners(IPC_CHANNELS.UPDATE_AVAILABLE);
+    },
+
+    updateDownloaded: () => {
+      ipcRenderer.removeAllListeners(IPC_CHANNELS.UPDATE_DOWNLOADED);
+    },
+
+    updateProgress: () => {
+      ipcRenderer.removeAllListeners(IPC_CHANNELS.UPDATE_PROGRESS);
+    },
+
+    updateError: () => {
+      ipcRenderer.removeAllListeners(IPC_CHANNELS.UPDATE_ERROR);
     },
   },
 };

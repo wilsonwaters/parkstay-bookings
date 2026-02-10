@@ -82,12 +82,27 @@ export const IPC_CHANNELS = {
   QUEUE_GET_STATUS: 'queue:get-status',
   QUEUE_CLEAR: 'queue:clear',
 
+  // Updater
+  UPDATE_CHECK: 'update:check',
+  UPDATE_DOWNLOAD: 'update:download',
+  UPDATE_INSTALL: 'update:install',
+  UPDATE_GET_STATUS: 'update:get-status',
+
+  // App
+  APP_GET_INFO: 'app:get-info',
+  APP_OPEN_LOGS_FOLDER: 'app:open-logs-folder',
+
   // Events (main -> renderer)
   NOTIFICATION_CREATED: 'notification:created',
   BOOKING_UPDATED: 'booking:updated',
   WATCH_RESULT: 'watch:result',
   STQ_RESULT: 'stq:result',
   QUEUE_STATUS_UPDATE: 'queue:status-update',
+  UPDATE_AVAILABLE: 'update:available',
+  UPDATE_NOT_AVAILABLE: 'update:not-available',
+  UPDATE_DOWNLOADED: 'update:downloaded',
+  UPDATE_ERROR: 'update:error',
+  UPDATE_PROGRESS: 'update:progress',
 } as const;
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS];

@@ -4,15 +4,20 @@
 
 An Electron-based desktop application that automates the process of monitoring and booking campsites on the WA Parks and Wildlife Service ParkStay system.
 
-## Status
+## Download
 
-**Current Status:** Active Development — Core features implemented
+**[Download the latest release](https://github.com/wilsonwaters/parkstay-bookings/releases/latest)** - Windows only for v1.0.0.
 
-Version 1.0.0. The watch system, notifications, queue handling, Gmail OTP integration, and settings are fully functional. Bookings import and Skip The Queue pages are being finalized and are temporarily disabled in the UI.
+- **Installer**: `WA-ParkStay-Bookings-Setup-x.x.x.exe` - Recommended, includes auto-updates
+- **Portable**: `WA-ParkStay-Bookings-Portable-x.x.x.exe` - No installation required
+
+> **Note:** The app is not yet code-signed. Windows SmartScreen may show a warning — click "More info" then "Run anyway" to proceed.
+
+**macOS and Linux builds coming soon.** For now, Windows users can download pre-built installers. macOS/Linux users can [build from source](#building-from-source).
 
 ## Features
 
-### Implemented
+### Current
 
 - **Watch System**: Monitor campground availability automatically with configurable intervals, notifications when sites are found, and optional auto-booking
 - **Notifications**: Desktop notifications, in-app notification center, and email notifications via SMTP
@@ -23,11 +28,13 @@ Version 1.0.0. The watch system, notifications, queue handling, Gmail OTP integr
 - **Dashboard**: Overview of active watches, recent activity, upcoming bookings, and statistics
 - **Privacy First**: All data stored locally in SQLite, no cloud dependencies, no telemetry
 
+- **Auto-Updates**: In-app update notifications with one-click install via GitHub Releases
+- **About Dialog**: Version info, system details, and quick access to logs
+
 ### Coming Soon
 
 - **Booking Management**: Import and manage ParkStay bookings (page temporarily disabled)
 - **Skip The Queue**: Automated rebooking of cancelled reservations (page temporarily disabled)
-- **Auto-Updates**: In-app update mechanism
 
 ## Technology Stack
 
@@ -48,19 +55,27 @@ Version 1.0.0. The watch system, notifications, queue handling, Gmail OTP integr
 
 ## System Requirements
 
-### Windows
+### Windows (v1.0.0)
 - Windows 10 or later (64-bit)
 - 4GB RAM minimum
 - 500MB free disk space
 
-### macOS
-- macOS 10.13 (High Sierra) or later
-- 4GB RAM minimum
-- 500MB free disk space
+### macOS & Linux (Coming Soon)
+- Support planned for future releases
+- Can build from source in the meantime
 
 ## Installation
 
-### From Source (Development)
+### Windows Installer (Recommended)
+
+1. Download the latest `.exe` installer from [GitHub Releases](https://github.com/wilsonwaters/parkstay-bookings/releases/latest)
+2. Run the installer. If SmartScreen appears, click **"More info"** then **"Run anyway"**
+3. Follow the setup wizard (choose install location, create shortcuts)
+4. Launch the app and enter your ParkStay credentials
+
+See [docs/installation.md](docs/installation.md) for detailed instructions.
+
+### Building from Source
 
 ```bash
 # Clone repository
@@ -72,11 +87,10 @@ npm install
 
 # Start development server
 npm run dev
+
+# Or build a Windows installer
+npm run dist:win
 ```
-
-### From Installer
-
-Packaged installers will be available on the [Releases](https://github.com/wilsonwaters/parkstay-bookings/releases) page.
 
 ## Development
 
@@ -270,4 +284,4 @@ The developers are not responsible for any issues arising from the use of this a
 ---
 
 **Current Version:** 1.0.0
-**Last Updated:** 2026-02-09
+**Last Updated:** 2026-02-10

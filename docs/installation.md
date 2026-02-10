@@ -1,18 +1,20 @@
 # WA ParkStay Bookings - Installation Guide
 
-**Version:** 1.0
-**Last Updated:** 2025-10-31
+**Version:** 1.0.0
+**Last Updated:** 2026-02-10
 
 ## Table of Contents
 
 1. [System Requirements](#system-requirements)
 2. [Windows Installation](#windows-installation)
-3. [macOS Installation](#macos-installation)
-4. [Linux Installation](#linux-installation)
+3. [macOS Installation](#macos-installation) *(Coming Soon)*
+4. [Linux Installation](#linux-installation) *(Coming Soon)*
 5. [First-Run Setup](#first-run-setup)
 6. [Troubleshooting](#troubleshooting)
 7. [Uninstallation](#uninstallation)
 8. [Updating](#updating)
+
+> **Note:** v1.0.0 is Windows-only. macOS and Linux builds are planned for future releases.
 
 ---
 
@@ -52,7 +54,7 @@
 ### Method 1: Using the Installer (Recommended)
 
 1. **Download the Installer**
-   - Go to the [releases page](https://github.com/your-username/parkstay-bookings/releases)
+   - Go to the [releases page](https://github.com/wilsonwaters/parkstay-bookings/releases)
    - Download the latest `WA-ParkStay-Bookings-Setup-x.x.x.exe` file
 
 2. **Run the Installer**
@@ -101,10 +103,12 @@
 
 ## macOS Installation
 
-### Standard Installation
+> **Coming Soon:** macOS builds are not yet available for v1.0.0. Check back for future releases or [build from source](../README.md#building-from-source).
+
+### Standard Installation (When Available)
 
 1. **Download the DMG**
-   - Go to the [releases page](https://github.com/your-username/parkstay-bookings/releases)
+   - Go to the [releases page](https://github.com/wilsonwaters/parkstay-bookings/releases)
    - Download the latest `WA-ParkStay-Bookings-x.x.x-arm64.dmg` (Apple Silicon) or
    - Download `WA-ParkStay-Bookings-x.x.x-x64.dmg` (Intel Mac)
 
@@ -155,12 +159,14 @@ If macOS prevents the app from opening:
 
 ## Linux Installation
 
-### Ubuntu/Debian (AppImage - Recommended)
+> **Coming Soon:** Linux builds are not yet available for v1.0.0. Check back for future releases or [build from source](../README.md#building-from-source).
+
+### Ubuntu/Debian (AppImage - When Available)
 
 1. **Download AppImage**
    ```bash
    # Download latest release
-   wget https://github.com/your-username/parkstay-bookings/releases/latest/download/WA-ParkStay-Bookings-x.x.x-x86_64.AppImage
+   wget https://github.com/wilsonwaters/parkstay-bookings/releases/latest/download/WA-ParkStay-Bookings-x.x.x-x86_64.AppImage
    ```
 
 2. **Make Executable**
@@ -182,7 +188,7 @@ If macOS prevents the app from opening:
 
 1. **Download DEB Package**
    ```bash
-   wget https://github.com/your-username/parkstay-bookings/releases/latest/download/wa-parkstay-bookings_x.x.x_amd64.deb
+   wget https://github.com/wilsonwaters/parkstay-bookings/releases/latest/download/wa-parkstay-bookings_x.x.x_amd64.deb
    ```
 
 2. **Install Package**
@@ -201,7 +207,7 @@ If macOS prevents the app from opening:
 
 1. **Download RPM Package**
    ```bash
-   wget https://github.com/your-username/parkstay-bookings/releases/latest/download/wa-parkstay-bookings-x.x.x.x86_64.rpm
+   wget https://github.com/wilsonwaters/parkstay-bookings/releases/latest/download/wa-parkstay-bookings-x.x.x.x86_64.rpm
    ```
 
 2. **Install Package**
@@ -492,7 +498,7 @@ Configure update behavior in Settings:
 If you encounter issues not covered in this guide:
 
 1. **Check the Documentation**: See the [User Guide](./user-guide.md) for feature help
-2. **Search Issues**: Check [GitHub Issues](https://github.com/your-username/parkstay-bookings/issues)
+2. **Search Issues**: Check [GitHub Issues](https://github.com/wilsonwaters/parkstay-bookings/issues)
 3. **Report a Bug**: Create a new issue with details about your problem
 4. **Contact Support**: Email support@example.com (if applicable)
 

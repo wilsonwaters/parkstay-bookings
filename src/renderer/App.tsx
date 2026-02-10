@@ -19,6 +19,7 @@ import CreateSTQ from './pages/SkipTheQueue/CreateSTQ';
 import Settings from './pages/Settings';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoadingSpinner from './components/LoadingSpinner';
+import UpdateNotification from './components/UpdateNotification';
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -69,6 +70,7 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <MainLayout onLogout={handleLogout}>
+        <UpdateNotification />
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/bookings" element={<BookingsList />} />

@@ -20,6 +20,10 @@ import { registerSettingsHandlers } from './handlers/settings.handlers';
 import { registerGmailHandlers } from './handlers/gmail.handlers';
 import { registerParkStayHandlers } from './handlers/parkstay.handlers';
 import { registerQueueHandlers } from './handlers/queue.handlers';
+import { registerUpdaterHandlers } from './handlers/updater.handler';
+import { registerAppHandlers } from './handlers/app.handler';
+import { AutoUpdaterService } from '../services/updater/auto-updater.service';
+import { logger } from '../utils/logger';
 
 /**
  * Register all IPC handlers
@@ -35,9 +39,10 @@ export function registerIPCHandlers(
   parkStayService?: ParkStayService,
   notificationProviderRepository?: NotificationProviderRepository,
   notificationDispatcher?: NotificationDispatcher,
-  queueService?: QueueService
+  queueService?: QueueService,
+  autoUpdaterService?: AutoUpdaterService
 ): void {
-  console.log('Registering IPC handlers...');
+  logger.info('Registering IPC handlers...');
 
   // Get Gmail service singleton
   const gmailService = GmailOTPService.getInstance();
@@ -65,5 +70,13 @@ export function registerIPCHandlers(
     registerQueueHandlers(queueService);
   }
 
-  console.log('IPC handlers registered');
+  // Register updater handlers if service provided
+  if (autoUpdaterService) {
+    registerUpdaterHandlers(autoUpdaterService);
+  }
+
+  // Register app handlers (no dependencies needed)
+  registerAppHandlers();
+
+  logger.info('IPC handlers registered');
 }
