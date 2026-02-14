@@ -88,6 +88,7 @@
     "icon": "resources/icons/icon.ico",
     "artifactName": "${productName}-Setup-${version}.${ext}",
     "requestedExecutionLevel": "asInvoker",
+    "sign": false,
     "signingHashAlgorithms": ["sha256"],
     "signDlls": false,
     "verifyUpdateCodeSignature": false,
