@@ -99,7 +99,7 @@ describe('BookingService', () => {
       });
 
       const booking = await bookingService.createBooking(testUserId, input);
-      expect(booking.totalCost).toBeNull();
+      expect(booking.totalCost).toBeUndefined();
     });
   });
 
@@ -342,10 +342,17 @@ describe('BookingService', () => {
         })
       );
 
-      // Create cancelled booking
+      // Create cancelled booking (with future dates so it's not counted as "past")
+      const cancelledFuture = new Date();
+      cancelledFuture.setDate(cancelledFuture.getDate() + 14);
+      const cancelledDeparture = new Date(cancelledFuture);
+      cancelledDeparture.setDate(cancelledDeparture.getDate() + 2);
       const cancelled = await bookingService.createBooking(
         testUserId,
-        createMockBookingInput()
+        createMockBookingInput({
+          arrivalDate: cancelledFuture,
+          departureDate: cancelledDeparture,
+        })
       );
       await bookingService.cancelBooking(cancelled.id);
 

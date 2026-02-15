@@ -94,10 +94,20 @@ describe('WatchService', () => {
       const input = createMockWatchInput();
       const watch = await watchService.create(testUserId, input);
 
-      // Mock availability response with matches
-      parkStayService.checkAvailability = jest
-        .fn()
-        .mockResolvedValue(MockParkStayAPI.mockAvailabilityResponse(input.campgroundId, true));
+      // Mock availability response with matches (siteType must match the watch fixture)
+      parkStayService.checkAvailability = jest.fn().mockResolvedValue({
+        available: true,
+        sites: [
+          {
+            siteId: 'SITE001',
+            siteName: 'Site 1',
+            siteType: 'Unpowered',
+            dates: [{ date: '2024-06-01', available: true, bookable: true, price: 35.0 }],
+          },
+        ],
+        totalAvailable: 1,
+        lowestPrice: 35.0,
+      });
 
       notificationService.notifyWatchFound = jest.fn();
 
@@ -115,9 +125,12 @@ describe('WatchService', () => {
       const watch = await watchService.create(testUserId, input);
 
       // Mock no availability
-      parkStayService.checkAvailability = jest
-        .fn()
-        .mockResolvedValue(MockParkStayAPI.mockAvailabilityResponse(input.campgroundId, false));
+      parkStayService.checkAvailability = jest.fn().mockResolvedValue({
+        available: false,
+        sites: [],
+        totalAvailable: 0,
+        lowestPrice: undefined,
+      });
 
       const result = await watchService.execute(watch.id);
 

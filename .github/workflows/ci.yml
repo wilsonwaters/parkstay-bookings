@@ -82,7 +82,6 @@ jobs:
 
       - name: Run unit tests
         run: npm run test:coverage
-        continue-on-error: true
 
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest'

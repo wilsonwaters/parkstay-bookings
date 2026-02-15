@@ -6,11 +6,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import {
-  initializeDatabase,
-  getDatabase,
-  closeDatabase,
-} from '@main/database/connection';
+import { runMigrations, setDatabase } from '@main/database/connection';
 
 export class TestDatabaseHelper {
   private db: Database.Database | null = null;
@@ -33,15 +29,21 @@ export class TestDatabaseHelper {
       fs.mkdirSync(dbDir, { recursive: true });
     }
 
-    // Initialize database using connection module
-    // Note: The initializeDatabase function uses a global db path
-    // For tests, we would need to modify it or use direct Database instance
     this.db = new Database(this.dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
 
-    // Run migrations (simplified for tests)
-    // In a real scenario, you'd want to import and run the actual migrations
+    // Load and execute the production schema
+    const schemaPath = path.join(__dirname, '../../src/main/database/schema.sql');
+    const schema = fs.readFileSync(schemaPath, 'utf-8');
+    this.db.exec(schema);
+
+    // Run production migrations
+    runMigrations(this.db);
+
+    // Set as global db so repos using getDatabase() work
+    setDatabase(this.db);
+
     return this.db;
   }
 
@@ -49,6 +51,7 @@ export class TestDatabaseHelper {
    * Clean up test database
    */
   async teardown(): Promise<void> {
+    setDatabase(null);
     if (this.db) {
       this.db.close();
       this.db = null;
