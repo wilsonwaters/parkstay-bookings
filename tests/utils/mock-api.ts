@@ -12,10 +12,7 @@ export class MockParkStayAPI {
   /**
    * Mock availability check response
    */
-  static mockAvailabilityResponse(
-    campgroundId: string,
-    hasAvailability: boolean = true
-  ): any {
+  static mockAvailabilityResponse(campgroundId: string, hasAvailability: boolean = true): any {
     if (!hasAvailability) {
       return {
         data: {
@@ -105,10 +102,7 @@ export class MockParkStayAPI {
   /**
    * Mock update booking response
    */
-  static mockUpdateBookingResponse(
-    success: boolean = true,
-    newBookingReference?: string
-  ): any {
+  static mockUpdateBookingResponse(success: boolean = true, newBookingReference?: string): any {
     if (success && newBookingReference) {
       return {
         data: {

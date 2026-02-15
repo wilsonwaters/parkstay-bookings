@@ -128,7 +128,8 @@ export default function SkipTheQueuePage() {
           <div>
             <h1 className="text-3xl font-bold">Beat the Crowd</h1>
             <p className="text-gray-600 mt-1">
-              Book popular campsites well in advance by automatically rebooking as the 180-day window moves
+              Book popular campsites well in advance by automatically rebooking as the 180-day
+              window moves
             </p>
           </div>
           <button

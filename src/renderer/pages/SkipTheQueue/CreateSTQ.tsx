@@ -47,7 +47,8 @@ const CreateSTQ: React.FC = () => {
         </button>
         <h1 className="text-3xl font-bold text-gray-900">Create Beat the Crowd Entry</h1>
         <p className="mt-2 text-gray-600">
-          Automatically cancel and rebook your reservation as the 180-day booking window advances, securing popular campsites well before others can book them
+          Automatically cancel and rebook your reservation as the 180-day booking window advances,
+          securing popular campsites well before others can book them
         </p>
       </div>
 
@@ -102,8 +103,9 @@ const CreateSTQ: React.FC = () => {
               <p className="mt-1 text-sm text-blue-700">
                 ParkStay only allows bookings up to 180 days in advance. Beat the Crowd helps you
                 manage bookings ahead of this limit by booking a site now, then automatically
-                cancelling and rebooking as you approach the 180-day limit — pushing your reservation
-                further into the future and securing popular campsites before anyone else can book them.
+                cancelling and rebooking as you approach the 180-day limit — pushing your
+                reservation further into the future and securing popular campsites before anyone
+                else can book them.
               </p>
             </div>
           </div>
@@ -117,9 +119,9 @@ const CreateSTQ: React.FC = () => {
             <div className="ml-3">
               <h4 className="text-sm font-medium text-yellow-900">Requirements</h4>
               <p className="mt-1 text-sm text-yellow-700">
-                You need a confirmed booking and valid ParkStay credentials set up in Settings.
-                The feature monitors your booking and automatically handles the cancel-and-rebook
-                cycle as the 180-day window advances.
+                You need a confirmed booking and valid ParkStay credentials set up in Settings. The
+                feature monitors your booking and automatically handles the cancel-and-rebook cycle
+                as the 180-day window advances.
               </p>
             </div>
           </div>
@@ -134,16 +136,15 @@ const CreateSTQ: React.FC = () => {
             <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-medium mr-3">
               1
             </span>
-            <span>
-              The app monitors your booking and the 180-day availability window
-            </span>
+            <span>The app monitors your booking and the 180-day availability window</span>
           </li>
           <li className="flex items-start">
             <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-medium mr-3">
               2
             </span>
             <span>
-              When new dates become available, it cancels your current booking and rebooks further out
+              When new dates become available, it cancels your current booking and rebooks further
+              out
             </span>
           </li>
           <li className="flex items-start">

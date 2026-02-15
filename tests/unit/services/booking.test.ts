@@ -34,17 +34,10 @@ describe('BookingService', () => {
 
     // Create test user
     userRepository = new UserRepository(dbHelper.getDb());
-    const user = userRepository.create(
-      mockUserInput.email,
-      'encrypted',
-      'key',
-      'iv',
-      'tag',
-      {
-        firstName: mockUserInput.firstName,
-        lastName: mockUserInput.lastName,
-      }
-    );
+    const user = userRepository.create(mockUserInput.email, 'encrypted', 'key', 'iv', 'tag', {
+      firstName: mockUserInput.firstName,
+      lastName: mockUserInput.lastName,
+    });
     testUserId = user.id;
   });
 
@@ -286,10 +279,7 @@ describe('BookingService', () => {
       const booking = await bookingService.createBooking(testUserId, mockBookingInput);
       await bookingService.cancelBooking(booking.id);
 
-      await expectAsyncThrow(
-        () => bookingService.cancelBooking(booking.id),
-        'already cancelled'
-      );
+      await expectAsyncThrow(() => bookingService.cancelBooking(booking.id), 'already cancelled');
     });
 
     it('should throw error for non-existent booking', async () => {
