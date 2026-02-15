@@ -17,12 +17,12 @@ interface STQFormProps {
 }
 
 const CHECK_INTERVALS = [
-  { value: 1, label: '1 minute' },
-  { value: 2, label: '2 minutes' },
-  { value: 5, label: '5 minutes' },
-  { value: 10, label: '10 minutes' },
-  { value: 15, label: '15 minutes' },
-  { value: 30, label: '30 minutes' },
+  { value: 60, label: '1 hour' },
+  { value: 120, label: '2 hours' },
+  { value: 240, label: '4 hours' },
+  { value: 480, label: '8 hours' },
+  { value: 720, label: '12 hours' },
+  { value: 1440, label: '24 hours' },
 ];
 
 const STQForm: React.FC<STQFormProps> = ({
@@ -47,7 +47,7 @@ const STQForm: React.FC<STQFormProps> = ({
     defaultValues: {
       bookingId: initialData?.bookingId || 0,
       bookingReference: initialData?.bookingReference || '',
-      checkIntervalMinutes: initialData?.checkIntervalMinutes || 2,
+      checkIntervalMinutes: initialData?.checkIntervalMinutes || 60,
       maxAttempts: initialData?.maxAttempts || 100,
       notes: initialData?.notes || '',
     },

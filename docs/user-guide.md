@@ -326,9 +326,9 @@ Beat the Crowd helps you manage bookings in advance of ParkStay's 180-day bookin
 ### Configuration
 
 **Check Interval:**
-- Default: 2 minutes
-- Minimum: 1 minute (aggressive)
-- Maximum: 10 minutes (conservative)
+- Default: 1 hour
+- Minimum: 1 hour
+- Maximum: 24 hours
 - Shorter intervals = higher chance of catching new dates as they open
 
 **Max Attempts:**
@@ -365,7 +365,7 @@ Beat the Crowd helps you manage bookings in advance of ParkStay's 180-day bookin
 ### Best Practices for Beat the Crowd
 
 1. **Start Early**: The earlier you set this up, the further ahead you can book
-2. **Short Intervals**: Use 2-minute interval to catch new dates quickly
+2. **Check Frequently**: Use 1-hour interval to catch new dates promptly
 3. **Monitor Progress**: Check periodically to see attempts
 4. **Be Patient**: The 180-day window moves slowly — one day at a time
 5. **Backup Plan**: Always have an alternative plan
@@ -602,7 +602,7 @@ Customize the application to your preferences.
 ### Beat the Crowd Tips
 
 1. **Enable Immediately**: Set up Beat the Crowd right after confirming your initial booking
-2. **Be Aggressive**: Use 2-minute interval for high-demand sites
+2. **Check Frequently**: Use 1-hour interval for high-demand sites
 3. **Set High Max Attempts**: 1000+ attempts is reasonable
 4. **Check Progress**: Monitor attempt count regularly
 5. **Have Patience**: The 180-day window advances one day at a time

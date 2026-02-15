@@ -95,7 +95,7 @@ Beat the Crowd helps you manage bookings in advance of ParkStay's 180-day bookin
 const stqEntry = await window.api.stq.create(userId, {
   bookingId: 123,
   bookingReference: 'PS123456',
-  checkIntervalMinutes: 2, // Optional, default 2
+  checkIntervalMinutes: 60, // Optional, default 60 (1 hour)
   maxAttempts: 1000, // Optional, default 1000
   notes: 'Monitor for cancellations',
 });
@@ -105,7 +105,7 @@ const stqEntry = await window.api.stq.create(userId, {
 
 - **bookingId**: ID of the booking to monitor
 - **bookingReference**: ParkStay booking reference
-- **checkIntervalMinutes**: How often to check (1-30 minutes)
+- **checkIntervalMinutes**: How often to check (60-1440 minutes)
 - **maxAttempts**: Stop after this many attempts
 - **notes**: Optional notes
 
@@ -391,8 +391,8 @@ if (response.success) {
 
 ### Beat the Crowd
 
-1. **Check Intervals**: 2-5 minutes is usually sufficient
-2. **Max Attempts**: Set a reasonable limit (1000 = ~33 hours at 2-min intervals)
+1. **Check Intervals**: 1-4 hours is usually sufficient
+2. **Max Attempts**: Set a reasonable limit (1000 = ~42 days at 1-hour intervals)
 3. **Monitor Regularly**: Check the status periodically
 4. **Booking References**: Ensure the booking reference is correct
 5. **Active Monitoring**: Keep entries active only when needed
