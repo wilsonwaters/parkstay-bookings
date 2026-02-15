@@ -40,7 +40,8 @@
       "Bash(ls:*)",
       "Bash(git checkout:*)",
       "Bash(gh run watch:*)",
-      "Bash(gh pr checks:*)"
+      "Bash(gh pr checks:*)",
+      "Bash(npm run format:check:*)"
     ],
     "deny": [],
     "ask": []

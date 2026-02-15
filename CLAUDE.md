@@ -129,6 +129,11 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 - **Fixtures:** `tests/fixtures/` (users, bookings, watches, stq)
 - **Helpers:** `tests/utils/` (database-helper, mock-api, test-helpers)
 
+## Git & PR Conventions
+
+- Do NOT add `Co-Authored-By` trailers to commit messages.
+- Do NOT add AI attribution lines to pull request descriptions.
+
 ## Further Reading
 
 - `docs/` — User guide, installation, development, release process
