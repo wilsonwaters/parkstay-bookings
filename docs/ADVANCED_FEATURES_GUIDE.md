@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide explains how to use the advanced features (Watch system and Skip The Queue) in the WA ParkStay Bookings application.
+This guide explains how to use the advanced features (Watch system and Beat the Crowd) in the WA ParkStay Bookings application.
 
 ## Watch System
 
@@ -84,9 +84,11 @@ await window.api.watch.delete(watchId);
 - Watch can auto-deactivate after first notification (if `notifyOnly` is true)
 - Watch can auto-book when availability is found (if `autoBook` is true)
 
-## Skip The Queue System
+## Beat the Crowd System
 
-### Creating an STQ Entry
+Beat the Crowd works around ParkStay's 180-day booking limit by automatically cancelling and rebooking your reservation as the booking window advances. This lets you secure popular campsites well before others can book them.
+
+### Creating an Entry
 
 ```typescript
 // From renderer process
@@ -387,7 +389,7 @@ if (response.success) {
 4. **Auto-Booking**: Only enable if you're confident in the criteria
 5. **Multiple Watches**: Create separate watches for different date ranges
 
-### Skip The Queue
+### Beat the Crowd
 
 1. **Check Intervals**: 2-5 minutes is usually sufficient
 2. **Max Attempts**: Set a reasonable limit (1000 = ~33 hours at 2-min intervals)
@@ -509,7 +511,7 @@ For issues or questions:
 ### Version 1.0.0 (2025-10-31)
 - Initial implementation
 - Watch system complete
-- Skip The Queue complete
+- Beat the Crowd (formerly Skip The Queue) complete
 - Job scheduler complete
 - Notification system complete
 - ParkStay API integration complete

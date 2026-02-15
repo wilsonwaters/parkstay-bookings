@@ -1,6 +1,6 @@
 /**
- * Create STQ Entry Page
- * Form for creating a new Skip The Queue entry
+ * Create Beat the Crowd Entry Page
+ * Form for creating a new advance-booking entry
  */
 
 import React, { useState } from 'react';
@@ -43,11 +43,11 @@ const CreateSTQ: React.FC = () => {
           onClick={() => navigate('/skip-the-queue')}
           className="text-primary-600 hover:text-primary-700 text-sm font-medium mb-4"
         >
-          ← Back to Skip The Queue
+          ← Back to Beat the Crowd
         </button>
-        <h1 className="text-3xl font-bold text-gray-900">Create Skip The Queue Entry</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Create Beat the Crowd Entry</h1>
         <p className="mt-2 text-gray-600">
-          Automatically rebook your reservation when Skip The Queue becomes available
+          Automatically cancel and rebook your reservation as the 180-day booking window advances, securing popular campsites well before others can book them
         </p>
       </div>
 
@@ -106,11 +106,12 @@ const CreateSTQ: React.FC = () => {
               <span className="text-2xl">💡</span>
             </div>
             <div className="ml-3">
-              <h4 className="text-sm font-medium text-blue-900">What is Skip The Queue?</h4>
+              <h4 className="text-sm font-medium text-blue-900">What is Beat the Crowd?</h4>
               <p className="mt-1 text-sm text-blue-700">
-                Skip The Queue is a ParkStay feature that allows you to rebook your reservation
-                without waiting in the queue, potentially getting a better campsite. This tool
-                automates the process of checking and rebooking.
+                ParkStay only allows bookings up to 180 days in advance. Beat the Crowd works around
+                this by booking a site now, then automatically cancelling and rebooking as you approach
+                the 180-day limit — pushing your reservation further into the future and securing
+                popular campsites before anyone else can book them.
               </p>
             </div>
           </div>
@@ -125,8 +126,8 @@ const CreateSTQ: React.FC = () => {
               <h4 className="text-sm font-medium text-yellow-900">Requirements</h4>
               <p className="mt-1 text-sm text-yellow-700">
                 You need a confirmed booking and valid ParkStay credentials set up in Settings.
-                The feature will only work when ParkStay makes Skip The Queue available for your
-                booking.
+                The feature monitors your booking and automatically handles the cancel-and-rebook
+                cycle as the 180-day window advances.
               </p>
             </div>
           </div>
@@ -142,7 +143,7 @@ const CreateSTQ: React.FC = () => {
               1
             </span>
             <span>
-              The app regularly checks if Skip The Queue is available for your booking
+              The app monitors your booking and the 180-day availability window
             </span>
           </li>
           <li className="flex items-start">
@@ -150,7 +151,7 @@ const CreateSTQ: React.FC = () => {
               2
             </span>
             <span>
-              When available, it automatically initiates the rebooking process
+              When new dates become available, it cancels your current booking and rebooks further out
             </span>
           </li>
           <li className="flex items-start">

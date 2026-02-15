@@ -24,7 +24,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, onLogout }) => {
     { path: '/', label: 'Dashboard', icon: '📊' },
     { path: '/bookings', label: 'Bookings', icon: '🏕️', disabled: true },
     { path: '/watches', label: 'Watches', icon: '👁️' },
-    { path: '/skip-the-queue', label: 'Skip The Queue', icon: '⚡', disabled: true },
+    { path: '/skip-the-queue', label: 'Beat the Crowd', icon: '⚡', disabled: true },
     { path: '/settings', label: 'Settings', icon: '⚙️' },
   ];
 

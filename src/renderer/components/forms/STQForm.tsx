@@ -1,6 +1,6 @@
 /**
- * Skip The Queue Form Component
- * Form for creating STQ entries
+ * Beat the Crowd Form Component
+ * Form for creating advance-booking entries
  */
 
 import React, { useState, useEffect } from 'react';
@@ -113,7 +113,7 @@ const STQForm: React.FC<STQFormProps> = ({
         ) : bookings.length === 0 ? (
           <div className="rounded-md bg-yellow-50 p-4 border border-yellow-200">
             <p className="text-sm text-yellow-800">
-              No eligible bookings found. You need a confirmed upcoming booking to use Skip The Queue.
+              No eligible bookings found. You need a confirmed upcoming booking to use Beat the Crowd.
             </p>
           </div>
         ) : (
@@ -158,7 +158,7 @@ const STQForm: React.FC<STQFormProps> = ({
             readOnly
           />
           <p className="mt-1 text-sm text-gray-500">
-            Reference number will be used to check for Skip The Queue eligibility
+            Reference number will be used to track and rebook this reservation
           </p>
           {errors.bookingReference && (
             <p className="mt-1 text-sm text-red-600">{errors.bookingReference.message}</p>
@@ -212,7 +212,7 @@ const STQForm: React.FC<STQFormProps> = ({
           ))}
         </select>
         <p className="mt-1 text-sm text-gray-500">
-          How often to check if your booking is eligible for Skip The Queue
+          How often to check if new dates are available for rebooking
         </p>
         {errors.checkIntervalMinutes && (
           <p className="mt-1 text-sm text-red-600">{errors.checkIntervalMinutes.message}</p>
@@ -264,11 +264,12 @@ const STQForm: React.FC<STQFormProps> = ({
             <span className="text-2xl">ℹ️</span>
           </div>
           <div className="ml-3">
-            <h4 className="text-sm font-medium text-green-900">About Skip The Queue</h4>
+            <h4 className="text-sm font-medium text-green-900">About Beat the Crowd</h4>
             <p className="mt-1 text-sm text-green-700">
-              Skip The Queue automatically attempts to rebook your reservation when the feature
-              becomes available, potentially securing a better campsite or removing you from the
-              queue. This feature requires valid ParkStay credentials.
+              Beat the Crowd works around ParkStay's 180-day booking limit by automatically
+              cancelling and rebooking your reservation as the window advances — letting you
+              secure popular campsites well before others can book them. This feature requires
+              valid ParkStay credentials.
             </p>
           </div>
         </div>
