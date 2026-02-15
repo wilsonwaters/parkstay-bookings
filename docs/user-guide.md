@@ -9,7 +9,7 @@
 2. [Dashboard Overview](#dashboard-overview)
 3. [Managing Bookings](#managing-bookings)
 4. [Creating Watches](#creating-watches)
-5. [Using Skip The Queue](#using-skip-the-queue)
+5. [Using Beat the Crowd](#using-beat-the-crowd)
 6. [Notifications](#notifications)
 7. [Settings](#settings)
 8. [Tips and Best Practices](#tips-and-best-practices)
@@ -21,7 +21,7 @@
 
 Welcome to WA ParkStay Bookings! This desktop application helps you automate campground bookings on the Western Australia Parks and Wildlife Service ParkStay system.
 
-> **Note:** Some features are still being finalized. The Bookings import page and Skip The Queue page are temporarily disabled in the sidebar while they are being completed. Watches, notifications, and settings are fully functional.
+> **Note:** Some features are still being finalized. The Bookings import page and Beat the Crowd page are temporarily disabled in the sidebar while they are being completed. Watches, notifications, and settings are fully functional.
 
 ### What Can This App Do?
 
@@ -38,10 +38,10 @@ Welcome to WA ParkStay Bookings! This desktop application helps you automate cam
 - Receive email alerts when watches find availability
 - Configure SMTP settings or use Gmail OAuth2 in the Settings page
 
-**Skip The Queue (coming soon):**
-- Automatically rebook cancelled reservations
-- Stay in the queue for high-demand campsites
-- Continuous monitoring until successful
+**Beat the Crowd (coming soon):**
+- Book popular campsites well in advance of ParkStay's 180-day booking limit
+- Automatically cancel and rebook your reservation as the booking window advances
+- Secure high-demand sites before anyone else can book them
 
 **Booking Management (coming soon):**
 - View all your bookings in one place
@@ -104,7 +104,7 @@ The Dashboard is your command center, showing key information at a glance.
 - Green: Confirmed
 - Yellow: Pending
 - Red: Cancelled
-- Blue: Skip The Queue active
+- Blue: Beat the Crowd active
 
 ---
 
@@ -149,7 +149,7 @@ Click any booking to see full details:
 
 **Actions:**
 - View on ParkStay: Opens booking on ParkStay website
-- Enable Skip The Queue: Set up automatic rebooking
+- Enable Beat the Crowd: Set up automatic advance rebooking
 - Export Details: Save booking information
 - Delete: Remove from local database
 
@@ -291,41 +291,45 @@ When a watch finds availability:
 
 ---
 
-## Using Skip The Queue
+## Using Beat the Crowd
 
-> **Note:** The Skip The Queue page is temporarily disabled in the sidebar while it is being finalized. The underlying service is implemented and will be re-enabled soon.
+> **Note:** The Beat the Crowd page is temporarily disabled in the sidebar while it is being finalized. The underlying service is implemented and will be re-enabled soon.
 
-Skip The Queue (STQ) helps you rebook cancelled reservations automatically.
+Beat the Crowd helps you manage bookings in advance of ParkStay's 180-day booking limit, securing popular campsites before anyone else can book them. ParkStay only allows bookings up to 180 days ahead, which means high-demand sites (like Karijini or Cape Range during school holidays) are snapped up the moment they become available. Beat the Crowd handles this by booking a site now, then automatically cancelling and rebooking as you approach the 180-day limit — effectively pushing your reservation further into the future before anyone else can book those dates.
 
-### How Skip The Queue Works
+### How Beat the Crowd Works
 
-ParkStay has a "Skip The Queue" feature that lets you try to rebook a cancelled reservation. This app automates the process by checking continuously until a spot becomes available.
+1. You create a booking for the earliest available dates at your desired campsite
+2. The app monitors the 180-day booking window as it advances
+3. When new dates become bookable, it automatically cancels your current reservation and rebooks for later dates
+4. This cycle repeats, keeping your reservation rolling forward until you reach your target dates
+5. The result: you secure a site that would otherwise be instantly booked by others
 
-### Setting Up Skip The Queue
+### Setting Up Beat the Crowd
 
 **Method 1: From Existing Booking**
 
 1. Go to Bookings page
 2. Find a confirmed booking
-3. Click "Enable Skip The Queue"
-4. Configure STQ settings
+3. Click "Enable Beat the Crowd"
+4. Configure settings
 5. Click "Activate"
 
-**Method 2: From Skip The Queue Page**
+**Method 2: From Beat the Crowd Page**
 
-1. Navigate to "Skip The Queue" page
-2. Click "Create New STQ Entry"
+1. Navigate to "Beat the Crowd" page
+2. Click "Create New Entry"
 3. Select or import a booking
 4. Configure settings
 5. Click "Activate"
 
-### STQ Configuration
+### Configuration
 
 **Check Interval:**
-- Default: 2 minutes
-- Minimum: 1 minute (aggressive)
-- Maximum: 10 minutes (conservative)
-- Shorter intervals = higher chance of success
+- Default: 1 hour
+- Minimum: 1 hour
+- Maximum: 24 hours
+- Shorter intervals = higher chance of catching new dates as they open
 
 **Max Attempts:**
 - Default: 1000 attempts
@@ -333,19 +337,19 @@ ParkStay has a "Skip The Queue" feature that lets you try to rebook a cancelled 
 - Can increase if needed
 
 **Auto-Rebook:**
-- Automatically book when successful
+- Automatically cancels and rebooks when new dates are available
 - Requires valid payment method
-- You'll be charged immediately
+- You may be charged for each rebooking cycle
 
-### STQ Status
+### Status
 
 **Active:**
-- STQ is actively checking
+- Actively monitoring the 180-day window
 - Shows number of attempts
 - Shows last check time
 
 **Success:**
-- Rebooking was successful
+- Rebooking to target dates was successful
 - New booking created
 - Original booking retained for reference
 
@@ -358,26 +362,25 @@ ParkStay has a "Skip The Queue" feature that lets you try to rebook a cancelled 
 - Temporarily stopped
 - Can resume anytime
 
-### Best Practices for STQ
+### Best Practices for Beat the Crowd
 
-1. **Start Early**: Enable STQ as soon as booking is confirmed
-2. **Short Intervals**: Use 2-minute interval for best results
+1. **Start Early**: The earlier you set this up, the further ahead you can book
+2. **Check Frequently**: Use 1-hour interval to catch new dates promptly
 3. **Monitor Progress**: Check periodically to see attempts
-4. **Be Patient**: Can take hours or days depending on demand
-5. **Backup Plan**: Always have an alternative plan
+4. **Backup Plan**: Always have an alternative plan
 
-### When to Use STQ
+### When to Use Beat the Crowd
 
 **Good Use Cases:**
-- High-demand campsites (Karijini, Cape Range)
-- Peak season bookings (school holidays)
-- Sold-out dates that show waitlists
-- Popular sites with frequent cancellations
+- High-demand campsites (Karijini, Cape Range) during peak season
+- School holiday bookings that sell out immediately at the 180-day mark
+- Long weekends and public holidays at popular parks
+- Any dates you know will be impossible to book at the 180-day mark
 
 **Not Recommended:**
-- Low-demand campsites (likely to have availability)
-- Off-peak season (better to just book directly)
-- When you're unsure about going (you'll be charged)
+- Low-demand campsites (likely to have availability anyway)
+- Off-peak season (better to just book directly when the window opens)
+- When you're unsure about going (you'll be charged for each booking cycle)
 
 ---
 
@@ -529,7 +532,7 @@ Customize the application to your preferences.
 - Minimum interval between checks
 - Retry behavior
 
-### Skip The Queue Settings
+### Beat the Crowd Settings
 
 **Default Settings:**
 - Default check interval
@@ -595,13 +598,12 @@ Customize the application to your preferences.
 4. **Monitor Regularly**: Check watch status periodically
 5. **Use Multiple Watches**: Create separate watches for different preferences
 
-### Skip The Queue Tips
+### Beat the Crowd Tips
 
-1. **Enable Immediately**: Set up STQ right after confirming booking
-2. **Be Aggressive**: Use 2-minute interval for high-demand sites
+1. **Enable Immediately**: Set up Beat the Crowd right after confirming your initial booking
+2. **Check Frequently**: Use 1-hour interval for high-demand sites
 3. **Set High Max Attempts**: 1000+ attempts is reasonable
 4. **Check Progress**: Monitor attempt count regularly
-5. **Have Patience**: Success can take time
 
 ### Booking Management
 
@@ -662,30 +664,30 @@ A: Only if you're certain you want to book. You'll be charged immediately. Start
 **Q: My watch hasn't found anything. What should I do?**
 A: Be patient. Some sites rarely have availability. Consider alternative dates or locations.
 
-### Skip The Queue Questions
+### Beat the Crowd Questions
 
-**Q: What is Skip The Queue?**
-A: A ParkStay feature that lets you try to rebook if someone cancels your reservation.
+**Q: What is Beat the Crowd?**
+A: A feature that helps you manage bookings in advance of ParkStay's 180-day booking limit by automatically cancelling and rebooking your reservation as the booking window advances, letting you secure popular campsites well before others can book them.
 
-**Q: When should I use Skip The Queue?**
-A: When you have a confirmed booking you really want to keep, especially for high-demand sites.
+**Q: When should I use Beat the Crowd?**
+A: When you want to book a high-demand campsite for dates that are more than 180 days away. It's ideal for peak season bookings at popular parks like Karijini or Cape Range.
 
-**Q: How long does STQ take?**
-A: Varies greatly. Could be hours, days, or never depending on cancellations.
+**Q: How long does Beat the Crowd take?**
+A: It depends on how far out your target dates are. The 180-day window advances one day at a time.
 
-**Q: Can I run multiple STQ entries?**
+**Q: Can I run multiple entries?**
 A: Yes, but each uses resources. Limit to bookings you really care about.
 
-**Q: What if STQ never succeeds?**
-A: You'll reach max attempts and it will stop. You can increase attempts or try different strategy.
+**Q: What if it never succeeds?**
+A: You'll reach max attempts and it will stop. You can increase attempts or try a different strategy.
 
 ### Technical Questions
 
 **Q: Does the app need to stay open?**
-A: Yes, watches and STQ only run while the app is open. It can run in the background/tray.
+A: Yes, watches and Beat the Crowd only run while the app is open. It can run in the background/tray.
 
 **Q: What happens if my computer sleeps?**
-A: Watches and STQ pause during sleep and resume when computer wakes.
+A: Watches and Beat the Crowd entries pause during sleep and resume when computer wakes.
 
 **Q: Can I run this on multiple computers?**
 A: Yes, but be careful of rate limiting. Each instance checks independently.

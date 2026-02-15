@@ -53,7 +53,7 @@ src/
 ├── preload/        # Secure context bridge (window.api)
 ├── renderer/       # React UI
 │   ├── components/ # Reusable components (forms/, settings/, layouts/)
-│   ├── pages/      # Dashboard, Login, Settings, Bookings/, Watches/, SkipTheQueue/
+│   ├── pages/      # Dashboard, Login, Settings, Bookings/, Watches/, SkipTheQueue/ (Beat the Crowd)
 │   └── styles/     # Tailwind CSS
 └── shared/         # Cross-process code
     ├── constants/  # IPC channels, app constants
@@ -91,7 +91,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 | AuthService | `src/main/services/auth/AuthService.ts` | AES-256-GCM credential encryption |
 | BookingService | `src/main/services/booking/BookingService.ts` | Booking CRUD and sync |
 | WatchService | `src/main/services/watch/watch.service.ts` | Availability monitoring |
-| STQService | `src/main/services/stq/stq.service.ts` | Skip-the-queue rebooking |
+| STQService | `src/main/services/stq/stq.service.ts` | Beat the Crowd advance-booking (cancel & rebook within 180-day window) |
 | ParkStayService | `src/main/services/parkstay/parkstay.service.ts` | ParkStay API client |
 | QueueService | `src/main/services/queue/queue.service.ts` | DBCA queue system handler |
 | NotificationService | `src/main/services/notification/notification.service.ts` | Desktop/in-app notifications |
@@ -117,7 +117,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 ## UI Status
 
 - **Active pages:** Dashboard, Watches, Settings, Login
-- **Disabled in sidebar:** Bookings and Skip The Queue show `ComingSoonBanner` (being finalized)
+- **Disabled in sidebar:** Bookings and Beat the Crowd (formerly "Skip The Queue") show `ComingSoonBanner` (being finalized)
 - **Settings page** includes email/SMTP configuration (`EmailSettingsCard`)
 - **Key components:** AvailabilityGrid, QueueStatus, NotificationBell, WatchForm, STQForm, UpdateNotification, AboutDialog
 
@@ -134,4 +134,4 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 - `docs/` — User guide, installation, development, release process
 - `docs/parkstay-api/` — ParkStay API endpoints, authentication flow
 - `docs/gmail-otp-setup.md` — Gmail OAuth2 integration for OTP
-- `docs/ADVANCED_FEATURES_GUIDE.md` — Watch, STQ, notification deep-dive
+- `docs/ADVANCED_FEATURES_GUIDE.md` — Watch, Beat the Crowd (STQ), notification deep-dive

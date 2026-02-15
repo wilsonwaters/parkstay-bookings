@@ -6,8 +6,8 @@ import ToastContainer, { useToast } from '../../components/Toast';
 import ComingSoonBanner from '../../components/ComingSoonBanner';
 
 /**
- * Skip The Queue Page
- * Lists all STQ entries and allows creating new ones
+ * Beat the Crowd Page
+ * Lists all advance-booking entries and allows creating new ones
  */
 export default function SkipTheQueuePage() {
   const [entries, setEntries] = useState<SkipTheQueueEntry[]>([]);
@@ -115,20 +115,20 @@ export default function SkipTheQueuePage() {
   };
 
   if (loading) {
-    return <LoadingSpinner size="lg" text="Loading Skip The Queue entries..." fullScreen />;
+    return <LoadingSpinner size="lg" text="Loading Beat the Crowd entries..." fullScreen />;
   }
 
   return (
     <>
       <div className="p-6">
         {/* Coming Soon Banner */}
-        <ComingSoonBanner featureName="Skip The Queue" />
+        <ComingSoonBanner featureName="Beat the Crowd" />
 
         <div className="mb-6 flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold">Skip The Queue</h1>
+            <h1 className="text-3xl font-bold">Beat the Crowd</h1>
             <p className="text-gray-600 mt-1">
-              Automatically rebook cancelled bookings
+              Book popular campsites well in advance by automatically rebooking as the 180-day window moves
             </p>
           </div>
           <button
@@ -155,7 +155,7 @@ export default function SkipTheQueuePage() {
 
       {entries.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-gray-500 mb-4">No Skip The Queue entries found</p>
+          <p className="text-gray-500 mb-4">No Beat the Crowd entries found</p>
           <button
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
             onClick={() => {
@@ -262,8 +262,8 @@ export default function SkipTheQueuePage() {
       {/* Confirm Delete Dialog */}
       <ConfirmDialog
         isOpen={deleteConfirm.isOpen}
-        title="Delete STQ Entry"
-        message="Are you sure you want to delete this Skip The Queue entry? This action cannot be undone."
+        title="Delete Entry"
+        message="Are you sure you want to delete this Beat the Crowd entry? This action cannot be undone."
         confirmText="Delete"
         cancelText="Cancel"
         confirmVariant="danger"
