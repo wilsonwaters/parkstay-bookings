@@ -367,8 +367,7 @@ Beat the Crowd helps you manage bookings in advance of ParkStay's 180-day bookin
 1. **Start Early**: The earlier you set this up, the further ahead you can book
 2. **Check Frequently**: Use 1-hour interval to catch new dates promptly
 3. **Monitor Progress**: Check periodically to see attempts
-4. **Be Patient**: The 180-day window moves slowly — one day at a time
-5. **Backup Plan**: Always have an alternative plan
+4. **Backup Plan**: Always have an alternative plan
 
 ### When to Use Beat the Crowd
 
@@ -605,7 +604,6 @@ Customize the application to your preferences.
 2. **Check Frequently**: Use 1-hour interval for high-demand sites
 3. **Set High Max Attempts**: 1000+ attempts is reasonable
 4. **Check Progress**: Monitor attempt count regularly
-5. **Have Patience**: The 180-day window advances one day at a time
 
 ### Booking Management
 
@@ -675,7 +673,7 @@ A: A feature that helps you manage bookings in advance of ParkStay's 180-day boo
 A: When you want to book a high-demand campsite for dates that are more than 180 days away. It's ideal for peak season bookings at popular parks like Karijini or Cape Range.
 
 **Q: How long does Beat the Crowd take?**
-A: It depends on how far out your target dates are. The 180-day window advances one day at a time, so securing dates 6+ months out requires patience.
+A: It depends on how far out your target dates are. The 180-day window advances one day at a time.
 
 **Q: Can I run multiple entries?**
 A: Yes, but each uses resources. Limit to bookings you really care about.
