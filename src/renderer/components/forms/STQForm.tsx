@@ -266,9 +266,9 @@ const STQForm: React.FC<STQFormProps> = ({
           <div className="ml-3">
             <h4 className="text-sm font-medium text-green-900">About Beat the Crowd</h4>
             <p className="mt-1 text-sm text-green-700">
-              Beat the Crowd works around ParkStay's 180-day booking limit by automatically
-              cancelling and rebooking your reservation as the window advances — letting you
-              secure popular campsites well before others can book them. This feature requires
+              Beat the Crowd helps you manage bookings in advance of ParkStay's 180-day booking
+              limit by automatically cancelling and rebooking your reservation as the window
+              advances — letting you secure popular campsites well before others can book them. This feature requires
               valid ParkStay credentials.
             </p>
           </div>

@@ -108,10 +108,10 @@ const CreateSTQ: React.FC = () => {
             <div className="ml-3">
               <h4 className="text-sm font-medium text-blue-900">What is Beat the Crowd?</h4>
               <p className="mt-1 text-sm text-blue-700">
-                ParkStay only allows bookings up to 180 days in advance. Beat the Crowd works around
-                this by booking a site now, then automatically cancelling and rebooking as you approach
-                the 180-day limit — pushing your reservation further into the future and securing
-                popular campsites before anyone else can book them.
+                ParkStay only allows bookings up to 180 days in advance. Beat the Crowd helps you
+                manage bookings ahead of this limit by booking a site now, then automatically
+                cancelling and rebooking as you approach the 180-day limit — pushing your reservation
+                further into the future and securing popular campsites before anyone else can book them.
               </p>
             </div>
           </div>

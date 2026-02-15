@@ -39,7 +39,7 @@ Welcome to WA ParkStay Bookings! This desktop application helps you automate cam
 - Configure SMTP settings or use Gmail OAuth2 in the Settings page
 
 **Beat the Crowd (coming soon):**
-- Book popular campsites well in advance by working around ParkStay's 180-day booking limit
+- Book popular campsites well in advance of ParkStay's 180-day booking limit
 - Automatically cancel and rebook your reservation as the booking window advances
 - Secure high-demand sites before anyone else can book them
 
@@ -295,7 +295,7 @@ When a watch finds availability:
 
 > **Note:** The Beat the Crowd page is temporarily disabled in the sidebar while it is being finalized. The underlying service is implemented and will be re-enabled soon.
 
-Beat the Crowd helps you secure popular campsites well in advance by working around ParkStay's 180-day booking limit. ParkStay only allows bookings up to 180 days ahead, which means high-demand sites (like Karijini or Cape Range during school holidays) are snapped up the moment they become available. Beat the Crowd works around this by booking a site now, then automatically cancelling and rebooking as you approach the 180-day limit — effectively pushing your reservation further into the future before anyone else can book those dates.
+Beat the Crowd helps you manage bookings in advance of ParkStay's 180-day booking limit, securing popular campsites before anyone else can book them. ParkStay only allows bookings up to 180 days ahead, which means high-demand sites (like Karijini or Cape Range during school holidays) are snapped up the moment they become available. Beat the Crowd handles this by booking a site now, then automatically cancelling and rebooking as you approach the 180-day limit — effectively pushing your reservation further into the future before anyone else can book those dates.
 
 ### How Beat the Crowd Works
 
@@ -669,7 +669,7 @@ A: Be patient. Some sites rarely have availability. Consider alternative dates o
 ### Beat the Crowd Questions
 
 **Q: What is Beat the Crowd?**
-A: A feature that works around ParkStay's 180-day booking limit by automatically cancelling and rebooking your reservation as the booking window advances, letting you secure popular campsites well before others can book them.
+A: A feature that helps you manage bookings in advance of ParkStay's 180-day booking limit by automatically cancelling and rebooking your reservation as the booking window advances, letting you secure popular campsites well before others can book them.
 
 **Q: When should I use Beat the Crowd?**
 A: When you want to book a high-demand campsite for dates that are more than 180 days away. It's ideal for peak season bookings at popular parks like Karijini or Cape Range.

@@ -86,7 +86,7 @@ await window.api.watch.delete(watchId);
 
 ## Beat the Crowd System
 
-Beat the Crowd works around ParkStay's 180-day booking limit by automatically cancelling and rebooking your reservation as the booking window advances. This lets you secure popular campsites well before others can book them.
+Beat the Crowd helps you manage bookings in advance of ParkStay's 180-day booking limit by automatically cancelling and rebooking your reservation as the booking window advances. This lets you secure popular campsites well before others can book them.
 
 ### Creating an Entry
 
