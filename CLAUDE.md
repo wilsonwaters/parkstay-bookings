@@ -124,10 +124,21 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 ## Testing
 
 - **Framework:** Jest 29 (unit/integration), Playwright (E2E)
-- **Config:** `jest.config.js` — coverage threshold: 50% (branches, functions, lines, statements)
+- **Config:** `jest.config.js` — coverage thresholds: branches 9%, functions 17%, lines 16%, statements 16%
 - **Test locations:** `tests/unit/`, `tests/integration/`, `tests/e2e/`, plus co-located `*.test.tsx` in `src/`
 - **Fixtures:** `tests/fixtures/` (users, bookings, watches, stq)
 - **Helpers:** `tests/utils/` (database-helper, mock-api, test-helpers)
+
+## Pre-Commit Checklist
+
+Before committing any changes, **always** run these checks and fix any failures:
+
+1. `npm run lint` — ESLint must pass with 0 errors (warnings are acceptable)
+2. `npm run format:check` — Prettier formatting must pass; run `npx prettier --write "src/**/*.{ts,tsx}" "tests/**/*.{ts,tsx}"` to fix
+3. `npm run type-check` — TypeScript must compile without errors
+4. `npm run test` — All unit/integration tests must pass
+
+Do NOT commit code that fails any of these checks. CI enforces all four.
 
 ## Git & PR Conventions
 
