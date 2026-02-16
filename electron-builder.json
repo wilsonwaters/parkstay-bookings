@@ -17,11 +17,6 @@
       "from": "resources/icons",
       "to": "icons",
       "filter": ["**/*"]
-    },
-    {
-      "from": "resources/sounds",
-      "to": "sounds",
-      "filter": ["**/*"]
     }
   ],
   "mac": {

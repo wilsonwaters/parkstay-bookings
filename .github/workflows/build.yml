@@ -97,18 +97,13 @@ jobs:
         shell: pwsh
 
       - name: Build Windows installer
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if ("${{ secrets.CSC_LINK }}" -ne "") {
             $env:CSC_LINK = "${{ secrets.CSC_LINK }}"
             $env:CSC_KEY_PASSWORD = "${{ secrets.CSC_KEY_PASSWORD }}"
           }
-          if ("${{ github.event_name }}" -eq "push" -and "${{ github.ref }}" -like "refs/tags/*") {
-            npm run release:win
-          } else {
-            npm run build:win
-          }
+          npx electron-builder --win --publish never
+        shell: pwsh
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
