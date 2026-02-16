@@ -49,10 +49,7 @@ test.describe('Bookings Management', () => {
     departureDate.setDate(departureDate.getDate() + 3);
 
     await page.fill('input[name="arrivalDate"]', arrivalDate.toISOString().split('T')[0]);
-    await page.fill(
-      'input[name="departureDate"]',
-      departureDate.toISOString().split('T')[0]
-    );
+    await page.fill('input[name="departureDate"]', departureDate.toISOString().split('T')[0]);
 
     await page.fill('input[name="numGuests"]', '2');
     await page.fill('input[name="totalCost"]', '105.00');
@@ -139,9 +136,7 @@ test.describe('Bookings Management', () => {
 
     // Should show confirmation dialog
     await expect(page.locator('.confirm-dialog')).toBeVisible();
-    await expect(page.locator('.confirm-dialog')).toContainText(
-      'Are you sure you want to cancel'
-    );
+    await expect(page.locator('.confirm-dialog')).toContainText('Are you sure you want to cancel');
 
     // Confirm cancellation
     await page.click('.confirm-dialog button:has-text("Confirm")');

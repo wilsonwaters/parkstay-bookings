@@ -50,7 +50,7 @@ describe('Booking Schema Validation', () => {
         arrivalDate: new Date('2024-06-01'),
         departureDate: new Date('2024-06-03'),
         numGuests: 2,
-        totalCost: 150.50,
+        totalCost: 150.5,
         notes: 'Early check-in requested',
       };
 

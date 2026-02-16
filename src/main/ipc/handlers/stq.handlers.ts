@@ -34,17 +34,14 @@ export function registerSTQHandlers(stqService: STQService, jobScheduler: JobSch
   });
 
   // List STQ entries
-  ipcMain.handle(
-    IPC_CHANNELS.STQ_LIST,
-    async (_event: IpcMainInvokeEvent, userId: number) => {
-      try {
-        const entries = await stqService.list(userId);
-        return { success: true, data: entries };
-      } catch (error: any) {
-        return { success: false, error: error.message };
-      }
+  ipcMain.handle(IPC_CHANNELS.STQ_LIST, async (_event: IpcMainInvokeEvent, userId: number) => {
+    try {
+      const entries = await stqService.list(userId);
+      return { success: true, data: entries };
+    } catch (error: any) {
+      return { success: false, error: error.message };
     }
-  );
+  });
 
   // Update STQ entry
   ipcMain.handle(
@@ -74,34 +71,28 @@ export function registerSTQHandlers(stqService: STQService, jobScheduler: JobSch
   });
 
   // Activate STQ entry
-  ipcMain.handle(
-    IPC_CHANNELS.STQ_ACTIVATE,
-    async (_event: IpcMainInvokeEvent, id: number) => {
-      try {
-        await stqService.activate(id);
-        // Reschedule the STQ entry
-        await jobScheduler.rescheduleSTQ(id);
-        return { success: true };
-      } catch (error: any) {
-        return { success: false, error: error.message };
-      }
+  ipcMain.handle(IPC_CHANNELS.STQ_ACTIVATE, async (_event: IpcMainInvokeEvent, id: number) => {
+    try {
+      await stqService.activate(id);
+      // Reschedule the STQ entry
+      await jobScheduler.rescheduleSTQ(id);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
     }
-  );
+  });
 
   // Deactivate STQ entry
-  ipcMain.handle(
-    IPC_CHANNELS.STQ_DEACTIVATE,
-    async (_event: IpcMainInvokeEvent, id: number) => {
-      try {
-        await stqService.deactivate(id);
-        // Unschedule the STQ entry
-        jobScheduler.unscheduleSTQ(id);
-        return { success: true };
-      } catch (error: any) {
-        return { success: false, error: error.message };
-      }
+  ipcMain.handle(IPC_CHANNELS.STQ_DEACTIVATE, async (_event: IpcMainInvokeEvent, id: number) => {
+    try {
+      await stqService.deactivate(id);
+      // Unschedule the STQ entry
+      jobScheduler.unscheduleSTQ(id);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
     }
-  );
+  });
 
   // Execute STQ entry immediately
   ipcMain.handle(IPC_CHANNELS.STQ_EXECUTE, async (_event: IpcMainInvokeEvent, id: number) => {

@@ -7,7 +7,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { Watch, WatchExecutionResult } from '../../../shared/types/watch.types';
-import { AvailabilityCheckResult } from '../../../shared/types/api.types';
 import AvailabilityGrid from '../../components/AvailabilityGrid';
 
 const WatchDetail: React.FC = () => {
@@ -19,7 +18,6 @@ const WatchDetail: React.FC = () => {
   const [isChecking, setIsChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [executionResult, setExecutionResult] = useState<WatchExecutionResult | null>(null);
-  const [availabilityData, setAvailabilityData] = useState<AvailabilityCheckResult | null>(null);
 
   // Load watch data
   const loadWatch = useCallback(async () => {
@@ -70,35 +68,6 @@ const WatchDetail: React.FC = () => {
       if (response.success && response.data) {
         setExecutionResult(response.data);
         // Reload watch to get updated lastCheckedAt
-        loadWatch();
-      } else {
-        setError(response.error || 'Failed to check availability');
-      }
-    } catch (err: any) {
-      setError(err.message || 'An error occurred while checking availability');
-    } finally {
-      setIsChecking(false);
-    }
-  };
-
-  // Direct availability check (more detailed)
-  const handleDetailedCheck = async () => {
-    if (!watch) return;
-
-    try {
-      setIsChecking(true);
-      setError(null);
-
-      const response = await window.api.parkstay.checkAvailability(watch.campgroundId, {
-        arrivalDate: watch.arrivalDate.toString(),
-        departureDate: watch.departureDate.toString(),
-        numGuests: watch.numGuests,
-        siteType: watch.siteType,
-      });
-
-      if (response.success && response.data) {
-        setAvailabilityData(response.data);
-        // Reload watch to update timestamp
         loadWatch();
       } else {
         setError(response.error || 'Failed to check availability');
@@ -167,9 +136,7 @@ const WatchDetail: React.FC = () => {
         <div className="flex items-center space-x-3">
           <span
             className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
-              watch.isActive
-                ? 'bg-green-100 text-green-800'
-                : 'bg-gray-100 text-gray-800'
+              watch.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
             }`}
           >
             {watch.isActive ? 'Active' : 'Inactive'}
@@ -177,10 +144,7 @@ const WatchDetail: React.FC = () => {
           <button onClick={handleToggleActive} className="btn-secondary">
             {watch.isActive ? 'Deactivate' : 'Activate'}
           </button>
-          <button
-            onClick={() => navigate(`/watches/${watch.id}/edit`)}
-            className="btn-secondary"
-          >
+          <button onClick={() => navigate(`/watches/${watch.id}/edit`)} className="btn-secondary">
             Edit
           </button>
         </div>
@@ -235,7 +199,9 @@ const WatchDetail: React.FC = () => {
           <div className="space-y-2">
             <div>
               <span className="text-sm text-gray-500">Check Interval:</span>
-              <p className="font-medium text-gray-900">Every {watch.checkIntervalMinutes} minutes</p>
+              <p className="font-medium text-gray-900">
+                Every {watch.checkIntervalMinutes} minutes
+              </p>
             </div>
             <div>
               <span className="text-sm text-gray-500">Auto-book:</span>
@@ -265,9 +231,7 @@ const WatchDetail: React.FC = () => {
             <div>
               <span className="text-sm text-gray-500">Last Checked:</span>
               <p className="font-medium text-gray-900">
-                {watch.lastCheckedAt
-                  ? format(new Date(watch.lastCheckedAt), 'PPp')
-                  : 'Never'}
+                {watch.lastCheckedAt ? format(new Date(watch.lastCheckedAt), 'PPp') : 'Never'}
               </p>
             </div>
             <div>
@@ -291,16 +255,27 @@ const WatchDetail: React.FC = () => {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-gray-900">Availability</h2>
           <div className="flex space-x-3">
-            <button
-              onClick={handleCheckNow}
-              disabled={isChecking}
-              className="btn-primary"
-            >
+            <button onClick={handleCheckNow} disabled={isChecking} className="btn-primary">
               {isChecking ? (
                 <>
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <svg
+                    className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
                   </svg>
                   Checking...
                 </>
@@ -313,12 +288,22 @@ const WatchDetail: React.FC = () => {
 
         {/* Execution Result Info */}
         {executionResult && (
-          <div className={`mb-4 p-3 rounded-lg ${executionResult.found ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
+          <div
+            className={`mb-4 p-3 rounded-lg ${executionResult.found ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}
+          >
             <div className="flex items-center">
               {executionResult.found ? (
                 <>
-                  <svg className="h-5 w-5 text-green-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  <svg
+                    className="h-5 w-5 text-green-500 mr-2"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
                   </svg>
                   <span className="text-green-800 font-medium">
                     Availability found! {executionResult.availability?.length || 0} matching site(s)
@@ -326,8 +311,16 @@ const WatchDetail: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <svg className="h-5 w-5 text-yellow-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  <svg
+                    className="h-5 w-5 text-yellow-500 mr-2"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                      clipRule="evenodd"
+                    />
                   </svg>
                   <span className="text-yellow-800 font-medium">
                     No matching availability found
@@ -346,7 +339,11 @@ const WatchDetail: React.FC = () => {
           <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200">
             <div className="flex items-center">
               <svg className="h-5 w-5 text-blue-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                <path
+                  fillRule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                  clipRule="evenodd"
+                />
               </svg>
               <span className="text-blue-800 font-medium">
                 Last check found {watch.lastAvailability.length} matching site(s)
@@ -360,26 +357,29 @@ const WatchDetail: React.FC = () => {
           </div>
         )}
 
-        {!executionResult && (!watch.lastAvailability || watch.lastAvailability.length === 0) && watch.lastCheckedAt && (
-          <div className="mb-4 p-3 rounded-lg bg-gray-50 border border-gray-200">
-            <div className="flex items-center">
-              <svg className="h-5 w-5 text-gray-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-              </svg>
-              <span className="text-gray-700">
-                No matching availability found in last check
-              </span>
-              <span className="ml-auto text-sm text-gray-500">
-                As of {format(new Date(watch.lastCheckedAt), 'PPp')}
-              </span>
+        {!executionResult &&
+          (!watch.lastAvailability || watch.lastAvailability.length === 0) &&
+          watch.lastCheckedAt && (
+            <div className="mb-4 p-3 rounded-lg bg-gray-50 border border-gray-200">
+              <div className="flex items-center">
+                <svg className="h-5 w-5 text-gray-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span className="text-gray-700">No matching availability found in last check</span>
+                <span className="ml-auto text-sm text-gray-500">
+                  As of {format(new Date(watch.lastCheckedAt), 'PPp')}
+                </span>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
         {/* Availability Grid - show executionResult if available, otherwise show stored lastAvailability */}
         <AvailabilityGrid
           watchResults={executionResult?.availability || watch.lastAvailability}
-          availabilityData={availabilityData || undefined}
           arrivalDate={watch.arrivalDate}
           departureDate={watch.departureDate}
           isLoading={isChecking}
@@ -389,9 +389,7 @@ const WatchDetail: React.FC = () => {
       {/* Notes */}
       {watch.notes && (
         <div className="card">
-          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">
-            Notes
-          </h3>
+          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">Notes</h3>
           <p className="text-gray-700 whitespace-pre-wrap">{watch.notes}</p>
         </div>
       )}

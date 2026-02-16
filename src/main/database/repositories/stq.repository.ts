@@ -94,9 +94,7 @@ export class STQRepository extends BaseRepository<SkipTheQueueEntry> {
    */
   findDueForCheck(): SkipTheQueueEntry[] {
     const now = new Date().toISOString();
-    return this.findWhere('is_active = 1 AND (next_check_at IS NULL OR next_check_at <= ?)', [
-      now,
-    ]);
+    return this.findWhere('is_active = 1 AND (next_check_at IS NULL OR next_check_at <= ?)', [now]);
   }
 
   /**

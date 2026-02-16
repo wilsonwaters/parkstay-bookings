@@ -40,8 +40,10 @@ export class NotificationDispatcher {
     // Load configurations from database
     this.loadProviderConfigurations();
 
-    logger.info('Notification dispatcher initialized with providers:',
-      Array.from(this.providers.keys()));
+    logger.info(
+      'Notification dispatcher initialized with providers:',
+      Array.from(this.providers.keys())
+    );
   }
 
   /**

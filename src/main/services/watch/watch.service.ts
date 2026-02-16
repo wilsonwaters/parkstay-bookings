@@ -13,10 +13,7 @@ export class WatchService {
   private parkStayService: ParkStayService;
   private notificationService: NotificationService;
 
-  constructor(
-    parkStayService: ParkStayService,
-    notificationService: NotificationService
-  ) {
+  constructor(parkStayService: ParkStayService, notificationService: NotificationService) {
     this.watchRepo = new WatchRepository();
     this.parkStayService = parkStayService;
     this.notificationService = notificationService;
@@ -113,16 +110,13 @@ export class WatchService {
       }
 
       // Check availability via ParkStay API
-      const availabilityResult = await this.parkStayService.checkAvailability(
-        watch.campgroundId,
-        {
-          campgroundId: watch.campgroundId,
-          arrivalDate: watch.arrivalDate.toISOString().split('T')[0],
-          departureDate: watch.departureDate.toISOString().split('T')[0],
-          numGuests: watch.numGuests,
-          siteType: watch.siteType,
-        }
-      );
+      const availabilityResult = await this.parkStayService.checkAvailability(watch.campgroundId, {
+        campgroundId: watch.campgroundId,
+        arrivalDate: watch.arrivalDate.toISOString().split('T')[0],
+        departureDate: watch.departureDate.toISOString().split('T')[0],
+        numGuests: watch.numGuests,
+        siteType: watch.siteType,
+      });
 
       // Filter results based on preferences
       let matchingSites = availabilityResult.sites.filter((site) =>
@@ -131,9 +125,10 @@ export class WatchService {
 
       // Filter by preferred sites if specified
       if (watch.preferredSites && watch.preferredSites.length > 0) {
-        matchingSites = matchingSites.filter((site) =>
-          watch.preferredSites!.includes(site.siteId) ||
-          watch.preferredSites!.includes(site.siteName)
+        matchingSites = matchingSites.filter(
+          (site) =>
+            watch.preferredSites!.includes(site.siteId) ||
+            watch.preferredSites!.includes(site.siteName)
         );
       }
 
@@ -154,7 +149,11 @@ export class WatchService {
       const found = matchingSites.length > 0;
 
       // Update watch status
-      this.watchRepo.updateLastResult(watchId, found ? WatchResult.FOUND : WatchResult.NOT_FOUND, found);
+      this.watchRepo.updateLastResult(
+        watchId,
+        found ? WatchResult.FOUND : WatchResult.NOT_FOUND,
+        found
+      );
 
       // Update last availability results (store even if empty to show "no sites available")
       const availability: AvailabilityResult[] = matchingSites.map((site) => ({

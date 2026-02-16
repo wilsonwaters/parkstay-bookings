@@ -2,7 +2,11 @@ import { z } from 'zod';
 
 export const bookingSchema = z
   .object({
-    bookingReference: z.string().min(1).max(50).regex(/^[A-Z0-9]+$/),
+    bookingReference: z
+      .string()
+      .min(1)
+      .max(50)
+      .regex(/^[A-Z0-9]+$/),
     parkName: z.string().min(1).max(200),
     campgroundName: z.string().min(1).max(200),
     siteNumber: z.string().max(50).optional(),

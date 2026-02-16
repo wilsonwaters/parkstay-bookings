@@ -13,10 +13,7 @@ export class STQService {
   private parkStayService: ParkStayService;
   private notificationService: NotificationService;
 
-  constructor(
-    parkStayService: ParkStayService,
-    notificationService: NotificationService
-  ) {
+  constructor(parkStayService: ParkStayService, notificationService: NotificationService) {
     this.stqRepo = new STQRepository();
     this.parkStayService = parkStayService;
     this.notificationService = notificationService;
@@ -110,9 +107,7 @@ export class STQService {
       }
 
       // Get booking details to check current status
-      const bookingDetails = await this.parkStayService.getBookingDetails(
-        entry.bookingReference
-      );
+      const bookingDetails = await this.parkStayService.getBookingDetails(entry.bookingReference);
 
       // Check if booking is already cancelled
       if (bookingDetails.status === 'cancelled') {

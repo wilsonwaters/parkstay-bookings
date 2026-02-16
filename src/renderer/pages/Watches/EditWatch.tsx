@@ -76,7 +76,9 @@ const EditWatch: React.FC = () => {
   const handleDelete = async () => {
     if (!id) return;
 
-    if (window.confirm('Are you sure you want to delete this watch? This action cannot be undone.')) {
+    if (
+      window.confirm('Are you sure you want to delete this watch? This action cannot be undone.')
+    ) {
       try {
         const response = await window.api.watch.delete(parseInt(id));
         if (response.success) {
@@ -114,10 +116,7 @@ const EditWatch: React.FC = () => {
           <div className="flex">
             <div className="ml-3">
               <h3 className="text-sm font-medium text-red-800">{error}</h3>
-              <button
-                onClick={loadWatch}
-                className="mt-2 text-sm text-red-600 hover:text-red-500"
-              >
+              <button onClick={loadWatch} className="mt-2 text-sm text-red-600 hover:text-red-500">
                 Try again
               </button>
             </div>
@@ -140,14 +139,9 @@ const EditWatch: React.FC = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Edit Watch</h1>
-            <p className="mt-2 text-gray-600">
-              Update your availability watch settings
-            </p>
+            <p className="mt-2 text-gray-600">Update your availability watch settings</p>
           </div>
-          <button
-            onClick={handleDelete}
-            className="btn-danger"
-          >
+          <button onClick={handleDelete} className="btn-danger">
             Delete Watch
           </button>
         </div>
@@ -158,11 +152,7 @@ const EditWatch: React.FC = () => {
         <div className="rounded-md bg-red-50 p-4 border border-red-200">
           <div className="flex">
             <div className="flex-shrink-0">
-              <svg
-                className="h-5 w-5 text-red-400"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
+              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
                 <path
                   fillRule="evenodd"
                   d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
@@ -225,17 +215,13 @@ const EditWatch: React.FC = () => {
             <div>
               <p className="text-gray-500">Last Checked</p>
               <p className="font-medium text-gray-900">
-                {watch.lastCheckedAt
-                  ? new Date(watch.lastCheckedAt).toLocaleString()
-                  : 'Never'}
+                {watch.lastCheckedAt ? new Date(watch.lastCheckedAt).toLocaleString() : 'Never'}
               </p>
             </div>
             <div>
               <p className="text-gray-500">Next Check</p>
               <p className="font-medium text-gray-900">
-                {watch.nextCheckAt
-                  ? new Date(watch.nextCheckAt).toLocaleString()
-                  : 'Not scheduled'}
+                {watch.nextCheckAt ? new Date(watch.nextCheckAt).toLocaleString() : 'Not scheduled'}
               </p>
             </div>
           </div>

@@ -32,9 +32,7 @@ describe('Database Integration', () => {
     it('should have all required tables', () => {
       const db = dbHelper.getDb();
       const tables = db
-        .prepare(
-          "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-        )
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
         .all() as { name: string }[];
 
       const tableNames = tables.map((t) => t.name);

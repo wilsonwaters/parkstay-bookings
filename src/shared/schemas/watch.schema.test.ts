@@ -18,6 +18,8 @@ describe('Watch Schema Validation', () => {
         departureDate: nextWeek,
         numGuests: 4,
         checkIntervalMinutes: 60,
+        autoBook: false,
+        notifyOnly: true,
       };
 
       const result = watchSchema.safeParse(validInput);
@@ -75,7 +77,7 @@ describe('Watch Schema Validation', () => {
         departureDate: nextWeek,
         numGuests: 2,
         siteType: 'tent',
-        checkIntervalMinutes: 30,
+        checkIntervalMinutes: 60,
         autoBook: true,
         notifyOnly: false,
       };

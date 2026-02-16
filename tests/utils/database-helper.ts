@@ -6,12 +6,11 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { DatabaseManager } from '@main/database/Database';
+import { runMigrations, setDatabase } from '@main/database/connection';
 
 export class TestDatabaseHelper {
   private db: Database.Database | null = null;
   private dbPath: string;
-  private dbManager: DatabaseManager | null = null;
 
   constructor(testName?: string) {
     // Create unique test database for each test
@@ -23,31 +22,36 @@ export class TestDatabaseHelper {
   /**
    * Initialize test database
    */
-  async setup(): Promise<DatabaseManager> {
+  async setup(): Promise<Database.Database> {
     // Ensure test database directory exists
     const dbDir = path.dirname(this.dbPath);
     if (!fs.existsSync(dbDir)) {
       fs.mkdirSync(dbDir, { recursive: true });
     }
 
-    // Create database manager
-    this.dbManager = new DatabaseManager(this.dbPath);
-    await this.dbManager.initialize();
-    await this.dbManager.seedDefaultSettings();
+    this.db = new Database(this.dbPath);
+    this.db.pragma('journal_mode = WAL');
+    this.db.pragma('foreign_keys = ON');
 
-    this.db = this.dbManager.getDb();
-    return this.dbManager;
+    // Load and execute the production schema
+    const schemaPath = path.join(__dirname, '../../src/main/database/schema.sql');
+    const schema = fs.readFileSync(schemaPath, 'utf-8');
+    this.db.exec(schema);
+
+    // Run production migrations
+    runMigrations(this.db);
+
+    // Set as global db so repos using getDatabase() work
+    setDatabase(this.db);
+
+    return this.db;
   }
 
   /**
    * Clean up test database
    */
   async teardown(): Promise<void> {
-    if (this.dbManager) {
-      this.dbManager.close();
-      this.dbManager = null;
-    }
-
+    setDatabase(null);
     if (this.db) {
       this.db.close();
       this.db = null;
@@ -76,13 +80,10 @@ export class TestDatabaseHelper {
   }
 
   /**
-   * Get database manager
+   * Get database manager (deprecated - use getDb() instead)
    */
-  getDbManager(): DatabaseManager {
-    if (!this.dbManager) {
-      throw new Error('Database manager not initialized. Call setup() first.');
-    }
-    return this.dbManager;
+  getDbManager(): Database.Database {
+    return this.getDb();
   }
 
   /**
@@ -115,9 +116,6 @@ export class TestDatabaseHelper {
    */
   async reset(): Promise<void> {
     this.clearAllData();
-    if (this.dbManager) {
-      await this.dbManager.seedDefaultSettings();
-    }
   }
 
   /**

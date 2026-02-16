@@ -47,7 +47,8 @@ const CreateSTQ: React.FC = () => {
         </button>
         <h1 className="text-3xl font-bold text-gray-900">Create Beat the Crowd Entry</h1>
         <p className="mt-2 text-gray-600">
-          Automatically cancel and rebook your reservation as the 180-day booking window advances, securing popular campsites well before others can book them
+          Automatically cancel and rebook your reservation as the 180-day booking window advances,
+          securing popular campsites well before others can book them
         </p>
       </div>
 
@@ -56,11 +57,7 @@ const CreateSTQ: React.FC = () => {
         <div className="rounded-md bg-red-50 p-4 border border-red-200">
           <div className="flex">
             <div className="flex-shrink-0">
-              <svg
-                className="h-5 w-5 text-red-400"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
+              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
                 <path
                   fillRule="evenodd"
                   d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
@@ -77,11 +74,7 @@ const CreateSTQ: React.FC = () => {
 
       {/* Form */}
       <div className="card">
-        <STQForm
-          onSubmit={handleSubmit}
-          onCancel={handleCancel}
-          submitLabel="Create STQ Entry"
-        />
+        <STQForm onSubmit={handleSubmit} onCancel={handleCancel} submitLabel="Create STQ Entry" />
       </div>
 
       {/* Success Toast */}
@@ -110,8 +103,9 @@ const CreateSTQ: React.FC = () => {
               <p className="mt-1 text-sm text-blue-700">
                 ParkStay only allows bookings up to 180 days in advance. Beat the Crowd helps you
                 manage bookings ahead of this limit by booking a site now, then automatically
-                cancelling and rebooking as you approach the 180-day limit — pushing your reservation
-                further into the future and securing popular campsites before anyone else can book them.
+                cancelling and rebooking as you approach the 180-day limit — pushing your
+                reservation further into the future and securing popular campsites before anyone
+                else can book them.
               </p>
             </div>
           </div>
@@ -125,9 +119,9 @@ const CreateSTQ: React.FC = () => {
             <div className="ml-3">
               <h4 className="text-sm font-medium text-yellow-900">Requirements</h4>
               <p className="mt-1 text-sm text-yellow-700">
-                You need a confirmed booking and valid ParkStay credentials set up in Settings.
-                The feature monitors your booking and automatically handles the cancel-and-rebook
-                cycle as the 180-day window advances.
+                You need a confirmed booking and valid ParkStay credentials set up in Settings. The
+                feature monitors your booking and automatically handles the cancel-and-rebook cycle
+                as the 180-day window advances.
               </p>
             </div>
           </div>
@@ -142,33 +136,28 @@ const CreateSTQ: React.FC = () => {
             <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-medium mr-3">
               1
             </span>
-            <span>
-              The app monitors your booking and the 180-day availability window
-            </span>
+            <span>The app monitors your booking and the 180-day availability window</span>
           </li>
           <li className="flex items-start">
             <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-medium mr-3">
               2
             </span>
             <span>
-              When new dates become available, it cancels your current booking and rebooks further out
+              When new dates become available, it cancels your current booking and rebooks further
+              out
             </span>
           </li>
           <li className="flex items-start">
             <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-medium mr-3">
               3
             </span>
-            <span>
-              You'll receive a notification with your new booking details
-            </span>
+            <span>You&apos;ll receive a notification with your new booking details</span>
           </li>
           <li className="flex items-start">
             <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-medium mr-3">
               4
             </span>
-            <span>
-              The monitoring stops after successful rebooking or max attempts reached
-            </span>
+            <span>The monitoring stops after successful rebooking or max attempts reached</span>
           </li>
         </ol>
       </div>

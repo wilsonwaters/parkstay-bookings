@@ -4,7 +4,7 @@
  */
 
 import { useForm } from 'react-hook-form';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { watchSchema, WatchSchemaType } from '../../../shared/schemas/watch.schema';
 import { Watch } from '../../../shared/types';
@@ -57,7 +57,7 @@ const WatchForm: React.FC<WatchFormProps> = ({
     setValue,
     formState: { errors },
   } = useForm<WatchSchemaType>({
-    resolver: zodResolver(watchSchema),
+    resolver: zodResolver(watchSchema) as any,
     defaultValues: {
       name: initialData?.name || '',
       parkId: initialData?.parkId || '',
@@ -147,9 +147,7 @@ const WatchForm: React.FC<WatchFormProps> = ({
           className="input"
           placeholder="e.g., Summer Holiday at Rottnest"
         />
-        {errors.name && (
-          <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
-        )}
+        {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>}
       </div>
 
       {/* Campground Search */}
@@ -194,7 +192,11 @@ const WatchForm: React.FC<WatchFormProps> = ({
                 value={campgroundSearchQuery}
                 onChange={(e) => setCampgroundSearchQuery(e.target.value)}
                 className="input"
-                placeholder={isLoadingCampgrounds ? 'Loading campgrounds...' : 'Type at least 2 characters to search...'}
+                placeholder={
+                  isLoadingCampgrounds
+                    ? 'Loading campgrounds...'
+                    : 'Type at least 2 characters to search...'
+                }
                 disabled={isLoadingCampgrounds}
               />
               {filteredCampgrounds.length > 0 && (
@@ -212,11 +214,13 @@ const WatchForm: React.FC<WatchFormProps> = ({
                   ))}
                 </div>
               )}
-              {campgroundSearchQuery.length >= 2 && filteredCampgrounds.length === 0 && !isLoadingCampgrounds && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg p-4 text-center text-gray-500">
-                  No campgrounds found matching "{campgroundSearchQuery}"
-                </div>
-              )}
+              {campgroundSearchQuery.length >= 2 &&
+                filteredCampgrounds.length === 0 &&
+                !isLoadingCampgrounds && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg p-4 text-center text-gray-500">
+                    No campgrounds found matching &quot;{campgroundSearchQuery}&quot;
+                  </div>
+                )}
             </>
           )}
         </div>
@@ -312,14 +316,15 @@ const WatchForm: React.FC<WatchFormProps> = ({
             placeholder="No limit"
           />
         </div>
-        {errors.maxPrice && (
-          <p className="mt-1 text-sm text-red-600">{errors.maxPrice.message}</p>
-        )}
+        {errors.maxPrice && <p className="mt-1 text-sm text-red-600">{errors.maxPrice.message}</p>}
       </div>
 
       {/* Check Interval */}
       <div>
-        <label htmlFor="checkIntervalMinutes" className="block text-sm font-medium text-gray-700 mb-1">
+        <label
+          htmlFor="checkIntervalMinutes"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
           Check Interval *
         </label>
         <select
@@ -356,9 +361,7 @@ const WatchForm: React.FC<WatchFormProps> = ({
             </p>
           </div>
         </div>
-        {errors.autoBook && (
-          <p className="mt-2 text-sm text-red-600">{errors.autoBook.message}</p>
-        )}
+        {errors.autoBook && <p className="mt-2 text-sm text-red-600">{errors.autoBook.message}</p>}
       </div>
 
       {/* Notification Preferences */}
@@ -375,9 +378,7 @@ const WatchForm: React.FC<WatchFormProps> = ({
               <label htmlFor="notifyOnly" className="text-sm font-medium text-gray-900">
                 Send Notifications
               </label>
-              <p className="text-sm text-gray-600 mt-1">
-                Get notified when availability is found
-              </p>
+              <p className="text-sm text-gray-600 mt-1">Get notified when availability is found</p>
             </div>
           </div>
         </div>
@@ -395,26 +396,15 @@ const WatchForm: React.FC<WatchFormProps> = ({
           className="input"
           placeholder="Add any additional notes or preferences..."
         />
-        {errors.notes && (
-          <p className="mt-1 text-sm text-red-600">{errors.notes.message}</p>
-        )}
+        {errors.notes && <p className="mt-1 text-sm text-red-600">{errors.notes.message}</p>}
       </div>
 
       {/* Form Actions */}
       <div className="flex items-center justify-end space-x-3 pt-4 border-t">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isSubmitting}
-          className="btn-secondary"
-        >
+        <button type="button" onClick={onCancel} disabled={isSubmitting} className="btn-secondary">
           Cancel
         </button>
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="btn-primary"
-        >
+        <button type="submit" disabled={isSubmitting} className="btn-primary">
           {isSubmitting ? 'Saving...' : submitLabel}
         </button>
       </div>

@@ -76,20 +76,28 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <div className={`rounded-md p-4 ${notInElectron ? 'bg-yellow-50' : 'bg-red-50'}`}>
               <div className="flex">
                 <div className="ml-3">
-                  <h3 className={`text-sm font-medium ${notInElectron ? 'text-yellow-800' : 'text-red-800'}`}>
+                  <h3
+                    className={`text-sm font-medium ${notInElectron ? 'text-yellow-800' : 'text-red-800'}`}
+                  >
                     {error}
                   </h3>
                   {notInElectron && (
                     <div className="mt-3 text-sm text-yellow-700">
                       <p className="font-semibold mb-2">To run this application:</p>
                       <ol className="list-decimal list-inside space-y-1">
-                        <li>Keep this dev server running (don't stop it)</li>
+                        <li>Keep this dev server running (don&apos;t stop it)</li>
                         <li>Open a new terminal</li>
-                        <li>Run: <code className="bg-yellow-100 px-1 rounded">npm start</code></li>
+                        <li>
+                          Run: <code className="bg-yellow-100 px-1 rounded">npm start</code>
+                        </li>
                         <li>The Electron app will open automatically</li>
                       </ol>
                       <p className="mt-2 text-xs">
-                        Or run <code className="bg-yellow-100 px-1 rounded">npm run build && npm run build:win</code> to create an installer.
+                        Or run{' '}
+                        <code className="bg-yellow-100 px-1 rounded">
+                          npm run build && npm run build:win
+                        </code>{' '}
+                        to create an installer.
                       </p>
                     </div>
                   )}

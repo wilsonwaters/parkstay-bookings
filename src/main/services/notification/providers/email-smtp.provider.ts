@@ -175,8 +175,7 @@ export class SMTPEmailProvider extends BaseNotificationProvider {
       let errorMessage = error.message || 'Connection test failed';
 
       if (error.code === 'EAUTH') {
-        errorMessage =
-          'Authentication failed. Please check your email and app password.';
+        errorMessage = 'Authentication failed. Please check your email and app password.';
       } else if (error.code === 'ECONNREFUSED') {
         errorMessage = 'Connection refused. Please check the SMTP host and port.';
       } else if (error.code === 'ETIMEDOUT') {
@@ -216,7 +215,8 @@ export class SMTPEmailProvider extends BaseNotificationProvider {
 
     // For Gmail/Outlook presets, username must be an email
     // For custom SMTP (or if preset is not set), username can be anything
-    const isPresetProvider = config.preset === SMTPPreset.GMAIL || config.preset === SMTPPreset.OUTLOOK;
+    const isPresetProvider =
+      config.preset === SMTPPreset.GMAIL || config.preset === SMTPPreset.OUTLOOK;
 
     if (isPresetProvider) {
       if (config.auth?.user && !this.isValidEmail(config.auth.user)) {
@@ -368,7 +368,12 @@ export class SMTPEmailProvider extends BaseNotificationProvider {
   /**
    * Apply SMTP preset configuration
    */
-  static applyPreset(preset: SMTPPreset, email: string, password: string, toEmail?: string): SMTPConfig {
+  static applyPreset(
+    preset: SMTPPreset,
+    email: string,
+    password: string,
+    toEmail?: string
+  ): SMTPConfig {
     const presetConfig = SMTP_PRESETS[preset];
     return {
       preset,

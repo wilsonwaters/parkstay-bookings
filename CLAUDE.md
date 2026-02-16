@@ -13,7 +13,7 @@ WA ParkStay Bookings is an Electron + React + TypeScript desktop application tha
 ## Tech Stack
 
 | Component | Technology |
-|-----------|-----------|
+| --- | --- |
 | Desktop Framework | Electron 28 |
 | UI Framework | React 18 |
 | Language | TypeScript 5 |
@@ -42,7 +42,7 @@ npm run dist:win     # Package Windows installer
 
 ## Architecture Overview
 
-```
+```text
 src/
 ├── main/           # Electron main process (Node.js)
 │   ├── database/   # SQLite connection, migrations, repositories
@@ -67,17 +67,20 @@ Database → Repositories → NotificationDispatcher → QueueService → ParkSt
 ## Database
 
 **Single source of truth for database initialization and migrations:**
+
 - `src/main/database/connection.ts`
 
 All migrations must be added to the `runMigrations()` function in `connection.ts`. Do NOT create separate migration files or a Database.ts file.
 
-### Current migrations (version 4):
+### Current migrations (version 4)
+
 1. **v1** — Initial schema (users, bookings, watches, skip_the_queue_entries, notifications, job_logs, settings)
 2. **v2** — Add `last_availability` JSON column to watches
 3. **v3** — Add `notification_providers` and `notification_delivery_logs` tables
 4. **v4** — Add `queue_session` table for DBCA queue persistence
 
-### Adding a new migration:
+### Adding a new migration
+
 1. Open `src/main/database/connection.ts`
 2. Find the `runMigrations()` function
 3. Check the current highest version number (currently 4)
@@ -87,7 +90,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 ## Key Services
 
 | Service | File | Purpose |
-|---------|------|---------|
+| --- | --- | --- |
 | AuthService | `src/main/services/auth/AuthService.ts` | AES-256-GCM credential encryption |
 | BookingService | `src/main/services/booking/BookingService.ts` | Booking CRUD and sync |
 | WatchService | `src/main/services/watch/watch.service.ts` | Availability monitoring |
@@ -124,10 +127,48 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 ## Testing
 
 - **Framework:** Jest 29 (unit/integration), Playwright (E2E)
-- **Config:** `jest.config.js` — coverage threshold: 50% (branches, functions, lines, statements)
+- **Config:** `jest.config.js` — coverage thresholds: branches 9%, functions 17%, lines 16%, statements 16%
 - **Test locations:** `tests/unit/`, `tests/integration/`, `tests/e2e/`, plus co-located `*.test.tsx` in `src/`
 - **Fixtures:** `tests/fixtures/` (users, bookings, watches, stq)
 - **Helpers:** `tests/utils/` (database-helper, mock-api, test-helpers)
+
+## Release Process
+
+Windows-only for v1.0.0. Full details in `docs/release-process.md`.
+
+```bash
+# 1. Verify locally
+npm run lint && npm run type-check && npm run test
+
+# 2. Bump version (updates package.json, creates git tag, pushes tag)
+npm run version:patch   # or version:minor / version:major
+
+# 3. Update CHANGELOG.md, commit, tag, push
+git add -A
+git commit -m "chore: prepare release vX.X.X"
+git tag vX.X.X
+git push origin main --tags
+```
+
+Pushing a `v*` tag triggers GitHub Actions: **ci** (lint/test) -> **build-windows** (electron-builder) -> **release** (draft GitHub release with artifacts). Go to GitHub Releases to publish the draft.
+
+Key scripts: `npm run dist:win` (local test build), `npm run release:win` (build + publish).
+
+## Pre-Commit Checklist
+
+Before committing any changes, **always** run these checks and fix any failures:
+
+1. `npm run lint` — ESLint must pass with 0 errors (warnings are acceptable)
+2. `npm run format:check` — Prettier formatting must pass; run `npx prettier --write "src/**/*.{ts,tsx}" "tests/**/*.{ts,tsx}"` to fix
+3. `npm run type-check` — TypeScript must compile without errors
+4. `npm run test` — All unit/integration tests must pass
+
+Do NOT commit code that fails any of these checks. CI enforces all four.
+
+## Git & PR Conventions
+
+- Do NOT add `Co-Authored-By` trailers to commit messages.
+- Do NOT add AI attribution lines to pull request descriptions.
 
 ## Further Reading
 

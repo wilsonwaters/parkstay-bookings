@@ -113,7 +113,8 @@ const STQForm: React.FC<STQFormProps> = ({
         ) : bookings.length === 0 ? (
           <div className="rounded-md bg-yellow-50 p-4 border border-yellow-200">
             <p className="text-sm text-yellow-800">
-              No eligible bookings found. You need a confirmed upcoming booking to use Beat the Crowd.
+              No eligible bookings found. You need a confirmed upcoming booking to use Beat the
+              Crowd.
             </p>
           </div>
         ) : (
@@ -147,7 +148,10 @@ const STQForm: React.FC<STQFormProps> = ({
       {/* Booking Reference (read-only) */}
       {selectedBooking && (
         <div>
-          <label htmlFor="bookingReference" className="block text-sm font-medium text-gray-700 mb-1">
+          <label
+            htmlFor="bookingReference"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
             Booking Reference *
           </label>
           <input
@@ -197,7 +201,10 @@ const STQForm: React.FC<STQFormProps> = ({
 
       {/* Check Interval */}
       <div>
-        <label htmlFor="checkIntervalMinutes" className="block text-sm font-medium text-gray-700 mb-1">
+        <label
+          htmlFor="checkIntervalMinutes"
+          className="block text-sm font-medium text-gray-700 mb-1"
+        >
           Check Interval *
         </label>
         <select
@@ -252,9 +259,7 @@ const STQForm: React.FC<STQFormProps> = ({
           className="input"
           placeholder="Add any additional notes..."
         />
-        {errors.notes && (
-          <p className="mt-1 text-sm text-red-600">{errors.notes.message}</p>
-        )}
+        {errors.notes && <p className="mt-1 text-sm text-red-600">{errors.notes.message}</p>}
       </div>
 
       {/* Info Box */}
@@ -266,10 +271,10 @@ const STQForm: React.FC<STQFormProps> = ({
           <div className="ml-3">
             <h4 className="text-sm font-medium text-green-900">About Beat the Crowd</h4>
             <p className="mt-1 text-sm text-green-700">
-              Beat the Crowd helps you manage bookings in advance of ParkStay's 180-day booking
+              Beat the Crowd helps you manage bookings in advance of ParkStay&apos;s 180-day booking
               limit by automatically cancelling and rebooking your reservation as the window
-              advances — letting you secure popular campsites well before others can book them. This feature requires
-              valid ParkStay credentials.
+              advances — letting you secure popular campsites well before others can book them. This
+              feature requires valid ParkStay credentials.
             </p>
           </div>
         </div>
@@ -277,12 +282,7 @@ const STQForm: React.FC<STQFormProps> = ({
 
       {/* Form Actions */}
       <div className="flex items-center justify-end space-x-3 pt-4 border-t">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isSubmitting}
-          className="btn-secondary"
-        >
+        <button type="button" onClick={onCancel} disabled={isSubmitting} className="btn-secondary">
           Cancel
         </button>
         <button

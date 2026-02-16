@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 yarn.lock
 
 # Build output
@@ -85,6 +84,9 @@ temp/
 playwright-report/
 test-results/
 .playwright/
+
+# Claude Code
+.claude/settings.local.json
 
 # Temporary output files
 nul

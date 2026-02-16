@@ -211,9 +211,7 @@ export class BookingRepository extends BaseRepository<Booking> {
       if (updates.arrivalDate || updates.departureDate) {
         const current = this.findById(id);
         if (current) {
-          const arrival = updates.arrivalDate
-            ? new Date(updates.arrivalDate)
-            : current.arrivalDate;
+          const arrival = updates.arrivalDate ? new Date(updates.arrivalDate) : current.arrivalDate;
           const departure = updates.departureDate
             ? new Date(updates.departureDate)
             : current.departureDate;
@@ -266,7 +264,9 @@ export class BookingRepository extends BaseRepository<Booking> {
    */
   markSynced(id: number): Booking | null {
     try {
-      const stmt = this.db.prepare('UPDATE bookings SET synced_at = CURRENT_TIMESTAMP WHERE id = ?');
+      const stmt = this.db.prepare(
+        'UPDATE bookings SET synced_at = CURRENT_TIMESTAMP WHERE id = ?'
+      );
       stmt.run(id);
 
       logger.info(`Booking marked as synced: ID ${id}`);
@@ -283,13 +283,15 @@ export class BookingRepository extends BaseRepository<Booking> {
   findUpcoming(userId: number): Booking[] {
     try {
       const rows = this.db
-        .prepare(`
+        .prepare(
+          `
           SELECT * FROM bookings
           WHERE user_id = ?
             AND arrival_date >= date('now')
             AND status = 'confirmed'
           ORDER BY arrival_date ASC
-        `)
+        `
+        )
         .all(userId);
       return rows.map((row) => this.mapRowToModel(row as BookingRow));
     } catch (error) {
@@ -304,12 +306,14 @@ export class BookingRepository extends BaseRepository<Booking> {
   findPast(userId: number): Booking[] {
     try {
       const rows = this.db
-        .prepare(`
+        .prepare(
+          `
           SELECT * FROM bookings
           WHERE user_id = ?
             AND departure_date < date('now')
           ORDER BY departure_date DESC
-        `)
+        `
+        )
         .all(userId);
       return rows.map((row) => this.mapRowToModel(row as BookingRow));
     } catch (error) {

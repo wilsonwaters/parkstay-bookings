@@ -65,9 +65,7 @@ const NotificationBell: React.FC = () => {
     try {
       const response = await window.api.notification.markRead(id);
       if (response.success) {
-        setNotifications((prev) =>
-          prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
-        );
+        setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
       }
     } catch (error) {
       console.error('Failed to mark notification as read:', error);

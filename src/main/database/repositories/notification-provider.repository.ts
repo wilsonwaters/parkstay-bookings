@@ -250,18 +250,16 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
   /**
    * Update provider status
    */
-  updateStatus(
-    channel: NotificationChannel,
-    status: ProviderStatus,
-    error?: string
-  ): void {
+  updateStatus(channel: NotificationChannel, status: ProviderStatus, error?: string): void {
     try {
       this.db
-        .prepare(`
+        .prepare(
+          `
           UPDATE notification_providers
           SET status = ?, last_error = ?
           WHERE channel = ?
-        `)
+        `
+        )
         .run(status, error || null, channel);
     } catch (err) {
       logger.error(`Error updating provider status ${channel}:`, err);
@@ -275,18 +273,16 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
   updateLastTested(channel: NotificationChannel, success: boolean, error?: string): void {
     try {
       this.db
-        .prepare(`
+        .prepare(
+          `
           UPDATE notification_providers
           SET last_tested_at = CURRENT_TIMESTAMP,
               status = ?,
               last_error = ?
           WHERE channel = ?
-        `)
-        .run(
-          success ? ProviderStatus.CONFIGURED : ProviderStatus.ERROR,
-          error || null,
-          channel
-        );
+        `
+        )
+        .run(success ? ProviderStatus.CONFIGURED : ProviderStatus.ERROR, error || null, channel);
     } catch (err) {
       logger.error(`Error updating last tested for ${channel}:`, err);
       throw err;
@@ -379,10 +375,12 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
   cleanupDeliveryLogs(daysOld: number = 30): number {
     try {
       const result = this.db
-        .prepare(`
+        .prepare(
+          `
           DELETE FROM notification_delivery_logs
           WHERE created_at < datetime('now', '-' || ? || ' days')
-        `)
+        `
+        )
         .run(daysOld);
       return result.changes;
     } catch (error) {

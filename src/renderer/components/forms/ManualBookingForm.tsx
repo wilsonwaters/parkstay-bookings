@@ -13,7 +13,6 @@ interface ManualBookingFormProps {
   onCancel: () => void;
 }
 
-
 const ManualBookingForm: React.FC<ManualBookingFormProps> = ({ onSuccess, onCancel }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -259,12 +258,7 @@ const ManualBookingForm: React.FC<ManualBookingFormProps> = ({ onSuccess, onCanc
 
       {/* Form Actions */}
       <div className="flex items-center justify-end space-x-3 pt-4 border-t">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isSubmitting}
-          className="btn-secondary"
-        >
+        <button type="button" onClick={onCancel} disabled={isSubmitting} className="btn-secondary">
           Cancel
         </button>
         <button type="submit" disabled={isSubmitting} className="btn-primary">

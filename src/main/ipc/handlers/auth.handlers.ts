@@ -15,10 +15,7 @@ export function registerAuthHandlers(authService: AuthService): void {
    */
   ipcMain.handle(
     IPC_CHANNELS.AUTH_STORE_CREDENTIALS,
-    async (
-      _event: IpcMainInvokeEvent,
-      credentials: UserInput
-    ): Promise<APIResponse<boolean>> => {
+    async (_event: IpcMainInvokeEvent, credentials: UserInput): Promise<APIResponse<boolean>> => {
       try {
         // Validate credentials
         const validation = authService.validateCredentials(credentials);

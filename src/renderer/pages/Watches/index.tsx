@@ -144,104 +144,96 @@ export default function WatchesPage() {
           </div>
         )}
 
-      {watches.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-gray-500 mb-4">No watches found</p>
-          <button
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            onClick={() => navigate('/watches/create')}
-          >
-            Create Your First Watch
-          </button>
-        </div>
-      ) : (
-        <div className="grid gap-4">
-          {watches.map((watch) => (
-            <div
-              key={watch.id}
-              className="border rounded-lg p-4 bg-white shadow-sm"
+        {watches.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-500 mb-4">No watches found</p>
+            <button
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              onClick={() => navigate('/watches/create')}
             >
-              <div className="flex justify-between items-start mb-2">
-                <div>
-                  <h3 className="text-xl font-semibold">{watch.name}</h3>
-                  <p className="text-gray-600">{watch.campgroundName}</p>
+              Create Your First Watch
+            </button>
+          </div>
+        ) : (
+          <div className="grid gap-4">
+            {watches.map((watch) => (
+              <div key={watch.id} className="border rounded-lg p-4 bg-white shadow-sm">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <h3 className="text-xl font-semibold">{watch.name}</h3>
+                    <p className="text-gray-600">{watch.campgroundName}</p>
+                  </div>
+                  <span
+                    className={`px-2 py-1 rounded text-sm ${
+                      watch.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                    }`}
+                  >
+                    {watch.isActive ? 'Active' : 'Inactive'}
+                  </span>
                 </div>
-                <span
-                  className={`px-2 py-1 rounded text-sm ${
-                    watch.isActive
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-gray-100 text-gray-800'
-                  }`}
-                >
-                  {watch.isActive ? 'Active' : 'Inactive'}
-                </span>
-              </div>
 
-              <div className="mb-3 text-sm text-gray-600">
-                <p>
-                  Dates: {new Date(watch.arrivalDate).toLocaleDateString()} -{' '}
-                  {new Date(watch.departureDate).toLocaleDateString()}
-                </p>
-                <p>Guests: {watch.numGuests}</p>
-                <p>Check Interval: {watch.checkIntervalMinutes} minutes</p>
-                {watch.lastCheckedAt && (
+                <div className="mb-3 text-sm text-gray-600">
                   <p>
-                    Last Checked:{' '}
-                    {new Date(watch.lastCheckedAt).toLocaleString()}
+                    Dates: {new Date(watch.arrivalDate).toLocaleDateString()} -{' '}
+                    {new Date(watch.departureDate).toLocaleDateString()}
                   </p>
-                )}
-              </div>
+                  <p>Guests: {watch.numGuests}</p>
+                  <p>Check Interval: {watch.checkIntervalMinutes} minutes</p>
+                  {watch.lastCheckedAt && (
+                    <p>Last Checked: {new Date(watch.lastCheckedAt).toLocaleString()}</p>
+                  )}
+                </div>
 
-              <div className="flex gap-2 flex-wrap">
-                <button
-                  onClick={() => navigate(`/watches/${watch.id}`)}
-                  className="px-3 py-1 bg-primary-600 text-white rounded hover:bg-primary-700"
-                >
-                  View
-                </button>
-                {watch.isActive ? (
+                <div className="flex gap-2 flex-wrap">
                   <button
-                    onClick={() => handleDeactivate(watch.id)}
-                    disabled={actionLoading === watch.id}
-                    className="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => navigate(`/watches/${watch.id}`)}
+                    className="px-3 py-1 bg-primary-600 text-white rounded hover:bg-primary-700"
                   >
-                    {actionLoading === watch.id ? 'Processing...' : 'Deactivate'}
+                    View
                   </button>
-                ) : (
+                  {watch.isActive ? (
+                    <button
+                      onClick={() => handleDeactivate(watch.id)}
+                      disabled={actionLoading === watch.id}
+                      className="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {actionLoading === watch.id ? 'Processing...' : 'Deactivate'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleActivate(watch.id)}
+                      disabled={actionLoading === watch.id}
+                      className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {actionLoading === watch.id ? 'Processing...' : 'Activate'}
+                    </button>
+                  )}
                   <button
-                    onClick={() => handleActivate(watch.id)}
+                    onClick={() => handleExecute(watch.id)}
                     disabled={actionLoading === watch.id}
-                    className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {actionLoading === watch.id ? 'Processing...' : 'Activate'}
+                    {actionLoading === watch.id ? 'Checking...' : 'Check Now'}
                   </button>
-                )}
-                <button
-                  onClick={() => handleExecute(watch.id)}
-                  disabled={actionLoading === watch.id}
-                  className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {actionLoading === watch.id ? 'Checking...' : 'Check Now'}
-                </button>
-                <button
-                  onClick={() => navigate(`/watches/${watch.id}/edit`)}
-                  disabled={actionLoading === watch.id}
-                  className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => setDeleteConfirm({ isOpen: true, id: watch.id })}
-                  disabled={actionLoading === watch.id}
-                  className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Delete
-                </button>
+                  <button
+                    onClick={() => navigate(`/watches/${watch.id}/edit`)}
+                    disabled={actionLoading === watch.id}
+                    className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirm({ isOpen: true, id: watch.id })}
+                    disabled={actionLoading === watch.id}
+                    className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Confirm Delete Dialog */}

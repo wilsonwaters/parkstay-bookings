@@ -156,7 +156,10 @@ const Dashboard: React.FC = () => {
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-gray-900">Upcoming Bookings</h3>
-          <Link to="/bookings" className="text-primary-600 hover:text-primary-700 text-sm font-medium">
+          <Link
+            to="/bookings"
+            className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+          >
             View All →
           </Link>
         </div>

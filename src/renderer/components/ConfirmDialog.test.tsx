@@ -82,7 +82,7 @@ describe('ConfirmDialog', () => {
   });
 
   it('applies danger variant styles', () => {
-    const { container } = render(
+    render(
       <ConfirmDialog
         isOpen={true}
         title="Test"

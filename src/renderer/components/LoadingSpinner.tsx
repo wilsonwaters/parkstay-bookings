@@ -14,7 +14,7 @@ interface LoadingSpinnerProps {
 const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   size = 'md',
   text,
-  fullScreen = false
+  fullScreen = false,
 }) => {
   const sizeClasses = {
     sm: 'h-6 w-6',
@@ -32,11 +32,7 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   );
 
   if (fullScreen) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        {spinner}
-      </div>
-    );
+    return <div className="flex items-center justify-center min-h-screen">{spinner}</div>;
   }
 
   return spinner;

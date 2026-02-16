@@ -21,7 +21,7 @@ let db: Database.Database | null = null;
  * Run database migrations
  * Add new migrations at the bottom of this function
  */
-function runMigrations(database: Database.Database): void {
+export function runMigrations(database: Database.Database): void {
   // Create migrations table if it doesn't exist
   database.exec(`
     CREATE TABLE IF NOT EXISTS migrations (
@@ -32,8 +32,7 @@ function runMigrations(database: Database.Database): void {
 
   // Get current version
   const currentVersion =
-    (database.prepare('SELECT MAX(version) as version FROM migrations').get() as any)
-      ?.version || 0;
+    (database.prepare('SELECT MAX(version) as version FROM migrations').get() as any)?.version || 0;
 
   console.log(`Current database migration version: ${currentVersion}`);
 
@@ -176,6 +175,13 @@ export function getDatabase(): Database.Database {
     throw new Error('Database not initialized. Call initializeDatabase() first.');
   }
   return db;
+}
+
+/**
+ * Set the database instance (for testing only)
+ */
+export function setDatabase(database: Database.Database | null): void {
+  db = database;
 }
 
 /**

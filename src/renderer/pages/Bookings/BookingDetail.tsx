@@ -158,86 +158,86 @@ const BookingDetail: React.FC = () => {
           </div>
         </div>
 
-      {/* Booking Details */}
-      <div className="card">
-        <div className="flex items-start justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">{booking.parkName}</h2>
-            <p className="text-lg text-gray-600">{booking.campgroundName}</p>
-          </div>
-          {getStatusBadge(booking.status)}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Check-in/out */}
-          <div className="space-y-4">
+        {/* Booking Details */}
+        <div className="card">
+          <div className="flex items-start justify-between mb-6">
             <div>
-              <p className="text-sm font-medium text-gray-500">Check-in</p>
-              <p className="text-lg font-semibold text-gray-900">
-                {format(new Date(booking.arrivalDate), 'EEEE, MMMM d, yyyy')}
-              </p>
+              <h2 className="text-2xl font-bold text-gray-900">{booking.parkName}</h2>
+              <p className="text-lg text-gray-600">{booking.campgroundName}</p>
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Check-out</p>
-              <p className="text-lg font-semibold text-gray-900">
-                {format(new Date(booking.departureDate), 'EEEE, MMMM d, yyyy')}
-              </p>
-            </div>
+            {getStatusBadge(booking.status)}
           </div>
 
-          {/* Details */}
-          <div className="space-y-4">
-            <div>
-              <p className="text-sm font-medium text-gray-500">Duration</p>
-              <p className="text-lg font-semibold text-gray-900">{booking.numNights} nights</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500">Guests</p>
-              <p className="text-lg font-semibold text-gray-900">{booking.numGuests}</p>
-            </div>
-            {booking.siteNumber && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Check-in/out */}
+            <div className="space-y-4">
               <div>
-                <p className="text-sm font-medium text-gray-500">Site Number</p>
-                <p className="text-lg font-semibold text-gray-900">{booking.siteNumber}</p>
-              </div>
-            )}
-            {booking.totalCost && (
-              <div>
-                <p className="text-sm font-medium text-gray-500">Total Cost</p>
+                <p className="text-sm font-medium text-gray-500">Check-in</p>
                 <p className="text-lg font-semibold text-gray-900">
-                  ${booking.totalCost.toFixed(2)} {booking.currency}
+                  {format(new Date(booking.arrivalDate), 'EEEE, MMMM d, yyyy')}
                 </p>
               </div>
-            )}
+              <div>
+                <p className="text-sm font-medium text-gray-500">Check-out</p>
+                <p className="text-lg font-semibold text-gray-900">
+                  {format(new Date(booking.departureDate), 'EEEE, MMMM d, yyyy')}
+                </p>
+              </div>
+            </div>
+
+            {/* Details */}
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium text-gray-500">Duration</p>
+                <p className="text-lg font-semibold text-gray-900">{booking.numNights} nights</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-500">Guests</p>
+                <p className="text-lg font-semibold text-gray-900">{booking.numGuests}</p>
+              </div>
+              {booking.siteNumber && (
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Site Number</p>
+                  <p className="text-lg font-semibold text-gray-900">{booking.siteNumber}</p>
+                </div>
+              )}
+              {booking.totalCost && (
+                <div>
+                  <p className="text-sm font-medium text-gray-500">Total Cost</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    ${booking.totalCost.toFixed(2)} {booking.currency}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Reference */}
-        <div className="mt-6 pt-6 border-t border-gray-200">
-          <p className="text-sm font-medium text-gray-500">Booking Reference</p>
-          <p className="text-lg font-mono text-gray-900">{booking.bookingReference}</p>
-        </div>
-
-        {/* Notes */}
-        {booking.notes && (
+          {/* Reference */}
           <div className="mt-6 pt-6 border-t border-gray-200">
-            <p className="text-sm font-medium text-gray-500 mb-2">Notes</p>
-            <p className="text-gray-900">{booking.notes}</p>
+            <p className="text-sm font-medium text-gray-500">Booking Reference</p>
+            <p className="text-lg font-mono text-gray-900">{booking.bookingReference}</p>
           </div>
-        )}
 
-        {/* Metadata */}
-        <div className="mt-6 pt-6 border-t border-gray-200">
-          <div className="grid grid-cols-2 gap-4 text-sm text-gray-500">
-            <div>
-              <p>Created: {format(new Date(booking.createdAt), 'MMM d, yyyy h:mm a')}</p>
+          {/* Notes */}
+          {booking.notes && (
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <p className="text-sm font-medium text-gray-500 mb-2">Notes</p>
+              <p className="text-gray-900">{booking.notes}</p>
             </div>
-            <div>
-              <p>Last updated: {format(new Date(booking.updatedAt), 'MMM d, yyyy h:mm a')}</p>
+          )}
+
+          {/* Metadata */}
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <div className="grid grid-cols-2 gap-4 text-sm text-gray-500">
+              <div>
+                <p>Created: {format(new Date(booking.createdAt), 'MMM d, yyyy h:mm a')}</p>
+              </div>
+              <div>
+                <p>Last updated: {format(new Date(booking.updatedAt), 'MMM d, yyyy h:mm a')}</p>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
         {/* Cancel Dialog */}
         {showCancelDialog && (
