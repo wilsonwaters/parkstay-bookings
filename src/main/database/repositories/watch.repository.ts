@@ -13,8 +13,8 @@ export class WatchRepository extends BaseRepository<Watch> {
       INSERT INTO watches (
         user_id, name, park_id, park_name, campground_id, campground_name,
         arrival_date, departure_date, num_guests, preferred_sites, site_type,
-        check_interval_minutes, auto_book, notify_only, max_price, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        check_interval_minutes, auto_book, notify_only, allow_partial_match, max_price, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
@@ -32,6 +32,7 @@ export class WatchRepository extends BaseRepository<Watch> {
       input.checkIntervalMinutes || 5,
       input.autoBook ? 1 : 0,
       input.notifyOnly !== false ? 1 : 0,
+      input.allowPartialMatch ? 1 : 0,
       input.maxPrice || null,
       input.notes || null
     );
@@ -101,6 +102,10 @@ export class WatchRepository extends BaseRepository<Watch> {
     if (updates.notifyOnly !== undefined) {
       fields.push('notify_only = ?');
       values.push(updates.notifyOnly ? 1 : 0);
+    }
+    if (updates.allowPartialMatch !== undefined) {
+      fields.push('allow_partial_match = ?');
+      values.push(updates.allowPartialMatch ? 1 : 0);
     }
     if (updates.maxPrice !== undefined) {
       fields.push('max_price = ?');
@@ -223,6 +228,7 @@ export class WatchRepository extends BaseRepository<Watch> {
       foundCount: row.found_count,
       autoBook: Boolean(row.auto_book),
       notifyOnly: Boolean(row.notify_only),
+      allowPartialMatch: Boolean(row.allow_partial_match),
       maxPrice: row.max_price,
       notes: row.notes,
       createdAt: this.parseDate(row.created_at)!,

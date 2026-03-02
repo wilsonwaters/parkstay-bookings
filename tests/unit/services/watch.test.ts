@@ -13,6 +13,7 @@ import { mockUserInput } from '@tests/fixtures/users';
 import { MockParkStayAPI } from '@tests/utils/mock-api';
 import { expectAsyncThrow } from '@tests/utils/test-helpers';
 import { WatchResult } from '@shared/types/common.types';
+import { AvailabilityResult } from '@shared/types';
 
 // Mock the services
 jest.mock('@main/services/parkstay/parkstay.service');
@@ -166,6 +167,144 @@ describe('WatchService', () => {
       expect(updatedWatch?.isActive).toBe(false);
 
       jest.useRealTimers();
+    });
+  });
+
+  describe('partial match', () => {
+    const noAvailability = {
+      available: false,
+      sites: [],
+      totalAvailable: 0,
+      lowestPrice: undefined,
+    };
+    const siteAvailable = (siteId = 'SITE001') => ({
+      available: true,
+      sites: [
+        {
+          siteId,
+          siteName: 'Site 1',
+          siteType: 'Unpowered',
+          dates: [{ date: '', available: true, bookable: true, price: 35.0 }],
+        },
+      ],
+      totalAvailable: 1,
+      lowestPrice: 35.0,
+    });
+
+    it('should not check partial availability when allowPartialMatch is false', async () => {
+      const input = createMockWatchInput({ allowPartialMatch: false });
+      const watch = await watchService.create(testUserId, input);
+
+      parkStayService.checkAvailability = jest.fn().mockResolvedValue(noAvailability);
+      notificationService.notifyWatchPartialFound = jest.fn();
+
+      const result = await watchService.execute(watch.id);
+
+      expect(result.success).toBe(true);
+      expect(result.found).toBe(false);
+      // Only one call for the full range; no per-night calls
+      expect(parkStayService.checkAvailability).toHaveBeenCalledTimes(1);
+      expect(notificationService.notifyWatchPartialFound).not.toHaveBeenCalled();
+    });
+
+    it('should not notify when allowPartialMatch is true but no nights are available', async () => {
+      const arrival = new Date();
+      arrival.setDate(arrival.getDate() + 30);
+      const departure = new Date(arrival);
+      departure.setDate(departure.getDate() + 2); // 2 nights
+
+      const input = createMockWatchInput({
+        arrivalDate: arrival,
+        departureDate: departure,
+        allowPartialMatch: true,
+      });
+      const watch = await watchService.create(testUserId, input);
+
+      // All calls return nothing
+      parkStayService.checkAvailability = jest.fn().mockResolvedValue(noAvailability);
+      notificationService.notifyWatchPartialFound = jest.fn();
+
+      const result = await watchService.execute(watch.id);
+
+      expect(result.success).toBe(true);
+      expect(result.found).toBe(false);
+      expect(notificationService.notifyWatchPartialFound).not.toHaveBeenCalled();
+
+      const updatedWatch = await watchService.get(watch.id);
+      expect(updatedWatch?.lastResult).toBe(WatchResult.NOT_FOUND);
+    });
+
+    it('should call notifyWatchPartialFound and set PARTIAL_FOUND when a consecutive block is found', async () => {
+      const arrival = new Date();
+      arrival.setDate(arrival.getDate() + 30);
+      const departure = new Date(arrival);
+      departure.setDate(departure.getDate() + 2); // 2 nights
+
+      const input = createMockWatchInput({
+        arrivalDate: arrival,
+        departureDate: departure,
+        allowPartialMatch: true,
+        notifyOnly: false,
+      });
+      const watch = await watchService.create(testUserId, input);
+
+      // Full range: not found; night 1: available; night 2: not available
+      parkStayService.checkAvailability = jest
+        .fn()
+        .mockResolvedValueOnce(noAvailability) // full range
+        .mockResolvedValueOnce(siteAvailable()) // night 1
+        .mockResolvedValueOnce(noAvailability); // night 2
+
+      notificationService.notifyWatchPartialFound = jest.fn();
+
+      const result = await watchService.execute(watch.id);
+
+      expect(result.success).toBe(true);
+      expect(result.found).toBe(true);
+      expect(notificationService.notifyWatchPartialFound).toHaveBeenCalledTimes(1);
+
+      const partialArg = (notificationService.notifyWatchPartialFound as jest.Mock).mock
+        .calls[0][1] as AvailabilityResult[];
+      expect(partialArg.length).toBeGreaterThan(0);
+      expect(partialArg[0].partial).toBe(true);
+
+      const updatedWatch = await watchService.get(watch.id);
+      expect(updatedWatch?.lastResult).toBe(WatchResult.PARTIAL_FOUND);
+    });
+
+    it('should use full match path and not call checkPartialAvailability when full match is found', async () => {
+      const input = createMockWatchInput({ allowPartialMatch: true });
+      const watch = await watchService.create(testUserId, input);
+
+      // Full range returns a match
+      parkStayService.checkAvailability = jest.fn().mockResolvedValue({
+        available: true,
+        sites: [
+          {
+            siteId: 'SITE001',
+            siteName: 'Site 1',
+            siteType: 'Unpowered',
+            dates: [{ date: '2024-06-01', available: true, bookable: true, price: 35.0 }],
+          },
+        ],
+        totalAvailable: 1,
+        lowestPrice: 35.0,
+      });
+
+      notificationService.notifyWatchFound = jest.fn();
+      notificationService.notifyWatchPartialFound = jest.fn();
+
+      const result = await watchService.execute(watch.id);
+
+      expect(result.success).toBe(true);
+      expect(result.found).toBe(true);
+      // Only one API call for the full range
+      expect(parkStayService.checkAvailability).toHaveBeenCalledTimes(1);
+      expect(notificationService.notifyWatchFound).toHaveBeenCalledTimes(1);
+      expect(notificationService.notifyWatchPartialFound).not.toHaveBeenCalled();
+
+      const updatedWatch = await watchService.get(watch.id);
+      expect(updatedWatch?.lastResult).toBe(WatchResult.FOUND);
     });
   });
 

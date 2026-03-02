@@ -70,6 +70,7 @@ const WatchForm: React.FC<WatchFormProps> = ({
       checkIntervalMinutes: initialData?.checkIntervalMinutes || 60,
       autoBook: initialData?.autoBook || false,
       notifyOnly: initialData?.notifyOnly !== undefined ? initialData.notifyOnly : true,
+      allowPartialMatch: initialData?.allowPartialMatch || false,
       maxPrice: initialData?.maxPrice,
       notes: initialData?.notes || '',
     },
@@ -379,6 +380,29 @@ const WatchForm: React.FC<WatchFormProps> = ({
                 Send Notifications
               </label>
               <p className="text-sm text-gray-600 mt-1">Get notified when availability is found</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Partial Match Alert */}
+      {!autoBook && (
+        <div className="card bg-yellow-50 border-yellow-200">
+          <div className="flex items-start">
+            <input
+              id="allowPartialMatch"
+              type="checkbox"
+              {...register('allowPartialMatch')}
+              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded mt-1"
+            />
+            <div className="ml-3">
+              <label htmlFor="allowPartialMatch" className="text-sm font-medium text-gray-900">
+                Alert on partial availability
+              </label>
+              <p className="text-sm text-gray-600 mt-1">
+                Also get notified if only some of the dates in your range become available (e.g., 3
+                nights open up within a 14-night watch)
+              </p>
             </div>
           </div>
         </div>

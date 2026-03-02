@@ -22,6 +22,7 @@ export interface Watch {
   foundCount: number;
   autoBook: boolean;
   notifyOnly: boolean;
+  allowPartialMatch: boolean;
   maxPrice?: number;
   notes?: string;
   createdAt: Date;
@@ -42,6 +43,7 @@ export interface WatchInput {
   checkIntervalMinutes?: number;
   autoBook?: boolean;
   notifyOnly?: boolean;
+  allowPartialMatch?: boolean;
   maxPrice?: number;
   notes?: string;
 }
@@ -66,4 +68,5 @@ export interface AvailabilityResult {
     arrival: Date;
     departure: Date;
   };
+  partial?: boolean;
 }
