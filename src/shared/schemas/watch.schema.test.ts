@@ -20,6 +20,7 @@ describe('Watch Schema Validation', () => {
         checkIntervalMinutes: 60,
         autoBook: false,
         notifyOnly: true,
+        allowPartialMatch: false,
       };
 
       const result = watchSchema.safeParse(validInput);
@@ -80,6 +81,7 @@ describe('Watch Schema Validation', () => {
         checkIntervalMinutes: 60,
         autoBook: true,
         notifyOnly: false,
+        allowPartialMatch: false,
       };
 
       const result = watchSchema.safeParse(validInput);

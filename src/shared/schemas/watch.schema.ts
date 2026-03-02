@@ -32,6 +32,7 @@ export const watchSchema = z
       }),
     autoBook: z.boolean(),
     notifyOnly: z.boolean(),
+    allowPartialMatch: z.boolean(),
     maxPrice: z.number().positive().optional(),
     notes: z.string().max(500).optional(),
   })

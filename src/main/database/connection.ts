@@ -124,6 +124,24 @@ export function runMigrations(database: Database.Database): void {
     database.prepare('INSERT INTO migrations (version) VALUES (?)').run(4);
     console.log('Migration 004 completed');
   }
+
+  // Migration 005: Add allow_partial_match column to watches
+  if (currentVersion < 5) {
+    console.log('Running migration 005: Add allow_partial_match column to watches');
+
+    const tableInfo = database.prepare('PRAGMA table_info(watches)').all() as any[];
+    const hasColumn = tableInfo.some((col: any) => col.name === 'allow_partial_match');
+
+    if (!hasColumn) {
+      database.exec('ALTER TABLE watches ADD COLUMN allow_partial_match BOOLEAN DEFAULT 0');
+      console.log('Added allow_partial_match column to watches table');
+    } else {
+      console.log('allow_partial_match column already exists');
+    }
+
+    database.prepare('INSERT INTO migrations (version) VALUES (?)').run(5);
+    console.log('Migration 005 completed');
+  }
 }
 
 /**
