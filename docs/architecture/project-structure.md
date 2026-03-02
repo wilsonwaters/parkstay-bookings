@@ -75,7 +75,7 @@ src/main/
 ├── database/                   # Database layer
 │   ├── index.ts               # Database initialization
 │   ├── connection.ts          # SQLite connection
-│   ├── schema.sql             # Database schema
+│   ├── schema.sql             # Database schema (source reference; inlined into connection.ts for builds)
 │   ├── migrations/            # Schema migrations
 │   │   ├── index.ts           # Migration runner
 │   │   ├── 001-initial.ts     # Initial schema

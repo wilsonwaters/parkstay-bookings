@@ -6,7 +6,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { runMigrations, setDatabase } from '@main/database/connection';
+import { runMigrations, setDatabase, SCHEMA_SQL } from '@main/database/connection';
 
 export class TestDatabaseHelper {
   private db: Database.Database | null = null;
@@ -33,10 +33,8 @@ export class TestDatabaseHelper {
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
 
-    // Load and execute the production schema
-    const schemaPath = path.join(__dirname, '../../src/main/database/schema.sql');
-    const schema = fs.readFileSync(schemaPath, 'utf-8');
-    this.db.exec(schema);
+    // Execute the production schema
+    this.db.exec(SCHEMA_SQL);
 
     // Run production migrations
     runMigrations(this.db);
