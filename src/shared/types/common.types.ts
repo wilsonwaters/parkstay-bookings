@@ -9,6 +9,7 @@ export enum BookingStatus {
 export enum WatchResult {
   FOUND = 'found',
   NOT_FOUND = 'not_found',
+  PARTIAL_FOUND = 'partial_found',
   ERROR = 'error',
 }
 

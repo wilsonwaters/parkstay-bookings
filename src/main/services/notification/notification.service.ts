@@ -1,4 +1,10 @@
-import { Notification, NotificationInput, Watch, SkipTheQueueEntry } from '@shared/types';
+import {
+  Notification,
+  NotificationInput,
+  Watch,
+  SkipTheQueueEntry,
+  AvailabilityResult,
+} from '@shared/types';
 import { NotificationType, RelatedType } from '@shared/types/common.types';
 import { NotificationRepository } from '../../database/repositories';
 import { NotificationDispatcher } from './notification-dispatcher';
@@ -77,6 +83,40 @@ export class NotificationService {
         userId: watch.userId,
         type: NotificationType.WATCH_FOUND,
         title: 'Availability Found!',
+        message,
+        relatedId: watch.id,
+        relatedType: RelatedType.WATCH,
+        actionUrl: `/watches/${watch.id}`,
+      },
+      { campgroundName: watch.campgroundName }
+    );
+  }
+
+  /**
+   * Notify when watch finds partial (consecutive subset) availability
+   */
+  async notifyWatchPartialFound(watch: Watch, partialResults: AvailabilityResult[]): Promise<void> {
+    // Highlight the longest consecutive block
+    const longestBlock = partialResults.reduce((best, r) => {
+      const nights =
+        (r.dates.departure.getTime() - r.dates.arrival.getTime()) / (1000 * 60 * 60 * 24);
+      const bestNights =
+        (best.dates.departure.getTime() - best.dates.arrival.getTime()) / (1000 * 60 * 60 * 24);
+      return nights > bestNights ? r : best;
+    });
+
+    const nights = Math.round(
+      (longestBlock.dates.departure.getTime() - longestBlock.dates.arrival.getTime()) /
+        (1000 * 60 * 60 * 24)
+    );
+    const nightsText = nights === 1 ? '1 night' : `${nights} consecutive nights`;
+    const message = `Partial availability at ${watch.campgroundName}: ${nightsText} available from ${longestBlock.dates.arrival.toLocaleDateString()} - ${longestBlock.dates.departure.toLocaleDateString()}`;
+
+    await this.notify(
+      {
+        userId: watch.userId,
+        type: NotificationType.WATCH_FOUND,
+        title: 'Partial Availability Found!',
         message,
         relatedId: watch.id,
         relatedType: RelatedType.WATCH,
