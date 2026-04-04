@@ -1,8 +1,19 @@
-# WA ParkStay Bookings
+<p align="center">
+  <img src="resources/banner.png" alt="WA ParkStay Bookings Banner" width="600">
+</p>
 
-**Automated booking tool for Western Australia ParkStay campgrounds**
+<h1 align="center">
+  <img src="resources/icon-source.png" alt="WA ParkStay Bookings" width="32" valign="middle">
+  WA ParkStay Bookings
+</h1>
 
-An Electron-based desktop application that automates the process of monitoring and booking campsites on the WA Parks and Wildlife Service ParkStay system.
+<p align="center">
+  <strong>Automated booking tool for Western Australia ParkStay campgrounds</strong>
+</p>
+
+<p align="center">
+  An Electron-based desktop application that automates the process of monitoring and booking campsites on the WA Parks and Wildlife Service ParkStay system.
+</p>
 
 ## Download
 
