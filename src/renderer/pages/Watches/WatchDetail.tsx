@@ -207,6 +207,12 @@ const WatchDetail: React.FC = () => {
               <span className="text-sm text-gray-500">Auto-book:</span>
               <p className="font-medium text-gray-900">{watch.autoBook ? 'Enabled' : 'Disabled'}</p>
             </div>
+            <div>
+              <span className="text-sm text-gray-500">Partial Match Alerts:</span>
+              <p className="font-medium text-gray-900">
+                {watch.allowPartialMatch ? 'Enabled' : 'Disabled'}
+              </p>
+            </div>
             {watch.maxPrice && (
               <div>
                 <span className="text-sm text-gray-500">Max Price:</span>

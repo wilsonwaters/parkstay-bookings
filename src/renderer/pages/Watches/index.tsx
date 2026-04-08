@@ -176,6 +176,11 @@ export default function WatchesPage() {
                   <p>
                     Dates: {new Date(watch.arrivalDate).toLocaleDateString()} -{' '}
                     {new Date(watch.departureDate).toLocaleDateString()}
+                    {watch.allowPartialMatch && (
+                      <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
+                        Partial
+                      </span>
+                    )}
                   </p>
                   <p>Guests: {watch.numGuests}</p>
                   <p>Check Interval: {watch.checkIntervalMinutes} minutes</p>
