@@ -91,6 +91,8 @@ export const IPC_CHANNELS = {
   // App
   APP_GET_INFO: 'app:get-info',
   APP_OPEN_LOGS_FOLDER: 'app:open-logs-folder',
+  APP_SET_AUTO_LAUNCH: 'app:set-auto-launch',
+  APP_GET_AUTO_LAUNCH: 'app:get-auto-launch',
 
   // Events (main -> renderer)
   NOTIFICATION_CREATED: 'notification:created',

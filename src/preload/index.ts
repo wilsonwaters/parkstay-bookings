@@ -252,6 +252,12 @@ const api = {
 
     openLogsFolder: (): Promise<APIResponse<boolean>> =>
       ipcRenderer.invoke(IPC_CHANNELS.APP_OPEN_LOGS_FOLDER),
+
+    setAutoLaunch: (enabled: boolean): Promise<APIResponse<boolean>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.APP_SET_AUTO_LAUNCH, enabled),
+
+    getAutoLaunch: (): Promise<APIResponse<boolean>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.APP_GET_AUTO_LAUNCH),
   },
 
   // Queue APIs

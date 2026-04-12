@@ -23,6 +23,18 @@ import { BookingRepository } from './database/repositories/BookingRepository';
 import { NotificationProviderRepository } from './database/repositories/notification-provider.repository';
 import { AutoUpdaterService } from './services/updater/auto-updater.service';
 
+/**
+ * Detect if app was launched at login and should start hidden
+ */
+function isHiddenLaunch(): boolean {
+  if (process.argv.includes('--hidden')) return true;
+  if (process.platform === 'darwin') {
+    const loginSettings = app.getLoginItemSettings();
+    if (loginSettings.wasOpenedAsHidden) return true;
+  }
+  return false;
+}
+
 // Global references
 let mainWindow: BrowserWindow | null = null;
 let jobScheduler: JobScheduler | null = null;
@@ -67,9 +79,13 @@ function createWindow(): void {
     logger.info(`Loading from file: ${rendererPath}`);
   }
 
-  // Show window when ready
+  // Show window when ready (unless launched hidden at login)
   mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
+    if (!isHiddenLaunch()) {
+      mainWindow?.show();
+    } else {
+      logger.info('App launched hidden at login — window will not be shown');
+    }
   });
 
   // Handle window closed
