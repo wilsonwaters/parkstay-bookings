@@ -185,7 +185,7 @@ export class QueueService extends EventEmitter {
       this.session = {
         sessionKey: response.data.session_key,
         status: response.data.status,
-        position: response.data.queue_position,
+        position: response.data.queue_position ?? 0,
         estimatedWaitSeconds: response.data.wait_time,
         expirySeconds: response.data.expiry_seconds,
         createdAt: this.session?.createdAt || now,

@@ -9,26 +9,41 @@ export type QueueStatus = 'Active' | 'Waiting' | 'Unknown';
 
 /**
  * Raw response from queue.dbca.wa.gov.au API
+ *
+ * Fields verified against live API response (2026-04-06).
+ * Note: queue_position is null when status is Active.
  */
 export interface QueueAPIResponse {
   status: 'Active' | 'Waiting';
   session_key: string;
-  queue_position: number;
+  queue_position: number | null;
   wait_time: number;
   expiry_seconds: number;
+  session?: string;
+  idle_seconds?: number;
+  idle?: string;
+  expiry?: string;
+  total_active_session?: number;
+  total_waiting_session?: number;
+  new_session?: boolean;
+  queue_full?: boolean;
+  queue_position_epoch?: number;
+  activated_session_id?: string;
   time_left_enabled?: boolean;
   show_queue_position?: boolean;
   browser_inactivity_timeout?: number;
   browser_inactivity_redirect?: string;
   browser_inactivity_enabled?: boolean;
   waiting_queue_enabled?: boolean;
+  wq?: boolean;
   custom_message?: string;
   queue_name?: string;
   more_info_link?: string;
-  max_queue_session_limit?: string;
+  max_queue_session_limit?: number | string;
   max_queue_url_redirect?: string;
   queue_waiting_room_url?: string;
   queue_inactivity_url?: string;
+  queueurl?: string;
   url?: string;
   refresh_page?: boolean;
 }
