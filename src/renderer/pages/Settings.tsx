@@ -55,16 +55,11 @@ const Settings: React.FC = () => {
         // Credentials exist
       }
 
-      // Load app settings if available
-      // const settingsResponse = await window.api.settings.get();
-      // if (settingsResponse.success && settingsResponse.data) {
-      //   const settings = settingsResponse.data;
-      //   setDesktopNotifications(settings.notifications?.desktop ?? true);
-      //   setSoundEnabled(settings.notifications?.sound ?? true);
-      //   setLaunchOnStartup(settings.app?.launchOnStartup ?? false);
-      //   setMinimizeToTray(settings.app?.minimizeToTray ?? true);
-      //   setLogLevel(settings.advanced?.logLevel ?? 'info');
-      // }
+      // Load auto-launch setting
+      const autoLaunchResponse = await window.api.app.getAutoLaunch();
+      if (autoLaunchResponse.success) {
+        setLaunchOnStartup(autoLaunchResponse.data ?? false);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load settings');
     } finally {
@@ -407,11 +402,15 @@ const Settings: React.FC = () => {
                   <input
                     type="checkbox"
                     checked={launchOnStartup}
-                    onChange={(e) => {
-                      setLaunchOnStartup(e.target.checked);
-                      showSuccessToast(
-                        'Launch on startup ' + (e.target.checked ? 'enabled' : 'disabled')
-                      );
+                    onChange={async (e) => {
+                      const enabled = e.target.checked;
+                      const response = await window.api.app.setAutoLaunch(enabled);
+                      if (response.success) {
+                        setLaunchOnStartup(enabled);
+                        showSuccessToast('Launch on startup ' + (enabled ? 'enabled' : 'disabled'));
+                      } else {
+                        setError(response.error || 'Failed to update launch on startup');
+                      }
                     }}
                     className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded mt-1"
                   />

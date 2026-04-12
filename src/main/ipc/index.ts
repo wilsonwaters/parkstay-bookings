@@ -75,8 +75,8 @@ export function registerIPCHandlers(
     registerUpdaterHandlers(autoUpdaterService);
   }
 
-  // Register app handlers (no dependencies needed)
-  registerAppHandlers();
+  // Register app handlers
+  registerAppHandlers(settingsRepository);
 
   logger.info('IPC handlers registered');
 }

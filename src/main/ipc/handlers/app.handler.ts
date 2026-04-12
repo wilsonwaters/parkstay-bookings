@@ -1,11 +1,12 @@
 /**
  * App IPC Handlers
- * Handles app-level IPC requests (about info, logs folder)
+ * Handles app-level IPC requests (about info, logs folder, auto-launch)
  */
 
 import { ipcMain, IpcMainInvokeEvent, app, shell } from 'electron';
 import { IPC_CHANNELS } from '@shared/constants/ipc-channels';
-import { APIResponse } from '@shared/types';
+import { APIResponse, SettingValueType, SettingCategory } from '@shared/types';
+import { SettingsRepository } from '../../database/repositories/SettingsRepository';
 import { logger } from '../../utils/logger';
 import path from 'path';
 import os from 'os';
@@ -22,7 +23,7 @@ export interface AppInfo {
   logsPath: string;
 }
 
-export function registerAppHandlers(): void {
+export function registerAppHandlers(settingsRepository: SettingsRepository): void {
   ipcMain.handle(
     IPC_CHANNELS.APP_GET_INFO,
     async (_event: IpcMainInvokeEvent): Promise<APIResponse<AppInfo>> => {
@@ -62,6 +63,63 @@ export function registerAppHandlers(): void {
         return {
           success: false,
           error: error.message || 'Failed to open logs folder',
+        };
+      }
+    }
+  );
+
+  /**
+   * Set auto-launch on login
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.APP_SET_AUTO_LAUNCH,
+    async (_event: IpcMainInvokeEvent, enabled: boolean): Promise<APIResponse<boolean>> => {
+      try {
+        if (process.platform === 'darwin') {
+          app.setLoginItemSettings({
+            openAtLogin: enabled,
+            openAsHidden: enabled,
+          });
+        } else {
+          app.setLoginItemSettings({
+            openAtLogin: enabled,
+            args: enabled ? ['--hidden'] : [],
+          });
+        }
+
+        settingsRepository.set(
+          'launchOnStartup',
+          enabled,
+          SettingValueType.BOOLEAN,
+          SettingCategory.GENERAL
+        );
+
+        logger.info(`Auto-launch ${enabled ? 'enabled' : 'disabled'}`);
+        return { success: true, data: true };
+      } catch (error: any) {
+        logger.error('Error setting auto-launch:', error);
+        return {
+          success: false,
+          error: error.message || 'Failed to set auto-launch',
+        };
+      }
+    }
+  );
+
+  /**
+   * Get auto-launch setting
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.APP_GET_AUTO_LAUNCH,
+    async (_event: IpcMainInvokeEvent): Promise<APIResponse<boolean>> => {
+      try {
+        const enabled = settingsRepository.getValue<boolean>('launchOnStartup') ?? false;
+        return { success: true, data: enabled };
+      } catch (error: any) {
+        logger.error('Error getting auto-launch setting:', error);
+        return {
+          success: false,
+          error: error.message || 'Failed to get auto-launch setting',
         };
       }
     }
