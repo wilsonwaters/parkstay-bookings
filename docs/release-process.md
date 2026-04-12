@@ -28,6 +28,13 @@ Pushing the tag triggers the full CI/CD pipeline which builds and creates a draf
 
 ### 1. Pre-Release Checks
 
+Ensure you are on the `main` branch and up to date with the remote before releasing. The tag you push determines which commit GitHub Actions will build, so tagging an outdated local branch means the release will be built from stale code.
+
+```bash
+git checkout main
+git pull origin main
+```
+
 Ensure the following all pass locally before releasing:
 
 ```bash

@@ -1,6 +1,6 @@
 {
   "name": "parkstay-bookings",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Automated booking tool for WA ParkStay",
   "main": "dist/main/main/index.js",
   "author": "ParkStay Bookings Team",
