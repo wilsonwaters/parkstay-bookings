@@ -81,7 +81,7 @@
       }
     ],
     "icon": "resources/icons/icon.ico",
-    "artifactName": "${productName}-Setup-${version}.${ext}",
+    "artifactName": "WA-ParkStay-Bookings-Setup-${version}.${ext}",
     "requestedExecutionLevel": "asInvoker",
     "signingHashAlgorithms": ["sha256"],
     "signDlls": false,
@@ -117,7 +117,7 @@
     "include": "resources/installer.nsh"
   },
   "portable": {
-    "artifactName": "${productName}-Portable-${version}.${ext}"
+    "artifactName": "WA-ParkStay-Bookings-Portable-${version}.${ext}"
   },
   "linux": {
     "target": [
