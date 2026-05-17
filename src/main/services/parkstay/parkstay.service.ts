@@ -60,6 +60,10 @@ export class ParkStayService {
   private session: ParkStaySessionToken | null = null;
   private queueSession: QueueSessionInfo | null = null;
   private queueService: QueueService | null = null;
+  // Per-site label cache (keyed by site id). Populated lazily as we encounter sites
+  // in availability results. /api/campsites/{id}/ is ~0.7s vs ~42s for the bulk
+  // /campsites/?campground=X (which doesn't filter server-side anyway).
+  private campsiteNameCache: Map<number, string> = new Map();
 
   constructor(queueService?: QueueService) {
     this.queueService = queueService || null;
@@ -402,10 +406,15 @@ export class ParkStayService {
         };
       }
 
+      const siteIds: number[] = campgroundData.sites || [];
+      if (siteIds.length > 0) {
+        await this.populateCampsiteNames(siteIds);
+      }
+
       // Map site IDs to CampsiteAvailability format
-      const sites: CampsiteAvailability[] = (campgroundData.sites || []).map((siteId: number) => ({
+      const sites: CampsiteAvailability[] = siteIds.map((siteId: number) => ({
         siteId: String(siteId),
-        siteName: `Site ${siteId}`,
+        siteName: this.campsiteNameCache.get(siteId) || `Site ${siteId}`,
         siteType: params.siteType || 'all',
         maxOccupancy: params.numGuests,
         dates: [
@@ -427,6 +436,35 @@ export class ParkStayService {
     } catch (error) {
       console.error('Check availability failed:', error);
       throw new Error('Failed to check availability');
+    }
+  }
+
+  /**
+   * Populate the in-memory cache of site id→label for any siteIds we haven't seen.
+   * Uses GET /api/campsites/{id}/ (one request per missing id; ~0.7s each, runs in
+   * parallel). Avoids the bulk /campsites/?campground=X endpoint which returns the
+   * full 2,761-site list (~42s / 1.7MB) regardless of the campground filter.
+   * On individual failures we leave the id out of the cache and the caller falls
+   * back to `Site {id}`.
+   */
+  private async populateCampsiteNames(siteIds: number[]): Promise<void> {
+    const missing = siteIds.filter((id) => !this.campsiteNameCache.has(id));
+    if (missing.length === 0) return;
+
+    const results = await Promise.allSettled(
+      missing.map((id) =>
+        this.client
+          .get(`/campsites/${id}/`)
+          .then((r) => ({ id, name: r.data?.name as string | undefined }))
+      )
+    );
+
+    for (const r of results) {
+      if (r.status === 'fulfilled' && typeof r.value.name === 'string' && r.value.name) {
+        this.campsiteNameCache.set(r.value.id, r.value.name);
+      } else if (r.status === 'rejected') {
+        console.error('Failed to fetch campsite name:', r.reason);
+      }
     }
   }
 
