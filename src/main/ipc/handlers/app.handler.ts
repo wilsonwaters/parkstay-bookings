@@ -75,6 +75,18 @@ export function registerAppHandlers(settingsRepository: SettingsRepository): voi
     IPC_CHANNELS.APP_SET_AUTO_LAUNCH,
     async (_event: IpcMainInvokeEvent, enabled: boolean): Promise<APIResponse<boolean>> => {
       try {
+        // In dev mode, process.execPath points to node_modules/electron/dist/electron.exe,
+        // which when launched at login has no app context and shows Electron's generic
+        // welcome window. Refuse to register — auto-launch only makes sense for packaged builds.
+        if (enabled && !app.isPackaged) {
+          logger.warn('Auto-launch refused: only available in packaged builds, not in dev mode');
+          return {
+            success: false,
+            error:
+              'Launch on startup is only available in the installed build, not when running from source.',
+          };
+        }
+
         if (process.platform === 'darwin') {
           app.setLoginItemSettings({
             openAtLogin: enabled,
@@ -83,6 +95,7 @@ export function registerAppHandlers(settingsRepository: SettingsRepository): voi
         } else {
           app.setLoginItemSettings({
             openAtLogin: enabled,
+            path: process.execPath,
             args: enabled ? ['--hidden'] : [],
           });
         }
