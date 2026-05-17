@@ -63,14 +63,39 @@ const AvailabilityGrid: React.FC<AvailabilityGridProps> = ({
       });
     });
   } else if (watchResults) {
-    // Simplified watch results
+    // Simplified watch results — each entry's `dates` describes the actual available
+    // sub-range, which may be narrower than the watch's full range (partial matches).
     watchResults.forEach((result) => {
+      const dateMap = new Map<string, { available: boolean; price: number; bookable: boolean }>();
+      if (result.dates) {
+        const a =
+          typeof result.dates.arrival === 'string'
+            ? parseISO(result.dates.arrival)
+            : result.dates.arrival;
+        const d =
+          typeof result.dates.departure === 'string'
+            ? parseISO(result.dates.departure)
+            : result.dates.departure;
+        // departure is the checkout date (exclusive) — last available night is d - 1.
+        const lastNight = new Date(d);
+        lastNight.setDate(lastNight.getDate() - 1);
+        if (lastNight >= a) {
+          eachDayOfInterval({ start: a, end: lastNight }).forEach((day) => {
+            dateMap.set(format(day, 'yyyy-MM-dd'), {
+              available: true,
+              price: result.price ?? 0,
+              bookable: true,
+            });
+          });
+        }
+      }
       sites.push({
         siteId: result.siteId,
         siteName: result.siteName,
         siteType: result.siteType,
         available: result.available,
         price: result.price,
+        dateAvailability: dateMap,
       });
     });
   }
@@ -199,8 +224,11 @@ const AvailabilityGrid: React.FC<AvailabilityGridProps> = ({
                                 {dayAvail.available ? '$' + dayAvail.price : 'X'}
                               </span>
                             ) : (
-                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-100 text-green-800">
-                                ✓
+                              <span
+                                className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-400"
+                                title="Not available"
+                              >
+                                —
                               </span>
                             )}
                           </td>
