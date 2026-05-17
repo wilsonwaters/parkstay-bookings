@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-05-18
+
+### Added
+- Watches UI: partial match indicator highlights sites/dates that only meet some search criteria (#5)
+
+### Fixed
+- Watch results now show real site labels and only the dates that are actually available (#9)
+- Launch on startup no longer registers in dev mode — previously the dev electron.exe was added to Windows startup, which launched the generic Electron welcome screen instead of the app (#10)
+- Auto-update no longer 404s on Windows artifact lookups — installer/blockmap names are now hardcoded so electron-updater can find them (#8)
+
 ## [1.1.0] - 2026-04-12
 
 ### Added
