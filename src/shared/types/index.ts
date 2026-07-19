@@ -1,7 +1,7 @@
 // Re-export all shared types
 export * from './booking.types';
 export * from './watch.types';
-export * from './stq.types';
+export * from './site-sniper.types';
 export * from './notification.types';
 export * from './notification-provider.types';
 export * from './api.types';

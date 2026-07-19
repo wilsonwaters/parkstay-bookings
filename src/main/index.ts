@@ -11,7 +11,7 @@ import { QueueService } from './services/queue/queue.service';
 import { NotificationService } from './services/notification/notification.service';
 import { NotificationDispatcher } from './services/notification/notification-dispatcher';
 import { WatchService } from './services/watch/watch.service';
-import { STQService } from './services/stq/stq.service';
+import { SiteSniperService } from './services/sitesniper/sitesniper.service';
 import { AuthService } from './services/auth/AuthService';
 import { BookingService } from './services/booking/BookingService';
 import { JobScheduler } from './scheduler/job-scheduler';
@@ -129,13 +129,17 @@ async function initializeApp(): Promise<void> {
     const bookingService = new BookingService(bookingRepository);
     const notificationService = new NotificationService(notificationDispatcher);
     const watchService = new WatchService(parkStayService, notificationService);
-    const stqService = new STQService(parkStayService, notificationService);
+    const siteSniperService = new SiteSniperService(
+      parkStayService,
+      queueService,
+      notificationService
+    );
 
     // Create auto-updater service
     autoUpdaterService = new AutoUpdaterService();
 
     // Create job scheduler
-    jobScheduler = new JobScheduler(watchService, stqService);
+    jobScheduler = new JobScheduler(watchService, siteSniperService);
 
     // Register IPC handlers
     registerIPCHandlers(
@@ -143,7 +147,7 @@ async function initializeApp(): Promise<void> {
       bookingService,
       settingsRepository,
       watchService,
-      stqService,
+      siteSniperService,
       notificationService,
       jobScheduler,
       parkStayService,

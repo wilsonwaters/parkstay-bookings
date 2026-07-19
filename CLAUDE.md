@@ -4,7 +4,7 @@ This file provides important context for Claude Code sessions working on this co
 
 ## Project Overview
 
-WA ParkStay Bookings is an Electron + React + TypeScript desktop application that automates campground booking on the Western Australia ParkStay system. It monitors availability, sends notifications, handles the DBCA queue system, and supports automated rebooking.
+WA ParkStay Bookings is an Electron + React + TypeScript desktop application that automates campground booking on the Western Australia ParkStay system. It monitors availability, sends notifications, handles the DBCA queue system, and auto-snipes high-demand sites the moment they are released (Site Sniper).
 
 - **Version:** 1.0.0
 - **Entry point:** `src/main/index.ts`
@@ -46,14 +46,14 @@ npm run dist:win     # Package Windows installer
 src/
 ├── main/           # Electron main process (Node.js)
 │   ├── database/   # SQLite connection, migrations, repositories
-│   ├── services/   # Business logic (auth, booking, watch, stq, gmail, queue, notification, parkstay)
+│   ├── services/   # Business logic (auth, booking, watch, sitesniper, gmail, queue, notification, parkstay)
 │   ├── scheduler/  # node-cron job scheduler
 │   ├── ipc/        # IPC handlers (bridge to renderer)
 │   └── utils/      # Logger, browser headers
 ├── preload/        # Secure context bridge (window.api)
 ├── renderer/       # React UI
 │   ├── components/ # Reusable components (forms/, settings/, layouts/)
-│   ├── pages/      # Dashboard, Login, Settings, Bookings/, Watches/, SkipTheQueue/ (Beat the Crowd)
+│   ├── pages/      # Dashboard, Login, Settings, Bookings/, Watches/, SiteSniper/
 │   └── styles/     # Tailwind CSS
 └── shared/         # Cross-process code
     ├── constants/  # IPC channels, app constants
@@ -62,7 +62,7 @@ src/
 ```
 
 **Service initialization chain** (in `src/main/index.ts`):
-Database → Repositories → NotificationDispatcher → QueueService → ParkStayService → AuthService → BookingService → NotificationService → WatchService → STQService → AutoUpdaterService → JobScheduler → IPC Handlers
+Database → Repositories → NotificationDispatcher → QueueService → ParkStayService → AuthService → BookingService → NotificationService → WatchService → SiteSniperService → AutoUpdaterService → JobScheduler → IPC Handlers
 
 ## Database
 
@@ -72,18 +72,20 @@ Database → Repositories → NotificationDispatcher → QueueService → ParkSt
 
 All migrations must be added to the `runMigrations()` function in `connection.ts`. Do NOT create separate migration files or a Database.ts file.
 
-### Current migrations (version 4)
+### Current migrations (version 6)
 
 1. **v1** — Initial schema (users, bookings, watches, skip_the_queue_entries, notifications, job_logs, settings)
 2. **v2** — Add `last_availability` JSON column to watches
 3. **v3** — Add `notification_providers` and `notification_delivery_logs` tables
 4. **v4** — Add `queue_session` table for DBCA queue persistence
+5. **v5** — Add `allow_partial_match` column to watches
+6. **v6** — Add `site_snipes` table (Site Sniper) and widen `notifications` CHECK constraints (adds `snipe_held`/`snipe_booked` types and `snipe` related_type)
 
 ### Adding a new migration
 
 1. Open `src/main/database/connection.ts`
 2. Find the `runMigrations()` function
-3. Check the current highest version number (currently 4)
+3. Check the current highest version number (currently 6)
 4. Add a new `if (currentVersion < N)` block at the bottom
 5. INSERT the new version into the migrations table
 
@@ -94,14 +96,14 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 | AuthService | `src/main/services/auth/AuthService.ts` | AES-256-GCM credential encryption |
 | BookingService | `src/main/services/booking/BookingService.ts` | Booking CRUD and sync |
 | WatchService | `src/main/services/watch/watch.service.ts` | Availability monitoring |
-| STQService | `src/main/services/stq/stq.service.ts` | Beat the Crowd advance-booking (cancel & rebook within 180-day window) |
+| SiteSniperService | `src/main/services/sitesniper/sitesniper.service.ts` | Site Sniper — auto-holds a high-demand site the instant it is released (daily rollover / scheduled / cancellation modes) |
 | ParkStayService | `src/main/services/parkstay/parkstay.service.ts` | ParkStay API client |
 | QueueService | `src/main/services/queue/queue.service.ts` | DBCA queue system handler |
 | NotificationService | `src/main/services/notification/notification.service.ts` | Desktop/in-app notifications |
 | NotificationDispatcher | `src/main/services/notification/notification-dispatcher.ts` | External providers (email) |
 | GmailOTPService | `src/main/services/gmail/GmailOTPService.ts` | Gmail OAuth2 OTP extraction |
 | AutoUpdaterService | `src/main/services/updater/auto-updater.service.ts` | Auto-updates via GitHub Releases |
-| JobScheduler | `src/main/scheduler/job-scheduler.ts` | Cron-based job execution |
+| JobScheduler | `src/main/scheduler/job-scheduler.ts` | Cron-based watch execution + timer-based Site Sniper scheduling |
 
 ## Notification System
 
@@ -114,22 +116,22 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 ## IPC Pattern
 
 - Channels defined in `src/shared/constants/ipc-channels.ts`
-- Handlers in `src/main/ipc/handlers/` (12 handler files: app, auth, booking, gmail, notification, notification-provider, parkstay, queue, settings, stq, updater, watch)
+- Handlers in `src/main/ipc/handlers/` (12 handler files: app, auth, booking, gmail, notification, notification-provider, parkstay, queue, settings, site-sniper, updater, watch)
 - Exposed to renderer via `src/preload/index.ts`
 
 ## UI Status
 
-- **Active pages:** Dashboard, Watches, Settings, Login
-- **Disabled in sidebar:** Bookings and Beat the Crowd (formerly "Skip The Queue") show `ComingSoonBanner` (being finalized)
+- **Active pages:** Dashboard, Watches, Site Sniper, Settings, Login
+- **Disabled in sidebar:** Bookings shows `ComingSoonBanner` (being finalized)
 - **Settings page** includes email/SMTP configuration (`EmailSettingsCard`)
-- **Key components:** AvailabilityGrid, QueueStatus, NotificationBell, WatchForm, STQForm, UpdateNotification, AboutDialog
+- **Key components:** AvailabilityGrid, QueueStatus, NotificationBell, WatchForm, SiteSniperForm, UpdateNotification, AboutDialog
 
 ## Testing
 
 - **Framework:** Jest 29 (unit/integration), Playwright (E2E)
 - **Config:** `jest.config.js` — coverage thresholds: branches 9%, functions 17%, lines 16%, statements 16%
 - **Test locations:** `tests/unit/`, `tests/integration/`, `tests/e2e/`, plus co-located `*.test.tsx` in `src/`
-- **Fixtures:** `tests/fixtures/` (users, bookings, watches, stq)
+- **Fixtures:** `tests/fixtures/` (users, bookings, watches, site-sniper)
 - **Helpers:** `tests/utils/` (database-helper, mock-api, test-helpers)
 
 ## Release Process
@@ -175,4 +177,5 @@ Do NOT commit code that fails any of these checks. CI enforces all four.
 - `docs/` — User guide, installation, development, release process
 - `docs/parkstay-api/` — ParkStay API endpoints, authentication flow
 - `docs/gmail-otp-setup.md` — Gmail OAuth2 integration for OTP
-- `docs/ADVANCED_FEATURES_GUIDE.md` — Watch, Beat the Crowd (STQ), notification deep-dive
+- `docs/ADVANCED_FEATURES_GUIDE.md` — Watch, Site Sniper, notification deep-dive
+- `docs/SITE_SNIPER.md` — Site Sniper feature guide, release regimes, and compliance

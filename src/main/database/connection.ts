@@ -328,6 +328,98 @@ export function runMigrations(database: Database.Database): void {
     database.prepare('INSERT INTO migrations (version) VALUES (?)').run(5);
     console.log('Migration 005 completed');
   }
+
+  // Migration 006: Add site_snipes table (Site Sniper feature, replaces STQ) and
+  // widen the notifications type/related_type CHECK constraints to include snipe types.
+  // NOTE: the legacy skip_the_queue_entries table is intentionally left in place
+  // (harmless; existing installs may hold data). It is simply no longer used.
+  if (currentVersion < 6) {
+    console.log('Running migration 006: Add site_snipes table + widen notifications CHECK');
+
+    database.exec(`
+      -- Site Sniper entries table
+      CREATE TABLE IF NOT EXISTS site_snipes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        campground_id TEXT NOT NULL,
+        campground_name TEXT,
+        target_site_ids TEXT,               -- JSON array of site id strings
+        site_type TEXT DEFAULT 'all',
+        arrival_date DATE NOT NULL,
+        departure_date DATE NOT NULL,
+        num_adult INTEGER DEFAULT 2,
+        num_concession INTEGER DEFAULT 0,
+        num_child INTEGER DEFAULT 0,
+        num_infant INTEGER DEFAULT 0,
+        num_vehicle INTEGER DEFAULT 1,
+        postcode TEXT,
+        release_mode TEXT NOT NULL DEFAULT 'daily_rollover'
+           CHECK(release_mode IN ('daily_rollover','scheduled','cancellation')),
+        release_at DATETIME,
+        queue_enabled BOOLEAN DEFAULT 0,
+        lead_time_seconds INTEGER DEFAULT 120,
+        poll_interval_ms INTEGER DEFAULT 1500,
+        window_duration_ms INTEGER DEFAULT 900000,
+        status TEXT DEFAULT 'armed',
+        is_active BOOLEAN DEFAULT 1,
+        attempts_count INTEGER DEFAULT 0,
+        max_attempts INTEGER DEFAULT 0,
+        last_checked_at DATETIME,
+        next_check_at DATETIME,
+        last_result TEXT,
+        last_error TEXT,
+        held_booking_pk TEXT,
+        held_expires_at DATETIME,
+        payment_url TEXT,
+        booked_reference TEXT,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_snipe_user_id ON site_snipes(user_id);
+      CREATE INDEX IF NOT EXISTS idx_snipe_active ON site_snipes(is_active);
+      CREATE INDEX IF NOT EXISTS idx_snipe_release_at ON site_snipes(release_at);
+      CREATE TRIGGER IF NOT EXISTS update_site_snipes_timestamp
+      AFTER UPDATE ON site_snipes
+      BEGIN
+        UPDATE site_snipes SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+      END;
+    `);
+
+    // Widen the notifications CHECK constraints. SQLite cannot ALTER a CHECK, so we
+    // rebuild the table. Old values ('stq_success', related_type 'stq') are preserved
+    // for backward compatibility with existing rows; new values are added.
+    database.exec(`
+      PRAGMA foreign_keys=off;
+      ALTER TABLE notifications RENAME TO notifications_old;
+      CREATE TABLE notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('watch_found','stq_success','snipe_held','snipe_booked','booking_confirmed','error','warning','info')),
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        related_id INTEGER,
+        related_type TEXT CHECK(related_type IN ('booking','watch','stq','snipe')),
+        action_url TEXT,
+        is_read BOOLEAN DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+      INSERT INTO notifications (id,user_id,type,title,message,related_id,related_type,action_url,is_read,created_at)
+        SELECT id,user_id,type,title,message,related_id,related_type,action_url,is_read,created_at FROM notifications_old;
+      DROP TABLE notifications_old;
+      CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+      CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
+      CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type);
+      CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
+      PRAGMA foreign_keys=on;
+    `);
+
+    database.prepare('INSERT INTO migrations (version) VALUES (?)').run(6);
+    console.log('Migration 006 completed');
+  }
 }
 
 /**
