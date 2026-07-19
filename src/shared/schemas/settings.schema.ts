@@ -17,9 +17,9 @@ export const settingsSchema = z.object({
     maxConcurrent: z.number().int().min(1).max(50),
     autoBookEnabled: z.boolean(),
   }),
-  stq: z.object({
-    defaultInterval: z.number().int().min(1).max(30),
-    maxAttempts: z.number().int().min(1),
+  siteSniper: z.object({
+    defaultPollIntervalMs: z.number().int().min(500).max(60000),
+    defaultLeadTimeSeconds: z.number().int().min(0).max(3600),
     enabled: z.boolean(),
   }),
   ui: z.object({

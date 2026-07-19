@@ -1,5 +1,5 @@
 import { WatchService } from '../services/watch/watch.service';
-import { STQService } from '../services/stq/stq.service';
+import { SiteSniperService } from '../services/sitesniper/sitesniper.service';
 import { NotificationService } from '../services/notification/notification.service';
 import { NotificationDispatcher } from '../services/notification/notification-dispatcher';
 import { AuthService } from '../services/auth/AuthService';
@@ -11,7 +11,7 @@ import { NotificationProviderRepository } from '../database/repositories/notific
 import { JobScheduler } from '../scheduler/job-scheduler';
 import { GmailOTPService } from '../services/gmail/GmailOTPService';
 import { registerWatchHandlers } from './handlers/watch.handlers';
-import { registerSTQHandlers } from './handlers/stq.handlers';
+import { registerSiteSniperHandlers } from './handlers/site-sniper.handlers';
 import { registerNotificationHandlers } from './handlers/notification.handlers';
 import { registerNotificationProviderHandlers } from './handlers/notification-provider.handlers';
 import { registerAuthHandlers } from './handlers/auth.handlers';
@@ -33,7 +33,7 @@ export function registerIPCHandlers(
   bookingService: BookingService,
   settingsRepository: SettingsRepository,
   watchService: WatchService,
-  stqService: STQService,
+  siteSniperService: SiteSniperService,
   notificationService: NotificationService,
   jobScheduler: JobScheduler,
   parkStayService?: ParkStayService,
@@ -51,7 +51,7 @@ export function registerIPCHandlers(
   registerBookingHandlers(bookingService, () => authService.getCurrentUser()?.id || 0);
   registerSettingsHandlers(settingsRepository);
   registerWatchHandlers(watchService, jobScheduler);
-  registerSTQHandlers(stqService, jobScheduler);
+  registerSiteSniperHandlers(siteSniperService, jobScheduler);
   registerNotificationHandlers(notificationService);
   registerGmailHandlers(gmailService);
 

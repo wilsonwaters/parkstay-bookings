@@ -28,6 +28,10 @@ const NotificationList: React.FC<NotificationListProps> = ({
     switch (type) {
       case 'watch_found':
         return '👁️';
+      case 'snipe_held':
+        return '🎯';
+      case 'snipe_booked':
+        return '✓';
       case 'stq_success':
         return '⚡';
       case 'booking_confirmed':
@@ -46,6 +50,8 @@ const NotificationList: React.FC<NotificationListProps> = ({
   const getNotificationColor = (type: string) => {
     switch (type) {
       case 'watch_found':
+      case 'snipe_held':
+      case 'snipe_booked':
       case 'stq_success':
       case 'booking_confirmed':
         return 'text-green-600';

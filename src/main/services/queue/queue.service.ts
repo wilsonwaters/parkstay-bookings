@@ -44,6 +44,7 @@ export class QueueService extends EventEmitter {
   private config: QueueServiceConfig;
   private pollTimer: NodeJS.Timeout | null = null;
   private refreshTimer: NodeJS.Timeout | null = null;
+  private keepAliveTimer: NodeJS.Timeout | null = null;
   private isWaiting: boolean = false;
   private waitPromise: Promise<QueueWaitResult> | null = null;
 
@@ -338,6 +339,41 @@ export class QueueService extends EventEmitter {
   }
 
   /**
+   * Start a periodic keep-alive that refreshes the queue session while it is
+   * Active, so the `sitequeuesession` cookie stays valid during a snipe window.
+   *
+   * This is a LEGITIMATE session refresh (the same check-create-session call the
+   * official client makes on its Active cadence). We deliberately do NOT simulate
+   * user input / fake page activity to defeat the ~60s inactivity timeout while
+   * the user is away — being present and reacting fast is the only advantage we take.
+   *
+   * @param intervalMs - refresh cadence (default 20000ms, matching the official Active cadence)
+   */
+  startKeepAlive(intervalMs: number = 20000): void {
+    this.stopKeepAlive();
+
+    this.keepAliveTimer = setInterval(async () => {
+      try {
+        if (this.session?.sessionKey) {
+          await this.checkOrCreateSession(this.session.sessionKey);
+        }
+      } catch (error) {
+        console.error('Queue keep-alive refresh failed:', error);
+      }
+    }, intervalMs);
+  }
+
+  /**
+   * Stop the periodic keep-alive refresh.
+   */
+  stopKeepAlive(): void {
+    if (this.keepAliveTimer) {
+      clearInterval(this.keepAliveTimer);
+      this.keepAliveTimer = null;
+    }
+  }
+
+  /**
    * Get current session
    */
   getSession(): QueueSession | null {
@@ -420,6 +456,7 @@ export class QueueService extends EventEmitter {
    */
   destroy(): void {
     this.stopPolling();
+    this.stopKeepAlive();
     if (this.refreshTimer) {
       clearTimeout(this.refreshTimer);
     }
