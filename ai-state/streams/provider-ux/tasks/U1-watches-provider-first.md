@@ -162,3 +162,8 @@ L. Cross-concern: a new create-flow pattern, shared domain components, and four 
 - **Check intervals.** Today the options are 60/240/720/1440 (`WatchForm.tsx:33-38`, `watch.schema.ts:27-32`), while the scheduler runs every watch of 60 minutes or less hourly (tech-review #11). Use the V4 contract's options verbatim; do not redefine them in the renderer.
 - **Shared blocks created here:** `ProviderPicker`, `StepFlow`, `ProviderStayFields`, `AvailabilityGrid` and `LocationCombobox` (if E1 has none). Keep them domain-generic: no "watch" wording inside.
 - **Dates.** Format with the shared en-AU helpers (D1/V4 `shared/utils`). ui-review #3 found five date formats in use, including US style.
+
+## Orchestrator addendum (2026-10-02)
+- [ ] Clears the legacy axe colour-contrast failure on /watches (legacy `bg-yellow-500 text-white` Edit button at `features/watches/legacy/index.tsx:226`) by replacing the legacy page. axe reports 0 critical/serious on /watches with data.
+- [ ] Removes `features/watches/legacy/*` entries from the token-guard and API-boundary legacy allow-lists.
+- [ ] Create-watch route is `/watches/new` with the §12.10 prefill query (supersedes any `/watches/create` wording in this spec).
