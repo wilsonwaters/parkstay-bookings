@@ -82,11 +82,9 @@ export function Tooltip({ content, children, side = 'top', describe = true }: To
     onFocus: composeHandlers(own.onFocus, show),
     onBlur: composeHandlers(own.onBlur, hide),
     onKeyDown: composeHandlers(own.onKeyDown, (event: KeyboardEvent<HTMLElement>) => {
-      if (event.key === 'Escape' && open) {
-        // Dismiss the tooltip only; a second Escape reaches the dialog or popover around it.
-        event.stopPropagation();
-        hide();
-      }
+      // Escape dismisses the tooltip and still reaches the dialog or popover around it, so a
+      // focused Close button closes its dialog on the first press.
+      if (event.key === 'Escape') hide();
     }),
   });
 

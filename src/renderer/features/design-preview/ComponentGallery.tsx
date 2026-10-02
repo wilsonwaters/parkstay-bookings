@@ -7,11 +7,16 @@ import { useState, type ReactNode } from 'react';
 import {
   BellRing,
   CalendarCheck,
+  Ellipsis,
   ExternalLink,
+  List,
+  Map as MapIcon,
+  Pencil,
   Plus,
   Search,
   Settings,
   SlidersHorizontal,
+  Tent,
   Trash,
   X,
 } from 'lucide-react';
@@ -20,7 +25,33 @@ import {
   Button,
   Card,
   Checkbox,
+  Combobox,
+  ConfirmDialog,
+  DateRangeField,
+  Dialog,
+  Disclosure,
   EmptyState,
+  GuestsField,
+  Menu,
+  MenuItem,
+  MenuSeparator,
+  Popover,
+  ProviderBadge,
+  ProviderManifestsProvider,
+  RadioCard,
+  RadioCardGroup,
+  SegmentedControl,
+  Sheet,
+  Stepper,
+  Tab,
+  TabList,
+  TabPanel,
+  Tabs,
+  type ComboboxOption,
+  type DateRange,
+  type DialogSize,
+  type Guests,
+  type ProviderBadgeInfo,
   Field,
   IconButton,
   Notice,
@@ -57,15 +88,29 @@ export const COMPONENT_SECTIONS = [
   'Card',
   'Badge',
   'StatusPill',
+  'ProviderBadge',
   'Spinner',
   'Skeleton',
   'EmptyState',
   'PageHeader',
   'Notice',
   'VisuallyHidden',
+  'Tabs',
+  'SegmentedControl',
+  'RadioCard and RadioCardGroup',
+  'Disclosure',
+  'Dialog',
+  'ConfirmDialog',
+  'Sheet',
+  'Menu',
+  'Popover',
   'Tooltip',
   'Toast',
   'useAnnounce',
+  'Combobox',
+  'DateRangeField and RangeCalendar',
+  'Stepper',
+  'GuestsField',
 ] as const;
 
 function Specimen({ label, children }: { label: string; children: ReactNode }) {
@@ -691,6 +736,553 @@ function AnnounceSection() {
   );
 }
 
+/** Sample provider data. Brand colours are data from provider manifests, not design tokens. */
+const SAMPLE_PROVIDERS: ProviderBadgeInfo[] = [
+  {
+    id: 'parkstay',
+    name: 'ParkStay WA',
+    shortName: 'ParkStay',
+    brand: { color: '#2D6A4F', monogram: 'PS' }, // token-guard-ignore: provider brand data
+  },
+  {
+    id: 'rac',
+    name: 'RAC Parks & Resorts',
+    shortName: 'RAC',
+    brand: { color: '#F5C400', monogram: 'RAC' }, // token-guard-ignore: provider brand data
+  },
+  {
+    id: 'grey',
+    name: 'Grey Example Stays',
+    shortName: 'Grey',
+    brand: { color: '#777777', monogram: 'GR' }, // token-guard-ignore: low-contrast example
+  },
+];
+
+function ProviderBadgeSection() {
+  return (
+    <Section
+      title="ProviderBadge"
+      intro="Whose system something belongs to: a coloured monogram and the short name. Text on the brand colour is white or ink, whichever passes; a colour where neither reaches 4.5:1 gets the outlined style."
+    >
+      <ProviderManifestsProvider manifests={SAMPLE_PROVIDERS}>
+        <Grid>
+          <Specimen label="Full, md and sm">
+            <ProviderBadge providerId="parkstay" />
+            <ProviderBadge providerId="rac" />
+            <ProviderBadge providerId="parkstay" size="sm" />
+          </Specimen>
+          <Specimen label="Compact (named by the provider)">
+            <ProviderBadge providerId="parkstay" variant="compact" />
+            <ProviderBadge providerId="rac" variant="compact" />
+            <ProviderBadge providerId="rac" variant="compact" size="sm" />
+          </Specimen>
+          <Specimen label="Outlined: brand colour fails both texts">
+            <ProviderBadge providerId="grey" />
+            <ProviderBadge providerId="grey" variant="compact" />
+          </Specimen>
+          <Specimen label="Unknown provider">
+            <ProviderBadge providerId="airbnb" />
+            <ProviderBadge providerId="airbnb" variant="compact" size="sm" />
+          </Specimen>
+        </Grid>
+      </ProviderManifestsProvider>
+    </Section>
+  );
+}
+
+function TabsSection() {
+  return (
+    <Section
+      title="Tabs"
+      intro="Arrow keys move between tabs and select them; only the selected tab is in the tab order. The selected tab is bold and underlined, not only coloured."
+    >
+      <Card padding="lg">
+        <Tabs defaultValue="overview">
+          <TabList aria-label="Location details">
+            <Tab value="overview">Overview</Tab>
+            <Tab value="sites">Sites</Tab>
+            <Tab value="rules">Booking rules</Tab>
+            <Tab value="reviews" disabled>
+              Reviews
+            </Tab>
+          </TabList>
+          <TabPanel value="overview">
+            Camp among the peppermint trees, a short walk from the beach.
+          </TabPanel>
+          <TabPanel value="sites">24 sites, 8 with power.</TabPanel>
+          <TabPanel value="rules">Opens 180 days ahead at midnight AWST.</TabPanel>
+          <TabPanel value="reviews">Not available yet.</TabPanel>
+        </Tabs>
+      </Card>
+    </Section>
+  );
+}
+
+function SegmentedControlSection() {
+  return (
+    <Section
+      title="SegmentedControl"
+      intro="Two to four views of the same thing. A radio group: arrow keys move the selection."
+    >
+      <Specimen label="With icons">
+        <SegmentedControl
+          label="View"
+          options={[
+            { value: 'map', label: 'Map', icon: <MapIcon size={16} /> },
+            { value: 'list', label: 'List', icon: <List size={16} /> },
+          ]}
+          defaultValue="map"
+        />
+        <SegmentedControl
+          label="Sort"
+          options={[
+            { value: 'near', label: 'Nearest' },
+            { value: 'az', label: 'A to Z' },
+            { value: 'sites', label: 'Most sites', disabled: true },
+          ]}
+          defaultValue="near"
+        />
+      </Specimen>
+    </Section>
+  );
+}
+
+function RadioCardSection() {
+  return (
+    <Section
+      title="RadioCard and RadioCardGroup"
+      intro="Big, described choices such as the provider step. Each card is a native radio named by its title and described by its description; arrow keys move the selection."
+    >
+      <div className="max-w-xl">
+        <ProviderManifestsProvider manifests={SAMPLE_PROVIDERS}>
+          <RadioCardGroup
+            label="Provider"
+            hint="Watches check this provider's availability."
+            defaultValue="parkstay"
+          >
+            <RadioCard
+              value="parkstay"
+              title="ParkStay WA"
+              description="National park campgrounds across WA"
+              icon={<Tent />}
+              trailing={<ProviderBadge providerId="parkstay" variant="compact" />}
+            />
+            <RadioCard
+              value="rac"
+              title="RAC Parks & Resorts"
+              description="Holiday parks and cabins"
+              trailing={<Badge tone="sun">Soon</Badge>}
+              disabled
+            />
+          </RadioCardGroup>
+        </ProviderManifestsProvider>
+      </div>
+    </Section>
+  );
+}
+
+function DisclosureSection() {
+  return (
+    <Section
+      title="Disclosure"
+      intro="Show and hide a region. The chevron turns when open and holds still under reduced motion."
+    >
+      <Card padding="lg" className="max-w-xl">
+        <Disclosure summary="Advanced options">
+          Poll every 2 seconds for 10 minutes after the release time, then every minute.
+        </Disclosure>
+        <Disclosure summary="Why can't I pick a later date?" defaultOpen>
+          ParkStay opens bookings 180 days ahead.
+        </Disclosure>
+      </Card>
+    </Section>
+  );
+}
+
+function DialogSection() {
+  const [size, setSize] = useState<DialogSize | null>(null);
+  const [nested, setNested] = useState(false);
+  return (
+    <Section
+      title="Dialog"
+      intro="Modal: focus is trapped inside and returns to the opener; Escape and the overlay close it; the page behind is inert. A Popover inside closes first on Escape."
+    >
+      <Specimen label="Sizes">
+        {(['sm', 'md', 'lg', 'full'] as DialogSize[]).map((s) => (
+          <Button key={s} variant="secondary" onClick={() => setSize(s)}>
+            Open {s} dialog
+          </Button>
+        ))}
+      </Specimen>
+      <Dialog
+        open={size !== null}
+        onClose={() => setSize(null)}
+        title="Edit watch"
+        description="Changes apply from the next check."
+        size={size ?? 'md'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setSize(null)}>
+              Cancel
+            </Button>
+            <Button onClick={() => setSize(null)}>Save changes</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <Field label="Watch name">
+            <TextField defaultValue="Lucky Bay long weekend" />
+          </Field>
+          <div className="flex flex-wrap gap-3">
+            <Popover
+              label="Check frequency"
+              trigger={<Button variant="secondary">Frequency</Button>}
+            >
+              <p className="max-w-xs text-sm text-fg-secondary">
+                Escape closes this popover and leaves the dialog open.
+              </p>
+            </Popover>
+            <Button variant="ghost" onClick={() => setNested(true)}>
+              Open a second dialog
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+      <Dialog open={nested} onClose={() => setNested(false)} title="Second dialog" size="sm">
+        <p className="text-fg-secondary">Escape closes this one first.</p>
+      </Dialog>
+    </Section>
+  );
+}
+
+function ConfirmDialogSection() {
+  const toast = useToast();
+  const [which, setWhich] = useState<'danger' | 'primary' | null>(null);
+  return (
+    <Section
+      title="ConfirmDialog"
+      intro="An alertdialog. Danger focuses Cancel first and uses the only solid crimson button in the app. An async confirm shows loading until it settles."
+    >
+      <Specimen label="Tones">
+        <Button variant="danger" onClick={() => setWhich('danger')}>
+          Delete watch
+        </Button>
+        <Button variant="secondary" onClick={() => setWhich('primary')}>
+          Arm snipe
+        </Button>
+      </Specimen>
+      <ConfirmDialog
+        open={which === 'danger'}
+        tone="danger"
+        title="Delete this watch?"
+        message="WA Stay stops checking Lucky Bay. This cannot be undone."
+        confirmLabel="Delete watch"
+        onCancel={() => setWhich(null)}
+        onConfirm={() =>
+          new Promise<void>((resolve) =>
+            setTimeout(() => {
+              resolve();
+              setWhich(null);
+              toast.success('Watch deleted');
+            }, 1500)
+          )
+        }
+      />
+      <ConfirmDialog
+        open={which === 'primary'}
+        tone="primary"
+        title="Arm this snipe?"
+        message="WA Stay will try to hold a site at midnight AWST."
+        confirmLabel="Arm snipe"
+        onCancel={() => setWhich(null)}
+        onConfirm={() => setWhich(null)}
+      />
+    </Section>
+  );
+}
+
+function SheetSection() {
+  const [open, setOpen] = useState(false);
+  return (
+    <Section
+      title="Sheet"
+      intro="A Dialog from the right edge, full height: filters, details, long forms."
+    >
+      <Specimen label="Right sheet">
+        <Button
+          variant="secondary"
+          leadingIcon={<SlidersHorizontal size={18} />}
+          onClick={() => setOpen(true)}
+        >
+          Filters
+        </Button>
+      </Specimen>
+      <Sheet
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Filters"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              Clear all
+            </Button>
+            <Button onClick={() => setOpen(false)}>Show 24 places</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <Checkbox label="Powered sites" />
+          <Checkbox label="Dogs permitted" />
+          <Checkbox label="Campfires allowed" />
+        </div>
+      </Sheet>
+    </Section>
+  );
+}
+
+function MenuSection() {
+  const toast = useToast();
+  const [renaming, setRenaming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  return (
+    <Section
+      title="Menu"
+      intro="A menu button. ↑/↓/Home/End move, Enter or Space chooses, Escape or Tab closes and refocuses the trigger. A dialog opened from an item returns focus to the trigger."
+    >
+      <Specimen label="Button and IconButton triggers">
+        <Menu trigger={<Button variant="secondary">Watch actions</Button>}>
+          <MenuItem icon={<Pencil size={16} />} onSelect={() => setRenaming(true)}>
+            Rename
+          </MenuItem>
+          <MenuItem href="#/__design" icon={<ExternalLink size={16} />}>
+            Open on ParkStay
+          </MenuItem>
+          <MenuItem disabled>Duplicate</MenuItem>
+          <MenuSeparator />
+          <MenuItem tone="danger" icon={<Trash size={16} />} onSelect={() => setDeleting(true)}>
+            Delete
+          </MenuItem>
+        </Menu>
+        <Menu
+          align="end"
+          trigger={<IconButton label="More actions" icon={<Ellipsis />} variant="secondary" />}
+        >
+          <MenuItem onSelect={() => toast.info('Watch paused')}>Pause</MenuItem>
+          <MenuItem onSelect={() => toast.info('Checking now')}>Check now</MenuItem>
+        </Menu>
+      </Specimen>
+      <Dialog open={renaming} onClose={() => setRenaming(false)} title="Rename watch" size="sm">
+        <Field label="Watch name">
+          <TextField defaultValue="Lucky Bay long weekend" />
+        </Field>
+      </Dialog>
+      <ConfirmDialog
+        open={deleting}
+        title="Delete this watch?"
+        message="This cannot be undone."
+        confirmLabel="Delete watch"
+        onCancel={() => setDeleting(false)}
+        onConfirm={() => setDeleting(false)}
+      />
+    </Section>
+  );
+}
+
+function PopoverSection() {
+  return (
+    <Section
+      title="Popover"
+      intro="A non-modal dialog anchored to its trigger. Focus moves in; Escape or a click outside closes it and returns focus. It flips above and clamps at the window edges."
+    >
+      <Specimen label="Below, and near the right edge">
+        <Popover label="Price" trigger={<Button variant="secondary">Price</Button>}>
+          {({ close }) => (
+            <div className="flex w-64 flex-col gap-3">
+              <Field label="Up to">
+                <TextField inputMode="numeric" defaultValue="60" />
+              </Field>
+              <Button size="sm" variant="secondary" onClick={close}>
+                Done
+              </Button>
+            </div>
+          )}
+        </Popover>
+        <div className="ml-auto">
+          <Popover label="Sort" align="end" trigger={<Button variant="ghost">Sort</Button>}>
+            <p className="w-56 text-sm text-fg-secondary">
+              End-aligned so it never leaves the window.
+            </p>
+          </Popover>
+        </div>
+      </Specimen>
+    </Section>
+  );
+}
+
+const PLACES: ComboboxOption[] = [
+  {
+    value: 'parkstay:1',
+    label: 'Lucky Bay',
+    description: 'Cape Le Grand National Park',
+    group: 'Campgrounds',
+  },
+  {
+    value: 'parkstay:2',
+    label: 'Le Grand Beach',
+    description: 'Cape Le Grand National Park',
+    group: 'Campgrounds',
+  },
+  {
+    value: 'parkstay:3',
+    label: 'Cape Arid',
+    description: 'Cape Arid National Park',
+    group: 'Campgrounds',
+  },
+  { value: 'area:cape-le-grand', label: 'Cape Le Grand National Park', group: 'Parks' },
+  {
+    value: 'area:esperance',
+    label: 'Esperance',
+    description: 'Goldfields-Esperance',
+    group: 'Towns',
+  },
+  {
+    value: 'area:denham',
+    label: 'Denham',
+    description: 'Not served yet',
+    group: 'Towns',
+    disabled: true,
+  },
+];
+
+function ComboboxSection() {
+  const [value, setValue] = useState<string | null>(null);
+  return (
+    <Section
+      title="Combobox"
+      intro="Type to filter; ↑/↓ highlight (aria-activedescendant), Enter chooses, Escape closes and a second Escape clears. Grouped options, a No matches row, and a segment look for the search pill."
+    >
+      <Grid>
+        <Specimen label="Field, grouped">
+          <div className="w-full">
+            <Combobox
+              label="Campground"
+              hint="Start typing a place, park or town"
+              options={PLACES}
+              value={value}
+              onChange={setValue}
+              placeholder="Lucky Bay"
+            />
+          </div>
+        </Specimen>
+        <Specimen label="Invalid">
+          <div className="w-full">
+            <Combobox label="Campground" options={PLACES} error="Choose a campground" />
+          </div>
+        </Specimen>
+      </Grid>
+    </Section>
+  );
+}
+
+function DateRangeSection() {
+  const [range, setRange] = useState<DateRange>({});
+  const today = new Date();
+  const minDate = [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, '0'),
+    String(today.getDate()).padStart(2, '0'),
+  ].join('-');
+  return (
+    <Section
+      title="DateRangeField and RangeCalendar"
+      intro="Check-in and check-out as YYYY-MM-DD strings. Two months at 640 px and wider. Arrows move by day and week, PgUp/PgDn by month, Home/End to the week's ends; Enter picks. Here stays are up to 14 nights."
+    >
+      <Grid>
+        <Specimen label="Field">
+          <div className="w-full">
+            <DateRangeField
+              value={range}
+              onChange={setRange}
+              minDate={minDate}
+              maxNights={14}
+              hint="From today, up to 14 nights"
+            />
+          </div>
+        </Specimen>
+        <Specimen label="Value">
+          <p className="text-sm tabular-nums text-fg-secondary">
+            arrival: {range.arrival ?? 'none'} · departure: {range.departure ?? 'none'}
+          </p>
+        </Specimen>
+      </Grid>
+    </Section>
+  );
+}
+
+function StepperSection() {
+  const [vehicles, setVehicles] = useState(1);
+  return (
+    <Section
+      title="Stepper"
+      intro="A number nudged with − and +, in a group named by its label. Buttons disable at the limits; the value is announced politely."
+    >
+      <Card padding="lg" className="max-w-md">
+        <Stepper
+          label="Vehicles"
+          hint="Including trailers, up to 2"
+          value={vehicles}
+          onChange={setVehicles}
+          min={0}
+          max={2}
+        />
+      </Card>
+    </Section>
+  );
+}
+
+function GuestsSection() {
+  const [guests, setGuests] = useState<Guests | undefined>();
+  const [where, setWhere] = useState<string | null>(null);
+  const [range, setRange] = useState<DateRange>({});
+  return (
+    <Section
+      title="GuestsField"
+      intro="Adults, children and infants in one field. Below, the segment look of Combobox, DateRangeField and GuestsField, as E1's search pill will compose them."
+    >
+      <div className="space-y-6">
+        <Grid>
+          <Specimen label="Field">
+            <div className="w-full">
+              <GuestsField value={guests} onChange={setGuests} />
+            </div>
+          </Specimen>
+        </Grid>
+        <Specimen label="Segments in a pill">
+          <div className="flex w-full flex-wrap items-center gap-1 rounded-full border border-border bg-surface p-1 shadow-pill">
+            <Combobox
+              label="Where"
+              appearance="segment"
+              options={PLACES}
+              value={where}
+              onChange={setWhere}
+              placeholder="Search places"
+              className="min-w-[12rem] flex-1"
+            />
+            <DateRangeField appearance="segment" value={range} onChange={setRange} />
+            <GuestsField appearance="segment" value={guests} onChange={setGuests} />
+            <IconButton
+              label="Search"
+              icon={<Search />}
+              variant="primary"
+              className="rounded-full"
+            />
+          </div>
+        </Specimen>
+      </div>
+    </Section>
+  );
+}
+
 export function ComponentGallery() {
   return (
     <>
@@ -706,15 +1298,29 @@ export function ComponentGallery() {
       <CardSection />
       <BadgeSection />
       <StatusPillSection />
+      <ProviderBadgeSection />
       <SpinnerSection />
       <SkeletonSection />
       <EmptyStateSection />
       <PageHeaderSection />
       <NoticeSection />
       <VisuallyHiddenSection />
+      <TabsSection />
+      <SegmentedControlSection />
+      <RadioCardSection />
+      <DisclosureSection />
+      <DialogSection />
+      <ConfirmDialogSection />
+      <SheetSection />
+      <MenuSection />
+      <PopoverSection />
       <TooltipSection />
       <ToastSection />
       <AnnounceSection />
+      <ComboboxSection />
+      <DateRangeSection />
+      <StepperSection />
+      <GuestsSection />
     </>
   );
 }

@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Watch } from '@shared/types';
-import { Spinner, useToast } from '../../components/ui';
-import ConfirmDialog from '../../components/ConfirmDialog';
+import { ConfirmDialog, Spinner, useToast } from '../../components/ui';
 
 /**
  * Watches Page
@@ -244,12 +243,11 @@ export default function WatchesPage() {
 
       {/* Confirm Delete Dialog */}
       <ConfirmDialog
-        isOpen={deleteConfirm.isOpen}
+        open={deleteConfirm.isOpen}
         title="Delete Watch"
         message="Are you sure you want to delete this watch? This action cannot be undone."
-        confirmText="Delete"
-        cancelText="Cancel"
-        confirmVariant="danger"
+        confirmLabel="Delete"
+        tone="danger"
         onConfirm={handleDelete}
         onCancel={() => setDeleteConfirm({ isOpen: false, id: null })}
       />

@@ -1,7 +1,6 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { buttonClassName, type ButtonSize, type ButtonVariant } from './Button';
 import { Tooltip } from './Tooltip';
-import { cx } from './cx';
 
 export interface IconButtonProps
   extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'aria-label'> {
@@ -14,12 +13,6 @@ export interface IconButtonProps
   size?: ButtonSize;
 }
 
-const SQUARE: Record<ButtonSize, string> = {
-  sm: 'h-8 w-8 px-0',
-  md: 'h-10 w-10 px-0',
-  lg: 'h-12 w-12 px-0',
-};
-
 /** A button that shows only an icon. It always has a name, and a tooltip with the same text. */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
   { label, icon, variant = 'ghost', size = 'md', className, type = 'button', ...rest },
@@ -31,7 +24,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
         ref={ref}
         type={type}
         aria-label={label}
-        className={cx(buttonClassName({ variant, size }), SQUARE[size], className)}
+        className={buttonClassName({ variant, size, iconOnly: true, className })}
         {...rest}
       >
         {icon}

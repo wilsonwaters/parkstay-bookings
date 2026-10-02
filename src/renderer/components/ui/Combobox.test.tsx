@@ -1,0 +1,171 @@
+import { useState } from 'react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Combobox, type ComboboxOption } from './Combobox';
+
+const PLACES: ComboboxOption[] = [
+  { value: 'lucky-bay', label: 'Lucky Bay', description: 'Cape Le Grand', group: 'Campgrounds' },
+  {
+    value: 'le-grand',
+    label: 'Le Grand Beach',
+    description: 'Cape Le Grand',
+    group: 'Campgrounds',
+  },
+  { value: 'cape-le-grand', label: 'Cape Le Grand National Park', group: 'Parks' },
+  { value: 'esperance', label: 'Esperance', group: 'Towns', disabled: true },
+];
+
+function Where({ onChange = jest.fn() }) {
+  const [value, setValue] = useState<string | null>(null);
+  return (
+    <>
+      <Combobox
+        label="Where to"
+        options={PLACES}
+        value={value}
+        onChange={(next, option) => {
+          setValue(next);
+          onChange(next, option);
+        }}
+        placeholder="Places, parks or towns"
+      />
+      <p>Chosen: {value ?? 'none'}</p>
+    </>
+  );
+}
+
+const input = () => screen.getByRole('combobox', { name: 'Where to' });
+const listbox = () => screen.getByRole('listbox', { name: 'Where to' });
+
+describe('Combobox', () => {
+  it('has the ARIA 1.2 combobox attributes', () => {
+    render(<Where />);
+    expect(input()).toHaveAttribute('aria-autocomplete', 'list');
+    expect(input()).toHaveAttribute('aria-expanded', 'false');
+    expect(input()).toHaveAttribute(
+      'aria-controls',
+      screen.getByRole('listbox', { hidden: true }).id
+    );
+    expect(input()).not.toHaveAttribute('aria-activedescendant');
+  });
+
+  it('filters options as you type, and ↓ then Enter selects', async () => {
+    const onChange = jest.fn();
+    const user = userEvent.setup();
+    render(<Where onChange={onChange} />);
+    await user.type(input(), 'lucky');
+    expect(input()).toHaveAttribute('aria-expanded', 'true');
+    expect(
+      within(listbox())
+        .getAllByRole('option')
+        .map((o) => o.textContent)
+    ).toEqual(['Lucky BayCape Le Grand']);
+    await user.keyboard('{ArrowDown}{Enter}');
+    expect(onChange).toHaveBeenCalledWith('lucky-bay', PLACES[0]);
+    expect(input()).toHaveValue('Lucky Bay');
+    expect(input()).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByText('Chosen: lucky-bay')).toBeInTheDocument();
+  });
+
+  it('tracks the highlighted option with aria-activedescendant and aria-selected', async () => {
+    const user = userEvent.setup();
+    render(<Where />);
+    await user.type(input(), 'grand');
+    // Matches labels only: "Lucky Bay" (Cape Le Grand in its description) is filtered out.
+    const options = within(listbox()).getAllByRole('option');
+    expect(options.map((o) => o.id)).toHaveLength(2);
+    expect(options[0]).toHaveTextContent('Le Grand Beach');
+
+    await user.keyboard('{ArrowDown}');
+    expect(input()).toHaveAttribute('aria-activedescendant', options[0].id);
+    expect(options[0]).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{ArrowDown}');
+    expect(input()).toHaveAttribute('aria-activedescendant', options[1].id);
+    expect(options[0]).toHaveAttribute('aria-selected', 'false');
+    expect(options[1]).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{ArrowDown}');
+    expect(input()).toHaveAttribute('aria-activedescendant', options[0].id);
+    await user.keyboard('{ArrowUp}');
+    expect(input()).toHaveAttribute('aria-activedescendant', options[1].id);
+    // Focus never leaves the input.
+    expect(input()).toHaveFocus();
+  });
+
+  it('groups options under labelled groups and skips disabled ones', async () => {
+    const user = userEvent.setup();
+    render(<Where />);
+    await user.click(input());
+    expect(within(listbox()).getByRole('group', { name: 'Campgrounds' })).toBeInTheDocument();
+    expect(within(listbox()).getByRole('group', { name: 'Parks' })).toBeInTheDocument();
+    const esperance = within(listbox()).getByRole('option', { name: /Esperance/ });
+    expect(esperance).toHaveAttribute('aria-disabled', 'true');
+    await user.keyboard('{ArrowUp}');
+    expect(input()).toHaveAttribute(
+      'aria-activedescendant',
+      within(listbox()).getByRole('option', { name: /Cape Le Grand National Park/ }).id
+    );
+  });
+
+  it('shows a "No matches" row', async () => {
+    render(<Where />);
+    await userEvent.type(input(), 'zzz');
+    const empty = within(listbox()).getByRole('option', { name: 'No matches' });
+    expect(empty).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.keyboard('{ArrowDown}');
+    expect(input()).not.toHaveAttribute('aria-activedescendant');
+  });
+
+  it('Escape closes the list, and a second Escape clears', async () => {
+    const user = userEvent.setup();
+    render(<Where />);
+    await user.type(input(), 'lucky');
+    await user.keyboard('{ArrowDown}{Enter}');
+    await user.keyboard('{ArrowDown}');
+    expect(input()).toHaveAttribute('aria-expanded', 'true');
+    await user.keyboard('{Escape}');
+    expect(input()).toHaveAttribute('aria-expanded', 'false');
+    expect(input()).toHaveValue('Lucky Bay');
+    await user.keyboard('{Escape}');
+    expect(input()).toHaveValue('');
+    expect(screen.getByText('Chosen: none')).toBeInTheDocument();
+  });
+
+  it('Tab closes the list without choosing', async () => {
+    const onChange = jest.fn();
+    const user = userEvent.setup();
+    render(<Where onChange={onChange} />);
+    await user.type(input(), 'lucky');
+    await user.keyboard('{ArrowDown}');
+    await user.tab();
+    expect(input()).toHaveAttribute('aria-expanded', 'false');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('chooses an option by click', async () => {
+    const user = userEvent.setup();
+    render(<Where />);
+    await user.click(input());
+    await user.click(within(listbox()).getByRole('option', { name: /Le Grand Beach/ }));
+    expect(input()).toHaveValue('Le Grand Beach');
+    expect(input()).toHaveFocus();
+  });
+
+  it('renders the segment appearance with its small label', () => {
+    render(<Combobox label="Where" options={PLACES} appearance="segment" />);
+    expect(screen.getByRole('combobox', { name: 'Where' })).toBeInTheDocument();
+  });
+
+  it('describes the field with its hint and error', () => {
+    render(
+      <Combobox
+        label="Campground"
+        options={PLACES}
+        hint="Start typing a name"
+        error="Choose a campground"
+      />
+    );
+    const box = screen.getByRole('combobox', { name: 'Campground' });
+    expect(box).toHaveAccessibleDescription('Start typing a name Choose a campground');
+    expect(box).toHaveAttribute('aria-invalid', 'true');
+  });
+});

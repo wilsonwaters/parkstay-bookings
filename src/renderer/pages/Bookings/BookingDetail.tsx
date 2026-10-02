@@ -7,8 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Booking, BookingStatus } from '../../../shared/types';
 import { format } from 'date-fns';
-import { Spinner, useToast } from '../../components/ui';
-import ConfirmDialog from '../../components/ConfirmDialog';
+import { ConfirmDialog, Spinner, useToast } from '../../components/ui';
 
 const BookingDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -273,12 +272,11 @@ const BookingDetail: React.FC = () => {
 
       {/* Confirm Delete Dialog */}
       <ConfirmDialog
-        isOpen={showDeleteDialog}
+        open={showDeleteDialog}
         title="Delete Booking"
         message="Are you sure you want to delete this booking? This action cannot be undone."
-        confirmText="Delete"
-        cancelText="Cancel"
-        confirmVariant="danger"
+        confirmLabel="Delete"
+        tone="danger"
         onConfirm={handleDeleteBooking}
         onCancel={() => setShowDeleteDialog(false)}
       />

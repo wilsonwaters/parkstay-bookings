@@ -7,8 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Booking } from '../../../shared/types';
 import { format } from 'date-fns';
-import { Spinner, useToast } from '../../components/ui';
-import ConfirmDialog from '../../components/ConfirmDialog';
+import { ConfirmDialog, Spinner, useToast } from '../../components/ui';
 import ImportBookingForm from '../../components/forms/ImportBookingForm';
 import ManualBookingForm from '../../components/forms/ManualBookingForm';
 import ComingSoonBanner from '../../components/ComingSoonBanner';
@@ -340,12 +339,11 @@ const BookingsList: React.FC = () => {
 
       {/* Confirm Delete Dialog */}
       <ConfirmDialog
-        isOpen={deleteConfirm.isOpen}
+        open={deleteConfirm.isOpen}
         title="Delete Booking"
         message="Are you sure you want to delete this booking? This action cannot be undone."
-        confirmText="Delete"
-        cancelText="Cancel"
-        confirmVariant="danger"
+        confirmLabel="Delete"
+        tone="danger"
         onConfirm={handleDeleteBooking}
         onCancel={() => setDeleteConfirm({ isOpen: false, id: null })}
       />

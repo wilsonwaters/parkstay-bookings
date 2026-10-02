@@ -28,6 +28,13 @@ const SIZE: Record<ButtonSize, string> = {
   lg: 'h-12 gap-2 px-5 text-base',
 };
 
+/** Icon-only buttons are square, with no text padding (it would squeeze the icon). */
+const SQUARE: Record<ButtonSize, string> = {
+  sm: 'h-8 w-8',
+  md: 'h-10 w-10',
+  lg: 'h-12 w-12',
+};
+
 const ICON: Record<ButtonSize, number> = { sm: 16, md: 18, lg: 20 };
 
 interface CommonProps {
@@ -59,11 +66,13 @@ export function buttonClassName({
   variant = 'primary',
   size = 'md',
   fullWidth,
+  iconOnly,
   className,
 }: {
   variant?: InternalVariant;
   size?: ButtonSize;
   fullWidth?: boolean;
+  iconOnly?: boolean;
   className?: string;
 }): string {
   return cx(
@@ -71,7 +80,7 @@ export function buttonClassName({
     'transition-colors duration-fast ease-standard',
     'disabled:cursor-not-allowed disabled:opacity-50 aria-busy:cursor-progress',
     VARIANT[variant],
-    SIZE[size],
+    iconOnly ? SQUARE[size] : SIZE[size],
     fullWidth && 'w-full',
     className
   );
