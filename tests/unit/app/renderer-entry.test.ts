@@ -15,20 +15,30 @@ const BUILT = path.join(os.tmpdir(), 'built', 'index.html');
 
 describe('resolveRendererEntry', () => {
   it('uses ELECTRON_RENDERER_URL when set (start-electron.js sets port 3005)', () => {
-    expect(resolveRendererEntry({ ELECTRON_RENDERER_URL: 'http://localhost:3005' }, BUILT)).toEqual(
-      { kind: 'dev-server', url: 'http://localhost:3005' }
-    );
+    expect(
+      resolveRendererEntry({ ELECTRON_RENDERER_URL: 'http://localhost:3005' }, BUILT, false)
+    ).toEqual({ kind: 'dev-server', url: 'http://localhost:3005' });
   });
 
   it('falls back to http://localhost:3000 in development', () => {
-    expect(resolveRendererEntry({ NODE_ENV: 'development' }, BUILT)).toEqual({
+    expect(resolveRendererEntry({ NODE_ENV: 'development' }, BUILT, false)).toEqual({
       kind: 'dev-server',
       url: 'http://localhost:3000',
     });
   });
 
   it('loads the built index.html otherwise', () => {
-    expect(resolveRendererEntry({}, BUILT)).toEqual({ kind: 'file', path: BUILT });
+    expect(resolveRendererEntry({}, BUILT, false)).toEqual({ kind: 'file', path: BUILT });
+  });
+
+  it('a packaged build ignores ELECTRON_RENDERER_URL and NODE_ENV and loads its own index.html', () => {
+    expect(
+      resolveRendererEntry(
+        { ELECTRON_RENDERER_URL: 'https://evil.example', NODE_ENV: 'development' },
+        BUILT,
+        true
+      )
+    ).toEqual({ kind: 'file', path: BUILT });
   });
 });
 

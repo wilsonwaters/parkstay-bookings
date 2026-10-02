@@ -1,8 +1,9 @@
 /**
  * Where the renderer is loaded from, and which URLs count as the app's own origin.
  *
- * `index.ts` loads the window from `resolveRendererEntry`, and the IPC sender guard uses
- * `createAppUrlMatcher` on the same entry, so the two cannot disagree.
+ * The main window (`main-window.ts`) loads `resolveRendererEntry`, and both the IPC sender
+ * guard and the window's navigation guard use `createAppUrlMatcher` on the same entry, so
+ * they cannot disagree.
  */
 
 import { pathToFileURL } from 'url';
@@ -14,11 +15,16 @@ export type RendererEntry =
 /** Default Vite dev server (`vite.config.ts`). `start-electron.js` sets ELECTRON_RENDERER_URL instead. */
 export const DEFAULT_DEV_SERVER_URL = 'http://localhost:3000';
 
+/**
+ * A packaged build always loads its own `index.html`: the dev-server variables are honoured
+ * only when running from source (`!app.isPackaged`).
+ */
 export function resolveRendererEntry(
   env: NodeJS.ProcessEnv,
-  builtIndexPath: string
+  builtIndexPath: string,
+  isPackaged: boolean
 ): RendererEntry {
-  if (env.ELECTRON_RENDERER_URL || env.NODE_ENV === 'development') {
+  if (!isPackaged && (env.ELECTRON_RENDERER_URL || env.NODE_ENV === 'development')) {
     return { kind: 'dev-server', url: env.ELECTRON_RENDERER_URL || DEFAULT_DEV_SERVER_URL };
   }
   return { kind: 'file', path: builtIndexPath };
