@@ -7,9 +7,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Booking, BookingStatus } from '../../../shared/types';
 import { format } from 'date-fns';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import { Spinner, useToast } from '../../components/ui';
 import ConfirmDialog from '../../components/ConfirmDialog';
-import ToastContainer, { useToast } from '../../components/Toast';
 
 const BookingDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -21,7 +20,7 @@ const BookingDetail: React.FC = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const { toasts, removeToast, success, error: showError } = useToast();
+  const { success, error: showError } = useToast();
 
   useEffect(() => {
     if (id) {
@@ -92,7 +91,11 @@ const BookingDetail: React.FC = () => {
   };
 
   if (isLoading) {
-    return <LoadingSpinner size="lg" text="Loading booking..." fullScreen />;
+    return (
+      <div className="flex justify-center py-24">
+        <Spinner size="lg" label="Loading booking" />
+      </div>
+    );
   }
 
   if (error || !booking) {
@@ -279,9 +282,6 @@ const BookingDetail: React.FC = () => {
         onConfirm={handleDeleteBooking}
         onCancel={() => setShowDeleteDialog(false)}
       />
-
-      {/* Toast Notifications */}
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </>
   );
 };

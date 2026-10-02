@@ -5,7 +5,16 @@
  */
 
 import '@testing-library/jest-dom';
+import { configure as configureUserEventDom } from '@testing-library/dom';
+import { getConfig as getReactTestingLibraryConfig } from '@testing-library/react';
 import { createMockWindowApi } from '../utils/window-api';
+
+// user-event resolves the top-level @testing-library/dom (v10), while @testing-library/react
+// configures its own nested copy (v9) to wrap events in act(). Without this, events fired by
+// user-event are not act()-wrapped: state updates are not flushed, and under fake timers they
+// never flush at all. Give the top-level copy React Testing Library's own wrappers.
+const { asyncWrapper, eventWrapper } = getReactTestingLibraryConfig();
+configureUserEventDom({ asyncWrapper, eventWrapper });
 
 function installMockWindowApi(): void {
   Object.defineProperty(window, 'api', {

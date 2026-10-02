@@ -5,7 +5,7 @@
  *
  * Registered only when import.meta.env.DEV, so it never reaches the production bundle.
  */
-import { useId, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Accessibility,
   ArrowLeft,
@@ -67,6 +67,8 @@ import { PhotoPlaceholder } from '../../components/ui/PhotoPlaceholder';
 import { KIND_ICONS } from '../../components/ui/kindIcons';
 import { Logo } from '../../components/brand/Logo';
 import markMonoUrl from '../../assets/brand/logo-mark-mono.svg';
+import { ComponentGallery } from './ComponentGallery';
+import { Section } from './Section';
 
 const PALETTE: { family: string; note: string; tokens: string[]; decorative?: string[] }[] = [
   {
@@ -258,30 +260,6 @@ const BRUSH_TONES: BrushstrokeTone[] = ['ocean', 'ocean-soft', 'sun', 'sun-soft'
 
 const ratioText = (ratio: number) => `${ratio.toFixed(2)}:1`;
 
-function Section({
-  title,
-  intro,
-  children,
-}: {
-  title: string;
-  intro: string;
-  children: ReactNode;
-}) {
-  const id = useId();
-  return (
-    <section
-      aria-labelledby={id}
-      className="border-t border-border pt-10 first:border-t-0 first:pt-0"
-    >
-      <h2 id={id} className="text-2xl font-semibold text-fg">
-        {title}
-      </h2>
-      <p className="mt-2 max-w-2xl text-fg-secondary">{intro}</p>
-      <div className="mt-8">{children}</div>
-    </section>
-  );
-}
-
 function Swatch({ name, sheet, caption }: { name: string; sheet: TokenSheet; caption?: string }) {
   const hex = sheet.colors[name];
   const onSurface = contrastRatio(hex, sheet.colors.surface);
@@ -381,7 +359,7 @@ export default function DesignPreviewPage() {
           <p className="mt-4 max-w-2xl text-lg text-fg-secondary">
             The tokens, type and atoms from docs/design/design-language.md, rendered with the
             bundled fonts and the real stylesheet. Values are read from tokens.css as this page
-            loads.
+            loads. Below them, every primitive in components/ui with its variants and states.
           </p>
         </div>
       </header>
@@ -770,6 +748,8 @@ export default function DesignPreviewPage() {
             </p>
           </div>
         </Section>
+
+        <ComponentGallery />
       </main>
     </div>
   );

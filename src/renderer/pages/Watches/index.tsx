@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Watch } from '@shared/types';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import { Spinner, useToast } from '../../components/ui';
 import ConfirmDialog from '../../components/ConfirmDialog';
-import ToastContainer, { useToast } from '../../components/Toast';
 
 /**
  * Watches Page
@@ -19,7 +18,7 @@ export default function WatchesPage() {
     isOpen: false,
     id: null,
   });
-  const { toasts, removeToast, success, error: showError } = useToast();
+  const { success, error: showError } = useToast();
 
   useEffect(() => {
     loadWatches();
@@ -114,7 +113,11 @@ export default function WatchesPage() {
   };
 
   if (loading) {
-    return <LoadingSpinner size="lg" text="Loading watches..." fullScreen />;
+    return (
+      <div className="flex justify-center py-24">
+        <Spinner size="lg" label="Loading watches" />
+      </div>
+    );
   }
 
   return (
@@ -250,9 +253,6 @@ export default function WatchesPage() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteConfirm({ isOpen: false, id: null })}
       />
-
-      {/* Toast Notifications */}
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </>
   );
 }

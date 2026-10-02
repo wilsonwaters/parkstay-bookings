@@ -18,7 +18,7 @@ import SiteSniperPage from './pages/SiteSniper';
 import CreateSiteSnipe from './pages/SiteSniper/CreateSiteSnipe';
 import Settings from './pages/Settings';
 import ErrorBoundary from './components/ErrorBoundary';
-import LoadingSpinner from './components/LoadingSpinner';
+import { Spinner } from './components/ui';
 import UpdateNotification from './components/UpdateNotification';
 
 // Dev-only design preview (#/__design). The ternary lets Vite drop the page and its chunk
@@ -62,7 +62,11 @@ const GatedApp: React.FC = () => {
   };
 
   if (isLoading) {
-    return <LoadingSpinner size="lg" text="Loading..." fullScreen />;
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner size="lg" />
+      </div>
+    );
   }
 
   if (!isAuthenticated) {
@@ -102,7 +106,13 @@ const App: React.FC = () => (
       <Route
         path="/__design"
         element={
-          <Suspense fallback={<LoadingSpinner size="lg" text="Loading..." fullScreen />}>
+          <Suspense
+            fallback={
+              <div className="flex min-h-screen items-center justify-center">
+                <Spinner size="lg" />
+              </div>
+            }
+          >
             <DesignPreviewPage />
           </Suspense>
         }

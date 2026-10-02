@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SiteSnipe, SnipeStatus } from '@shared/types';
-import LoadingSpinner from '../../components/LoadingSpinner';
+import { Spinner, useToast } from '../../components/ui';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import ComingSoonBanner from '../../components/ComingSoonBanner';
-import ToastContainer, { useToast } from '../../components/Toast';
 
 /**
  * Map a snipe status to a Tailwind badge colour.
@@ -59,7 +58,7 @@ export default function SiteSniperPage() {
     isOpen: false,
     id: null,
   });
-  const { toasts, removeToast, success, error: showError } = useToast();
+  const { success, error: showError } = useToast();
 
   useEffect(() => {
     loadSnipes();
@@ -170,7 +169,11 @@ export default function SiteSniperPage() {
   };
 
   if (loading) {
-    return <LoadingSpinner size="lg" text="Loading snipes..." fullScreen />;
+    return (
+      <div className="flex justify-center py-24">
+        <Spinner size="lg" label="Loading snipes" />
+      </div>
+    );
   }
 
   return (
@@ -347,9 +350,6 @@ export default function SiteSniperPage() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteConfirm({ isOpen: false, id: null })}
       />
-
-      {/* Toast Notifications */}
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </>
   );
 }

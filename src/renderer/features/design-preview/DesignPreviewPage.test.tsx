@@ -1,9 +1,23 @@
-import { render, screen, within } from '@testing-library/react';
+import { render as rtlRender, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactElement } from 'react';
 import DesignPreviewPage from './DesignPreviewPage';
+import { COMPONENT_SECTIONS } from './ComponentGallery';
 import { CONTRAST_PAIRS } from '../../styles/contrast';
+import { AnnouncerProvider, ToastProvider, ToastViewport } from '../../components/ui';
 
-const SECTIONS = [
+/** The page as main.tsx mounts it: inside the toast and announcer providers. */
+const render = (ui: ReactElement) =>
+  rtlRender(
+    <ToastProvider>
+      <AnnouncerProvider>
+        {ui}
+        <ToastViewport />
+      </AnnouncerProvider>
+    </ToastProvider>
+  );
+
+const TOKEN_SECTIONS = [
   'Palette',
   'Semantic colours',
   'Contrast pairs',
@@ -18,6 +32,7 @@ const SECTIONS = [
   'Brand',
   'Focus and legacy controls',
 ];
+const SECTIONS = [...TOKEN_SECTIONS, ...COMPONENT_SECTIONS];
 
 describe('DesignPreviewPage', () => {
   it('has one page heading and a heading per section', () => {
@@ -89,5 +104,15 @@ describe('DesignPreviewPage', () => {
     await user.keyboard('{Enter}');
     expect(move).toHaveAttribute('aria-pressed', 'true');
     expect(within(motion).getByRole('button', { name: 'Replay' })).toBeEnabled();
+  });
+
+  it('has a gallery section for every component, and every button in it has a name', () => {
+    render(<DesignPreviewPage />);
+    for (const name of COMPONENT_SECTIONS) {
+      expect(screen.getByRole('region', { name })).toBeInTheDocument();
+    }
+    for (const button of screen.getAllByRole('button')) {
+      expect(button).toHaveAccessibleName();
+    }
   });
 });

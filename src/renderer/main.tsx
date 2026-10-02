@@ -8,6 +8,7 @@ import { HashRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LucideProvider } from 'lucide-react';
 import App from './App';
+import { AnnouncerProvider, ToastProvider, ToastViewport } from './components/ui';
 // Bundled fonts (no CDN): Figtree for UI, Fraunces (opsz + wght axes) for display.
 import '@fontsource-variable/figtree';
 import '@fontsource-variable/fraunces/opsz.css';
@@ -31,7 +32,16 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <QueryClientProvider client={queryClient}>
         {/* One icon style app-wide (D3 moves this into app/AppProviders.tsx). */}
         <LucideProvider strokeWidth={1.75} size={20}>
-          <App />
+          {/* App-wide toasts and live announcements (D3 moves these into app/AppProviders.tsx
+              and puts the toast viewport in the tray). */}
+          <ToastProvider>
+            <AnnouncerProvider>
+              <App />
+              <div className="pointer-events-none fixed bottom-4 left-1/2 z-toast -translate-x-1/2">
+                <ToastViewport />
+              </div>
+            </AnnouncerProvider>
+          </ToastProvider>
         </LucideProvider>
       </QueryClientProvider>
     </HashRouter>

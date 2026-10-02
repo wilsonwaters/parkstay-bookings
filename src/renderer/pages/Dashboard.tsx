@@ -7,7 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Booking } from '../../shared/types';
 import { format } from 'date-fns';
-import LoadingSpinner from '../components/LoadingSpinner';
+import { Spinner } from '../components/ui';
 
 const Dashboard: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -57,7 +57,11 @@ const Dashboard: React.FC = () => {
   };
 
   if (isLoading) {
-    return <LoadingSpinner size="lg" text="Loading dashboard..." fullScreen />;
+    return (
+      <div className="flex justify-center py-24">
+        <Spinner size="lg" label="Loading dashboard" />
+      </div>
+    );
   }
 
   return (
