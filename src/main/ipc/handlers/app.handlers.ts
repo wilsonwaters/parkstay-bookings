@@ -3,8 +3,8 @@
  */
 
 import { app, shell } from 'electron';
+import fs from 'fs';
 import os from 'os';
-import path from 'path';
 import { contract, SETTING_KEYS } from '@shared/contracts';
 import type { AppContainer } from '../../app/container';
 import { logger } from '../../utils/logger';
@@ -23,11 +23,14 @@ export function registerAppHandlers(handle: Handle, c: AppContainer): void {
     os: `${os.type()} ${os.release()}`,
     arch: os.arch(),
     userDataPath: app.getPath('userData'),
-    logsPath: path.join(app.getPath('userData'), 'logs'),
+    logsPath: c.logsDir,
   }));
 
+  // The folder the log files are written to; created first, in case logging could not create it
   handle(api.openLogsFolder, async () => {
-    await shell.openPath(path.join(app.getPath('userData'), 'logs'));
+    fs.mkdirSync(c.logsDir, { recursive: true });
+    const error = await shell.openPath(c.logsDir);
+    if (error) throw new Error(`Could not open the logs folder: ${error}`);
     return true;
   });
 

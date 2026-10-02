@@ -10,7 +10,7 @@ import type { MethodDef } from '@shared/contracts/define';
 import { openDatabase } from '@main/database/connection';
 import { createContainer, AppContainer } from '@main/app/container';
 import { registerIpcHandlers } from '@main/ipc';
-import { FakeIpcMain } from '@tests/utils/ipc-harness';
+import { FakeIpcMain, TEST_LOGS_DIR } from '@tests/utils/ipc-harness';
 
 jest.mock('electron', () => jest.requireActual('@tests/utils/electron-mocks').electron());
 jest.mock('electron-updater', () =>
@@ -97,7 +97,7 @@ describe('IPC contract', () => {
     let ipc: FakeIpcMain;
 
     beforeEach(() => {
-      container = createContainer({ db: openDatabase(':memory:') });
+      container = createContainer({ db: openDatabase(':memory:'), logsDir: TEST_LOGS_DIR });
       ipc = new FakeIpcMain();
       registerIpcHandlers(container, { isTrustedSender: () => true, ipc });
     });

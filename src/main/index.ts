@@ -3,14 +3,19 @@
  * Initializes the application, database, services, and window
  */
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog } from 'electron';
 import path from 'path';
 import { openDatabase } from './database/connection';
 import { createContainer, AppContainer } from './app/container';
+import { installCrashPolicy } from './app/crash-policy';
 import { createAppUrlMatcher, resolveRendererEntry } from './app/renderer-entry';
 import { registerIpcHandlers } from './ipc';
 import { createSenderGuard } from './ipc/sender-guard';
-import { logger } from './utils/logger';
+import { initFileLogging, logger } from './utils/logger';
+
+// Installed first: a failed start shows an error box and exits; after startup errors are
+// logged and survived
+const crashPolicy = installCrashPolicy({ process, app, dialog, log: logger });
 
 // Where the renderer is loaded from. The IPC sender guard trusts exactly this origin.
 const rendererEntry = resolveRendererEntry(
@@ -93,13 +98,14 @@ function createWindow(): void {
  */
 async function initializeApp(): Promise<void> {
   try {
+    const logsDir = initFileLogging(path.join(app.getPath('userData'), 'logs'));
     logger.info('Initializing application...');
 
     // Open and migrate the database (B3 moves it to the WA Stay data folder)
     const db = openDatabase(path.join(app.getPath('userData'), 'parkstay.db'));
 
     // Build every service once, then make sure the local profile row exists
-    container = createContainer({ db });
+    container = createContainer({ db, logsDir });
     container.profile.ensureLocalProfile();
 
     const trusted = container.trustedWebContents;
@@ -126,9 +132,14 @@ app.on('ready', async () => {
   try {
     await initializeApp();
     createWindow();
+    const ready = container;
+    if (!ready) throw new Error('The application did not initialize');
+    // From here on an error is logged and survived; the user hears about it (throttled)
+    crashPolicy.markReady((error) =>
+      ready.notificationService.notifyError(ready.profile.requireUserId(), error, 'Unexpected error')
+    );
   } catch (error) {
-    logger.error('Failed to start application:', error);
-    app.quit();
+    crashPolicy.failStartup(error);
   }
 });
 
@@ -163,19 +174,4 @@ app.on('before-quit', () => {
   container = null;
 
   logger.info('Application shut down successfully');
-});
-
-/**
- * Handle uncaught exceptions
- */
-process.on('uncaughtException', (error) => {
-  logger.error('Uncaught exception:', error);
-  app.quit();
-});
-
-/**
- * Handle unhandled promise rejections
- */
-process.on('unhandledRejection', (reason) => {
-  logger.error('Unhandled promise rejection:', reason);
 });

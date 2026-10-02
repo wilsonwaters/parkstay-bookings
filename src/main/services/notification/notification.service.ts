@@ -14,6 +14,8 @@ import { Notification as ElectronNotification, app } from 'electron';
 import * as path from 'path';
 import { logger } from '../../utils/logger';
 
+const log = logger.child({ module: 'notifications' });
+
 /**
  * Notification Service
  * Handles user notifications (desktop and in-app)
@@ -72,7 +74,7 @@ export class NotificationService {
           campgroundName: dispatchMeta?.campgroundName,
         });
       } catch (error) {
-        logger.error('Error dispatching notification to providers:', error);
+        log.error('Error dispatching notification to providers:', error);
         // Don't throw - we don't want provider failures to break the main notification flow
       }
     }
@@ -259,7 +261,7 @@ export class NotificationService {
 
       desktopNotification.show();
     } catch (error) {
-      console.error('Failed to show desktop notification:', error);
+      log.error('Failed to show desktop notification:', error);
     }
   }
 
@@ -269,14 +271,14 @@ export class NotificationService {
   private async playNotificationSound(): Promise<void> {
     // Sound playback would be implemented here
     // Could use a library like node-wav-player or play system sounds
-    console.log('Playing notification sound');
+    log.info('Playing notification sound');
   }
 
   /**
    * Send navigation event to renderer
    */
   private sendNavigationEvent(url: string): void {
-    console.log('Navigating to:', url);
+    log.info(`Navigating to: ${url}`);
   }
 
   /**

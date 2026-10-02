@@ -766,7 +766,10 @@ export function openDatabase(filePath: string): Database.Database {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
 
   const db = new Database(filePath, {
-    verbose: process.env.NODE_ENV === 'development' ? console.log : undefined,
+    verbose:
+      process.env.NODE_ENV === 'development'
+        ? (message?: unknown) => logger.debug(String(message))
+        : undefined,
   });
 
   try {

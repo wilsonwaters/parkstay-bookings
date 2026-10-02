@@ -20,6 +20,7 @@ import {
   fakeEvent,
   fakeWebContents,
   FakeWebContents,
+  TEST_LOGS_DIR,
   TRUSTED_SENDER_ID,
 } from '@tests/utils/ipc-harness';
 
@@ -44,7 +45,7 @@ describe('IPC through the container', () => {
     ipc.invoke(channel, fakeEvent(), payload) as Promise<APIResponse<T>>;
 
   beforeEach(() => {
-    container = createContainer({ db: openDatabase(':memory:') });
+    container = createContainer({ db: openDatabase(':memory:'), logsDir: TEST_LOGS_DIR });
     mainWindow = fakeWebContents(TRUSTED_SENDER_ID);
     container.trustedWebContents.register(mainWindow);
     ipc = new FakeIpcMain();

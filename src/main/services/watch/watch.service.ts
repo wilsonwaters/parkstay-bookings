@@ -4,6 +4,9 @@ import { WatchRepository } from '../../database/repositories';
 import { ParkStayService } from '../parkstay/parkstay.service';
 import { NotificationService } from '../notification/notification.service';
 import { AppError } from '../../utils/app-error';
+import { logger } from '../../utils/logger';
+
+const log = logger.child({ module: 'watches' });
 
 /**
  * Watch Service
@@ -204,7 +207,7 @@ export class WatchService {
         if (watch.autoBook) {
           // Auto-booking would be implemented here
           // For safety, this should be carefully implemented with user confirmation
-          console.log(`Auto-book enabled for watch ${watchId}, but not yet implemented`);
+          log.info(`Auto-book enabled for watch ${watchId}, but not yet implemented`);
         }
 
         // If watch is configured for single notification, deactivate
@@ -227,7 +230,7 @@ export class WatchService {
         checkedAt,
       };
     } catch (error: any) {
-      console.error(`Watch ${watchId} execution failed:`, error);
+      log.error(`Watch ${watchId} execution failed:`, error);
 
       // Update watch with error status
       this.watchRepo.updateLastResult(watchId, WatchResult.ERROR, false);

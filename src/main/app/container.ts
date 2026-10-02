@@ -51,6 +51,8 @@ export interface AppRepositories {
 
 export interface AppContainer {
   readonly db: Database.Database;
+  /** Where the log files are (`initFileLogging`); the `app` handlers open it. */
+  readonly logsDir: string;
   readonly repositories: AppRepositories;
   /** The webContents allowed to call IPC and to receive events. */
   readonly trustedWebContents: TrustedWebContents;
@@ -74,9 +76,11 @@ export interface AppContainer {
 export interface ContainerOptions {
   /** An open, migrated database (`openDatabase`). The container owns it from here: `dispose` closes it. */
   readonly db: Database.Database;
+  /** The log folder returned by `initFileLogging` (`<userData>/logs`). */
+  readonly logsDir: string;
 }
 
-export function createContainer({ db }: ContainerOptions): AppContainer {
+export function createContainer({ db, logsDir }: ContainerOptions): AppContainer {
   const repositories: AppRepositories = {
     users: new UserRepository(db),
     bookings: new BookingRepository(db),
@@ -131,6 +135,7 @@ export function createContainer({ db }: ContainerOptions): AppContainer {
 
   return {
     db,
+    logsDir,
     repositories,
     trustedWebContents,
     rendererEvents,

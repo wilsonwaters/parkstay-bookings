@@ -29,6 +29,9 @@ import {
   QUEUE_RETRY_DELAY_MS,
 } from '@shared/constants';
 import { getQueueApiHeaders } from '../../utils/browser-headers';
+import { logger } from '../../utils/logger';
+
+const log = logger.child({ module: 'queue' });
 
 const DEFAULT_CONFIG: QueueServiceConfig = {
   pollIntervalMs: QUEUE_POLL_INTERVAL_MS,
@@ -74,17 +77,17 @@ export class QueueService extends EventEmitter {
         // Only restore if not expired
         if (stored.expiresAt > new Date()) {
           this.session = stored;
-          console.log('Restored queue session from database:', this.session.sessionKey);
+          log.info(`Restored queue session from database: ${this.session.sessionKey}`);
 
           // Schedule refresh for restored session
           this.scheduleSessionRefresh();
         } else {
-          console.log('Stored queue session has expired, will create new one');
+          log.info('Stored queue session has expired, will create new one');
           this.clearSessionFromDatabase();
         }
       }
     } catch (error) {
-      console.error('Failed to load queue session from database:', error);
+      log.error('Failed to load queue session from database:', error);
     }
   }
 
@@ -97,7 +100,7 @@ export class QueueService extends EventEmitter {
     try {
       this.sessionRepo.save(this.session);
     } catch (error) {
-      console.error('Failed to save queue session to database:', error);
+      log.error('Failed to save queue session to database:', error);
     }
   }
 
@@ -108,7 +111,7 @@ export class QueueService extends EventEmitter {
     try {
       this.sessionRepo.clear();
     } catch (error) {
-      console.error('Failed to clear queue session from database:', error);
+      log.error('Failed to clear queue session from database:', error);
     }
   }
 
@@ -173,7 +176,7 @@ export class QueueService extends EventEmitter {
 
       return this.session;
     } catch (error: any) {
-      console.error('Queue check failed:', error.message);
+      log.error(`Queue check failed: ${error.message}`);
       this.emitStatusEvent('error', undefined, error.message);
       throw new Error(`Failed to check queue: ${error.message}`);
     }
@@ -247,7 +250,7 @@ export class QueueService extends EventEmitter {
           this.pollTimer = setTimeout(poll, this.config.pollIntervalMs);
         } catch (error: any) {
           // Retry on error
-          console.warn('Queue poll error, retrying:', error.message);
+          log.warn(`Queue poll error, retrying: ${error.message}`);
           this.pollTimer = setTimeout(poll, this.config.retryDelayMs);
         }
       };
@@ -284,9 +287,9 @@ export class QueueService extends EventEmitter {
       this.refreshTimer = setTimeout(async () => {
         try {
           await this.checkOrCreateSession(this.session?.sessionKey);
-          console.log('Queue session refreshed');
+          log.info('Queue session refreshed');
         } catch (error) {
-          console.error('Failed to refresh queue session:', error);
+          log.error('Failed to refresh queue session:', error);
           this.emitStatusEvent('session_expired', this.session!);
         }
       }, refreshTime);
@@ -326,7 +329,7 @@ export class QueueService extends EventEmitter {
           await this.checkOrCreateSession(this.session.sessionKey);
         }
       } catch (error) {
-        console.error('Queue keep-alive refresh failed:', error);
+        log.error('Queue keep-alive refresh failed:', error);
       }
     }, intervalMs);
   }

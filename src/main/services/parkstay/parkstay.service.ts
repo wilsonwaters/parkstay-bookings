@@ -17,6 +17,9 @@ import {
 import { PARKSTAY_API_BASE_URL, PARKSTAY_BASE_URL } from '@shared/constants';
 import { QueueService } from '../queue/queue.service';
 import { getParkstayApiHeaders } from '../../utils/browser-headers';
+import { logger } from '../../utils/logger';
+
+const log = logger.child({ module: 'parkstay' });
 
 /**
  * ParkStay API Service
@@ -184,7 +187,7 @@ export class ParkStayService {
 
       return this.session;
     } catch (error) {
-      console.error('Login failed:', error);
+      log.error('Login failed:', error);
       throw new Error('Failed to login to ParkStay');
     }
   }
@@ -244,7 +247,7 @@ export class ParkStayService {
       // Requires CSRF token
       await this.client.post('/accounts/logout/');
     } catch (error) {
-      console.error('Logout failed:', error);
+      log.error('Logout failed:', error);
     } finally {
       this.session = null;
       this.queueSession = null;
@@ -278,14 +281,14 @@ export class ParkStayService {
     }
 
     // Wait for active session (waits indefinitely per user preference)
-    console.log('Waiting for queue access...');
+    log.info('Waiting for queue access...');
     const result = await this.queueService.waitForActive();
 
     if (!result.success) {
       throw new Error(result.error || 'Failed to obtain queue access');
     }
 
-    console.log('Queue access obtained');
+    log.info('Queue access obtained');
   }
 
   /**
@@ -335,7 +338,7 @@ export class ParkStayService {
 
       return campgrounds;
     } catch (error) {
-      console.error('Search campgrounds failed:', error);
+      log.error('Search campgrounds failed:', error);
       throw new Error('Failed to search campgrounds');
     }
   }
@@ -437,7 +440,7 @@ export class ParkStayService {
         lowestPrice: undefined, // Price not available in this endpoint
       };
     } catch (error) {
-      console.error('Check availability failed:', error);
+      log.error('Check availability failed:', error);
       throw new Error('Failed to check availability');
     }
   }
@@ -466,7 +469,7 @@ export class ParkStayService {
       if (r.status === 'fulfilled' && typeof r.value.name === 'string' && r.value.name) {
         this.campsiteNameCache.set(r.value.id, r.value.name);
       } else if (r.status === 'rejected') {
-        console.error('Failed to fetch campsite name:', r.reason);
+        log.error('Failed to fetch campsite name:', r.reason);
       }
     }
   }
@@ -523,7 +526,7 @@ export class ParkStayService {
         })),
       };
     } catch (error) {
-      console.error('Get campsite availability failed:', error);
+      log.error('Get campsite availability failed:', error);
       throw new Error('Failed to get campsite availability');
     }
   }
@@ -602,7 +605,7 @@ export class ParkStayService {
         details: response.data,
       };
     } catch (error: any) {
-      console.error('Create booking failed:', error);
+      log.error('Create booking failed:', error);
       return {
         success: false,
         error: error.response?.data?.message || 'Failed to create booking',
@@ -639,7 +642,7 @@ export class ParkStayService {
       const response = await this.client.get(`/bookings/${bookingReference}/`);
       return response.data;
     } catch (error) {
-      console.error('Get booking details failed:', error);
+      log.error('Get booking details failed:', error);
       throw new Error('Failed to get booking details');
     }
   }
@@ -686,7 +689,7 @@ export class ParkStayService {
       // Requires CSRF token
       await this.client.post(`/bookings/${bookingReference}/cancel/`);
     } catch (error) {
-      console.error('Cancel booking failed:', error);
+      log.error('Cancel booking failed:', error);
       throw new Error('Failed to cancel booking');
     }
   }
@@ -736,7 +739,7 @@ export class ParkStayService {
         newBookingReference: response.data.booking_number,
       };
     } catch (error: any) {
-      console.error('Update booking failed:', error);
+      log.error('Update booking failed:', error);
       return {
         success: false,
         error: error.response?.data?.message || 'Failed to update booking',
@@ -904,7 +907,7 @@ export class ParkStayService {
       });
       data = response.data;
     } catch (error) {
-      console.error('Get site availability view failed:', error);
+      log.error('Get site availability view failed:', error);
       throw new Error('Failed to get site availability view');
     }
 
@@ -947,7 +950,7 @@ export class ParkStayService {
         sites,
       };
     } catch (parseError) {
-      console.error('Parsing site availability view failed:', parseError);
+      log.error('Parsing site availability view failed:', parseError);
       return {
         campgroundId: String(campgroundId),
         bookingTimeOpen: false,
@@ -1020,7 +1023,7 @@ export class ParkStayService {
         error: data.message || data.error || data.status || 'Booking hold failed',
       };
     } catch (error: any) {
-      console.error('Create booking hold failed:', error);
+      log.error('Create booking hold failed:', error);
       const data = error.response?.data;
       if (data?.inprogress_booking) {
         return { success: false, inProgress: true, error: 'A booking is already in progress' };

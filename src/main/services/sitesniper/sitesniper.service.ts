@@ -12,6 +12,9 @@ import { QueueService } from '../queue/queue.service';
 import { NotificationService } from '../notification/notification.service';
 import { computeDailyRolloverReleaseAt } from './release-timing';
 import { AppError } from '../../utils/app-error';
+import { logger } from '../../utils/logger';
+
+const log = logger.child({ module: 'sitesniper' });
 
 /**
  * Site Sniper Service
@@ -291,7 +294,7 @@ export class SiteSniperService {
         checkedAt,
       };
     } catch (error: any) {
-      console.error(`Site snipe ${snipeId} execution failed:`, error);
+      log.error(`Site snipe ${snipeId} execution failed:`, error);
       this.repo.setResult(snipeId, SnipeResult.ERROR, error?.message || 'Unknown error');
       this.repo.incrementAttempts(snipeId);
       this.repo.updateCheckTimestamps(snipeId, checkedAt, this.nextCheckFor(snipe, checkedAt));

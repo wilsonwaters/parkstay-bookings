@@ -23,6 +23,7 @@ import { WatchService } from '@main/services/watch/watch.service';
 import { JobScheduler } from '@main/scheduler/job-scheduler';
 import { RendererEvents } from '@main/ipc/events';
 import { TrustedWebContents } from '@main/ipc/trusted-web-contents';
+import { TEST_LOGS_DIR } from '@tests/utils/ipc-harness';
 
 jest.mock('electron', () => ({
   app: { getAppPath: () => '/app', getPath: () => '/tmp', isPackaged: false },
@@ -130,7 +131,7 @@ describe('createContainer', () => {
 
   function build(): { container: AppContainer; db: Database.Database } {
     const db = openDatabase(':memory:');
-    const container = createContainer({ db });
+    const container = createContainer({ db, logsDir: TEST_LOGS_DIR });
     opened.push(container);
     return { container, db };
   }

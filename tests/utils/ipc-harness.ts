@@ -33,6 +33,8 @@ export class FakeIpcMain implements IpcMainLike {
 /** The built renderer, at a path with a space in it (like `C:\Program Files\WA Stay`). */
 export const APP_INDEX_PATH = path.join(os.tmpdir(), 'WA Stay', 'dist', 'renderer', 'index.html');
 export const APP_URL = `${pathToFileURL(APP_INDEX_PATH).href}#/watches`;
+/** A container's log folder in tests. Nothing is written there unless a test opens it. */
+export const TEST_LOGS_DIR = path.join(os.tmpdir(), 'WA Stay', 'logs');
 export const TRUSTED_SENDER_ID = 1;
 
 export interface FakeFrame {

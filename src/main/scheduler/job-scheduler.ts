@@ -4,6 +4,9 @@ import { SnipeReleaseMode, SnipeResult, SnipeStatus } from '@shared/types/common
 import { CANCELLATION_POLL_MIN_MS } from '@shared/constants';
 import { WatchService } from '../services/watch/watch.service';
 import { SiteSniperService } from '../services/sitesniper/sitesniper.service';
+import { logger } from '../utils/logger';
+
+const log = logger.child({ module: 'scheduler' });
 
 interface ScheduledJob {
   id: string;
@@ -54,18 +57,18 @@ export class JobScheduler {
    */
   start(): void {
     if (this.isRunning) {
-      console.log('Job scheduler already running');
+      log.info('Job scheduler already running');
       return;
     }
 
-    console.log('Starting job scheduler...');
+    log.info('Starting job scheduler...');
     this.isRunning = true;
 
     this.scheduleActiveWatches();
     this.scheduleActiveSnipes();
     this.scheduleCleanupJob();
 
-    console.log('Job scheduler started');
+    log.info('Job scheduler started');
   }
 
   /**
@@ -73,11 +76,11 @@ export class JobScheduler {
    */
   stop(): void {
     if (!this.isRunning) {
-      console.log('Job scheduler not running');
+      log.info('Job scheduler not running');
       return;
     }
 
-    console.log('Stopping job scheduler...');
+    log.info('Stopping job scheduler...');
 
     this.jobs.forEach((job) => job.task.stop());
     this.jobs.clear();
@@ -87,7 +90,7 @@ export class JobScheduler {
     this.snipeTimers.clear();
 
     this.isRunning = false;
-    console.log('Job scheduler stopped');
+    log.info('Job scheduler stopped');
   }
 
   /**
@@ -129,10 +132,10 @@ export class JobScheduler {
       cronExpression,
       async () => {
         try {
-          console.log(`Executing watch ${watch.id}: ${watch.name}`);
+          log.info(`Executing watch ${watch.id}: ${watch.name}`);
           await this.watchService.execute(watch.id);
         } catch (error) {
-          console.error(`Error executing watch ${watch.id}:`, error);
+          log.error(`Error executing watch ${watch.id}:`, error);
         }
       },
       {
@@ -148,7 +151,7 @@ export class JobScheduler {
       relatedId: watch.id,
     });
 
-    console.log(
+    log.info(
       `Scheduled watch ${watch.id} with cron "${cronExpression}" (interval ${watch.checkIntervalMinutes} min)`
     );
   }
@@ -178,13 +181,13 @@ export class JobScheduler {
       }, interval);
       this.snipeTimers.set(key, timers);
       this.siteSniperService.setStatus(snipe.id, SnipeStatus.SNIPING);
-      console.log(`Scheduled cancellation snipe ${snipe.id} polling every ${interval}ms`);
+      log.info(`Scheduled cancellation snipe ${snipe.id} polling every ${interval}ms`);
       return;
     }
 
     const releaseAt = this.siteSniperService.computeReleaseAt(snipe);
     if (!releaseAt) {
-      console.warn(`Snipe ${snipe.id} has no release instant; not scheduling`);
+      log.warn(`Snipe ${snipe.id} has no release instant; not scheduling`);
       return;
     }
 
@@ -197,7 +200,7 @@ export class JobScheduler {
     if (delay > MAX_TIMER_MS) {
       // Too far out for a single timer — re-arm periodically.
       timers.rearmTimer = setTimeout(() => this.scheduleSnipe(snipe), REARM_INTERVAL_MS);
-      console.log(
+      log.info(
         `Snipe ${snipe.id} release far in the future; re-arm scheduled in ${REARM_INTERVAL_MS}ms`
       );
       return;
@@ -208,7 +211,7 @@ export class JobScheduler {
       void this.startWarmup(snipe, releaseAt);
     } else {
       timers.warmupTimer = setTimeout(() => void this.startWarmup(snipe, releaseAt), delay);
-      console.log(
+      log.info(
         `Scheduled snipe ${snipe.id} warm-up in ${delay}ms (release at ${releaseAt.toISOString()})`
       );
     }
@@ -237,7 +240,7 @@ export class JobScheduler {
         // Legitimate session refresh only — see QueueService.startKeepAlive.
         queue.startKeepAlive();
       } catch (error) {
-        console.error(`Snipe ${snipe.id} queue warm-up failed:`, error);
+        log.error(`Snipe ${snipe.id} queue warm-up failed:`, error);
       }
     }
 
@@ -272,7 +275,7 @@ export class JobScheduler {
     const stopDelay = releaseAt.getTime() + snipe.windowDurationMs - Date.now();
     timers.stopTimer = setTimeout(() => void this.stopSnipeWindow(snipe), Math.max(stopDelay, 0));
 
-    console.log(`Snipe ${snipe.id} sniping (poll ${snipe.pollIntervalMs}ms)`);
+    log.info(`Snipe ${snipe.id} sniping (poll ${snipe.pollIntervalMs}ms)`);
   }
 
   /**
@@ -291,7 +294,7 @@ export class JobScheduler {
         this.unscheduleSnipe(snipe.id);
       }
     } catch (error) {
-      console.error(`Error executing snipe ${snipe.id}:`, error);
+      log.error(`Error executing snipe ${snipe.id}:`, error);
     }
   }
 
@@ -335,7 +338,7 @@ export class JobScheduler {
     if (job) {
       job.task.stop();
       this.jobs.delete(jobId);
-      console.log(`Unscheduled job ${jobId}`);
+      log.info(`Unscheduled job ${jobId}`);
     }
   }
 
@@ -354,7 +357,7 @@ export class JobScheduler {
     if (this.snipeTimers.has(key)) {
       this.clearSnipeTimers(key);
       this.snipeTimers.delete(key);
-      console.log(`Unscheduled snipe ${snipeId}`);
+      log.info(`Unscheduled snipe ${snipeId}`);
     }
   }
 
@@ -362,7 +365,7 @@ export class JobScheduler {
    * Execute a watch immediately (outside of schedule)
    */
   async executeWatchNow(watchId: number): Promise<any> {
-    console.log(`Executing watch ${watchId} immediately`);
+    log.info(`Executing watch ${watchId} immediately`);
     return this.watchService.execute(watchId);
   }
 
@@ -370,7 +373,7 @@ export class JobScheduler {
    * Execute a snipe immediately (outside of schedule)
    */
   async executeSnipeNow(snipeId: number): Promise<any> {
-    console.log(`Executing snipe ${snipeId} immediately`);
+    log.info(`Executing snipe ${snipeId} immediately`);
     return this.siteSniperService.execute(snipeId);
   }
 
@@ -389,7 +392,7 @@ export class JobScheduler {
    */
   private scheduleActiveWatches(): void {
     const activeWatches = this.watchService.getActiveWatches();
-    console.log(`Scheduling ${activeWatches.length} active watches`);
+    log.info(`Scheduling ${activeWatches.length} active watches`);
     activeWatches.forEach((watch) => this.scheduleWatch(watch));
   }
 
@@ -398,7 +401,7 @@ export class JobScheduler {
    */
   scheduleActiveSnipes(): void {
     const activeSnipes = this.siteSniperService.getActive();
-    console.log(`Scheduling ${activeSnipes.length} active snipes`);
+    log.info(`Scheduling ${activeSnipes.length} active snipes`);
     activeSnipes.forEach((snipe) => this.scheduleSnipe(snipe));
   }
 
@@ -410,10 +413,10 @@ export class JobScheduler {
       '0 2 * * *',
       async () => {
         try {
-          console.log('Running cleanup job');
+          log.info('Running cleanup job');
           await this.runCleanup();
         } catch (error) {
-          console.error('Error running cleanup job:', error);
+          log.error('Error running cleanup job:', error);
         }
       },
       {
@@ -429,14 +432,14 @@ export class JobScheduler {
       relatedId: 0,
     });
 
-    console.log('Scheduled daily cleanup job');
+    log.info('Scheduled daily cleanup job');
   }
 
   /**
    * Run cleanup tasks
    */
   private async runCleanup(): Promise<void> {
-    console.log('Cleanup completed');
+    log.info('Cleanup completed');
   }
 
   /**

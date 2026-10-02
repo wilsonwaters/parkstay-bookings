@@ -22,6 +22,14 @@
     "react/react-in-jsx-scope": "off",
     "react/prop-types": "off"
   },
+  "overrides": [
+    {
+      "files": ["src/main/**/*.ts", "src/preload/**/*.ts"],
+      "rules": {
+        "no-console": "error"
+      }
+    }
+  ],
   "settings": {
     "react": {
       "version": "detect"
