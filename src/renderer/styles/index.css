@@ -1,35 +1,75 @@
+@import './tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-canvas text-fg font-sans antialiased;
+  }
+
+  /* One focus treatment everywhere: a 2px ocean ring, offset so it never touches the control. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--ws-focus));
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: rgb(var(--ws-ocean-100));
+    color: rgb(var(--ws-fg));
+  }
+
+  /* Placeholders are hints, so they get muted text that still passes AA (replaces gray-400). */
+  input::placeholder,
+  textarea::placeholder {
+    color: rgb(var(--ws-fg-muted));
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
+/* legacy: delete when U-stream lands.
+ * Bridge classes used by the pre-redesign pages, restyled with tokens so they
+ * match the new language until the U-stream rebuilds those pages from components/ui. */
 @layer components {
+  /* legacy: delete when U-stream lands */
   .btn {
-    @apply px-4 py-2 rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2;
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition-colors duration-fast ease-standard disabled:cursor-not-allowed disabled:opacity-50;
   }
 
+  /* legacy: delete when U-stream lands */
   .btn-primary {
-    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus:ring-primary-500;
+    @apply btn bg-accent text-accent-fg hover:bg-accent-hover;
   }
 
+  /* legacy: delete when U-stream lands */
   .btn-secondary {
-    @apply btn bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500;
+    @apply btn border border-fg bg-surface text-fg hover:bg-surface-subtle;
   }
 
+  /* legacy: delete when U-stream lands */
   .btn-danger {
-    @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500;
+    @apply btn border border-danger bg-surface text-danger hover:bg-danger-subtle;
   }
 
+  /* legacy: delete when U-stream lands */
   .input {
-    @apply block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500;
+    @apply block w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-fg transition-colors duration-fast ease-standard focus:border-focus disabled:bg-surface-subtle disabled:text-fg-muted;
   }
 
+  /* legacy: delete when U-stream lands */
   .card {
-    @apply bg-white rounded-lg shadow-sm border border-gray-200 p-6;
+    @apply rounded-lg border border-border bg-surface p-6 shadow-card;
   }
 }

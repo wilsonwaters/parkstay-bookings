@@ -3,7 +3,7 @@
  * Handles routing and layout
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from './components/layouts/MainLayout';
 import Login from './pages/Login';
@@ -21,7 +21,13 @@ import ErrorBoundary from './components/ErrorBoundary';
 import LoadingSpinner from './components/LoadingSpinner';
 import UpdateNotification from './components/UpdateNotification';
 
-const App: React.FC = () => {
+// Dev-only design preview (#/__design). The ternary lets Vite drop the page and its chunk
+// from production builds. D3 moves it into the route table.
+const DesignPreviewPage = import.meta.env.DEV
+  ? lazy(() => import('./features/design-preview/DesignPreviewPage'))
+  : null;
+
+const GatedApp: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -88,5 +94,22 @@ const App: React.FC = () => {
     </ErrorBoundary>
   );
 };
+
+const App: React.FC = () => (
+  <Routes>
+    {DesignPreviewPage && (
+      // Registered outside the login gate so the preview needs no ParkStay account.
+      <Route
+        path="/__design"
+        element={
+          <Suspense fallback={<LoadingSpinner size="lg" text="Loading..." fullScreen />}>
+            <DesignPreviewPage />
+          </Suspense>
+        }
+      />
+    )}
+    <Route path="*" element={<GatedApp />} />
+  </Routes>
+);
 
 export default App;

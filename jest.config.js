@@ -15,6 +15,8 @@ const TEST_FILE = '*.test.[jt]s?(x)';
 const base = {
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   transform: {
+    // Vite `?raw` imports (brushstroke SVGs, tokens.css) load as their real file contents.
+    '\\.(svg|css)$': '<rootDir>/tests/utils/raw-file-transform.js',
     '^.+\\.(ts|tsx)$': [
       'ts-jest',
       {
@@ -33,6 +35,8 @@ const base = {
     '^@shared/(.*)$': '<rootDir>/src/shared/$1',
     '^@preload/(.*)$': '<rootDir>/src/preload/$1',
     '^@tests/(.*)$': '<rootDir>/tests/$1',
+    // `?raw` must map before the stylesheet stub so raw imports get the real file.
+    '^(.+\\.(svg|css))\\?raw$': '$1',
     '\\.(css|less|scss|sass)$': '<rootDir>/tests/utils/style-mock.js',
   },
 };
