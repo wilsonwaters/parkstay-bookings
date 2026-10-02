@@ -120,6 +120,28 @@ const api: WindowApi = {
     getStatus: none,
   }),
 
+  providers: bind('providers', {
+    list: none,
+    accessStatus: (providerId) => ({ providerId }),
+  }),
+
+  catalog: bind('catalog', {
+    search: (query) => query,
+    get: (key) => ({ key }),
+    availability: (stay, options) => ({ stay, ...options }),
+    checkLocation: (key, stay) => ({ key, stay }),
+    refresh: (providerId) => ({ providerId }),
+    status: none,
+  }),
+
+  accounts: bind('accounts', {
+    list: none,
+    status: (providerId) => ({ providerId }),
+    signIn: (providerId) => ({ providerId }),
+    signOut: (providerId) => ({ providerId }),
+    openSignInLink: (providerId, url) => ({ providerId, url }),
+  }),
+
   auth: bind('auth', {
     storeCredentials: (credentials) => credentials,
     getCredentials: none,

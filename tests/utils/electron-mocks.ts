@@ -22,6 +22,23 @@ export function electron(): Record<string, unknown> {
     Notification: jest.fn().mockImplementation(() => ({ on: jest.fn(), show: jest.fn() })),
     shell: { openExternal: jest.fn(), openPath: jest.fn() },
     ipcMain: { handle: jest.fn() },
+    session: { fromPartition: jest.fn(() => fakeSession()) },
+  };
+}
+
+/**
+ * A session partition (`session.fromPartition`) whose network calls fail unless a test
+ * stubs them: providers' HTTP clients are built on it.
+ */
+export function fakeSession(): Record<string, unknown> {
+  return {
+    setUserAgent: jest.fn(),
+    fetch: jest.fn(() => Promise.reject(new Error('session.fetch is not mocked in this test'))),
+    cookies: {
+      get: jest.fn(() => Promise.resolve([])),
+      set: jest.fn(() => Promise.resolve()),
+      remove: jest.fn(() => Promise.resolve()),
+    },
   };
 }
 

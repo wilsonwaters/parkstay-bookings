@@ -13,6 +13,13 @@ import { createAppUrlMatcher } from '@main/app/renderer-entry';
 import { AppError } from '@main/utils/app-error';
 import { logger } from '@main/utils/logger';
 import {
+  AccessGateError,
+  ProviderAuthRequiredError,
+  ProviderCapabilityError,
+  ProviderHttpError,
+  UnknownProviderError,
+} from '@main/providers/sdk/errors';
+import {
   APP_INDEX_PATH,
   FakeIpcMain,
   fakeEvent,
@@ -160,6 +167,32 @@ describe('handle()', () => {
         code: 'INTERNAL',
         error: 'Unexpected error',
       });
+    });
+
+    it.each([
+      ['ProviderCapabilityError', 'CAPABILITY', new ProviderCapabilityError('fake', 'holds')],
+      ['UnknownProviderError', 'UNKNOWN_PROVIDER', new UnknownProviderError('nope')],
+      [
+        'ProviderHttpError',
+        'PROVIDER_ERROR',
+        new ProviderHttpError({ providerId: 'fake', status: 503, url: 'https://x.example/a?q=1' }),
+      ],
+      ['AccessGateError', 'ACCESS_GATE', new AccessGateError('fake', 'waiting')],
+      ['ProviderAuthRequiredError', 'AUTH_REQUIRED', new ProviderAuthRequiredError('fake')],
+    ])('a %s becomes %s with its message', async (_name, code, thrown) => {
+      register(contract.providers.list, () => {
+        throw thrown;
+      });
+
+      await expect(ipc.invoke('providers:list', fakeEvent())).resolves.toEqual({
+        success: false,
+        code,
+        error: thrown.message,
+      });
+      // Logged as a warning with the provider error's own code and retryability
+      expect(warn).toHaveBeenCalledWith(
+        `IPC providers:list failed: ${code} (${thrown.providerId} ${thrown.code}, retryable: ${thrown.retryable})`
+      );
     });
 
     it('a ZodError thrown by the handler is VALIDATION with its paths', async () => {

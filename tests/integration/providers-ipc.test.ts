@@ -1,0 +1,242 @@
+/**
+ * The `providers`, `catalog` and `accounts` namespaces through P3's harness: a real container
+ * (with the built-in ParkStay provider), every handler registered through handle(), and
+ * invokes from the trusted fake renderer.
+ */
+
+import { EventEmitter } from 'events';
+import { openDatabase } from '@main/database/connection';
+import { createContainer, AppContainer } from '@main/app/container';
+import { createAppUrlMatcher } from '@main/app/renderer-entry';
+import { registerIpcHandlers } from '@main/ipc';
+import { createSenderGuard } from '@main/ipc/sender-guard';
+import {
+  ProviderManifestSchema,
+  type AccessStatus,
+  type ProviderManifest,
+} from '@shared/types/provider.types';
+import type { APIResponse } from '@shared/types';
+import {
+  APP_INDEX_PATH,
+  FakeIpcMain,
+  fakeEvent,
+  fakeWebContents,
+  FakeWebContents,
+  TRUSTED_SENDER_ID,
+} from '@tests/utils/ipc-harness';
+import {
+  createFakeProvider,
+  createTestProviderContext,
+  type FakeProvider,
+} from '@tests/utils/fake-provider';
+
+jest.mock('electron', () => jest.requireActual('@tests/utils/electron-mocks').electron());
+jest.mock('electron-updater', () =>
+  jest.requireActual('@tests/utils/electron-mocks').electronUpdater()
+);
+jest.mock('electron-store', () =>
+  jest.requireActual('@tests/utils/electron-mocks').electronStore()
+);
+jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }));
+
+const { autoUpdater } = jest.requireMock('electron-updater') as { autoUpdater: EventEmitter };
+const { session } = jest.requireMock('electron') as { session: { fromPartition: jest.Mock } };
+
+describe('providers / catalog / accounts over IPC', () => {
+  let container: AppContainer;
+  let ipc: FakeIpcMain;
+  let mainWindow: FakeWebContents;
+
+  const call = <T = unknown>(channel: string, payload?: unknown): Promise<APIResponse<T>> =>
+    ipc.invoke(channel, fakeEvent(), payload) as Promise<APIResponse<T>>;
+
+  /** Builds the container, lets `before` add providers, then registers the handlers. */
+  function start(before?: (c: AppContainer) => void): void {
+    container = createContainer({ db: openDatabase(':memory:') });
+    before?.(container);
+    mainWindow = fakeWebContents(TRUSTED_SENDER_ID);
+    container.trustedWebContents.register(mainWindow);
+    ipc = new FakeIpcMain();
+    registerIpcHandlers(container, {
+      isTrustedSender: createSenderGuard({
+        isTrustedWebContents: (id) => container.trustedWebContents.isTrusted(id),
+        isAppUrl: createAppUrlMatcher({ kind: 'file', path: APP_INDEX_PATH }),
+      }),
+      ipc,
+    });
+    // As at startup, so dispose stops what it started
+    container.scheduler.start();
+  }
+
+  afterEach(() => {
+    container.dispose();
+    autoUpdater.removeAllListeners();
+  });
+
+  describe('with the built-in providers', () => {
+    beforeEach(() => start());
+
+    it('providers.list() returns one manifest, parkstay, that passes the manifest schema', async () => {
+      const response = await call<ProviderManifest[]>('providers:list');
+
+      expect(response.success).toBe(true);
+      expect(response.data).toHaveLength(1);
+      const [manifest] = response.data!;
+      expect(manifest.id).toBe('parkstay');
+      expect(ProviderManifestSchema.safeParse(manifest).success).toBe(true);
+      // It survives structured cloning to the renderer: plain data, no functions.
+      expect(structuredClone(manifest)).toEqual(manifest);
+    });
+
+    it('the container gave ParkStay its own session partition', () => {
+      expect(session.fromPartition).toHaveBeenCalledWith('persist:provider-parkstay');
+    });
+
+    it("providers.accessStatus('parkstay') is unsupported (no gate)", async () => {
+      const response = await call<AccessStatus>('providers:access-status', {
+        providerId: 'parkstay',
+      });
+
+      expect(response).toMatchObject({
+        success: true,
+        data: { providerId: 'parkstay', state: 'unsupported' },
+      });
+      expect(Number.isNaN(Date.parse(response.data!.updatedAt))).toBe(false);
+    });
+
+    it("providers.accessStatus('nope') fails with UNKNOWN_PROVIDER", async () => {
+      expect(await call('providers:access-status', { providerId: 'nope' })).toEqual({
+        success: false,
+        code: 'UNKNOWN_PROVIDER',
+        error: 'Unknown provider "nope"',
+      });
+    });
+
+    it('providers.accessStatus validates the provider id', async () => {
+      expect(await call('providers:access-status', { providerId: 'ParkStay' })).toMatchObject({
+        success: false,
+        code: 'VALIDATION',
+        issues: ['providerId'],
+      });
+    });
+
+    it('catalog.* validates, then answers NOT_IMPLEMENTED until the catalogue lands', async () => {
+      const stay = { arrival: '2026-11-10', departure: '2026-11-12', adults: 1 };
+      const valid: Array<[string, unknown]> = [
+        ['catalog:search', { text: 'karri', limit: 50 }],
+        ['catalog:get', { key: 'parkstay:20' }],
+        ['catalog:availability', { stay, providerIds: ['parkstay'] }],
+        ['catalog:check-location', { key: 'parkstay:20', stay }],
+        ['catalog:refresh', {}],
+        ['catalog:status', undefined],
+      ];
+      for (const [channel, payload] of valid) {
+        expect([channel, await call(channel, payload)]).toEqual([
+          channel,
+          {
+            success: false,
+            code: 'NOT_IMPLEMENTED',
+            error: 'The location catalogue is not available yet',
+          },
+        ]);
+      }
+
+      expect(await call('catalog:search', { limit: 0 })).toMatchObject({
+        code: 'VALIDATION',
+        issues: ['limit'],
+      });
+      expect(await call('catalog:get', { key: 'nokey' })).toMatchObject({
+        code: 'VALIDATION',
+        issues: ['key'],
+      });
+      expect(
+        await call('catalog:check-location', {
+          key: 'parkstay:20',
+          stay: { ...stay, departure: stay.arrival },
+        })
+      ).toMatchObject({ code: 'VALIDATION', issues: ['stay.departure'] });
+    });
+
+    it('accounts.* validates, then answers NOT_IMPLEMENTED until accounts land', async () => {
+      for (const [channel, payload] of [
+        ['accounts:list', undefined],
+        ['accounts:status', { providerId: 'parkstay' }],
+        ['accounts:sign-in', { providerId: 'parkstay' }],
+        ['accounts:sign-out', { providerId: 'parkstay' }],
+        [
+          'accounts:open-sign-in-link',
+          { providerId: 'parkstay', url: 'https://dbcab2c.b2clogin.com/x' },
+        ],
+      ] as Array<[string, unknown]>) {
+        expect([channel, (await call(channel, payload)).code]).toEqual([
+          channel,
+          'NOT_IMPLEMENTED',
+        ]);
+      }
+
+      expect(
+        await call('accounts:open-sign-in-link', {
+          providerId: 'parkstay',
+          url: 'http://evil.example/x',
+        })
+      ).toMatchObject({ code: 'VALIDATION', issues: ['url'] });
+    });
+  });
+
+  describe('with providers that have access gates', () => {
+    let fake: FakeProvider;
+    let fake2: FakeProvider;
+
+    beforeEach(() => {
+      fake = createFakeProvider({ id: 'fake', name: 'Fake One' });
+      fake2 = createFakeProvider({
+        id: 'fake2',
+        name: 'Fake Two',
+        capabilities: { accessGate: false },
+      });
+      start((c) => {
+        c.providers.register(fake.factory, createTestProviderContext('fake'));
+        c.providers.register(fake2.factory, createTestProviderContext('fake2'));
+      });
+    });
+
+    it('lists every provider sorted by name', async () => {
+      const response = await call<ProviderManifest[]>('providers:list');
+      expect(response.data!.map((m) => m.id)).toEqual(['fake', 'fake2', 'parkstay']);
+    });
+
+    it("returns a gate's status, and unsupported for a provider without one", async () => {
+      expect(
+        (await call<AccessStatus>('providers:access-status', { providerId: 'fake' })).data
+      ).toMatchObject({
+        providerId: 'fake',
+        state: 'idle',
+      });
+      expect(
+        (await call<AccessStatus>('providers:access-status', { providerId: 'fake2' })).data
+      ).toMatchObject({
+        providerId: 'fake2',
+        state: 'unsupported',
+      });
+    });
+
+    it('forwards gate status changes as provider:access-status events', async () => {
+      await fake.access!.ensure();
+
+      const events = mainWindow.sent.filter(([name]) => name === 'provider:access-status');
+      expect(events.map(([, payload]) => (payload as AccessStatus).state)).toEqual([
+        'waiting',
+        'active',
+      ]);
+      expect(events.every(([, payload]) => (payload as AccessStatus).providerId === 'fake')).toBe(
+        true
+      );
+    });
+
+    it('disposes the providers when the container is disposed', () => {
+      container.dispose();
+      expect(fake.disposed).toBe(true);
+      expect(fake2.disposed).toBe(true);
+    });
+  });
+});

@@ -8,9 +8,11 @@
  * second registry.
  */
 
+import { accounts } from './accounts';
 import { app } from './app';
 import { auth } from './auth';
 import { bookings } from './bookings';
+import { catalog } from './catalog';
 import type { Channels } from './channels';
 import type { MethodDef, NamespaceApi } from './define';
 import type { EventsApi } from './events';
@@ -18,6 +20,7 @@ import { gmail } from './gmail';
 import { notifications } from './notifications';
 import { notifiers } from './notifiers';
 import { parkstay } from './parkstay';
+import { providers } from './providers';
 import { queue } from './queue';
 import { settings } from './settings';
 import { snipes } from './snipes';
@@ -34,6 +37,9 @@ export const contract = {
   settings,
   app,
   updater,
+  providers,
+  catalog,
+  accounts,
   auth,
   parkstay,
   queue,
@@ -71,5 +77,6 @@ export type { AppInfo } from './app';
 export type { UpdateStatus } from './updater';
 export type { QueueStatusSnapshot } from './queue';
 export type { AvailabilityParams } from './parkstay';
+export type { CatalogAvailabilityOptions } from './catalog';
 export { SETTING_KEYS } from './settings';
 export type { SettingDefinition, SettingKey, SettingValue } from './settings';

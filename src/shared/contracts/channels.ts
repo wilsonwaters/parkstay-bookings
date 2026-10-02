@@ -83,6 +83,25 @@ export const CHANNELS = {
     installUpdate: 'updater:install-update',
     getStatus: 'updater:get-status',
   },
+  providers: {
+    list: 'providers:list',
+    accessStatus: 'providers:access-status',
+  },
+  catalog: {
+    search: 'catalog:search',
+    get: 'catalog:get',
+    availability: 'catalog:availability',
+    checkLocation: 'catalog:check-location',
+    refresh: 'catalog:refresh',
+    status: 'catalog:status',
+  },
+  accounts: {
+    list: 'accounts:list',
+    status: 'accounts:status',
+    signIn: 'accounts:sign-in',
+    signOut: 'accounts:sign-out',
+    openSignInLink: 'accounts:open-sign-in-link',
+  },
   // Transitional: V3 moves ParkStay behind the provider registry and the catalog namespace.
   parkstay: {
     searchCampgrounds: 'parkstay:search-campgrounds',
@@ -114,6 +133,9 @@ export const EVENT_NAMES = [
   'updater:error',
   // Main emits it when an OS notification is clicked (U5); the renderer follows allow-listed paths only.
   'app:navigate',
+  'provider:access-status',
+  'catalog:updated',
+  'account:updated',
   // Transitional: V3 replaces it with `provider:access-status`.
   'queue:status',
 ] as const;

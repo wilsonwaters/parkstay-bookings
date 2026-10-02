@@ -7,6 +7,8 @@
  */
 
 import type { Booking } from '../types/booking.types';
+import type { CatalogUpdatedEvent } from '../types/catalog.types';
+import type { AccessStatus, ProviderAccount } from '../types/provider.types';
 import type { Notification } from '../types/notification.types';
 import type { QueueStatusEvent } from '../types/queue.types';
 import type { SiteSnipe } from '../types/site-sniper.types';
@@ -34,6 +36,12 @@ export interface EventPayloads {
   'updater:error': { error: string };
   /** An internal route such as `/watches/3`. Emitted by U5. */
   'app:navigate': { path: string };
+  /** A provider's access gate (queue) changed state. */
+  'provider:access-status': AccessStatus;
+  /** A provider's catalogue was synced. Emitted by V5. */
+  'catalog:updated': CatalogUpdatedEvent;
+  /** A provider account's sign-in state changed. Emitted by V6. */
+  'account:updated': ProviderAccount;
   'queue:status': QueueStatusEvent;
 }
 

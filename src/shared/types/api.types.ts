@@ -102,8 +102,28 @@ export interface QueueSessionInfo {
  * - NO_PROFILE: there is no local profile row to act for.
  * - NOT_FOUND: the record the request names does not exist.
  * - INTERNAL: anything else; `error` carries the thrown message.
+ *
+ * Provider errors (`main/providers/sdk/errors.ts` `toApiError`):
+ * - CAPABILITY: the provider does not offer what the request needs (e.g. holds).
+ * - UNKNOWN_PROVIDER: no provider is registered with that id.
+ * - PROVIDER_ERROR: the provider failed (HTTP error, timeout, unreadable response).
+ * - ACCESS_GATE: the provider's waiting room or queue is in the way.
+ * - AUTH_REQUIRED: sign in to the provider first.
+ * - NOT_IMPLEMENTED: the method is in the contract but its service has not landed yet
+ *   (`catalog` and `accounts` until their services are built).
  */
-export type ApiErrorCode = 'VALIDATION' | 'FORBIDDEN' | 'NO_PROFILE' | 'NOT_FOUND' | 'INTERNAL';
+export type ApiErrorCode =
+  | 'VALIDATION'
+  | 'FORBIDDEN'
+  | 'NO_PROFILE'
+  | 'NOT_FOUND'
+  | 'INTERNAL'
+  | 'CAPABILITY'
+  | 'UNKNOWN_PROVIDER'
+  | 'PROVIDER_ERROR'
+  | 'ACCESS_GATE'
+  | 'AUTH_REQUIRED'
+  | 'NOT_IMPLEMENTED';
 
 // Generic API Response wrapper
 export interface APIResponse<T = any> {

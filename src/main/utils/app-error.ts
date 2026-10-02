@@ -6,6 +6,12 @@ const DEFAULT_MESSAGES: Record<ApiErrorCode, string> = {
   NO_PROFILE: 'No local profile exists',
   NOT_FOUND: 'Not found',
   INTERNAL: 'Unexpected error',
+  CAPABILITY: 'The provider does not support this',
+  UNKNOWN_PROVIDER: 'Unknown provider',
+  PROVIDER_ERROR: 'The provider could not be reached',
+  ACCESS_GATE: 'Waiting in the provider queue',
+  AUTH_REQUIRED: 'Sign in to the provider first',
+  NOT_IMPLEMENTED: 'Not available yet',
 };
 
 /**

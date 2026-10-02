@@ -5,13 +5,16 @@
 
 import type { AppContainer } from '../app/container';
 import { createHandle, IpcMainLike, SenderGuard } from './handle';
+import { registerAccountsHandlers } from './handlers/accounts.handlers';
 import { registerAppHandlers } from './handlers/app.handlers';
 import { registerAuthHandlers } from './handlers/auth.handlers';
 import { registerBookingsHandlers } from './handlers/bookings.handlers';
+import { registerCatalogHandlers } from './handlers/catalog.handlers';
 import { registerGmailHandlers } from './handlers/gmail.handlers';
 import { registerNotificationsHandlers } from './handlers/notifications.handlers';
 import { registerNotifiersHandlers } from './handlers/notifiers.handlers';
 import { registerParkStayHandlers } from './handlers/parkstay.handlers';
+import { registerProvidersHandlers } from './handlers/providers.handlers';
 import { registerQueueHandlers } from './handlers/queue.handlers';
 import { registerSettingsHandlers } from './handlers/settings.handlers';
 import { registerSnipesHandlers } from './handlers/snipes.handlers';
@@ -41,6 +44,9 @@ export function registerIpcHandlers(
   registerSettingsHandlers(handle, container);
   registerAppHandlers(handle, container);
   registerUpdaterHandlers(handle, container);
+  registerProvidersHandlers(handle, container);
+  registerCatalogHandlers(handle, container);
+  registerAccountsHandlers(handle, container);
   registerAuthHandlers(handle, container);
   registerParkStayHandlers(handle, container);
   registerQueueHandlers(handle, container);

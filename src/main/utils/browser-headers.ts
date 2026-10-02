@@ -6,11 +6,12 @@
  */
 
 import { PARKSTAY_BASE_URL } from '@shared/constants';
+import {
+  CHROME_MAJOR_VERSION as CHROME_VERSION,
+  CHROME_USER_AGENT,
+} from '../providers/sdk/user-agent';
 
-const CHROME_VERSION = '131';
-const CHROME_FULL_VERSION = '131.0.0.0';
-
-export const CHROME_USER_AGENT = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_FULL_VERSION} Safari/537.36`;
+export { CHROME_USER_AGENT };
 
 /**
  * Headers Chrome sends on every request

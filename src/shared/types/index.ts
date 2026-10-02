@@ -8,3 +8,5 @@ export * from './api.types';
 export * from './common.types';
 export * from './gmail.types';
 export * from './queue.types';
+export * from './provider.types';
+export * from './catalog.types';

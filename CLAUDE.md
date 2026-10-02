@@ -47,6 +47,7 @@ src/
 ├── main/           # Electron main process (Node.js)
 │   ├── app/        # Composition root (container.ts), local profile, renderer entry/origin
 │   ├── database/   # SQLite connection, migrations, repositories
+│   ├── providers/  # Provider SDK (sdk/), ProviderRegistry, built-in providers (parkstay/)
 │   ├── services/   # Business logic (auth, booking, watch, sitesniper, gmail, queue, notification, parkstay)
 │   ├── scheduler/  # node-cron job scheduler
 │   ├── ipc/        # handle.ts, sender guard, renderer events, handlers/ (one per namespace)
@@ -106,6 +107,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 | WatchService | `src/main/services/watch/watch.service.ts` | Availability monitoring |
 | SiteSniperService | `src/main/services/sitesniper/sitesniper.service.ts` | Site Sniper — auto-holds a high-demand site the instant it is released (daily rollover / scheduled / cancellation modes) |
 | ParkStayService | `src/main/services/parkstay/parkstay.service.ts` | ParkStay API client |
+| ProviderRegistry | `src/main/providers/registry.ts` | Accommodation providers behind the SDK in `providers/sdk/` (manifests, capability checks); built-ins listed in `providers/index.ts` |
 | QueueService | `src/main/services/queue/queue.service.ts` | DBCA queue system handler |
 | NotificationService | `src/main/services/notification/notification.service.ts` | Desktop/in-app notifications |
 | NotificationDispatcher | `src/main/services/notification/notification-dispatcher.ts` | External notifiers (email) |
@@ -123,9 +125,9 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 
 ## IPC Pattern
 
-- **Contract** in `src/shared/contracts/` is the single source of truth: one file per namespace (`bookings`, `watches`, `snipes`, `notifications`, `notifiers`, `gmail`, `settings`, `app`, `updater`, plus the transitional `auth`, `parkstay`, `queue`), and `index.ts` exports `contract` and `type WindowApi`. Each method declares a `channel` (`<namespace>:<kebab-method>`), a zod `request` schema (one object payload, or `z.void()`), the preload's positional `args` and the `response` type
+- **Contract** in `src/shared/contracts/` is the single source of truth: one file per namespace (`bookings`, `watches`, `snipes`, `notifications`, `notifiers`, `gmail`, `settings`, `app`, `updater`, `providers`, `catalog`, `accounts`, plus the transitional `auth`, `parkstay`, `queue`), and `index.ts` exports `contract` and `type WindowApi`. Each method declares a `channel` (`<namespace>:<kebab-method>`), a zod `request` schema (one object payload, or `z.void()`), the preload's positional `args` and the `response` type
 - Channel and event names live in the zod-free `contracts/channels.ts`, the only contract module the preload loads at runtime. Event payloads are in `contracts/events.ts`
-- `src/main/ipc/handle.ts`: `handle(def, fn)` is the only caller of `ipcMain.handle`. It checks the sender (a trusted webContents, its top frame, on the app origin — `ipc/sender-guard.ts`, `app/renderer-entry.ts`), parses the payload with the method's schema, and returns `APIResponse`: `{ success: true, data }` or `{ success: false, code, error }` with `code` `VALIDATION` (plus `issues` paths), `FORBIDDEN`, `NO_PROFILE`, `NOT_FOUND` or `INTERNAL`. Throw `AppError(code)` (`main/utils/app-error.ts`) for a specific code. Logs never include payload values
+- `src/main/ipc/handle.ts`: `handle(def, fn)` is the only caller of `ipcMain.handle`. It checks the sender (a trusted webContents, its top frame, on the app origin — `ipc/sender-guard.ts`, `app/renderer-entry.ts`), parses the payload with the method's schema, and returns `APIResponse`: `{ success: true, data }` or `{ success: false, code, error }` with `code` `VALIDATION` (plus `issues` paths), `FORBIDDEN`, `NO_PROFILE`, `NOT_FOUND`, `INTERNAL` or `NOT_IMPLEMENTED`, and for provider errors (`main/providers/sdk/errors.ts` `toApiError`) `CAPABILITY`, `UNKNOWN_PROVIDER`, `PROVIDER_ERROR`, `ACCESS_GATE` or `AUTH_REQUIRED`. Throw `AppError(code)` (`main/utils/app-error.ts`) for a specific code. Logs never include payload values
 - Handlers in `src/main/ipc/handlers/`, one file per namespace (`watches.handlers.ts`, …), each `registerXHandlers(handle, container)`; `registerIpcHandlers(container, { isTrustedSender })` in `ipc/index.ts` registers them all
 - Events: main emits through `container.rendererEvents.emit(name, payload)` (`ipc/events.ts`), which reaches only trusted webContents. The renderer subscribes with `window.api.events.on(name, cb)`, which returns an unsubscribe function for that subscription only
 - Settings keys are typed in `contracts/settings.ts` (`SETTING_KEYS`): main owns each key's `valueType` and `category`; add new keys there

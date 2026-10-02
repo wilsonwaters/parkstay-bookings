@@ -19,6 +19,7 @@ import { ParkStayService } from '@main/services/parkstay/parkstay.service';
 import { QueueService } from '@main/services/queue/queue.service';
 import { SiteSniperService } from '@main/services/sitesniper/sitesniper.service';
 import { AutoUpdaterService } from '@main/services/updater/auto-updater.service';
+import { ProviderRegistry } from '@main/providers/registry';
 import { WatchService } from '@main/services/watch/watch.service';
 import { JobScheduler } from '@main/scheduler/job-scheduler';
 import { RendererEvents } from '@main/ipc/events';
@@ -29,6 +30,9 @@ jest.mock('electron', () => ({
   app: { getAppPath: () => '/app', getPath: () => '/tmp', isPackaged: false },
   Notification: jest.fn(),
   shell: { openExternal: jest.fn(), openPath: jest.fn() },
+  session: {
+    fromPartition: jest.fn(() => jest.requireActual('@tests/utils/electron-mocks').fakeSession()),
+  },
 }));
 jest.mock('electron-updater', () => {
   const { EventEmitter } = jest.requireActual('events');
@@ -99,6 +103,7 @@ jest.mock('@main/ipc/events', () => mockCountedModule('@main/ipc/events'));
 jest.mock('@main/ipc/trusted-web-contents', () =>
   mockCountedModule('@main/ipc/trusted-web-contents')
 );
+jest.mock('@main/providers/registry', () => mockCountedModule('@main/providers/registry'));
 
 const CONSTRUCTED_ONCE = {
   UserRepository: repositories.UserRepository,
@@ -124,6 +129,7 @@ const CONSTRUCTED_ONCE = {
   JobScheduler,
   RendererEvents,
   TrustedWebContents,
+  ProviderRegistry,
 };
 
 describe('createContainer', () => {
@@ -190,6 +196,27 @@ describe('createContainer', () => {
     expect(
       'getInstance' in jest.requireActual('@main/services/gmail/GmailOTPService').GmailOTPService
     ).toBe(false);
+  });
+
+  it('registers the built-in providers, each on its own session partition', () => {
+    const { container } = build();
+    const { session } = jest.requireMock('electron') as { session: { fromPartition: jest.Mock } };
+
+    expect(container.providers.list().map((m) => m.id)).toEqual(['parkstay']);
+    expect(session.fromPartition).toHaveBeenCalledWith('persist:provider-parkstay');
+  });
+
+  it('dispose disposes the providers before the database closes', () => {
+    const { container, db } = build();
+    const disposeAll = jest.spyOn(container.providers, 'disposeAll');
+    const close = jest.spyOn(db, 'close');
+
+    container.dispose();
+    container.dispose();
+
+    expect(disposeAll).toHaveBeenCalledTimes(1);
+    expect(disposeAll.mock.invocationCallOrder[0]).toBeLessThan(close.mock.invocationCallOrder[0]);
+    expect(container.providers.list()).toEqual([]);
   });
 
   it('dispose stops the scheduler, then destroys the queue service, then closes the database, once', () => {

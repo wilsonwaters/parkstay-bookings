@@ -7,7 +7,9 @@
  * 2. parses the single payload argument with the method's zod schema (VALIDATION, with the
  *    failing paths, otherwise);
  * 3. runs `fn` with the parsed payload and maps the outcome to an `APIResponse`:
- *    `{ success: true, data }`, or `{ success: false, code, error }`.
+ *    `{ success: true, data }`, or `{ success: false, code, error }`. An `AppError` carries
+ *    its code; a `ProviderError` maps through `toApiError` (e.g. `ProviderCapabilityError`
+ *    → `CAPABILITY`); anything else is `INTERNAL`.
  *
  * Logs name the channel and, for validation failures, the failing paths. Payload values are
  * never logged (auth, gmail and notifier payloads carry passwords), and a response never
@@ -19,6 +21,7 @@ import { ipcMain, IpcMainInvokeEvent } from 'electron';
 import { ZodError } from 'zod';
 import type { MethodDef, RequestOutput, ResponseOf } from '@shared/contracts/define';
 import type { APIResponse } from '@shared/types/api.types';
+import { ProviderError, toApiError } from '../providers/sdk/errors';
 import { AppError } from '../utils/app-error';
 import { logger } from '../utils/logger';
 
@@ -119,6 +122,14 @@ function failure(channel: string, error: unknown): APIResponse<never> {
       logger.warn(`IPC ${channel} failed: ${error.code}`);
     }
     return { success: false, code: error.code, error: error.message };
+  }
+  if (error instanceof ProviderError) {
+    // CAPABILITY, UNKNOWN_PROVIDER, PROVIDER_ERROR, ACCESS_GATE, AUTH_REQUIRED (or INTERNAL)
+    const { code, message } = toApiError(error);
+    const detail = `${code} (${error.providerId} ${error.code}, retryable: ${error.retryable})`;
+    if (code === 'INTERNAL') logger.error(`IPC ${channel} failed: ${detail}`, error);
+    else logger.warn(`IPC ${channel} failed: ${detail}`);
+    return { success: false, code, error: message };
   }
 
   logger.error(`IPC ${channel} failed:`, error);

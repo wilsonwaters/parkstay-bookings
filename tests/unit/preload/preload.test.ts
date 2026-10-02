@@ -77,6 +77,39 @@ describe('preload window.api', () => {
     }
   });
 
+  it('maps the providers, catalog and accounts arguments to their payloads', async () => {
+    const stay = { arrival: '2026-11-10', departure: '2026-11-12', adults: 2 };
+
+    await api.providers.list();
+    await api.providers.accessStatus('parkstay');
+    await api.catalog.search({ text: 'karri', limit: 50 });
+    await api.catalog.get('parkstay:12:3');
+    await api.catalog.availability(stay);
+    await api.catalog.availability(stay, { providerIds: ['parkstay'], bbox: [115, -35, 117, -33] });
+    await api.catalog.checkLocation('parkstay:20', stay);
+    await api.catalog.refresh();
+    await api.catalog.refresh('parkstay');
+    await api.accounts.status('parkstay');
+    await api.accounts.openSignInLink('parkstay', 'https://dbcab2c.b2clogin.com/x');
+
+    expect(ipcRenderer.invoke.mock.calls).toEqual([
+      ['providers:list', undefined],
+      ['providers:access-status', { providerId: 'parkstay' }],
+      ['catalog:search', { text: 'karri', limit: 50 }],
+      ['catalog:get', { key: 'parkstay:12:3' }],
+      ['catalog:availability', { stay }],
+      ['catalog:availability', { stay, providerIds: ['parkstay'], bbox: [115, -35, 117, -33] }],
+      ['catalog:check-location', { key: 'parkstay:20', stay }],
+      ['catalog:refresh', { providerId: undefined }],
+      ['catalog:refresh', { providerId: 'parkstay' }],
+      ['accounts:status', { providerId: 'parkstay' }],
+      [
+        'accounts:open-sign-in-link',
+        { providerId: 'parkstay', url: 'https://dbcab2c.b2clogin.com/x' },
+      ],
+    ]);
+  });
+
   it('maps positional arguments to the payload object, with no userId anywhere', async () => {
     const arrivalDate = new Date('2026-12-01T00:00:00Z');
 

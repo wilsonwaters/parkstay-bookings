@@ -35,6 +35,16 @@ import { WatchService } from '../services/watch/watch.service';
 import { JobScheduler } from '../scheduler/job-scheduler';
 import { RendererEvents } from '../ipc/events';
 import { TrustedWebContents } from '../ipc/trusted-web-contents';
+import { registerBuiltInProviders } from '../providers';
+import { ProviderRegistry } from '../providers/registry';
+import {
+  createProviderContext,
+  InMemoryKeyValueStore,
+  UnavailableSecretVault,
+  type ProviderContextDeps,
+} from '../providers/sdk';
+import { ElectronSessionHttpClient } from '../providers/sdk/http-electron';
+import { logger } from '../utils/logger';
 import type { QueueStatusEvent } from '@shared/types';
 import { createLocalProfile, LocalProfile } from './profile';
 
@@ -58,6 +68,8 @@ export interface AppContainer {
   readonly trustedWebContents: TrustedWebContents;
   readonly rendererEvents: RendererEvents;
   readonly profile: LocalProfile;
+  /** The accommodation providers (`providers/index.ts` lists the built-in ones). */
+  readonly providers: ProviderRegistry;
   readonly notifierDispatcher: NotificationDispatcher;
   readonly queueService: QueueService;
   readonly parkStayService: ParkStayService;
@@ -69,7 +81,10 @@ export interface AppContainer {
   readonly gmailService: GmailOTPService;
   readonly autoUpdater: AutoUpdaterService;
   readonly scheduler: JobScheduler;
-  /** Stops the scheduler, destroys the queue service and closes the database. Safe to call twice. */
+  /**
+   * Stops the scheduler, disposes the providers, destroys the queue service and closes the
+   * database. Safe to call twice.
+   */
   dispose(): void;
 }
 
@@ -96,6 +111,18 @@ export function createContainer({ db, logsDir }: ContainerOptions): AppContainer
 
   const trustedWebContents = new TrustedWebContents();
   const rendererEvents = new RendererEvents(trustedWebContents);
+
+  // Each provider gets its own session partition, state, secrets and child logger.
+  const providerDeps: ProviderContextDeps = {
+    createHttp: (providerId) => new ElectronSessionHttpClient({ providerId }),
+    // V2 swaps in the SQLite store on `provider_state`.
+    createState: () => new InMemoryKeyValueStore(),
+    // P5 swaps in its SecretVault; until then nothing can store a secret.
+    vault: new UnavailableSecretVault(),
+    logger,
+  };
+  const providers = new ProviderRegistry({ logger });
+  registerBuiltInProviders(providers, (id) => createProviderContext(id, providerDeps), { logger });
 
   const notifierDispatcher = new NotificationDispatcher(repositories.notifiers, [
     new SmtpEmailNotifier(),
@@ -128,6 +155,8 @@ export function createContainer({ db, logsDir }: ContainerOptions): AppContainer
     if (disposed) return;
     disposed = true;
     scheduler.stop();
+    // Never rejects; each provider's dispose starts before the database closes.
+    void providers.disposeAll();
     queueService.off('status', forwardQueueStatus);
     queueService.destroy();
     closeDatabase(db);
@@ -140,6 +169,7 @@ export function createContainer({ db, logsDir }: ContainerOptions): AppContainer
     trustedWebContents,
     rendererEvents,
     profile,
+    providers,
     notifierDispatcher,
     queueService,
     parkStayService,
