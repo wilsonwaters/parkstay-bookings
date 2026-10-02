@@ -38,8 +38,13 @@ const base = {
     '^@tests/(.*)$': '<rootDir>/tests/$1',
     // `?raw` must map first so raw imports get the real file (via raw-file-transform.js).
     '^(.+\\.(svg|css))\\?raw$': '$1',
-    // A plain asset import is a URL in Vite, so it gets a URL-shaped string.
-    '\\.(svg|png)$': '<rootDir>/tests/utils/file-url-stub.js',
+    // A plain asset import is a URL in Vite, so it gets a URL-shaped string. A mapped module is
+    // one file shared by every import, so the generic stub cannot name the asset. Assets a test
+    // must tell apart (the brand logos) have a named stub, tests/utils/asset-urls/<file>.js.
+    '^(?:.*/)?([^/]+\\.(?:svg|png))$': [
+      '<rootDir>/tests/utils/asset-urls/$1.js',
+      '<rootDir>/tests/utils/file-url-stub.js',
+    ],
     // Bundled fonts (`import '@fontsource-variable/figtree'`) are stylesheets too.
     '^@fontsource-variable/': '<rootDir>/tests/utils/style-mock.js',
     '\\.(css|less|scss|sass)$': '<rootDir>/tests/utils/style-mock.js',

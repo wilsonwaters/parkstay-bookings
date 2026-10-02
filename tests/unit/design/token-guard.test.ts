@@ -137,8 +137,8 @@ function stripComments(source: string): string {
 
 /** Lines whose own comment carries the opt-out marker (a marker inside a string does not count). */
 function ignoredLines(source: string, code: string): Set<number> {
-  const original = source.split('\n');
-  const stripped = code.split('\n');
+  const original = source.split(/\r?\n/);
+  const stripped = code.split(/\r?\n/);
   const lines = new Set<number>();
   original.forEach((text, i) => {
     if (text.includes(IGNORE_MARKER) && !stripped[i].includes(IGNORE_MARKER)) lines.add(i + 1);
@@ -149,7 +149,7 @@ function ignoredLines(source: string, code: string): Set<number> {
 function scanSource(source: string): Violation[] {
   const code = stripComments(source);
   const ignored = ignoredLines(source, code);
-  const lineOf = (index: number) => code.slice(0, index).split('\n').length;
+  const lineOf = (index: number) => code.slice(0, index).split(/\r?\n/).length;
   const found: Violation[] = [];
   const rules: [Rule, RegExp, ((m: string) => boolean)?][] = [
     ['palette class', PALETTE_CLASS],

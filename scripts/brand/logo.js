@@ -209,14 +209,14 @@ const shapes = (fill, ds) => ds.map((d) => shape(fill, d));
 // ---- Concepts --------------------------------------------------------------------------
 //
 // Each concept draws on a 256 x 256 artboard (symbol, mono) and a 32 x 32 grid (small, which
-// sits on the icon plate). Fills are palette token names. `clearSpace` is the clear-space unit
-// in artboard units.
+// sits on the icon plate). Fills are palette token names. `axis` is the x of the symbol's
+// optical centre in artboard units; without it the symbol is centred on its bounds.
 
 const CONCEPTS = {
   roofline: {
     name: 'Roofline sunset',
     idea: 'A gold sun sets into an Indian Ocean brushstroke under an ink roofline: a place to stay, and the A of WA.',
-    clearSpace: 126, // the height of the chevron
+    axis: 128, // the chevron apex: the roof and the sun are symmetric about it
     symbol() {
       return [
         shape('ink-900', chevron(128, 44, 96, 170, 22)),
@@ -246,7 +246,7 @@ const CONCEPTS = {
   'sun-tent': {
     name: 'Sun tent',
     idea: 'The setting sun is also a dome tent, its door open onto an Indian Ocean brushstroke.',
-    clearSpace: 82, // the radius of the sun
+    axis: 128, // the centre of the sun and the apex of the door
     symbol() {
       return [
         shape('sun-400', halfDisc(128, 168, 84)),
@@ -291,7 +291,6 @@ const CONCEPTS = {
   monogram: {
     name: 'Painted monogram',
     idea: 'WA in Fraunces, reversed out of one loaded stroke of ocean, with the sun going down behind it.',
-    clearSpace: 70, // the cap height of the letters
     symbol() {
       const letters = text('monogram', 58, 0, 0);
       const dab = scaledDab(2.3, -4, 16);
@@ -345,11 +344,18 @@ const colour = (palette, token) => {
 };
 const paint = (palette, list) => list.map((s) => pathEl(colour(palette, s.fill), s.d));
 
-/** Moves and scales shapes so their bounds fit `box` (centred), returning the new shapes. */
-function fit(list, box) {
+/**
+ * Moves and scales shapes so they fit inside `box`, returning the new shapes. They are centred
+ * vertically on their bounds. Horizontally they are centred on `axis` (an x in the shapes' own
+ * units) when one is given, otherwise on their bounds. The brushstroke's ragged head and dry
+ * tail are not symmetric, so centring its bounds would push the roof off the middle of a plate.
+ */
+function fit(list, box, axis) {
   const b = bounds(list.map((s) => s.d));
-  const s = Math.min(box.w / b.w, box.h / b.h);
-  const tx = box.x + (box.w - b.w * s) / 2 - b.x0 * s;
+  const w = axis === undefined ? b.w : 2 * Math.max(axis - b.x0, b.x1 - axis);
+  const s = Math.min(box.w / w, box.h / b.h);
+  const tx =
+    axis === undefined ? box.x + (box.w - b.w * s) / 2 - b.x0 * s : box.x + box.w / 2 - axis * s;
   const ty = box.y + (box.h - b.h * s) / 2 - b.y0 * s;
   return list.map((sh) => ({ ...sh, d: place(sh.d, s, tx, ty) }));
 }
@@ -358,7 +364,7 @@ function fit(list, box) {
 function mark(concept, palette) {
   const size = 256;
   const plate = `<rect width="${size}" height="${size}" rx="${size * PLATE.radius}" fill="${colour(palette, PLATE.fill)}"/>`;
-  const body = fit(concept.symbol(), { x: 22, y: 22, w: 212, h: 212 });
+  const body = fit(concept.symbol(), { x: 22, y: 22, w: 212, h: 212 }, concept.axis);
   return svgDoc(size, size, [plate, ...paint(palette, body)]);
 }
 
@@ -371,7 +377,7 @@ function markSmall(concept, palette) {
 /** The mono mark: the symbol alone in currentColor, on a square artboard. */
 function markMono(concept) {
   const list = concept.mono().map((d) => ({ fill: 'currentColor', d }));
-  const body = fit(list, { x: 8, y: 8, w: 240, h: 240 });
+  const body = fit(list, { x: 8, y: 8, w: 240, h: 240 }, concept.axis);
   return svgDoc(
     256,
     256,
@@ -479,7 +485,7 @@ function installerHeader(concept, palette) {
 function installerSidebar(concept, palette) {
   const W = 164;
   const H = 314;
-  const sym = fit(concept.symbol(), { x: 26, y: 70, w: 112, h: 80 });
+  const sym = fit(concept.symbol(), { x: 26, y: 70, w: 112, h: 80 }, concept.axis);
   const sb = bounds(sym.map((s) => s.d));
   const cap = 21;
   const word = text('wordmark', cap, 0, 0);

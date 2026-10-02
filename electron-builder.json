@@ -16,7 +16,7 @@
     {
       "from": "resources/icons",
       "to": "icons",
-      "filter": ["**/*"]
+      "filter": ["icon.png", "icon.ico"]
     }
   ],
   "mac": {

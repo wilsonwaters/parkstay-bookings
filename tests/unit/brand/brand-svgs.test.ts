@@ -118,6 +118,16 @@ describe('logo generator (scripts/brand/logo.js)', () => {
     }
   );
 
+  it('centres the roofline mark on its roof apex, not on the brushstroke bounds', () => {
+    // The chevron is the first path in each file, and its outline starts at the apex.
+    const apexX = (svg: string) => Number(/<path\b[^>]*\sd="M(-?[\d.]+) /.exec(svg)?.[1]);
+    const files = logo.brandFiles('roofline');
+    expect(apexX(files['wa-stay-mark.svg'])).toBe(128);
+    expect(apexX(files['wa-stay-mark-mono.svg'])).toBe(128);
+    expect(apexX(files['wa-stay-mark-small.svg'])).toBe(16);
+    expect(apexX(logo.installerArtboards('roofline').sidebar)).toBe(164 / 2);
+  });
+
   it('rejects an unknown concept', () => {
     expect(() => logo.brandFiles('swan')).toThrow('Unknown concept "swan"');
   });

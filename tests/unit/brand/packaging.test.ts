@@ -6,11 +6,18 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { BRAND_DIR, ROOT, read } from './brand-files';
+import { BRAND_DIR, ROOT, read, rel } from './brand-files';
 import { contrastRatio } from '../../../src/renderer/styles/contrast';
 import { readPalette } from '../../../scripts/brand/logo';
 
 const builder = JSON.parse(read(path.join(ROOT, 'electron-builder.json')));
+
+/** Every file under `dir`. */
+function walk(dir: string): string[] {
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
+}
 
 describe('electron-builder.json', () => {
   it('points the three NSIS images at the 24-bit BMPs', () => {
@@ -39,6 +46,28 @@ describe('electron-builder.json', () => {
     }
     expect(fs.statSync(path.join(ROOT, builder.linux.icon)).isDirectory()).toBe(true);
   });
+
+  it('ships only the icons the running app loads as extra resources', () => {
+    expect(builder.extraResources).toEqual([
+      { from: 'resources/icons', to: 'icons', filter: ['icon.png', 'icon.ico'] },
+    ]);
+    for (const file of builder.extraResources[0].filter) {
+      expect(fs.existsSync(path.join(ROOT, 'resources/icons', file))).toBe(true);
+    }
+  });
+
+  it('the main process names no icon that is left out of the package', () => {
+    const shipped: string[] = builder.extraResources[0].filter;
+    const left = fs
+      .readdirSync(path.join(ROOT, 'resources/icons'))
+      .filter((f) => !shipped.includes(f));
+    const named = walk(path.join(ROOT, 'src/main'))
+      .filter((f) => /\.tsx?$/.test(f))
+      .flatMap((file) =>
+        left.filter((icon) => read(file).includes(icon)).map((icon) => `${rel(file)}: ${icon}`)
+      );
+    expect(named).toEqual([]);
+  });
 });
 
 describe('CI asset check (.github/workflows/build.yml)', () => {
@@ -66,13 +95,20 @@ describe('repository', () => {
   });
 
   it('README header images resolve to the banner and the mark', () => {
-    const header = read(path.join(ROOT, 'README.md')).split('\n').slice(0, 8).join('\n');
-    const sources = Array.from(header.matchAll(/<img src="([^"]+)"/g), (m) => m[1]);
-    expect(sources).toEqual([
+    const header = read(path.join(ROOT, 'README.md')).split(/\r?\n/).slice(0, 8).join('\n');
+    const images = Array.from(header.matchAll(/<img src="([^"]+)"[^>]*\swidth="(\d+)"/g), (m) => ({
+      src: m[1],
+      width: Number(m[2]),
+    }));
+    expect(images.map((i) => i.src)).toEqual([
       'resources/brand/readme-banner.png',
-      'resources/brand/wa-stay-mark.svg',
+      'resources/brand/wa-stay-mark-small.svg',
     ]);
-    for (const src of sources) expect(fs.existsSync(path.join(ROOT, src))).toBe(true);
+    for (const { src } of images) expect(fs.existsSync(path.join(ROOT, src))).toBe(true);
+    // The logo rule in resources/README.md: at 32 px and below, always the small mark.
+    for (const { src, width } of images.filter((i) => /wa-stay-mark/.test(i.src))) {
+      if (width <= 32) expect(src).toBe('resources/brand/wa-stay-mark-small.svg');
+    }
   });
 
   it('has an npm run icons script', () => {
@@ -107,7 +143,7 @@ describe('logo contrast (recorded in resources/brand/README.md)', () => {
     const value = ratio(fg, bg);
     expect(value).toBeGreaterThanOrEqual(3);
     const row = doc
-      .split('\n')
+      .split(/\r?\n/)
       .find((line) => line.includes(`\`${fg}\``) && line.includes(`\`${bg}\``));
     expect(row).toBeDefined();
     expect(row).toContain(`${value.toFixed(2)}:1`);

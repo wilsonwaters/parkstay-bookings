@@ -1,6 +1,6 @@
 # Resources
 
-Build resources for packaging WA Stay: the brand artwork, the generated icons and installer art, the NSIS script and the macOS entitlements. electron-builder reads this folder as `buildResources`, and copies `icons/` into the packaged app.
+Build resources for packaging WA Stay: the brand artwork, the generated icons and installer art, the NSIS script and the macOS entitlements. electron-builder reads this folder as `buildResources`. Only `icons/icon.png` and `icons/icon.ico` are copied into the packaged app (`extraResources`), because the running app loads nothing else; the rest are build inputs.
 
 ```
 resources/

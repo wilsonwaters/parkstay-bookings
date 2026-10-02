@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">
-  <img src="resources/brand/wa-stay-mark.svg" alt="" width="32" valign="middle">
+  <img src="resources/brand/wa-stay-mark-small.svg" alt="" width="32" valign="middle">
   WA ParkStay Bookings
 </h1>
 

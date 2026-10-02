@@ -79,7 +79,7 @@ function sections(markdown: string): Map<string, string> {
 /** Table rows (not the header or divider) as arrays of trimmed cells, backticks removed. */
 function tableRows(body: string): string[][] {
   return body
-    .split('\n')
+    .split(/\r?\n/)
     .filter((l) => l.startsWith('|') && !/^\|\s*-/.test(l))
     .map((l) =>
       l
