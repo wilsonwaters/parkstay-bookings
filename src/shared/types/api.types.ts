@@ -95,6 +95,16 @@ export interface QueueSessionInfo {
   queueActive: boolean;
 }
 
+/**
+ * Why an IPC call failed. Set on every `success: false` response from `ipc/handle.ts`.
+ * - VALIDATION: the request payload failed its contract schema (or a service rule); `issues` lists the paths.
+ * - FORBIDDEN: the sender is not the app's own top-level renderer frame.
+ * - NO_PROFILE: there is no local profile row to act for.
+ * - NOT_FOUND: the record the request names does not exist.
+ * - INTERNAL: anything else; `error` carries the thrown message.
+ */
+export type ApiErrorCode = 'VALIDATION' | 'FORBIDDEN' | 'NO_PROFILE' | 'NOT_FOUND' | 'INTERNAL';
+
 // Generic API Response wrapper
 export interface APIResponse<T = any> {
   success: boolean;

@@ -81,26 +81,29 @@ describe('Authentication Flow Integration', () => {
       expect(credentials?.email).toBe(mockUserInput.email);
     });
 
-    it('should handle account deletion', async () => {
+    it('should handle logout without losing the profile or its data', async () => {
       // Create user with bookings
       const user = await authService.storeCredentials(mockUserInput);
 
       const booking1 = bookingRepository.create(user.id, createMockBookingInput());
       const booking2 = bookingRepository.create(user.id, createMockBookingInput());
 
-      // Delete credentials
+      // Delete credentials (Logout)
       await authService.deleteCredentials();
 
-      // User should be deleted
+      // Credentials are gone
       expect(authService.hasStoredCredentials()).toBe(false);
       const credentials = await authService.getCredentials();
       expect(credentials).toBeNull();
 
-      // Bookings should also be deleted (cascade)
-      const remainingBooking1 = bookingRepository.findById(booking1.id);
-      const remainingBooking2 = bookingRepository.findById(booking2.id);
-      expect(remainingBooking1).toBeNull();
-      expect(remainingBooking2).toBeNull();
+      // The profile row and its bookings are kept (architecture-notes §12.22)
+      expect(userRepository.findById(user.id)).not.toBeNull();
+      expect(bookingRepository.findById(booking1.id)).not.toBeNull();
+      expect(bookingRepository.findById(booking2.id)).not.toBeNull();
+
+      // Signing in again reuses the same profile
+      const again = await authService.storeCredentials(mockUserInput);
+      expect(again.id).toBe(user.id);
     });
   });
 

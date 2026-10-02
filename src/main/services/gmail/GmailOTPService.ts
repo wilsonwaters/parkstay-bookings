@@ -16,20 +16,10 @@ import { logger } from '../../utils/logger';
 
 export class GmailOTPService {
   private oauth2Handler: OAuth2Handler;
-  private static instance: GmailOTPService;
 
-  private constructor() {
-    this.oauth2Handler = new OAuth2Handler();
-  }
-
-  /**
-   * Get singleton instance
-   */
-  static getInstance(): GmailOTPService {
-    if (!GmailOTPService.instance) {
-      GmailOTPService.instance = new GmailOTPService();
-    }
-    return GmailOTPService.instance;
+  /** Built once by the composition root (`app/container.ts`). */
+  constructor(oauth2Handler: OAuth2Handler) {
+    this.oauth2Handler = oauth2Handler;
   }
 
   /**

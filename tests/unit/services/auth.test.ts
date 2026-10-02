@@ -53,16 +53,30 @@ describe('AuthService', () => {
       );
     });
 
-    it('should store multiple different users', async () => {
+    it('keeps one local profile: other credentials replace the stored ones on the same row', async () => {
       const user1 = await authService.storeCredentials(mockUserInput);
-      const user2Input = {
+      const user2 = await authService.storeCredentials({
         ...mockUserInput,
         email: 'different@example.com',
-      };
-      const user2 = await authService.storeCredentials(user2Input);
+      });
 
-      expect(user1.id).not.toBe(user2.id);
-      expect(user1.email).not.toBe(user2.email);
+      expect(user2.id).toBe(user1.id);
+      expect(user2.email).toBe('different@example.com');
+      expect(userRepository.findAll()).toHaveLength(1);
+      await expect(authService.getCredentials()).resolves.toEqual({
+        email: 'different@example.com',
+        password: mockUserInput.password,
+      });
+    });
+
+    it('writes credentials onto the existing local profile row instead of adding a user', async () => {
+      const profile = userRepository.createLocalProfileIfMissing();
+
+      const user = await authService.storeCredentials(mockUserInput);
+
+      expect(user.id).toBe(profile.id);
+      expect(userRepository.findAll()).toHaveLength(1);
+      expect(authService.hasStoredCredentials()).toBe(true);
     });
   });
 
@@ -137,11 +151,37 @@ describe('AuthService', () => {
     it('should not throw error if no credentials exist', async () => {
       await expect(authService.deleteCredentials()).resolves.not.toThrow();
     });
+
+    it('clears only the credential fields and keeps the profile row and its profile fields', async () => {
+      const stored = await authService.storeCredentials(mockUserInput);
+
+      await authService.deleteCredentials();
+
+      const row = userRepository.findById(stored.id);
+      expect(row).not.toBeNull();
+      expect(row).toMatchObject({
+        email: '',
+        encryptedPassword: '',
+        encryptionKey: '',
+        encryptionIv: '',
+        encryptionAuthTag: '',
+        firstName: mockUserInput.firstName,
+        lastName: mockUserInput.lastName,
+        phone: mockUserInput.phone,
+      });
+    });
   });
 
   describe('hasStoredCredentials', () => {
     it('should return false when no credentials stored', () => {
       expect(authService.hasStoredCredentials()).toBe(false);
+    });
+
+    it('should return false for a local profile without credentials', async () => {
+      userRepository.createLocalProfileIfMissing();
+
+      expect(authService.hasStoredCredentials()).toBe(false);
+      await expect(authService.getCredentials()).resolves.toBeNull();
     });
 
     it('should return true when credentials stored', async () => {

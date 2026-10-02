@@ -12,7 +12,6 @@ import {
   ProviderValidationResult,
 } from '@shared/types';
 import { BaseNotificationProvider } from './providers/base.provider';
-import { SMTPEmailProvider } from './providers/email-smtp.provider';
 import { NotificationProviderRepository } from '../../database/repositories/notification-provider.repository';
 import { logger } from '../../utils/logger';
 
@@ -25,18 +24,22 @@ export class NotificationDispatcher {
   private providers: Map<NotificationChannel, BaseNotificationProvider> = new Map();
   private providerRepository: NotificationProviderRepository;
 
-  constructor(providerRepository: NotificationProviderRepository) {
+  /** The notifiers are built by the composition root (`app/container.ts`) and passed in. */
+  constructor(
+    providerRepository: NotificationProviderRepository,
+    providers: BaseNotificationProvider[]
+  ) {
     this.providerRepository = providerRepository;
-    this.initializeProviders();
+    this.initializeProviders(providers);
   }
 
   /**
-   * Initialize all available providers
+   * Register the given providers, one per channel
    */
-  private initializeProviders(): void {
-    // Register SMTP Email provider
-    const smtpProvider = new SMTPEmailProvider();
-    this.providers.set(NotificationChannel.EMAIL_SMTP, smtpProvider);
+  private initializeProviders(providers: BaseNotificationProvider[]): void {
+    for (const provider of providers) {
+      this.providers.set(provider.getChannel(), provider);
+    }
 
     // Load configurations from database
     this.loadProviderConfigurations();

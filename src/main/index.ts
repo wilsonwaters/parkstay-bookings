@@ -5,30 +5,10 @@
 
 import { app, BrowserWindow } from 'electron';
 import path from 'path';
-import type Database from 'better-sqlite3';
-import { openDatabase, closeDatabase } from './database/connection';
-import { ParkStayService } from './services/parkstay/parkstay.service';
-import { QueueService } from './services/queue/queue.service';
-import { NotificationService } from './services/notification/notification.service';
-import { NotificationDispatcher } from './services/notification/notification-dispatcher';
-import { WatchService } from './services/watch/watch.service';
-import { SiteSniperService } from './services/sitesniper/sitesniper.service';
-import { AuthService } from './services/auth/AuthService';
-import { BookingService } from './services/booking/BookingService';
-import { JobScheduler } from './scheduler/job-scheduler';
+import { openDatabase } from './database/connection';
+import { createContainer, AppContainer } from './app/container';
 import { registerIPCHandlers } from './ipc';
 import { logger } from './utils/logger';
-import {
-  BookingRepository,
-  NotificationProviderRepository,
-  NotificationRepository,
-  QueueSessionRepository,
-  SettingsRepository,
-  SiteSniperRepository,
-  UserRepository,
-  WatchRepository,
-} from './database/repositories';
-import { AutoUpdaterService } from './services/updater/auto-updater.service';
 
 /**
  * Detect if app was launched at login and should start hidden
@@ -43,11 +23,8 @@ function isHiddenLaunch(): boolean {
 }
 
 // Global references
-let db: Database.Database | null = null;
+let container: AppContainer | null = null;
 let mainWindow: BrowserWindow | null = null;
-let jobScheduler: JobScheduler | null = null;
-let queueService: QueueService | null = null;
-let autoUpdaterService: AutoUpdaterService | null = null;
 
 /**
  * Create main window
@@ -102,9 +79,9 @@ function createWindow(): void {
   });
 
   // Initialize auto-updater after window creation
-  if (autoUpdaterService) {
-    autoUpdaterService.setWindow(mainWindow);
-    autoUpdaterService.scheduleUpdateCheck();
+  if (container) {
+    container.autoUpdater.setWindow(mainWindow);
+    container.autoUpdater.scheduleUpdateCheck();
   }
 }
 
@@ -116,64 +93,15 @@ async function initializeApp(): Promise<void> {
     logger.info('Initializing application...');
 
     // Open and migrate the database (B3 moves it to the WA Stay data folder)
-    db = openDatabase(path.join(app.getPath('userData'), 'parkstay.db'));
+    const db = openDatabase(path.join(app.getPath('userData'), 'parkstay.db'));
 
-    // Create repositories (P3 moves this wiring into the composition root)
-    const userRepository = new UserRepository(db);
-    const bookingRepository = new BookingRepository(db);
-    const settingsRepository = new SettingsRepository(db);
-    const notificationProviderRepository = new NotificationProviderRepository(db);
-    const notificationRepository = new NotificationRepository(db);
-    const watchRepository = new WatchRepository(db);
-    const siteSniperRepository = new SiteSniperRepository(db);
-    const queueSessionRepository = new QueueSessionRepository(db);
+    // Build every service once, then make sure the local profile row exists
+    container = createContainer({ db });
+    container.profile.ensureLocalProfile();
 
-    // Create notification dispatcher for pluggable providers
-    const notificationDispatcher = new NotificationDispatcher(notificationProviderRepository);
+    registerIPCHandlers(container);
 
-    // Create queue service (handles DBCA queue system)
-    queueService = new QueueService(queueSessionRepository);
-
-    // Create services
-    const parkStayService = new ParkStayService(queueService);
-    const authService = new AuthService(userRepository);
-    const bookingService = new BookingService(bookingRepository);
-    const notificationService = new NotificationService(
-      notificationRepository,
-      notificationDispatcher
-    );
-    const watchService = new WatchService(watchRepository, parkStayService, notificationService);
-    const siteSniperService = new SiteSniperService(
-      siteSniperRepository,
-      parkStayService,
-      queueService,
-      notificationService
-    );
-
-    // Create auto-updater service
-    autoUpdaterService = new AutoUpdaterService();
-
-    // Create job scheduler
-    jobScheduler = new JobScheduler(watchService, siteSniperService);
-
-    // Register IPC handlers
-    registerIPCHandlers(
-      authService,
-      bookingService,
-      settingsRepository,
-      watchService,
-      siteSniperService,
-      notificationService,
-      jobScheduler,
-      parkStayService,
-      notificationProviderRepository,
-      notificationDispatcher,
-      queueService,
-      autoUpdaterService
-    );
-
-    // Start job scheduler
-    jobScheduler.start();
+    container.scheduler.start();
 
     logger.info('Application initialized successfully');
   } catch (error) {
@@ -221,21 +149,9 @@ app.on('activate', () => {
 app.on('before-quit', () => {
   logger.info('Application shutting down...');
 
-  // Stop job scheduler
-  if (jobScheduler) {
-    jobScheduler.stop();
-  }
-
-  // Clean up queue service
-  if (queueService) {
-    queueService.destroy();
-  }
-
-  // Close database connection
-  if (db) {
-    closeDatabase(db);
-    db = null;
-  }
+  // Stops the scheduler, destroys the queue service and closes the database
+  container?.dispose();
+  container = null;
 
   logger.info('Application shut down successfully');
 });

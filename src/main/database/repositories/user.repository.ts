@@ -129,6 +129,87 @@ export class UserRepository extends BaseRepository<User> {
   }
 
   /**
+   * Creates the single local profile (id 1) when the table is empty, with every credential
+   * field blank. A no-op when any row exists. Returns the local profile.
+   */
+  createLocalProfileIfMissing(): User {
+    this.db
+      .prepare(
+        `INSERT INTO users (
+           id, email, encrypted_password, encryption_key, encryption_iv, encryption_auth_tag
+         )
+         SELECT 1, '', '', '', '', ''
+         WHERE NOT EXISTS (SELECT 1 FROM users)`
+      )
+      .run();
+    const profile = this.getFirstUser();
+    if (!profile) throw new Error('Failed to create the local profile');
+    return profile;
+  }
+
+  /**
+   * Writes credentials (and any profile fields given) onto an existing row. Profile fields
+   * left undefined keep their stored value.
+   */
+  setCredentials(
+    id: number,
+    email: string,
+    encryptedPassword: string,
+    encryptionKey: string,
+    encryptionIv: string,
+    encryptionAuthTag: string,
+    userData?: Partial<UserInput>
+  ): User {
+    this.db
+      .prepare(
+        `UPDATE users
+         SET email = ?,
+             encrypted_password = ?,
+             encryption_key = ?,
+             encryption_iv = ?,
+             encryption_auth_tag = ?,
+             first_name = COALESCE(?, first_name),
+             last_name = COALESCE(?, last_name),
+             phone = COALESCE(?, phone)
+         WHERE id = ?`
+      )
+      .run(
+        email,
+        encryptedPassword,
+        encryptionKey,
+        encryptionIv,
+        encryptionAuthTag,
+        userData?.firstName ?? null,
+        userData?.lastName ?? null,
+        userData?.phone ?? null,
+        id
+      );
+    const user = this.findById(id);
+    if (!user) throw new Error(`User ${id} not found`);
+    logger.info(`User credentials set: ID ${id}`);
+    return user;
+  }
+
+  /**
+   * Blanks the credential fields of a row. The row itself, its profile fields and every
+   * record that references it are kept (architecture-notes §12.22).
+   */
+  clearCredentials(id: number): void {
+    this.db
+      .prepare(
+        `UPDATE users
+         SET email = '',
+             encrypted_password = '',
+             encryption_key = '',
+             encryption_iv = '',
+             encryption_auth_tag = ''
+         WHERE id = ?`
+      )
+      .run(id);
+    logger.info(`User credentials cleared: ID ${id}`);
+  }
+
+  /**
    * Update user profile
    */
   updateProfile(id: number, data: Partial<UserInput>): User | null {
@@ -174,7 +255,7 @@ export class UserRepository extends BaseRepository<User> {
    */
   getFirstUser(): User | null {
     try {
-      const row = this.db.prepare('SELECT * FROM users LIMIT 1').get();
+      const row = this.db.prepare('SELECT * FROM users ORDER BY id LIMIT 1').get();
       return row ? this.mapRow(row as UserRow) : null;
     } catch (error) {
       logger.error('Error getting first user:', error);

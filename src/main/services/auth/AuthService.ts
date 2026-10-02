@@ -12,6 +12,11 @@ import { logger } from '../../utils/logger';
 // Secret salt for key derivation (in production, this would be stored securely)
 const APP_SECRET = 'parkstay-bookings-v1-secret';
 
+/** A profile row holds credentials until Logout blanks them. */
+function hasCredentials(user: User): boolean {
+  return user.encryptedPassword !== '';
+}
+
 interface EncryptedData {
   encrypted: string;
   iv: string;
@@ -29,13 +34,14 @@ export class AuthService {
   }
 
   /**
-   * Store user credentials
+   * Store user credentials on the local profile. There is one profile, so storing
+   * credentials for another email replaces the stored ones; the profile row and its data
+   * are kept. Creates the row only when there is none (startup normally ensures it).
    */
   async storeCredentials(credentials: UserInput): Promise<User> {
     try {
-      // Check if user already exists
-      const existing = this.userRepository.findByEmail(credentials.email);
-      if (existing) {
+      const profile = this.userRepository.getFirstUser();
+      if (profile && hasCredentials(profile) && profile.email === credentials.email) {
         throw new Error('User with this email already exists');
       }
 
@@ -44,20 +50,30 @@ export class AuthService {
 
       // Store encryption key for this user
       const userEncryptionKey = this.generateEncryptionKey();
+      const profileFields = {
+        firstName: credentials.firstName,
+        lastName: credentials.lastName,
+        phone: credentials.phone,
+      };
 
-      // Create user
-      const user = this.userRepository.create(
-        credentials.email,
-        encryptedData.encrypted,
-        userEncryptionKey,
-        encryptedData.iv,
-        encryptedData.authTag,
-        {
-          firstName: credentials.firstName,
-          lastName: credentials.lastName,
-          phone: credentials.phone,
-        }
-      );
+      const user = profile
+        ? this.userRepository.setCredentials(
+            profile.id,
+            credentials.email,
+            encryptedData.encrypted,
+            userEncryptionKey,
+            encryptedData.iv,
+            encryptedData.authTag,
+            profileFields
+          )
+        : this.userRepository.create(
+            credentials.email,
+            encryptedData.encrypted,
+            userEncryptionKey,
+            encryptedData.iv,
+            encryptedData.authTag,
+            profileFields
+          );
 
       logger.info(`Credentials stored for user: ${credentials.email}`);
       return user;
@@ -74,7 +90,7 @@ export class AuthService {
     try {
       // Get first user (single-user app)
       const user = this.userRepository.getFirstUser();
-      if (!user) {
+      if (!user || !hasCredentials(user)) {
         return null;
       }
 
@@ -130,13 +146,15 @@ export class AuthService {
   }
 
   /**
-   * Delete user credentials
+   * Delete the stored credentials (Logout). Only the credential fields are cleared: the
+   * local profile row, and every watch, snipe, booking and notification that belongs to
+   * it, are kept (architecture-notes §12.22).
    */
   async deleteCredentials(): Promise<void> {
     try {
       const user = this.userRepository.getFirstUser();
-      if (user) {
-        this.userRepository.deleteById(user.id);
+      if (user && hasCredentials(user)) {
+        this.userRepository.clearCredentials(user.id);
         logger.info(`Credentials deleted for user: ${user.email}`);
       }
     } catch (error) {
@@ -146,10 +164,11 @@ export class AuthService {
   }
 
   /**
-   * Check if user exists
+   * Check if credentials are stored on the local profile
    */
   hasStoredCredentials(): boolean {
-    return this.userRepository.hasUsers();
+    const user = this.userRepository.getFirstUser();
+    return user !== null && hasCredentials(user);
   }
 
   /**

@@ -83,7 +83,7 @@ describe('NotificationDispatcher delivery logging', () => {
     dbHelper = new TestDatabaseHelper('notification-dispatch');
     db = await dbHelper.setup();
     notifierRepo = new NotificationProviderRepository(db);
-    dispatcher = new NotificationDispatcher(notifierRepo);
+    dispatcher = new NotificationDispatcher(notifierRepo, []);
   });
 
   afterEach(async () => {
