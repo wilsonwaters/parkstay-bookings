@@ -5,7 +5,8 @@
  * password, a Gmail client secret and an SMTP password through IPC, invoke every read
  * channel, and check that none of the seeded strings is in any response or in any log line
  * (captured at debug level). Also: saving SMTP settings without a password keeps the stored
- * one, and the Gmail inbox channels are gone.
+ * one only for the same server and account (so `notifiers:test` cannot send it elsewhere),
+ * and the Gmail inbox channels are gone.
  */
 
 import { Writable } from 'stream';
@@ -37,6 +38,17 @@ jest.mock('electron-store', () =>
   })
 );
 jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }));
+// SMTP connections are recorded, never made (`notifiers:test`)
+const mockSmtpConnections: Array<{ host: string; port: number; auth: object }> = [];
+jest.mock('nodemailer', () => ({
+  __esModule: true,
+  default: {
+    createTransport: (options: { host: string; port: number; auth: object }) => {
+      mockSmtpConnections.push(options);
+      return { verify: async () => true, sendMail: async () => ({ messageId: 'test-message' }) };
+    },
+  },
+}));
 
 const PASSWORD = 'Sweep-ParkStay-Passw0rd!';
 const CLIENT_SECRET = 'GOCSPX-sweep-client-secret-7f3a';
@@ -181,7 +193,7 @@ describe('secrets never reach the renderer', () => {
     expect(reads.filter((channel) => !swept.has(channel))).toEqual([]);
   });
 
-  it('notifiers.configure without a password keeps the stored one, in the database and the dispatcher', async () => {
+  it('notifiers.configure without a password keeps the stored one for the same server and account, in the database and the dispatcher', async () => {
     await seed();
     const dispatcherPass = (): unknown =>
       (
@@ -197,7 +209,7 @@ describe('secrets never reach the renderer', () => {
     };
     const blank = {
       ...SMTP_CONFIG,
-      port: 465,
+      host: 'SMTP.Gmail.com',
       secure: true,
       auth: { user: 'me@example.com', pass: '' },
     };
@@ -225,7 +237,6 @@ describe('secrets never reach the renderer', () => {
     expect(
       container.notifierDispatcher.getNotifier(NotifierChannel.EMAIL_SMTP)?.getConfig()
     ).toMatchObject({
-      port: 465,
       secure: true,
     });
 
@@ -237,6 +248,67 @@ describe('secrets never reach the renderer', () => {
       config: { ...SMTP_CONFIG, auth: { user: 'me@example.com', pass: 'a-new-one' } },
     });
     expect(dispatcherPass()).toBe('a-new-one');
+  });
+
+  it('a renderer cannot point the stored SMTP password at another server or account, so notifiers.test cannot either', async () => {
+    await seed();
+    const storedConfig = (): unknown =>
+      container.repositories.notifiers.findByChannel(NotifierChannel.EMAIL_SMTP)?.config;
+    const before = storedConfig();
+    const configure = (config: object): Promise<APIResponse> =>
+      call('notifiers:configure', {
+        channel: NotifierChannel.EMAIL_SMTP,
+        displayName: 'Email (SMTP)',
+        enabled: true,
+        config,
+      });
+
+    for (const change of [
+      { host: 'smtp.attacker.example' },
+      { port: 2525 },
+      { auth: { user: 'attacker@example.com' } },
+      { auth: { user: 'attacker@example.com', pass: '' } },
+    ]) {
+      await expect(
+        configure({ ...SMTP_CONFIG, auth: { user: 'me@example.com' }, ...change })
+      ).resolves.toEqual({
+        success: false,
+        code: 'VALIDATION',
+        error: 'Enter the password for the new server/account',
+      });
+    }
+    expect(storedConfig()).toEqual(before);
+
+    // The test connects with what is stored: the original server, account and password
+    mockSmtpConnections.length = 0;
+    await expect(
+      call('notifiers:test', { channel: NotifierChannel.EMAIL_SMTP })
+    ).resolves.toMatchObject({ success: true, data: { success: true } });
+    expect(mockSmtpConnections).toEqual([
+      expect.objectContaining({
+        host: 'smtp.gmail.com',
+        port: 587,
+        auth: { user: 'me@example.com', pass: SMTP_PASS },
+      }),
+    ]);
+
+    // With a new password the new server is stored, and tested with that password only
+    await expect(
+      configure({
+        ...SMTP_CONFIG,
+        host: 'smtp.other.example',
+        auth: { user: 'me@example.com', pass: 'other-server-password' },
+      })
+    ).resolves.toMatchObject({ success: true, data: { hasPassword: true } });
+    mockSmtpConnections.length = 0;
+    await call('notifiers:test', { channel: NotifierChannel.EMAIL_SMTP });
+    expect(mockSmtpConnections).toEqual([
+      expect.objectContaining({
+        host: 'smtp.other.example',
+        auth: { user: 'me@example.com', pass: 'other-server-password' },
+      }),
+    ]);
+    expect(JSON.stringify(mockSmtpConnections)).not.toContain(SMTP_PASS);
   });
 
   it('notifiers.configure with no stored password and none given is VALIDATION', async () => {

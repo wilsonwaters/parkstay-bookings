@@ -1,13 +1,15 @@
 /**
  * `notifiers` handlers: outbound notification channels (email SMTP). The SMTP password is
  * write-only: every response is a `NotifierView` without it, and `configure` without a
- * password keeps the stored one (in the database and in the dispatcher).
+ * password keeps the stored one (in the database and in the dispatcher), but only for an
+ * unchanged host, port and user (`withStoredPassword`). `test` takes no settings: it
+ * connects with what `configure` stored, so it follows the same rule and cannot send the
+ * stored password to another server.
  */
 
 import { contract } from '@shared/contracts';
 import type { AppContainer } from '../../app/container';
 import { toNotifierView, withStoredPassword } from '../../services/notification/notifier-view';
-import { AppError } from '../../utils/app-error';
 import { logger } from '../../utils/logger';
 import type { Handle } from '../handle';
 
@@ -25,8 +27,8 @@ export function registerNotifiersHandlers(handle: Handle, c: AppContainer): void
 
   handle(notifiers.configure, (input) => {
     const stored = repository.findByChannel(input.channel);
+    // Throws VALIDATION when there is no password to use for this server and account
     const config = withStoredPassword(input.config, stored?.config);
-    if (!config.auth.pass) throw new AppError('VALIDATION', 'A password is required');
 
     const notifier = repository.upsert({ ...input, config });
     dispatcher.configureNotifier(

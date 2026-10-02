@@ -65,4 +65,84 @@ describe('EmailSettingsCard', () => {
     expect(await screen.findByText('Password is required')).toBeInTheDocument();
     expect(window.api.notifiers.configure).not.toHaveBeenCalled();
   });
+
+  it('requires a new password when the server or account changes', async () => {
+    jest
+      .mocked(window.api.notifiers.get)
+      .mockResolvedValue({ success: true, data: storedNotifier(true) });
+    jest
+      .mocked(window.api.notifiers.configure)
+      .mockResolvedValue({ success: true, data: storedNotifier(true) });
+
+    render(<EmailSettingsCard />);
+
+    const password = await screen.findByLabelText('App Password');
+    expect(password).toHaveAttribute('aria-required', 'false');
+
+    // Another account on the same server
+    fireEvent.change(screen.getByLabelText('Email Address'), {
+      target: { value: 'someone-else@example.com' },
+    });
+    expect(
+      screen.getByText(
+        'Required: the server or account has changed, so the saved password will not be used'
+      )
+    ).toBeInTheDocument();
+    expect(password).toHaveAttribute('aria-required', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Save Settings' }));
+    expect(
+      await screen.findByText('Enter the password for the new server/account')
+    ).toBeInTheDocument();
+    expect(window.api.notifiers.configure).not.toHaveBeenCalled();
+
+    // Back to the saved account: blank keeps the saved password again
+    fireEvent.change(screen.getByLabelText('Email Address'), {
+      target: { value: 'me@example.com' },
+    });
+    expect(
+      screen.getByText('Leave blank to keep existing password, or enter a new one to update')
+    ).toBeInTheDocument();
+
+    // Another server (Outlook): the password is required, and is sent once entered
+    fireEvent.change(screen.getByLabelText('Email Provider'), {
+      target: { value: SMTPPreset.OUTLOOK },
+    });
+    expect(password).toHaveAttribute('aria-required', 'true');
+    fireEvent.change(password, { target: { value: 'outlook-app-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Settings' }));
+
+    await screen.findByText('Email settings saved successfully');
+    const [input] = jest.mocked(window.api.notifiers.configure).mock.calls[0];
+    expect(input.config).toMatchObject({
+      host: 'smtp.office365.com',
+      auth: { user: 'me@example.com', pass: 'outlook-app-password' },
+    });
+  });
+
+  it('a custom host change needs the password too', async () => {
+    const custom = storedNotifier(true);
+    custom.config = {
+      preset: SMTPPreset.CUSTOM,
+      host: 'smtp.example.com',
+      port: 587,
+      secure: false,
+      auth: { user: 'me' },
+    };
+    jest.mocked(window.api.notifiers.get).mockResolvedValue({ success: true, data: custom });
+
+    render(<EmailSettingsCard />);
+
+    expect(
+      await screen.findByText('Leave blank to keep existing password, or enter a new one to update')
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('SMTP Host'), {
+      target: { value: 'smtp.other.example' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Settings' }));
+
+    expect(
+      await screen.findByText('Enter the password for the new server/account')
+    ).toBeInTheDocument();
+    expect(window.api.notifiers.configure).not.toHaveBeenCalled();
+  });
 });

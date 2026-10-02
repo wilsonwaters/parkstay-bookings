@@ -1,7 +1,8 @@
 /**
  * `notifiers`: outbound notification channels (email SMTP). The SMTP password is
  * write-only: responses are `NotifierView`s without it (`hasPassword` instead), and
- * `configure` with an empty or absent `config.auth.pass` keeps the stored password.
+ * `configure` with an empty or absent `config.auth.pass` keeps the stored password, only
+ * when host, port and `auth.user` are unchanged (otherwise `VALIDATION`).
  */
 
 import { z } from 'zod';
@@ -22,7 +23,7 @@ export const smtpConfigSchema = z.object({
   secure: z.boolean(),
   auth: z.object({
     user: z.string().trim().min(1),
-    /** Write-only. Empty or absent keeps the stored password. */
+    /** Write-only. Empty or absent keeps the stored password for the same host, port and user. */
     pass: z.string().optional(),
   }),
   fromEmail: z.string().optional(),

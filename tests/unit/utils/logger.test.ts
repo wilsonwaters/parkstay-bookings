@@ -75,6 +75,21 @@ describe('logger', () => {
     }
   }
 
+  /**
+   * What the console transport prints (its own format, after the logger's). It binds
+   * console.log when it is created, so its own output hooks are replaced.
+   */
+  function captureConsole({ logger }: LoggerModule): string[] {
+    const consoleLines: string[] = [];
+    for (const transport of logger.transports) {
+      if (kind(transport) !== 'Console') continue;
+      const print = (line: string): void => void consoleLines.push(line);
+      Object.assign(transport, { _consoleLog: print, _consoleWarn: print, _consoleError: print });
+      Object.assign(transport, { forceConsole: true, silent: false });
+    }
+    return consoleLines;
+  }
+
   it('at import has only a console transport, never exits on error, and writes no files', () => {
     const before = snapshot(LEGACY_TEMP_LOGS);
     const loaded = loadLogger();
@@ -146,15 +161,7 @@ describe('logger', () => {
     silenceConsole(loaded);
     const logsDir = path.join(dir, 'logs');
     initFileLogging(logsDir);
-    // What the console transport prints (its own format, after the logger's). It binds
-    // console.log when it is created, so its own output hooks are replaced.
-    const consoleLines: string[] = [];
-    for (const transport of logger.transports) {
-      if (kind(transport) !== 'Console') continue;
-      const print = (line: string): void => void consoleLines.push(line);
-      Object.assign(transport, { _consoleLog: print, _consoleWarn: print, _consoleError: print });
-      Object.assign(transport, { forceConsole: true, silent: false });
-    }
+    const consoleLines = captureConsole(loaded);
 
     // axios: what ParkStay calls throw (every request carries the session cookies)
     const axiosError = new AxiosError(
@@ -206,6 +213,130 @@ describe('logger', () => {
       expect(output).not.toMatch(/SECRET-/);
     }
     expect(consoleLines).toHaveLength(3);
+  });
+
+  it('secrets are redacted by key at any depth: responses, nested headers, error fields, cycles', async () => {
+    const loaded = loadLogger();
+    const { logger, initFileLogging } = loaded;
+    opened.push(logger);
+    silenceConsole(loaded);
+    const logsDir = path.join(dir, 'logs');
+    initFileLogging(logsDir);
+    const consoleLines = captureConsole(loaded);
+
+    // A plain response object: a session cookie in its headers, tokens in its body
+    logger.warn('Sign-in rejected:', {
+      status: 403,
+      headers: {
+        'Set-Cookie': ['sessionid=SECRET-SESSION; HttpOnly'],
+        'content-type': 'application/json',
+      },
+      data: {
+        detail: 'Invalid credentials',
+        access_token: 'SECRET-ACCESS',
+        session: { refreshToken: 'SECRET-REFRESH', expires_in: 3600 },
+      },
+    });
+    // An exchange nested below the record, and a bare header block
+    logger.warn('Nested', {
+      detail: {
+        config: { headers: { Authorization: 'Bearer SECRET-BEARER' }, data: 'SECRET-BODY' },
+        headers: { Authorization: 'Bearer SECRET-BEARER', COOKIE: 'csrftoken=SECRET-CSRF' },
+        response: { data: 'SECRET-BODY' },
+        step: 'otp',
+      },
+    });
+    // An error with a custom secret field, logged directly and as a cause
+    const signInError = Object.assign(new Error('Bad credentials'), {
+      username: 'me@example.com',
+      password: 'SECRET-PASSWORD',
+      code: 'E_AUTH',
+    });
+    logger.error('Sign-in failed:', signInError);
+    logger.warn('Retry gave up', {
+      cause: new Error('Retries exhausted', { cause: signInError }),
+    });
+    // A circular object, and an error that is its own cause
+    const loop: Record<string, unknown> = { name: 'loop', sessionKey: 'SECRET-KEY' };
+    loop.self = loop;
+    loop.list = [loop, { client_secret: 'SECRET-CLIENT' }];
+    const selfCaused = Object.assign(new Error('Self caused'), { session_key: 'SECRET-KEY' });
+    Object.assign(selfCaused, { cause: selfCaused });
+    logger.warn('Circular', { loop, selfCaused });
+    // Every key spelling, and fields that only look like secrets
+    logger.warn('Keys', {
+      Authorization: 'SECRET-1',
+      cookie: 'SECRET-2',
+      pass: 'SECRET-3',
+      passwd: 'SECRET-4',
+      secret: 'SECRET-5',
+      clientSecret: 'SECRET-6',
+      id_token: 'SECRET-7',
+      csrf_token: 'SECRET-8',
+      code_verifier: 'SECRET-9',
+      sessionkey: 'SECRET-10',
+      accessToken: 'SECRET-11',
+      hasPassword: true,
+      tokenType: 'Bearer',
+    });
+    let deep: Record<string, unknown> = { password: 'SECRET-DEEP' };
+    for (let i = 0; i < 20; i++) deep = { level: deep };
+    logger.warn('Deep', deep);
+
+    const text = await waitForFile(path.join(logsDir, 'combined.log'), (t) => t.includes('Deep'));
+    const [response, nested, signIn, retry, circular, keys, deepLine] = lines(text);
+
+    expect(response).toMatchObject({
+      message: 'Sign-in rejected:',
+      status: 403,
+      headers: { 'Set-Cookie': '[REDACTED]', 'content-type': 'application/json' },
+      data: {
+        detail: 'Invalid credentials',
+        access_token: '[REDACTED]',
+        session: { refreshToken: '[REDACTED]', expires_in: 3600 },
+      },
+    });
+    expect(nested).toEqual(
+      expect.objectContaining({
+        detail: {
+          headers: { Authorization: '[REDACTED]', COOKIE: '[REDACTED]' },
+          step: 'otp',
+        },
+      })
+    );
+    expect(signIn).toMatchObject({
+      message: 'Sign-in failed: Bad credentials',
+      username: 'me@example.com',
+      password: '[REDACTED]',
+      code: 'E_AUTH',
+    });
+    expect(retry.cause).toMatchObject({
+      name: 'Error',
+      message: 'Retries exhausted',
+      cause: {
+        message: 'Bad credentials',
+        username: 'me@example.com',
+        password: '[REDACTED]',
+        code: 'E_AUTH',
+      },
+    });
+    expect(circular).toMatchObject({
+      loop: {
+        name: 'loop',
+        sessionKey: '[REDACTED]',
+        self: '[Circular]',
+        list: ['[Circular]', { client_secret: '[REDACTED]' }],
+      },
+      selfCaused: { message: 'Self caused', session_key: '[REDACTED]', cause: '[Circular]' },
+    });
+    expect(keys).toMatchObject({ hasPassword: true, tokenType: 'Bearer' });
+    for (let i = 1; i <= 11; i++) expect(Object.values(keys)).not.toContain(`SECRET-${i}`);
+    expect(JSON.stringify(deepLine)).toContain('[Truncated]');
+
+    for (const output of [text, consoleLines.join('\n')]) {
+      expect(output).not.toMatch(/SECRET-/);
+    }
+    expect(consoleLines).toHaveLength(7);
   });
 
   it('a string or number logged after the message is appended to it, as console.error printed it', async () => {

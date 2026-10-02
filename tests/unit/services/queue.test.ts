@@ -12,7 +12,10 @@
 
 import { QueueAPIResponse, QueueSession } from '@shared/types';
 import axios from 'axios';
-import { QueueService } from '@main/services/queue/queue.service';
+import { Writable } from 'stream';
+import winston from 'winston';
+import { maskKey, QueueService } from '@main/services/queue/queue.service';
+import { logger } from '@main/utils/logger';
 import type { QueueSessionRepository } from '@main/database/repositories/queue-session.repository';
 
 // Mock axios
@@ -500,6 +503,37 @@ describe('QueueService', () => {
       expect(session!.status).toBe('Active');
 
       service.destroy();
+    });
+
+    it('logs a restored session without its key (only the last 4 characters)', () => {
+      const lines: string[] = [];
+      const capture = new winston.transports.Stream({
+        stream: new Writable({
+          write(chunk, _encoding, done) {
+            lines.push(String(chunk));
+            done();
+          },
+        }),
+      });
+      const levelBefore = logger.level;
+      const quiet = logger.transports.filter((transport) => !transport.silent);
+      quiet.forEach((transport) => (transport.silent = true));
+      logger.add(capture);
+      logger.level = 'debug';
+      try {
+        sessionRepo.get.mockReturnValue(storedSession());
+        createService().destroy();
+      } finally {
+        logger.remove(capture);
+        logger.level = levelBefore;
+        quiet.forEach((transport) => (transport.silent = false));
+      }
+
+      const logs = lines.join('\n');
+      expect(logs).toContain('Restored queue session from database (key …8901)');
+      expect(logs).not.toContain('RESTOREDKEY');
+      expect(maskKey('RESTOREDKEY12345678901234567890123456789012345678901')).toBe('…8901');
+      expect(maskKey('SHORT')).toBe('…');
     });
 
     it('should not restore an expired session from database', () => {

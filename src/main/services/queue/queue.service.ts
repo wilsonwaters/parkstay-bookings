@@ -40,6 +40,11 @@ const DEFAULT_CONFIG: QueueServiceConfig = {
   retryDelayMs: QUEUE_RETRY_DELAY_MS,
 };
 
+/** A session key as it may be logged: its last 4 characters only (`…WXYZ`). */
+export function maskKey(key: string): string {
+  return key.length > 8 ? `…${key.slice(-4)}` : '…';
+}
+
 export class QueueService extends EventEmitter {
   private sessionRepo: QueueSessionRepository;
   private client: AxiosInstance;
@@ -77,7 +82,8 @@ export class QueueService extends EventEmitter {
         // Only restore if not expired
         if (stored.expiresAt > new Date()) {
           this.session = stored;
-          log.info(`Restored queue session from database: ${this.session.sessionKey}`);
+          // The session key is a credential: only its last characters are logged
+          log.info(`Restored queue session from database (key ${maskKey(stored.sessionKey)})`);
 
           // Schedule refresh for restored session
           this.scheduleSessionRefresh();

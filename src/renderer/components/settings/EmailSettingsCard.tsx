@@ -7,10 +7,13 @@ import React, { useState, useEffect } from 'react';
 import {
   NotifierChannel,
   SMTPPreset,
+  SMTPAccount,
   SMTPConfigView,
   NotifierStatus,
   SMTP_PRESETS,
+  SMTP_NEW_ACCOUNT_PASSWORD,
   NotifierView,
+  isSameSmtpAccount,
 } from '@shared/types';
 import type { NotifierConfigureInput } from '@shared/contracts/notifiers';
 import SMTPSetupInstructions from './SMTPSetupInstructions';
@@ -25,8 +28,10 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
   const [preset, setPreset] = useState<SMTPPreset>(SMTPPreset.GMAIL);
   const [email, setEmail] = useState(''); // For Gmail/Outlook: email = username. For Custom: this is fromEmail
   const [appPassword, setAppPassword] = useState('');
-  // The stored password is never sent back; main only says whether there is one
+  // The stored password is never sent back; main only says whether there is one. It is
+  // kept only for the server and account it was saved for (host, port and user).
   const [hasPassword, setHasPassword] = useState(false);
+  const [savedAccount, setSavedAccount] = useState<SMTPAccount | null>(null);
   const [toEmail, setToEmail] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -69,6 +74,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
         setLastTestedAt(provider.lastTestedAt ? new Date(provider.lastTestedAt) : null);
 
         if (config) {
+          setSavedAccount(accountOf(config));
           setPreset(config.preset || SMTPPreset.GMAIL);
           setToEmail(config.toEmail || '');
           // The password is write-only: leave the field blank to keep the stored one
@@ -127,6 +133,11 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
     };
   };
 
+  // A blank password keeps the stored one only for an unchanged server and account
+  const draft = buildConfig();
+  const keepsSavedPassword =
+    hasPassword && savedAccount !== null && isSameSmtpAccount(draft, savedAccount);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -149,8 +160,8 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
       }
     }
 
-    if (!appPassword && !hasPassword) {
-      setError('Password is required');
+    if (!appPassword && !keepsSavedPassword) {
+      setError(hasPassword ? SMTP_NEW_ACCOUNT_PASSWORD : 'Password is required');
       return;
     }
 
@@ -161,13 +172,14 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
         channel: NotifierChannel.EMAIL_SMTP,
         displayName: 'Email (SMTP)',
         enabled,
-        config: buildConfig(),
+        config: draft,
       });
 
       if (response.success) {
         setSuccessMessage('Email settings saved successfully');
         setNotifierStatus(NotifierStatus.CONFIGURED);
         setHasPassword(response.data?.hasPassword ?? true);
+        setSavedAccount(accountOf(draft));
         setAppPassword(''); // Clear password after save
         onSaveSuccess?.();
       } else {
@@ -439,6 +451,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
                 type={showPassword ? 'text' : 'password'}
                 value={appPassword}
                 onChange={(e) => setAppPassword(e.target.value)}
+                aria-required={!keepsSavedPassword}
                 className="input pr-10"
                 placeholder={
                   preset === SMTPPreset.CUSTOM ? 'Enter your password' : 'Enter your app password'
@@ -477,11 +490,13 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
               </button>
             </div>
             <p className="mt-1 text-xs text-gray-500">
-              {hasPassword
+              {keepsSavedPassword
                 ? 'Leave blank to keep existing password, or enter a new one to update'
-                : preset === SMTPPreset.CUSTOM
-                  ? 'Your SMTP server password'
-                  : 'Create an app password (not your regular password)'}
+                : hasPassword
+                  ? 'Required: the server or account has changed, so the saved password will not be used'
+                  : preset === SMTPPreset.CUSTOM
+                    ? 'Your SMTP server password'
+                    : 'Create an app password (not your regular password)'}
             </p>
           </div>
 
@@ -550,5 +565,14 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
     </div>
   );
 };
+
+/** The server and account a saved password belongs to. */
+function accountOf(config: SMTPConfigView | NotifierConfigureInput['config']): SMTPAccount {
+  return {
+    host: config.host || '',
+    port: config.port,
+    auth: { user: config.auth?.user || '' },
+  };
+}
 
 export default EmailSettingsCard;

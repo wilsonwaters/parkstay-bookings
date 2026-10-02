@@ -78,6 +78,24 @@ export interface NotifierInput {
 /** SMTP settings as the renderer sees them: the password is write-only and never returned. */
 export type SMTPConfigView = Omit<SMTPConfig, 'auth'> & { auth: { user: string } };
 
+/** What a stored SMTP password belongs to: the server (host and port) and the account. */
+export type SMTPAccount = Pick<SMTPConfig, 'host' | 'port'> & { auth: { user: string } };
+
+/**
+ * Saving SMTP settings without a password keeps the stored one only for the same server
+ * and account, so the stored password is never sent to a server it was not saved for.
+ */
+export function isSameSmtpAccount(a: SMTPAccount, b: SMTPAccount): boolean {
+  return (
+    a.host.trim().toLowerCase() === b.host.trim().toLowerCase() &&
+    a.port === b.port &&
+    a.auth.user.trim() === b.auth.user.trim()
+  );
+}
+
+/** The error for a server or account change saved without a new password. */
+export const SMTP_NEW_ACCOUNT_PASSWORD = 'Enter the password for the new server/account';
+
 /**
  * A notifier as IPC returns it: secrets removed from `config`, and `hasPassword` saying
  * whether one is stored.
