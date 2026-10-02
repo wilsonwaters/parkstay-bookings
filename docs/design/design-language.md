@@ -10,7 +10,7 @@ This document is the rulebook. Everything in it is encoded and checked:
 | `tailwind.config.js` | Maps utility names (`bg-accent`, `text-fg-muted`, `rounded-lg`, `shadow-pop`, `z-tray`) onto those variables. It holds no values of its own. |
 | `src/renderer/styles/contrast.ts` | `contrastRatio()` and `CONTRAST_PAIRS`, the colour pairs we promise to keep accessible. |
 | `tests/unit/design/contrast.test.ts` | Reads `tokens.css` and fails if any pair drops below its minimum, or a named token disappears. |
-| `tests/unit/design/token-guard.test.ts` | Fails on raw Tailwind palette classes (`bg-gray-500`, `text-primary-600`), hex literals and emoji in `components/ui`, `app`, `features` and `api` (legacy folders excluded). |
+| `tests/unit/design/token-guard.test.ts` | Fails on raw Tailwind colour classes (`bg-gray-500`, `text-primary-600`, `accent-blue-600`, `bg-white`, `text-black`), hex literals, numeric colour functions (`rgb(0 0 0)`, `hsl(…)`; `rgb(var(--ws-…))` is fine) and emoji in `components/ui`, `app`, `features` and `api` (legacy folders excluded). Typographic symbols such as © ® ™ ↔ → ★ are not emoji and pass. A line that genuinely needs one of these, such as `"Site #101"`, opts out with a `token-guard-ignore` comment on that line, giving the reason. |
 | `tests/unit/design/design-language-doc.test.ts` | Keeps this document's palette, contrast and icon tables in step with the code. |
 | `#/__design` | A dev-only page that renders every token, pair, specimen and atom live. Run `npm run dev` and open it. It is not in production builds. |
 
@@ -26,12 +26,14 @@ This document is the rulebook. Everything in it is encoded and checked:
 
 The stakeholder's mood reference is the WA Tourism Commission mark: a painterly Indian Ocean blue brushstroke, a gold sun, a black swan and a coral beak. It is a trademark, so we take **only its palette and the gesture of a loaded brush**. We never use the swan, the sun-over-stroke composition or any traced shape (brief O4).
 
+The three anchor colours are sampled from the stakeholder-supplied reference image; dominant brushstroke ≈ `#3870B0`–`#3A74B8`, sun ≈ `#E8B858`, beak ≈ `#D05830`. They become `ocean-500` (`#3A74B8`), `sun-400` (`#E8B858`) and `coral-400` (`#D05830`), and a contrast test pins them. The other ocean, sun and coral steps are derived from these anchors, tuned so every pair below passes.
+
 | WA idea | Becomes | Why |
 | --- | --- | --- |
-| Indian Ocean | **Ocean**, the brand blue | Anchored on the mark's own blue (`ocean-500` `#3A74B8`, hue 212°). It is deeper and greyer than Tailwind's `sky`, which the old app used and which reads as "default web app". |
-| The sun setting into the sea | **Sun** gold | Time and release cues: "opens at midnight", "Soon". Gold is the colour of waiting for something. |
+| Indian Ocean | **Ocean**, the brand blue | Anchored on the sampled brushstroke blue (`ocean-500` `#3A74B8`, hue 212°). It is deeper and greyer than Tailwind's `sky`, which the old app used and which reads as "default web app". |
+| The sun setting into the sea | **Sun** gold | Anchored on the sampled sun (`sun-400` `#E8B858`). Time and release cues: "opens at midnight", "Soon". Gold is the colour of waiting for something. |
 | The black swan | **Ink**, a blue-black | Text and dark surfaces. A hint of blue ties it to the ocean, so it is never a flat grey-black. |
-| The coral beak, Ningaloo, red-earth warmth | **Coral** for action | The warm accent that stands out against blue water and green parks on the map, as Airbnb's red does on its map. |
+| The coral beak, Ningaloo, red-earth warmth | **Coral** for action | Anchored on the sampled beak (`coral-400` `#D05830`), deepened to `coral-600` for the button so white text passes AA. The warm accent stands out against blue water and green parks on the map, as Airbnb's red does on its map. |
 | Coastal sand and limestone | **Sand** neutrals | Warm off-white page and fills. Cool greys read as an enterprise dashboard; sand reads as paper and coast. |
 | Eucalypt woodland | **Eucalypt** green for "available" | A blue-green gum-leaf tone, not a traffic-light green. |
 
@@ -59,16 +61,16 @@ The raw palette. Components never use these names directly; they use the semanti
 | `ocean-50` | `#EEF4FB` | Brand tint behind selected chips |
 | `ocean-100` | `#D6E5F5` | Map water, soft brushstroke, text selection |
 | `ocean-200` | `#AECBEA` | Map waterways |
-| `ocean-500` | `#3A74B8` | The brushstroke blue |
+| `ocean-500` | `#3A74B8` | The sampled brushstroke blue |
 | `ocean-600` | `#2D60A0` | Brand, focus ring |
 | `ocean-700` | `#214C82` | Links, brand text on tints |
 | `coral-50` | `#FDF0EA` | Accent tint |
-| `coral-400` | `#E8572A` | Decorative only: the logo's coral accent. Never text, never a fill under text. |
+| `coral-400` | `#D05830` | The sampled beak. Decorative or large graphics only (4.10:1 on `surface`): the logo's coral accent. Never text, never a fill under text. |
 | `coral-600` | `#BF4520` | **The call to action** |
 | `coral-700` | `#9E3819` | CTA hover, and coral text in the rare case it is needed |
 | `sun-50` | `#FEF7E1` | Warning tint |
 | `sun-100` | `#FCEBB6` | "Soon" pill, soft sun brushstroke |
-| `sun-400` | `#F2C14E` | Decorative only: the sun in artwork and brushstrokes. Never text. |
+| `sun-400` | `#E8B858` | The sampled sun. Decorative only: the sun in artwork and brushstrokes. Never text. |
 | `sun-700` | `#855A00` | Warning and release text |
 | `eucalypt-50` | `#EAF3EE` | Available tint |
 | `eucalypt-600` | `#2D7356` | Available fill and glyph |
@@ -107,7 +109,7 @@ Semantic aliases, which is what components use (`bg-surface`, `text-fg-muted`, `
 | `danger` | `danger-600` | `#B3263E` | Error text, destructive outline and confirm |
 | `danger-subtle` | `danger-50` | `#FCEDEF` | Error notice background |
 | `danger-fg` | `danger-700` | `#8E1E31` | Error text on `danger-subtle` |
-| `sun` | `sun-400` | `#F2C14E` | Decorative sun only |
+| `sun` | `sun-400` | `#E8B858` | Decorative sun only |
 | `sun-subtle` | `sun-100` | `#FCEBB6` | "Soon" pill, sun badge |
 
 Rules:
@@ -116,6 +118,7 @@ Rules:
 - **Danger is crimson, coral is orange-red.** They sit 24° apart in hue so a Book button never reads as a Delete button. Danger appears as text or an outline. It is a solid fill only for the confirm button of a destructive `ConfirmDialog`, which then replaces the coral button in that view.
 - **Inputs use `border-strong`** (3.92:1). The hairline `border` (1.33:1) separates list items and cards, and is never the only visible edge of something you can click or type into. A `sand-300` step was deliberately left out: at 1.65:1 it looks like a border but fails as one.
 - **Alpha is for overlays**, such as `bg-accent/10` for a pressed state or `bg-surface-inverse/40` for a scrim. Never fade text with opacity; use `fg-secondary` or `fg-muted`.
+- **Focus is always `focus` at full strength.** The global `:focus-visible` outline and a bare `ring-2` (no colour class) both use it, and a ring offset is `surface`. Tailwind's default half-transparent blue ring is gone.
 - Tokens hold space-separated RGB channels (`--ws-coral-600: 191 69 32;`) so Tailwind's `<alpha-value>` works.
 - There is no dark theme in this project. Aliases are the seam for one later: a theme redefines the aliases and nothing else.
 - **Legacy only:** `primary-50…900` still exists in a commented block in `tailwind.config.js`, re-pointed at ocean so the old pages render. New code must not use it, and the token guard rejects it.
@@ -131,6 +134,7 @@ Every colour combination the app uses, one-to-one with `CONTRAST_PAIRS` in `src/
 | `fg` | `surface-subtle` | text | 15.41 | 4.5 | Text on subtle fills (selected rows, chips) |
 | `fg-secondary` | `surface` | text | 10.60 | 4.5 | Secondary text: descriptions, metadata |
 | `fg-secondary` | `canvas` | text | 9.92 | 4.5 | Secondary text on the page |
+| `fg-secondary` | `surface-subtle` | text | 9.17 | 4.5 | Secondary text on subtle fills, table headers |
 | `fg-muted` | `surface` | text | 5.99 | 4.5 | Muted text: hints, timestamps, placeholders |
 | `fg-muted` | `canvas` | text | 5.60 | 4.5 | Muted text on the page |
 | `fg-muted` | `surface-subtle` | text | 5.19 | 4.5 | Muted text on subtle fills, booked nights |
@@ -142,15 +146,20 @@ Every colour combination the app uses, one-to-one with `CONTRAST_PAIRS` in `src/
 | `brand` | `surface` | text | 6.38 | 4.5 | Brand-coloured text and icons |
 | `brand` | `canvas` | text | 5.97 | 4.5 | Brand-coloured text on the page |
 | `brand-strong` | `surface` | text | 8.67 | 4.5 | Links |
+| `brand-strong` | `canvas` | text | 8.12 | 4.5 | Links on the page |
 | `brand-strong` | `brand-subtle` | text | 7.84 | 4.5 | Selected chip, brand badge |
 | `fg-inverse` | `brand` | text | 6.38 | 4.5 | Text on a solid brand fill (checked control) |
 | `warning-fg` | `warning-subtle` | text | 5.67 | 4.5 | Warning notice, not-yet-released nights |
 | `warning-fg` | `sun-subtle` | text | 5.12 | 4.5 | "Soon" pill, sun badge |
+| `warning-fg` | `surface` | text | 6.07 | 4.5 | Release times and warning text on cards |
 | `available-fg` | `available-subtle` | text | 7.40 | 4.5 | Available badge and notice |
+| `available-fg` | `surface` | text | 8.38 | 4.5 | Available text on cards and tables |
 | `available` | `available-subtle` | text | 5.02 | 4.5 | Available night glyph |
 | `fg-inverse` | `available` | text | 5.68 | 4.5 | Available map pill and solid badge |
 | `danger-fg` | `danger-subtle` | text | 7.77 | 4.5 | Error notice |
 | `danger` | `surface` | text | 6.43 | 4.5 | Field error text and danger outline button |
+| `danger` | `canvas` | text | 6.02 | 4.5 | Field error text on the page |
+| `danger` | `danger-subtle` | text | 5.67 | 4.5 | Danger outline button on hover |
 | `fg-inverse` | `danger` | text | 6.43 | 4.5 | Confirm button in a destructive dialog |
 | `focus` | `surface` | ui | 6.38 | 3 | Focus ring on cards and dialogs |
 | `focus` | `canvas` | ui | 5.97 | 3 | Focus ring on the page |
@@ -159,12 +168,14 @@ Every colour combination the app uses, one-to-one with `CONTRAST_PAIRS` in `src/
 | `border-strong` | `canvas` | ui | 3.67 | 3 | Input borders on the page |
 | `accent` | `canvas` | ui | 4.81 | 3 | Primary button shape against the page |
 | `ocean-500` | `surface` | ui | 4.81 | 3 | Active-nav brushstroke |
+| `brand` | `ocean-100` | ui | 4.98 | 3 | Kind icon on the photo-placeholder dab |
+| `coral-400` | `surface` | ui | 4.10 | 3 | Logo coral accent, a large graphic and never text |
 | `available` | `surface` | ui | 5.68 | 3 | Available map pill against white map land |
 
 Rules:
 
 - A new colour combination is added to `CONTRAST_PAIRS` **and** this table before it ships. The doc test fails if they differ.
-- Pairs that are not listed are not allowed for text. In particular, `coral-400`, `sun-400` and `sun` never carry text or sit under it.
+- Pairs that are not listed are not allowed for text. In particular, `coral-400`, `sun-400` and `sun` never carry text or sit under it. `coral-400` may be a large graphic on `surface` (the logo accent, 4.10:1); `sun-400` (1.84:1) is too light even for that, so it only ever sits beside something that carries the meaning.
 - Muted text is `fg-muted` (5.19:1 or better on every light surface). The old `gray-400` (2.5:1) is gone.
 
 ## Type
@@ -356,13 +367,14 @@ Navigation and actions:
 - Photos are 4:3 in cards and 16:9 or 3:2 in the detail hero, `object-cover`, with `rounded-lg` (cards) or `rounded-xl` (hero).
 - No filters, duotones, colour overlays or gradients on photos. Text never sits on a photo; it goes below it. Map attribution is the only overlay.
 - While loading, show a skeleton of the same size (`animate-shimmer`). A missing or broken image shows `PhotoPlaceholder`, never the browser's broken-image icon.
-- **`PhotoPlaceholder`** (`components/ui/PhotoPlaceholder.tsx`): a `surface-subtle` fill, a soft `ocean-100` brush dab behind the location kind icon in `brand`, and the caption "No photo yet" in `fg-muted`. It is `role="img"` and takes a required `aria-label` such as "No photo available for Lucky Bay". `size="hero"` is used on the detail page. It fills its parent, so the parent sets the aspect ratio and radius.
+- **`PhotoPlaceholder`** (`components/ui/PhotoPlaceholder.tsx`): a `surface-subtle` fill, a soft `ocean-100` brush dab behind the location kind icon in `brand` (4.98:1, centred on the dab's paint rather than its box), and the caption "No photo yet" in `fg-muted`. It is `role="img"` and takes a required `aria-label` such as "No photo available for Lucky Bay". `size="hero"` is used on the detail page. It fills its parent, so the parent sets the aspect ratio and radius.
 
 ## Brushstroke motif
 
 One hand-drawn gesture, used sparingly, is what makes the app feel WA without becoming a theme park.
 
 - The artwork is **original**: three paths drawn for WA Stay in `src/renderer/assets/brush/` (`underline.svg`, `dab.svg`, `swash.svg`), each with a rounded landing and a dry-brush tail. Nothing is traced from the WA Tourism mark (O4). B1 builds the logo from the same geometry.
+- The SVGs are generated, never hand-edited: `node scripts/brand/brushstrokes.js --write` rebuilds them from seeded specs (centreline, width, bristle lanes), and a test fails if the committed files drift from the generator. The script also reports each stroke's paint centre (`BRUSH_MASS_CENTRE`).
 - Render it with `<Brushstroke variant="underline | dab | swash" tone="…">`. It is always `aria-hidden` with no accessible name.
 - **Colours: only `ocean-500`, `ocean-100`, `sun-400` or `sun-100`** (`tone` `ocean`, `ocean-soft`, `sun`, `sun-soft`). The component accepts nothing else.
 - **Allowed places only:** under the active nav item (`underline`, `ocean`), the logo, the photo-placeholder dab (`dab`, `ocean-soft`), and the EmptyState accent (`swash`, `sun` or `ocean`).

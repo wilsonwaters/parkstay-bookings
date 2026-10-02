@@ -38,6 +38,17 @@ const BRUSHES: Record<BrushstrokeVariant, BrushGeometry> = {
   swash: readBrush(swashSvg),
 };
 
+/**
+ * Where each stroke's paint is, on average (the centroid of its filled area), as fractions of
+ * its box. Measured by `node scripts/brand/brushstrokes.js`; a test keeps them in step.
+ * Use it to sit something on the paint rather than on the box centre.
+ */
+export const BRUSH_MASS_CENTRE: Record<BrushstrokeVariant, { x: number; y: number }> = {
+  underline: { x: 0.435, y: 0.462 },
+  dab: { x: 0.459, y: 0.46 },
+  swash: { x: 0.43, y: 0.571 },
+};
+
 /** The only palette tokens a brushstroke may be painted in. */
 export const BRUSH_TONE_TOKENS: Record<BrushstrokeTone, string> = {
   ocean: 'ocean-500',

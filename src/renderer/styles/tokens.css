@@ -23,7 +23,7 @@
   --ws-sand-500: 138 127 112;
   --ws-sand-600: 107 98 86;
 
-  /* Ocean: Indian Ocean blue, the brand colour. 500 is the brushstroke blue. */
+  /* Ocean: Indian Ocean blue, the brand colour. 500 is the reference brushstroke blue. */
   --ws-ocean-50: 238 244 251;
   --ws-ocean-100: 214 229 245;
   --ws-ocean-200: 174 203 234;
@@ -31,16 +31,17 @@
   --ws-ocean-600: 45 96 160;
   --ws-ocean-700: 33 76 130;
 
-  /* Coral: the beak. 600 is the single call-to-action colour. 400 is decorative only. */
+  /* Coral: the beak. 600 is the single call-to-action colour.
+     400 is the reference beak colour: decorative or large graphics only, never text. */
   --ws-coral-50: 253 240 234;
-  --ws-coral-400: 232 87 42;
+  --ws-coral-400: 208 88 48;
   --ws-coral-600: 191 69 32;
   --ws-coral-700: 158 56 25;
 
-  /* Sun: gold for time and release cues. 400 is decorative only. */
+  /* Sun: gold for time and release cues. 400 is the reference sun: decorative only. */
   --ws-sun-50: 254 247 225;
   --ws-sun-100: 252 235 182;
-  --ws-sun-400: 242 193 78;
+  --ws-sun-400: 232 184 88;
   --ws-sun-700: 133 90 0;
 
   /* Eucalypt: blue-green gum leaf for "available". */

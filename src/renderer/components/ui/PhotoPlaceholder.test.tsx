@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import { House, MapPin, TentTree, Tractor } from 'lucide-react';
+import { BRUSH_MASS_CENTRE } from './Brushstroke';
 import { PhotoPlaceholder } from './PhotoPlaceholder';
 import { KIND_ICONS, kindIcon } from './kindIcons';
 
@@ -41,6 +42,19 @@ describe('PhotoPlaceholder', () => {
       <PhotoPlaceholder kind="space-station" aria-label="No photo available for Somewhere" />
     );
     expect(Array.from(screen.getByRole('img').querySelectorAll('svg')).map(glyph)).toContain(pin);
+  });
+
+  it("sits the kind icon on the dab's paint, not on the centre of its box", () => {
+    render(<PhotoPlaceholder kind="campground" aria-label="No photo available for Lucky Bay" />);
+    const tent = glyphOf(TentTree);
+    const icon = Array.from(screen.getByRole('img').querySelectorAll('svg')).find(
+      (svg) => glyph(svg) === tent
+    );
+    expect(icon).toHaveStyle({
+      left: `${(BRUSH_MASS_CENTRE.dab.x * 100).toFixed(1)}%`,
+      top: `${(BRUSH_MASS_CENTRE.dab.y * 100).toFixed(1)}%`,
+    });
+    expect(BRUSH_MASS_CENTRE.dab.x).toBeLessThan(0.5);
   });
 
   it('keeps the brush dab decorative', () => {

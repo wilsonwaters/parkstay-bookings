@@ -1,4 +1,4 @@
-import { Brushstroke } from './Brushstroke';
+import { BRUSH_MASS_CENTRE, Brushstroke } from './Brushstroke';
 import { kindIcon } from './kindIcons';
 
 export interface PhotoPlaceholderProps {
@@ -10,6 +10,12 @@ export interface PhotoPlaceholderProps {
   size?: 'card' | 'hero';
   className?: string;
 }
+
+/** The icon sits on the dab's paint, not on its box: the paint is heavier to the left and top. */
+const ON_DAB_PAINT = {
+  left: `${(BRUSH_MASS_CENTRE.dab.x * 100).toFixed(1)}%`,
+  top: `${(BRUSH_MASS_CENTRE.dab.y * 100).toFixed(1)}%`,
+};
 
 /**
  * The no-photo treatment: a soft ocean brush dab behind the kind icon, and a quiet caption.
@@ -35,11 +41,13 @@ export function PhotoPlaceholder({
         .filter(Boolean)
         .join(' ')}
     >
-      <span
-        className={['relative grid place-items-center', hero ? 'h-24 w-32' : 'h-14 w-20'].join(' ')}
-      >
+      <span className={['relative block', hero ? 'h-24 w-32' : 'h-14 w-20'].join(' ')}>
         <Brushstroke variant="dab" tone="ocean-soft" className="absolute inset-0 h-full w-full" />
-        <Icon className="relative" size={hero ? 40 : 28} />
+        <Icon
+          className="absolute -translate-x-1/2 -translate-y-1/2"
+          style={ON_DAB_PAINT}
+          size={hero ? 40 : 28}
+        />
       </span>
       <span className={hero ? 'text-sm text-fg-muted' : 'text-xs text-fg-muted'}>No photo yet</span>
     </div>

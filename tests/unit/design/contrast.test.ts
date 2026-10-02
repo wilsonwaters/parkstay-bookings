@@ -46,6 +46,13 @@ describe('tokens.css', () => {
     expect(sheet.values.accent).toBe('var(--ws-coral-600)');
   });
 
+  it('anchors ocean, sun and coral on the colours sampled from the reference image', () => {
+    // Dominant brushstroke #3870B0 to #3A74B8, sun #E8B858, beak #D05830.
+    expect(tokenHex(sheet, 'ocean-500')).toBe('#3A74B8');
+    expect(tokenHex(sheet, 'sun-400')).toBe('#E8B858');
+    expect(tokenHex(sheet, 'coral-400')).toBe('#D05830');
+  });
+
   it('resolves semantic aliases to their palette hex', () => {
     expect(tokenHex(sheet, 'accent')).toBe(tokenHex(sheet, 'coral-600'));
     expect(tokenHex(sheet, 'focus')).toBe(tokenHex(sheet, 'ocean-600'));
@@ -110,11 +117,23 @@ describe('CONTRAST_PAIRS', () => {
     }
   });
 
-  it('never puts text on the decorative coral-400 or sun-400', () => {
+  it('never puts text on or in the decorative coral-400, sun-400 or sun', () => {
     const decorative = ['coral-400', 'sun-400', 'sun'];
     for (const p of CONTRAST_PAIRS) {
-      expect(decorative).not.toContain(p.fg);
-      if (p.kind !== 'ui') expect(decorative).not.toContain(p.bg);
+      if (p.kind !== 'ui') {
+        expect(decorative).not.toContain(p.fg);
+        expect(decorative).not.toContain(p.bg);
+      }
+      // Sun gold is too light to be a meaningful mark on a light surface at all.
+      expect(['sun-400', 'sun']).not.toContain(p.fg);
     }
+  });
+
+  it('lets coral-400 be a large graphic only, at 3:1 or more on surface', () => {
+    const coral = CONTRAST_PAIRS.filter((p) => p.fg === 'coral-400');
+    expect(coral).toEqual([expect.objectContaining({ bg: 'surface', kind: 'ui' })]);
+    expect(
+      contrastRatio(tokenHex(sheet, 'coral-400'), tokenHex(sheet, 'surface'))
+    ).toBeGreaterThanOrEqual(3);
   });
 });

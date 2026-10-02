@@ -13,13 +13,13 @@ const CONFIG_PATH = path.resolve(__dirname, '../../../tailwind.config.js');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const config = require(CONFIG_PATH);
 
-async function compile(classes: string): Promise<string> {
+async function compile(classes: string, css = '@tailwind utilities;'): Promise<string> {
   const result = await postcss([
     tailwindcss({
       ...config,
       content: [{ raw: `<div class="${classes}"></div>`, extension: 'html' }],
     }),
-  ]).process('@tailwind utilities;', { from: undefined });
+  ]).process(css, { from: undefined });
   return result.css.replace(/\s+/g, ' ');
 }
 
@@ -43,6 +43,38 @@ describe('tailwind theme', () => {
     expect(css).toContain('background-color: rgb(var(--ws-surface-subtle)');
     expect(css).toContain('color: rgb(var(--ws-available-fg)');
     expect(css).toContain('background-color: rgb(var(--ws-sun-subtle)');
+  });
+
+  it('makes a bare ring the opaque focus colour, with a surface-coloured offset', async () => {
+    // The ring defaults are emitted with the base layer, so compile that too.
+    const css = await compile('ring-2 ring-offset-2', '@tailwind base; @tailwind utilities;');
+    const ringColors = css.match(/--tw-ring-color: [^;]+;/g) ?? [];
+    const offsetColors = css.match(/--tw-ring-offset-color: [^;]+;/g) ?? [];
+
+    expect(ringColors.length).toBeGreaterThan(0);
+    expect(offsetColors.length).toBeGreaterThan(0);
+    for (const decl of ringColors) expect(decl).toBe('--tw-ring-color: rgb(var(--ws-focus) / 1);');
+    for (const decl of offsetColors)
+      expect(decl).toBe('--tw-ring-offset-color: rgb(var(--ws-surface));');
+    // Neither Tailwind's default blue-500/50 nor its <alpha-value> fallback (blue-300).
+    expect(css).not.toMatch(/59 130 246|147 197 253|<alpha-value>/);
+  });
+
+  it('keeps explicit ring colours, such as ring-focus/40, working alongside the default', async () => {
+    const css = await compile('ring-2 ring-focus/40');
+    expect(css).toContain('--tw-ring-color: rgb(var(--ws-focus) / 0.4)');
+  });
+
+  it('only darkens the legacy bridge buttons on hover while they are enabled', async () => {
+    const indexCss = fs.readFileSync(
+      path.resolve(__dirname, '../../../src/renderer/styles/index.css'),
+      'utf8'
+    );
+    const css = await compile('btn-primary btn-secondary btn-danger', indexCss);
+    for (const btn of ['btn-primary', 'btn-secondary', 'btn-danger']) {
+      expect(css).toMatch(new RegExp(`\\.${btn}:hover:not\\(:disabled\\)\\s*\\{`));
+      expect(css).not.toMatch(new RegExp(`\\.${btn}:hover\\s*\\{`));
+    }
   });
 
   it('supports alpha modifiers such as bg-accent/10', async () => {

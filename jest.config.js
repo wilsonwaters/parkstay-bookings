@@ -16,6 +16,7 @@ const base = {
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   transform: {
     // Vite `?raw` imports (brushstroke SVGs, tokens.css) load as their real file contents.
+    // Plain `.svg` and stylesheet imports never reach this: moduleNameMapper stubs them.
     '\\.(svg|css)$': '<rootDir>/tests/utils/raw-file-transform.js',
     '^.+\\.(ts|tsx)$': [
       'ts-jest',
@@ -35,8 +36,12 @@ const base = {
     '^@shared/(.*)$': '<rootDir>/src/shared/$1',
     '^@preload/(.*)$': '<rootDir>/src/preload/$1',
     '^@tests/(.*)$': '<rootDir>/tests/$1',
-    // `?raw` must map before the stylesheet stub so raw imports get the real file.
+    // `?raw` must map first so raw imports get the real file (via raw-file-transform.js).
     '^(.+\\.(svg|css))\\?raw$': '$1',
+    // A plain asset import is a URL in Vite, so it gets a URL-shaped string.
+    '\\.svg$': '<rootDir>/tests/utils/file-url-stub.js',
+    // Bundled fonts (`import '@fontsource-variable/figtree'`) are stylesheets too.
+    '^@fontsource-variable/': '<rootDir>/tests/utils/style-mock.js',
     '\\.(css|less|scss|sass)$': '<rootDir>/tests/utils/style-mock.js',
   },
 };

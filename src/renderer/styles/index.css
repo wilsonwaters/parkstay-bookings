@@ -43,24 +43,25 @@
  * Bridge classes used by the pre-redesign pages, restyled with tokens so they
  * match the new language until the U-stream rebuilds those pages from components/ui. */
 @layer components {
-  /* legacy: delete when U-stream lands */
+  /* legacy: delete when U-stream lands.
+   * Hover colours apply only while enabled; `:not(:disabled)` also covers link-styled buttons. */
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition-colors duration-fast ease-standard disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   /* legacy: delete when U-stream lands */
   .btn-primary {
-    @apply btn bg-accent text-accent-fg hover:bg-accent-hover;
+    @apply btn bg-accent text-accent-fg [&:not(:disabled)]:hover:bg-accent-hover;
   }
 
   /* legacy: delete when U-stream lands */
   .btn-secondary {
-    @apply btn border border-fg bg-surface text-fg hover:bg-surface-subtle;
+    @apply btn border border-fg bg-surface text-fg [&:not(:disabled)]:hover:bg-surface-subtle;
   }
 
   /* legacy: delete when U-stream lands */
   .btn-danger {
-    @apply btn border border-danger bg-surface text-danger hover:bg-danger-subtle;
+    @apply btn border border-danger bg-surface text-danger [&:not(:disabled)]:hover:bg-danger-subtle;
   }
 
   /* legacy: delete when U-stream lands */

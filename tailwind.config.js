@@ -80,6 +80,19 @@ module.exports = {
       borderColor: {
         DEFAULT: color('border'),
       },
+      // A bare `ring-2` (no colour class) is the focus ring at full strength, not Tailwind's
+      // half-transparent blue. The DEFAULT cannot use <alpha-value>: Tailwind cannot parse it
+      // there and silently falls back to blue, so the alpha comes from ringOpacity instead.
+      ringColor: {
+        DEFAULT: 'rgb(var(--ws-focus))',
+      },
+      ringOpacity: {
+        DEFAULT: '1',
+      },
+      // The gap between a control and its offset ring is the surface token, not hard-coded white.
+      ringOffsetColor: {
+        DEFAULT: 'rgb(var(--ws-surface))',
+      },
       fontFamily: {
         sans: v('font-sans'),
         display: v('font-display'),
