@@ -1,0 +1,63 @@
+/**
+ * `app` handlers: about info, the logs folder and launch at login.
+ */
+
+import { app, shell } from 'electron';
+import os from 'os';
+import path from 'path';
+import { contract, SETTING_KEYS } from '@shared/contracts';
+import type { AppContainer } from '../../app/container';
+import { logger } from '../../utils/logger';
+import type { Handle } from '../handle';
+
+export function registerAppHandlers(handle: Handle, c: AppContainer): void {
+  const api = contract.app;
+  const settings = c.repositories.settings;
+
+  handle(api.getInfo, () => ({
+    name: app.getName(),
+    version: app.getVersion(),
+    electronVersion: process.versions.electron || '',
+    chromeVersion: process.versions.chrome || '',
+    nodeVersion: process.versions.node || '',
+    os: `${os.type()} ${os.release()}`,
+    arch: os.arch(),
+    userDataPath: app.getPath('userData'),
+    logsPath: path.join(app.getPath('userData'), 'logs'),
+  }));
+
+  handle(api.openLogsFolder, async () => {
+    await shell.openPath(path.join(app.getPath('userData'), 'logs'));
+    return true;
+  });
+
+  handle(api.setAutoLaunch, ({ enabled }) => {
+    // In dev mode, process.execPath points to node_modules/electron/dist/electron.exe,
+    // which when launched at login has no app context and shows Electron's generic
+    // welcome window. Refuse to register — auto-launch only makes sense for packaged builds.
+    if (enabled && !app.isPackaged) {
+      logger.warn('Auto-launch refused: only available in packaged builds, not in dev mode');
+      throw new Error(
+        'Launch on startup is only available in the installed build, not when running from source.'
+      );
+    }
+
+    if (process.platform === 'darwin') {
+      app.setLoginItemSettings({ openAtLogin: enabled, openAsHidden: enabled });
+    } else {
+      app.setLoginItemSettings({
+        openAtLogin: enabled,
+        path: process.execPath,
+        args: enabled ? ['--hidden'] : [],
+      });
+    }
+
+    const { valueType, category } = SETTING_KEYS.launchOnStartup;
+    settings.set('launchOnStartup', enabled, valueType, category);
+
+    logger.info(`Auto-launch ${enabled ? 'enabled' : 'disabled'}`);
+    return true;
+  });
+
+  handle(api.getAutoLaunch, () => settings.getValue<boolean>('launchOnStartup') ?? false);
+}

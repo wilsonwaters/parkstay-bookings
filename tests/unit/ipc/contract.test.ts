@@ -1,0 +1,117 @@
+/**
+ * Contract parity: every contract method has exactly one registered handler, every
+ * registered channel is in the contract, channel names follow `<namespace>:<kebab-method>`,
+ * and no request schema accepts a `userId`.
+ */
+
+import { z } from 'zod';
+import { contract, CHANNELS, EVENT_NAMES } from '@shared/contracts';
+import type { MethodDef } from '@shared/contracts/define';
+import { openDatabase } from '@main/database/connection';
+import { createContainer, AppContainer } from '@main/app/container';
+import { registerIpcHandlers } from '@main/ipc';
+import { FakeIpcMain } from '@tests/utils/ipc-harness';
+
+jest.mock('electron', () => jest.requireActual('@tests/utils/electron-mocks').electron());
+jest.mock('electron-updater', () =>
+  jest.requireActual('@tests/utils/electron-mocks').electronUpdater()
+);
+jest.mock('electron-store', () =>
+  jest.requireActual('@tests/utils/electron-mocks').electronStore()
+);
+jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }));
+
+const methods = (): Array<[string, string, MethodDef]> =>
+  Object.entries(contract).flatMap(([namespace, defs]) =>
+    Object.entries(defs as Record<string, MethodDef>).map(
+      ([method, def]) => [namespace, method, def] as [string, string, MethodDef]
+    )
+  );
+
+const kebab = (name: string): string => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+
+/** Every object key a schema accepts, at any depth. */
+function schemaKeys(schema: z.ZodTypeAny): string[] {
+  if (schema instanceof z.ZodObject) {
+    return Object.entries(schema.shape as Record<string, z.ZodTypeAny>).flatMap(([key, value]) => [
+      key,
+      ...schemaKeys(value),
+    ]);
+  }
+  if (schema instanceof z.ZodEffects) return schemaKeys(schema.innerType());
+  if (
+    schema instanceof z.ZodOptional ||
+    schema instanceof z.ZodNullable ||
+    schema instanceof z.ZodDefault
+  ) {
+    return schemaKeys(schema._def.innerType);
+  }
+  if (schema instanceof z.ZodArray) return schemaKeys(schema.element);
+  if (schema instanceof z.ZodRecord) return schemaKeys(schema.valueSchema);
+  if (schema instanceof z.ZodUnion || schema instanceof z.ZodDiscriminatedUnion) {
+    return (schema.options as z.ZodTypeAny[]).flatMap(schemaKeys);
+  }
+  if (schema instanceof z.ZodIntersection) {
+    return [...schemaKeys(schema._def.left), ...schemaKeys(schema._def.right)];
+  }
+  return [];
+}
+
+describe('IPC contract', () => {
+  it('names every channel <namespace>:<kebab-method>, matching channels.ts, all unique', () => {
+    const all = methods();
+    for (const [namespace, method, def] of all) {
+      expect(def.channel).toBe(`${namespace}:${kebab(method)}`);
+      expect(def.channel).toBe(
+        (CHANNELS as Record<string, Record<string, string>>)[namespace][method]
+      );
+    }
+    expect(new Set(all.map(([, , def]) => def.channel)).size).toBe(all.length);
+
+    const channelCount = Object.values(CHANNELS).reduce((n, ns) => n + Object.keys(ns).length, 0);
+    expect(channelCount).toBe(all.length);
+    // Event names never collide with invoke channels
+    const eventNames: readonly string[] = EVENT_NAMES;
+    expect(all.map(([, , def]) => def.channel).filter((c) => eventNames.includes(c))).toEqual([]);
+  });
+
+  it('has no request schema with a key named userId', () => {
+    const offenders: string[] = [];
+    let keysSeen = 0;
+    for (const [namespace, method, def] of methods()) {
+      const keys = schemaKeys(def.request);
+      keysSeen += keys.length;
+      if (keys.includes('userId')) offenders.push(`${namespace}.${method}`);
+    }
+
+    expect(offenders).toEqual([]);
+    // The walk reaches nested keys, so an empty result means something
+    expect(schemaKeys(contract.watches.update.request)).toEqual(
+      expect.arrayContaining(['id', 'updates', 'arrivalDate', 'campgroundId'])
+    );
+    expect(keysSeen).toBeGreaterThan(80);
+  });
+
+  describe('registration', () => {
+    let container: AppContainer;
+    let ipc: FakeIpcMain;
+
+    beforeEach(() => {
+      container = createContainer({ db: openDatabase(':memory:') });
+      ipc = new FakeIpcMain();
+      registerIpcHandlers(container, { isTrustedSender: () => true, ipc });
+    });
+
+    afterEach(() => {
+      container.dispose();
+    });
+
+    it('registers exactly one handler per contract method and nothing else', () => {
+      const expected = methods()
+        .map(([, , def]) => def.channel)
+        .sort();
+
+      expect([...ipc.registrations].sort()).toEqual(expected);
+    });
+  });
+});

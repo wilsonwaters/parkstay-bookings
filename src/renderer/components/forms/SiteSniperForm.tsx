@@ -155,7 +155,8 @@ const SiteSniperForm: React.FC<SiteSniperFormProps> = ({
         const response = await window.api.parkstay.searchCampgrounds(campgroundSearchQuery.trim());
         if (cancelled) return;
         if (response.success && response.data) {
-          setSearchResults(response.data.slice(0, 10));
+          // ParkStay ids arrive as strings; this form's local Campground type predates the contract
+          setSearchResults(response.data.slice(0, 10) as unknown as Campground[]);
         } else {
           setCampgroundError(response.error || 'Failed to search campgrounds');
         }

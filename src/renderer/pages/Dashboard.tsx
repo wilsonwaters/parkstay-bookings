@@ -27,7 +27,7 @@ const Dashboard: React.FC = () => {
         setIsLoading(true);
       }
       setError('');
-      const response = await window.api.booking.list();
+      const response = await window.api.bookings.list();
 
       if (response.success && response.data) {
         setBookings(response.data);

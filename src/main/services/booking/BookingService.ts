@@ -6,6 +6,7 @@
 import { BookingRepository } from '../../database/repositories/booking.repository';
 import { Booking, BookingInput, BookingStatus } from '@shared/types';
 import { logger } from '../../utils/logger';
+import { AppError } from '../../utils/app-error';
 
 export class BookingService {
   private bookingRepository: BookingRepository;
@@ -106,7 +107,7 @@ export class BookingService {
     try {
       const existing = await this.getBooking(id);
       if (!existing) {
-        throw new Error(`Booking ${id} not found`);
+        throw new AppError('NOT_FOUND', `Booking ${id} not found`);
       }
 
       // Validate updates if dates are being changed
@@ -141,7 +142,7 @@ export class BookingService {
     try {
       const booking = await this.getBooking(id);
       if (!booking) {
-        throw new Error(`Booking ${id} not found`);
+        throw new AppError('NOT_FOUND', `Booking ${id} not found`);
       }
 
       if (booking.status === BookingStatus.CANCELLED) {
@@ -168,7 +169,7 @@ export class BookingService {
     try {
       const booking = await this.getBooking(id);
       if (!booking) {
-        throw new Error(`Booking ${id} not found`);
+        throw new AppError('NOT_FOUND', `Booking ${id} not found`);
       }
 
       this.bookingRepository.deleteById(id);
@@ -212,7 +213,7 @@ export class BookingService {
     try {
       const booking = await this.getBooking(id);
       if (!booking) {
-        throw new Error(`Booking ${id} not found`);
+        throw new AppError('NOT_FOUND', `Booking ${id} not found`);
       }
 
       // In real implementation, this would:

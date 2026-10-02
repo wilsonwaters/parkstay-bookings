@@ -17,11 +17,7 @@ const NotificationBell: React.FC = () => {
     loadNotifications();
 
     // Listen for new notifications
-    window.api.on.notificationCreated(handleNewNotification);
-
-    return () => {
-      window.api.off.notificationCreated();
-    };
+    return window.api.events.on('notification:created', handleNewNotification);
   }, []);
 
   useEffect(() => {
@@ -44,9 +40,7 @@ const NotificationBell: React.FC = () => {
   const loadNotifications = async () => {
     try {
       setIsLoading(true);
-      // Get current user ID - for now we'll use userId 1
-      // In a real app, this would come from auth context
-      const response = await window.api.notification.list(1, 20);
+      const response = await window.api.notifications.list(20);
       if (response.success && response.data) {
         setNotifications(response.data);
       }
@@ -63,7 +57,7 @@ const NotificationBell: React.FC = () => {
 
   const handleMarkAsRead = async (id: number) => {
     try {
-      const response = await window.api.notification.markRead(id);
+      const response = await window.api.notifications.markRead(id);
       if (response.success) {
         setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
       }
@@ -74,7 +68,7 @@ const NotificationBell: React.FC = () => {
 
   const handleDelete = async (id: number) => {
     try {
-      const response = await window.api.notification.delete(id);
+      const response = await window.api.notifications.delete(id);
       if (response.success) {
         setNotifications((prev) => prev.filter((n) => n.id !== id));
       }
@@ -85,8 +79,7 @@ const NotificationBell: React.FC = () => {
 
   const handleClearAll = async () => {
     try {
-      // Get current user ID - for now we'll use userId 1
-      const response = await window.api.notification.deleteAll(1);
+      const response = await window.api.notifications.clearAll();
       if (response.success) {
         setNotifications([]);
       }

@@ -428,6 +428,6 @@ export class QueueService extends EventEmitter {
     if (this.refreshTimer) {
       clearTimeout(this.refreshTimer);
     }
-    this.removeAllListeners();
+    // Subscribers remove their own listeners (the composition root does on dispose).
   }
 }

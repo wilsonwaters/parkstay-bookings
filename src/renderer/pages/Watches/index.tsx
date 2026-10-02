@@ -31,7 +31,7 @@ export default function WatchesPage() {
       setError(null);
       // Get current user ID - for now we'll use userId 1
       // In a real app, this would come from auth context
-      const result = await window.api.watch.list(1);
+      const result = await window.api.watches.list();
       if (result.success && result.data) {
         setWatches(result.data);
       } else {
@@ -48,7 +48,7 @@ export default function WatchesPage() {
   const handleActivate = async (id: number) => {
     try {
       setActionLoading(id);
-      const result = await window.api.watch.activate(id);
+      const result = await window.api.watches.activate(id);
       if (result.success) {
         success('Watch activated successfully');
         await loadWatches();
@@ -65,7 +65,7 @@ export default function WatchesPage() {
   const handleDeactivate = async (id: number) => {
     try {
       setActionLoading(id);
-      const result = await window.api.watch.deactivate(id);
+      const result = await window.api.watches.deactivate(id);
       if (result.success) {
         success('Watch deactivated successfully');
         await loadWatches();
@@ -82,7 +82,7 @@ export default function WatchesPage() {
   const handleExecute = async (id: number) => {
     try {
       setActionLoading(id);
-      const result = await window.api.watch.execute(id);
+      const result = await window.api.watches.runNow(id);
       if (result.success) {
         success('Watch executed successfully');
       } else {
@@ -100,7 +100,7 @@ export default function WatchesPage() {
 
     try {
       setActionLoading(deleteConfirm.id);
-      const result = await window.api.watch.delete(deleteConfirm.id);
+      const result = await window.api.watches.delete(deleteConfirm.id);
       if (result.success) {
         success('Watch deleted successfully');
         await loadWatches();

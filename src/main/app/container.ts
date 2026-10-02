@@ -4,7 +4,8 @@
  * Builds every repository, service, notifier, dispatcher, scheduler, updater and Gmail
  * service exactly once and wires them together by constructor injection. This is the only
  * place in `src/main` that constructs them: anything else receives what it needs from the
- * container.
+ * container. Main → renderer events go through `rendererEvents`, which reaches only the
+ * webContents registered in `trustedWebContents` (the main window registers itself).
  */
 
 import type Database from 'better-sqlite3';
@@ -32,6 +33,9 @@ import { SiteSniperService } from '../services/sitesniper/sitesniper.service';
 import { AutoUpdaterService } from '../services/updater/auto-updater.service';
 import { WatchService } from '../services/watch/watch.service';
 import { JobScheduler } from '../scheduler/job-scheduler';
+import { RendererEvents } from '../ipc/events';
+import { TrustedWebContents } from '../ipc/trusted-web-contents';
+import type { QueueStatusEvent } from '@shared/types';
 import { createLocalProfile, LocalProfile } from './profile';
 
 export interface AppRepositories {
@@ -48,6 +52,9 @@ export interface AppRepositories {
 export interface AppContainer {
   readonly db: Database.Database;
   readonly repositories: AppRepositories;
+  /** The webContents allowed to call IPC and to receive events. */
+  readonly trustedWebContents: TrustedWebContents;
+  readonly rendererEvents: RendererEvents;
   readonly profile: LocalProfile;
   readonly notifierDispatcher: NotificationDispatcher;
   readonly queueService: QueueService;
@@ -83,16 +90,23 @@ export function createContainer({ db }: ContainerOptions): AppContainer {
 
   const profile = createLocalProfile(repositories.users);
 
+  const trustedWebContents = new TrustedWebContents();
+  const rendererEvents = new RendererEvents(trustedWebContents);
+
   const notifierDispatcher = new NotificationDispatcher(repositories.notifiers, [
     new SmtpEmailNotifier(),
   ]);
   const queueService = new QueueService(repositories.queueSessions);
+  const forwardQueueStatus = (event: QueueStatusEvent): void =>
+    rendererEvents.emit('queue:status', event);
+  queueService.on('status', forwardQueueStatus);
   const parkStayService = new ParkStayService(queueService);
   const authService = new AuthService(repositories.users);
   const bookingService = new BookingService(repositories.bookings);
   const notificationService = new NotificationService(
     repositories.notifications,
-    notifierDispatcher
+    notifierDispatcher,
+    rendererEvents
   );
   const watchService = new WatchService(repositories.watches, parkStayService, notificationService);
   const siteSniperService = new SiteSniperService(
@@ -102,7 +116,7 @@ export function createContainer({ db }: ContainerOptions): AppContainer {
     notificationService
   );
   const gmailService = new GmailOTPService(new OAuth2Handler());
-  const autoUpdater = new AutoUpdaterService();
+  const autoUpdater = new AutoUpdaterService(rendererEvents);
   const scheduler = new JobScheduler(watchService, siteSniperService);
 
   let disposed = false;
@@ -110,6 +124,7 @@ export function createContainer({ db }: ContainerOptions): AppContainer {
     if (disposed) return;
     disposed = true;
     scheduler.stop();
+    queueService.off('status', forwardQueueStatus);
     queueService.destroy();
     closeDatabase(db);
   };
@@ -117,6 +132,8 @@ export function createContainer({ db }: ContainerOptions): AppContainer {
   return {
     db,
     repositories,
+    trustedWebContents,
+    rendererEvents,
     profile,
     notifierDispatcher,
     queueService,

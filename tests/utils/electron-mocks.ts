@@ -1,0 +1,42 @@
+/**
+ * Module factories for the Electron-only dependencies of the composition root, for main
+ * tests that build a real container:
+ *
+ *   jest.mock('electron', () => jest.requireActual('@tests/utils/electron-mocks').electron());
+ *   jest.mock('electron-updater', () => jest.requireActual('@tests/utils/electron-mocks').electronUpdater());
+ *   jest.mock('electron-store', () => jest.requireActual('@tests/utils/electron-mocks').electronStore());
+ */
+
+import { EventEmitter } from 'events';
+
+export function electron(): Record<string, unknown> {
+  return {
+    app: {
+      getAppPath: () => '/app',
+      getPath: () => '/tmp/wa-stay-test',
+      getName: () => 'WA Stay',
+      getVersion: () => '0.0.0-test',
+      isPackaged: false,
+      setLoginItemSettings: jest.fn(),
+    },
+    Notification: jest.fn().mockImplementation(() => ({ on: jest.fn(), show: jest.fn() })),
+    shell: { openExternal: jest.fn(), openPath: jest.fn() },
+    ipcMain: { handle: jest.fn() },
+  };
+}
+
+/** `autoUpdater` is an EventEmitter, so a test can emit `update-available` and the like. */
+export function electronUpdater(): Record<string, unknown> {
+  const autoUpdater = Object.assign(new EventEmitter(), {
+    checkForUpdates: jest.fn(),
+    downloadUpdate: jest.fn(),
+    quitAndInstall: jest.fn(),
+  });
+  return { autoUpdater };
+}
+
+export function electronStore(): unknown {
+  return jest
+    .fn()
+    .mockImplementation(() => ({ get: jest.fn(), set: jest.fn(), delete: jest.fn() }));
+}

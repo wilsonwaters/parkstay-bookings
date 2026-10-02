@@ -111,4 +111,8 @@ export interface APIResponse<T = any> {
   data?: T;
   error?: string;
   message?: string;
+  /** Set when `success` is false. */
+  code?: ApiErrorCode;
+  /** For `VALIDATION`: the dotted paths of the payload fields that failed, e.g. `updates.arrivalDate`. */
+  issues?: string[];
 }

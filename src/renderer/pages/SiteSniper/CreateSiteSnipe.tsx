@@ -16,7 +16,7 @@ const CreateSiteSnipe: React.FC = () => {
   const handleSubmit = async (data: SiteSnipeSchemaType) => {
     try {
       setError('');
-      const response = await window.api.siteSniper.create(1, data);
+      const response = await window.api.snipes.create(data);
 
       if (response.success) {
         setShowSuccessToast(true);

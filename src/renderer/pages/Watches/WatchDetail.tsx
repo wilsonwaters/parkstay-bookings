@@ -26,7 +26,7 @@ const WatchDetail: React.FC = () => {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await window.api.watch.get(parseInt(id, 10));
+      const response = await window.api.watches.get(parseInt(id, 10));
 
       if (response.success && response.data) {
         setWatch(response.data);
@@ -63,7 +63,7 @@ const WatchDetail: React.FC = () => {
       setError(null);
 
       // Execute the watch to get availability
-      const response = await window.api.watch.execute(watch.id);
+      const response = await window.api.watches.runNow(watch.id);
 
       if (response.success && response.data) {
         setExecutionResult(response.data);
@@ -85,9 +85,9 @@ const WatchDetail: React.FC = () => {
 
     try {
       if (watch.isActive) {
-        await window.api.watch.deactivate(watch.id);
+        await window.api.watches.deactivate(watch.id);
       } else {
-        await window.api.watch.activate(watch.id);
+        await window.api.watches.activate(watch.id);
       }
       loadWatch();
     } catch (err: any) {

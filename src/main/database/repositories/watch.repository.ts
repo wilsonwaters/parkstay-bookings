@@ -1,6 +1,7 @@
 import { BaseRepository } from './base.repository';
 import { Watch, WatchInput } from '@shared/types';
 import { WatchResult } from '@shared/types/common.types';
+import { AppError } from '../../utils/app-error';
 
 export class WatchRepository extends BaseRepository<Watch> {
   protected readonly tableName = 'watches';
@@ -118,7 +119,7 @@ export class WatchRepository extends BaseRepository<Watch> {
 
     if (fields.length === 0) {
       const watch = this.findById(id);
-      if (!watch) throw new Error('Watch not found');
+      if (!watch) throw new AppError('NOT_FOUND', 'Watch not found');
       return watch;
     }
 
@@ -127,7 +128,7 @@ export class WatchRepository extends BaseRepository<Watch> {
     stmt.run(values);
 
     const watch = this.findById(id);
-    if (!watch) throw new Error('Watch not found');
+    if (!watch) throw new AppError('NOT_FOUND', 'Watch not found');
     return watch;
   }
 

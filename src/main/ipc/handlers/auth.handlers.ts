@@ -1,156 +1,41 @@
 /**
- * Authentication IPC Handlers
- * Handles authentication-related IPC requests from renderer
+ * `auth` handlers: transitional ParkStay credential storage, ported as it was (V6 replaces
+ * it). Logout (`deleteCredentials`) clears only the credential fields; the local profile row
+ * and its data are kept.
  */
 
-import { ipcMain, IpcMainInvokeEvent } from 'electron';
-import { IPC_CHANNELS } from '@shared/constants/ipc-channels';
-import { AuthService } from '../../services/auth/AuthService';
-import { UserCredentials, UserInput, APIResponse } from '@shared/types';
-import { logger } from '../../utils/logger';
+import { contract } from '@shared/contracts';
+import type { AppContainer } from '../../app/container';
+import { AppError } from '../../utils/app-error';
+import type { Handle } from '../handle';
 
-export function registerAuthHandlers(authService: AuthService): void {
-  /**
-   * Store user credentials
-   */
-  ipcMain.handle(
-    IPC_CHANNELS.AUTH_STORE_CREDENTIALS,
-    async (_event: IpcMainInvokeEvent, credentials: UserInput): Promise<APIResponse<boolean>> => {
-      try {
-        // Validate credentials
-        const validation = authService.validateCredentials(credentials);
-        if (!validation.valid) {
-          return {
-            success: false,
-            error: validation.errors.join(', '),
-          };
-        }
+export function registerAuthHandlers(handle: Handle, c: AppContainer): void {
+  const { auth } = contract;
 
-        await authService.storeCredentials(credentials);
+  handle(auth.storeCredentials, async (credentials) => {
+    const validation = c.authService.validateCredentials(credentials);
+    if (!validation.valid) throw new AppError('VALIDATION', validation.errors.join(', '));
+    await c.authService.storeCredentials(credentials);
+    return true;
+  });
 
-        return {
-          success: true,
-          data: true,
-        };
-      } catch (error: any) {
-        logger.error('Error storing credentials:', error);
-        return {
-          success: false,
-          error: error.message || 'Failed to store credentials',
-        };
-      }
+  handle(auth.getCredentials, () => c.authService.getCredentials());
+
+  handle(auth.updateCredentials, async ({ email, newPassword }) => {
+    if (!email || !newPassword) {
+      throw new AppError('VALIDATION', 'Email and password are required');
     }
-  );
-
-  /**
-   * Get stored credentials
-   */
-  ipcMain.handle(
-    IPC_CHANNELS.AUTH_GET_CREDENTIALS,
-    async (_event: IpcMainInvokeEvent): Promise<APIResponse<UserCredentials | null>> => {
-      try {
-        const credentials = await authService.getCredentials();
-
-        return {
-          success: true,
-          data: credentials,
-        };
-      } catch (error: any) {
-        logger.error('Error getting credentials:', error);
-        return {
-          success: false,
-          error: error.message || 'Failed to get credentials',
-        };
-      }
+    if (newPassword.length < 8) {
+      throw new AppError('VALIDATION', 'Password must be at least 8 characters');
     }
-  );
+    await c.authService.updateCredentials(email, newPassword);
+    return true;
+  });
 
-  /**
-   * Update user credentials
-   */
-  ipcMain.handle(
-    IPC_CHANNELS.AUTH_UPDATE_CREDENTIALS,
-    async (
-      _event: IpcMainInvokeEvent,
-      email: string,
-      newPassword: string
-    ): Promise<APIResponse<boolean>> => {
-      try {
-        if (!email || !newPassword) {
-          return {
-            success: false,
-            error: 'Email and password are required',
-          };
-        }
+  handle(auth.deleteCredentials, async () => {
+    await c.authService.deleteCredentials();
+    return true;
+  });
 
-        if (newPassword.length < 8) {
-          return {
-            success: false,
-            error: 'Password must be at least 8 characters',
-          };
-        }
-
-        await authService.updateCredentials(email, newPassword);
-
-        return {
-          success: true,
-          data: true,
-        };
-      } catch (error: any) {
-        logger.error('Error updating credentials:', error);
-        return {
-          success: false,
-          error: error.message || 'Failed to update credentials',
-        };
-      }
-    }
-  );
-
-  /**
-   * Delete user credentials
-   */
-  ipcMain.handle(
-    IPC_CHANNELS.AUTH_DELETE_CREDENTIALS,
-    async (_event: IpcMainInvokeEvent): Promise<APIResponse<boolean>> => {
-      try {
-        await authService.deleteCredentials();
-
-        return {
-          success: true,
-          data: true,
-        };
-      } catch (error: any) {
-        logger.error('Error deleting credentials:', error);
-        return {
-          success: false,
-          error: error.message || 'Failed to delete credentials',
-        };
-      }
-    }
-  );
-
-  /**
-   * Validate if credentials exist
-   */
-  ipcMain.handle(
-    IPC_CHANNELS.AUTH_VALIDATE_SESSION,
-    async (_event: IpcMainInvokeEvent): Promise<APIResponse<boolean>> => {
-      try {
-        const hasCredentials = authService.hasStoredCredentials();
-
-        return {
-          success: true,
-          data: hasCredentials,
-        };
-      } catch (error: any) {
-        logger.error('Error validating session:', error);
-        return {
-          success: false,
-          error: error.message || 'Failed to validate session',
-        };
-      }
-    }
-  );
-
-  logger.info('Authentication IPC handlers registered');
+  handle(auth.validateSession, () => c.authService.hasStoredCredentials());
 }

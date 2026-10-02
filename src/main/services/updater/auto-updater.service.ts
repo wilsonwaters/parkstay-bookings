@@ -4,38 +4,21 @@
  */
 
 import { autoUpdater, UpdateCheckResult, UpdateInfo, ProgressInfo } from 'electron-updater';
-import { BrowserWindow } from 'electron';
-import { IPC_CHANNELS } from '@shared/constants/ipc-channels';
+import type { EventSink } from '@shared/contracts/events';
+import type { UpdateStatus } from '@shared/contracts/updater';
 import { logger } from '../../utils/logger';
 
-export interface UpdateStatus {
-  state:
-    | 'idle'
-    | 'checking'
-    | 'available'
-    | 'not-available'
-    | 'downloading'
-    | 'downloaded'
-    | 'error';
-  version?: string;
-  releaseNotes?: string;
-  percent?: number;
-  error?: string;
-}
+export type { UpdateStatus };
 
 export class AutoUpdaterService {
-  private mainWindow: BrowserWindow | null = null;
   private status: UpdateStatus = { state: 'idle' };
 
-  constructor() {
+  /** `events` delivers `updater:*` events to trusted renderers only. */
+  constructor(private readonly events: EventSink) {
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
 
     this.setupListeners();
-  }
-
-  setWindow(window: BrowserWindow): void {
-    this.mainWindow = window;
   }
 
   private setupListeners(): void {
@@ -51,7 +34,7 @@ export class AutoUpdaterService {
         releaseNotes: typeof info.releaseNotes === 'string' ? info.releaseNotes : undefined,
       };
       logger.info(`Update available: v${info.version}`);
-      this.sendToRenderer(IPC_CHANNELS.UPDATE_AVAILABLE, {
+      this.events.emit('updater:available', {
         version: info.version,
         releaseNotes: this.status.releaseNotes,
       });
@@ -60,7 +43,7 @@ export class AutoUpdaterService {
     autoUpdater.on('update-not-available', (_info: UpdateInfo) => {
       this.status = { state: 'not-available' };
       logger.info('No updates available');
-      this.sendToRenderer(IPC_CHANNELS.UPDATE_NOT_AVAILABLE, null);
+      this.events.emit('updater:not-available', null);
     });
 
     autoUpdater.on('download-progress', (progress: ProgressInfo) => {
@@ -69,7 +52,7 @@ export class AutoUpdaterService {
         state: 'downloading',
         percent: progress.percent,
       };
-      this.sendToRenderer(IPC_CHANNELS.UPDATE_PROGRESS, {
+      this.events.emit('updater:progress', {
         percent: progress.percent,
         bytesPerSecond: progress.bytesPerSecond,
         transferred: progress.transferred,
@@ -83,7 +66,7 @@ export class AutoUpdaterService {
         version: info.version,
       };
       logger.info(`Update downloaded: v${info.version}`);
-      this.sendToRenderer(IPC_CHANNELS.UPDATE_DOWNLOADED, {
+      this.events.emit('updater:downloaded', {
         version: info.version,
       });
     });
@@ -94,16 +77,10 @@ export class AutoUpdaterService {
         error: error.message,
       };
       logger.error('Auto-updater error:', error);
-      this.sendToRenderer(IPC_CHANNELS.UPDATE_ERROR, {
+      this.events.emit('updater:error', {
         error: error.message,
       });
     });
-  }
-
-  private sendToRenderer(channel: string, data: any): void {
-    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send(channel, data);
-    }
   }
 
   async checkForUpdates(): Promise<UpdateCheckResult | null> {

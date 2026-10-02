@@ -14,27 +14,27 @@ describe('createMockWindowApi', () => {
     const api = window.api as unknown as LooseApi;
 
     await expect(api.x.y()).rejects.toThrow('window.api.x.y is not mocked in this test');
-    await expect(window.api.watch.list(1)).rejects.toThrow(
-      'window.api.watch.list is not mocked in this test'
+    await expect(window.api.watches.list()).rejects.toThrow(
+      'window.api.watches.list is not mocked in this test'
     );
     expect(api.x.y).toHaveBeenCalledTimes(1);
   });
 
   it('returns what a test stubs, whether through jest.mocked or by assignment', async () => {
     const watches = { success: true, data: [] };
-    jest.mocked(window.api.watch.list).mockResolvedValue(watches);
-    window.api.settings.get = jest.fn().mockResolvedValue({ success: true, data: 'dark' });
+    jest.mocked(window.api.watches.list).mockResolvedValue(watches);
+    window.api.settings.get = jest.fn().mockResolvedValue({ success: true, data: true });
 
-    await expect(window.api.watch.list(1)).resolves.toBe(watches);
-    await expect(window.api.settings.get('theme')).resolves.toEqual({
+    await expect(window.api.watches.list()).resolves.toBe(watches);
+    await expect(window.api.settings.get('launchOnStartup')).resolves.toEqual({
       success: true,
-      data: 'dark',
+      data: true,
     });
     // The same member is returned on every access, so the code under test calls the stub.
-    expect(window.api.watch.list).toBe(window.api.watch.list);
-    expect(window.api.watch.list).toHaveBeenCalledWith(1);
+    expect(window.api.watches.list).toBe(window.api.watches.list);
+    expect(window.api.watches.list).toHaveBeenCalledWith();
     // Stubbing one method leaves its siblings un-stubbed.
-    await expect(window.api.watch.get(1)).rejects.toThrow('window.api.watch.get');
+    await expect(window.api.watches.get(1)).rejects.toThrow('window.api.watches.get');
   });
 
   it('supports nested namespaces at any depth', async () => {
@@ -60,13 +60,13 @@ describe('createMockWindowApi', () => {
 
     it('is stubbed by one test', () => {
       previous = window.api;
-      jest.mocked(window.api.watch.list).mockResolvedValue({ success: true, data: [] });
+      jest.mocked(window.api.watches.list).mockResolvedValue({ success: true, data: [] });
     });
 
     it('is fresh in the next test, with nothing stubbed', async () => {
       expect(window.api).not.toBe(previous);
-      await expect(window.api.watch.list(1)).rejects.toThrow(
-        'window.api.watch.list is not mocked in this test'
+      await expect(window.api.watches.list()).rejects.toThrow(
+        'window.api.watches.list is not mocked in this test'
       );
     });
   });

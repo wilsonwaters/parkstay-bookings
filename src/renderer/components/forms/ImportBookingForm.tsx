@@ -27,7 +27,7 @@ const ImportBookingForm: React.FC<ImportBookingFormProps> = ({ onSuccess, onCanc
       setIsLoading(true);
       setError('');
 
-      const response = await window.api.booking.import(reference.trim().toUpperCase());
+      const response = await window.api.bookings.import(reference.trim().toUpperCase());
 
       if (response.success) {
         onSuccess();

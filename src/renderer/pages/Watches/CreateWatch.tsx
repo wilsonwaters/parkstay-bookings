@@ -16,7 +16,7 @@ const CreateWatch: React.FC = () => {
   const handleSubmit = async (data: WatchSchemaType) => {
     try {
       setError('');
-      const response = await window.api.watch.create(1, data);
+      const response = await window.api.watches.create(data);
 
       if (response.success) {
         setShowSuccessToast(true);

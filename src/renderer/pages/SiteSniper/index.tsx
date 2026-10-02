@@ -65,13 +65,9 @@ export default function SiteSniperPage() {
     loadSnipes();
 
     // Refresh the list when the main process pushes a status update.
-    window.api.on.snipeStatusUpdate(() => {
+    return window.api.events.on('snipe:updated', () => {
       loadSnipes();
     });
-
-    return () => {
-      window.api.off.snipeStatusUpdate();
-    };
   }, []);
 
   // Tick every second to drive the live countdowns.
@@ -84,8 +80,7 @@ export default function SiteSniperPage() {
     try {
       setLoading(true);
       setError(null);
-      // Hardcoded userId 1 (consistent with the rest of the app).
-      const result = await window.api.siteSniper.list(1);
+      const result = await window.api.snipes.list();
       if (result.success && result.data) {
         setSnipes(result.data);
       } else {
@@ -102,7 +97,7 @@ export default function SiteSniperPage() {
   const handleActivate = async (id: number) => {
     try {
       setActionLoading(id);
-      const result = await window.api.siteSniper.activate(id);
+      const result = await window.api.snipes.activate(id);
       if (result.success) {
         success('Snipe armed');
         await loadSnipes();
@@ -119,7 +114,7 @@ export default function SiteSniperPage() {
   const handleDeactivate = async (id: number) => {
     try {
       setActionLoading(id);
-      const result = await window.api.siteSniper.deactivate(id);
+      const result = await window.api.snipes.deactivate(id);
       if (result.success) {
         success('Snipe disarmed');
         await loadSnipes();
@@ -136,7 +131,7 @@ export default function SiteSniperPage() {
   const handleExecute = async (id: number) => {
     try {
       setActionLoading(id);
-      const result = await window.api.siteSniper.execute(id);
+      const result = await window.api.snipes.runNow(id);
       if (result.success) {
         success('Snipe attempt executed');
         await loadSnipes();
@@ -155,7 +150,7 @@ export default function SiteSniperPage() {
 
     try {
       setActionLoading(deleteConfirm.id);
-      const result = await window.api.siteSniper.delete(deleteConfirm.id);
+      const result = await window.api.snipes.delete(deleteConfirm.id);
       if (result.success) {
         success('Snipe deleted');
         await loadSnipes();

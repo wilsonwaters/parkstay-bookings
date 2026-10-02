@@ -15,34 +15,31 @@ const UpdateNotification: React.FC = () => {
   const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
-    window.api.on.updateAvailable((data) => {
-      setVersion(data.version);
-      setState('available');
-      setDismissed(false);
-    });
+    const unsubscribers = [
+      window.api.events.on('updater:available', (data) => {
+        setVersion(data.version);
+        setState('available');
+        setDismissed(false);
+      }),
 
-    window.api.on.updateDownloaded((data) => {
-      setVersion(data.version);
-      setState('downloaded');
-      setDismissed(false);
-    });
+      window.api.events.on('updater:downloaded', (data) => {
+        setVersion(data.version);
+        setState('downloaded');
+        setDismissed(false);
+      }),
 
-    window.api.on.updateProgress((data) => {
-      setState('downloading');
-      setProgress(Math.round(data.percent));
-    });
+      window.api.events.on('updater:progress', (data) => {
+        setState('downloading');
+        setProgress(Math.round(data.percent));
+      }),
 
-    window.api.on.updateError((data) => {
-      setError(data.error);
-      setState('error');
-    });
+      window.api.events.on('updater:error', (data) => {
+        setError(data.error);
+        setState('error');
+      }),
+    ];
 
-    return () => {
-      window.api.off.updateAvailable();
-      window.api.off.updateDownloaded();
-      window.api.off.updateProgress();
-      window.api.off.updateError();
-    };
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, []);
 
   if (dismissed || state === 'idle') return null;

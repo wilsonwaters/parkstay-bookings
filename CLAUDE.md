@@ -45,10 +45,11 @@ npm run dist:win     # Package Windows installer
 ```text
 src/
 ├── main/           # Electron main process (Node.js)
+│   ├── app/        # Composition root (container.ts), local profile, renderer entry/origin
 │   ├── database/   # SQLite connection, migrations, repositories
 │   ├── services/   # Business logic (auth, booking, watch, sitesniper, gmail, queue, notification, parkstay)
 │   ├── scheduler/  # node-cron job scheduler
-│   ├── ipc/        # IPC handlers (bridge to renderer)
+│   ├── ipc/        # handle.ts, sender guard, renderer events, handlers/ (one per namespace)
 │   └── utils/      # Logger, browser headers
 ├── preload/        # Secure context bridge (window.api)
 ├── renderer/       # React UI
@@ -56,13 +57,15 @@ src/
 │   ├── pages/      # Dashboard, Login, Settings, Bookings/, Watches/, SiteSniper/
 │   └── styles/     # Tailwind CSS
 └── shared/         # Cross-process code
-    ├── constants/  # IPC channels, app constants
+    ├── contracts/  # IPC contract: channels, zod request schemas, response types, events
+    ├── constants/  # App constants
     ├── types/      # TypeScript type definitions
     └── schemas/    # Zod validation schemas
 ```
 
-**Service initialization chain** (in `src/main/index.ts`):
-Database → Repositories → NotificationDispatcher → QueueService → ParkStayService → AuthService → BookingService → NotificationService → WatchService → SiteSniperService → AutoUpdaterService → JobScheduler → IPC Handlers
+**Composition root** (`src/main/app/container.ts`): `createContainer({ db })` builds every repository, service, notifier, dispatcher, scheduler, updater and Gmail service once, by constructor injection; nothing else in `src/main` calls `new` on them, and there are no singletons. `src/main/index.ts` opens the database, builds the container, runs `profile.ensureLocalProfile()`, registers the IPC handlers and starts the scheduler; `before-quit` calls `container.dispose()` (scheduler, queue, database).
+
+**Local profile** (`src/main/app/profile.ts`): one `users` row is the local profile that owns every watch, snipe, booking and notification. Main resolves it (`requireUserId()`, or `NO_PROFILE`); the renderer never sends a `userId`. Nothing may delete the row: Logout clears only the credential fields.
 
 ## Database
 
@@ -120,9 +123,14 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 
 ## IPC Pattern
 
-- Channels defined in `src/shared/constants/ipc-channels.ts`
-- Handlers in `src/main/ipc/handlers/` (12 handler files: app, auth, booking, gmail, notification, notification-provider, parkstay, queue, settings, site-sniper, updater, watch)
-- Exposed to renderer via `src/preload/index.ts`
+- **Contract** in `src/shared/contracts/` is the single source of truth: one file per namespace (`bookings`, `watches`, `snipes`, `notifications`, `notifiers`, `gmail`, `settings`, `app`, `updater`, plus the transitional `auth`, `parkstay`, `queue`), and `index.ts` exports `contract` and `type WindowApi`. Each method declares a `channel` (`<namespace>:<kebab-method>`), a zod `request` schema (one object payload, or `z.void()`), the preload's positional `args` and the `response` type
+- Channel and event names live in the zod-free `contracts/channels.ts`, the only contract module the preload loads at runtime. Event payloads are in `contracts/events.ts`
+- `src/main/ipc/handle.ts`: `handle(def, fn)` is the only caller of `ipcMain.handle`. It checks the sender (a trusted webContents, its top frame, on the app origin — `ipc/sender-guard.ts`, `app/renderer-entry.ts`), parses the payload with the method's schema, and returns `APIResponse`: `{ success: true, data }` or `{ success: false, code, error }` with `code` `VALIDATION` (plus `issues` paths), `FORBIDDEN`, `NO_PROFILE`, `NOT_FOUND` or `INTERNAL`. Throw `AppError(code)` (`main/utils/app-error.ts`) for a specific code. Logs never include payload values
+- Handlers in `src/main/ipc/handlers/`, one file per namespace (`watches.handlers.ts`, …), each `registerXHandlers(handle, container)`; `registerIpcHandlers(container, { isTrustedSender })` in `ipc/index.ts` registers them all
+- Events: main emits through `container.rendererEvents.emit(name, payload)` (`ipc/events.ts`), which reaches only trusted webContents. The renderer subscribes with `window.api.events.on(name, cb)`, which returns an unsubscribe function for that subscription only
+- Settings keys are typed in `contracts/settings.ts` (`SETTING_KEYS`): main owns each key's `valueType` and `category`; add new keys there
+- Exposed to renderer via `src/preload/index.ts`, which implements `WindowApi`; `src/preload/window.d.ts` types `window.api`
+- Adding a method: add the channel to `channels.ts`, the definition to the namespace file, a handler with `handle()`, and the payload mapper in the preload. The parity tests fail until all four agree
 
 ## UI Status
 

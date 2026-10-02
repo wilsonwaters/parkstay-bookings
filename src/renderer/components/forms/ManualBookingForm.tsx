@@ -46,7 +46,7 @@ const ManualBookingForm: React.FC<ManualBookingFormProps> = ({ onSuccess, onCanc
       setIsSubmitting(true);
       setError('');
 
-      const response = await window.api.booking.create(data);
+      const response = await window.api.bookings.create(data);
 
       if (response.success) {
         onSuccess();

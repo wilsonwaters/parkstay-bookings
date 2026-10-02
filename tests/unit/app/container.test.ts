@@ -21,6 +21,8 @@ import { SiteSniperService } from '@main/services/sitesniper/sitesniper.service'
 import { AutoUpdaterService } from '@main/services/updater/auto-updater.service';
 import { WatchService } from '@main/services/watch/watch.service';
 import { JobScheduler } from '@main/scheduler/job-scheduler';
+import { RendererEvents } from '@main/ipc/events';
+import { TrustedWebContents } from '@main/ipc/trusted-web-contents';
 
 jest.mock('electron', () => ({
   app: { getAppPath: () => '/app', getPath: () => '/tmp', isPackaged: false },
@@ -92,6 +94,10 @@ jest.mock('@main/services/watch/watch.service', () =>
 jest.mock('@main/scheduler/job-scheduler', () =>
   mockCountedModule('@main/scheduler/job-scheduler')
 );
+jest.mock('@main/ipc/events', () => mockCountedModule('@main/ipc/events'));
+jest.mock('@main/ipc/trusted-web-contents', () =>
+  mockCountedModule('@main/ipc/trusted-web-contents')
+);
 
 const CONSTRUCTED_ONCE = {
   UserRepository: repositories.UserRepository,
@@ -115,6 +121,8 @@ const CONSTRUCTED_ONCE = {
   AutoUpdaterService,
   WatchService,
   JobScheduler,
+  RendererEvents,
+  TrustedWebContents,
 };
 
 describe('createContainer', () => {
@@ -155,7 +163,13 @@ describe('createContainer', () => {
       container.queueService,
       container.notificationService
     );
-    expect(NotificationService).toHaveBeenCalledWith(r.notifications, container.notifierDispatcher);
+    expect(NotificationService).toHaveBeenCalledWith(
+      r.notifications,
+      container.notifierDispatcher,
+      container.rendererEvents
+    );
+    expect(AutoUpdaterService).toHaveBeenCalledWith(container.rendererEvents);
+    expect(RendererEvents).toHaveBeenCalledWith(container.trustedWebContents);
     expect(ParkStayService).toHaveBeenCalledWith(container.queueService);
     expect(JobScheduler).toHaveBeenCalledWith(container.watchService, container.siteSniperService);
     expect(GmailOTPService).toHaveBeenCalledWith(jest.mocked(OAuth2Handler).mock.results[0].value);
@@ -192,5 +206,7 @@ describe('createContainer', () => {
     expect(stop.mock.invocationCallOrder[0]).toBeLessThan(destroy.mock.invocationCallOrder[0]);
     expect(destroy.mock.invocationCallOrder[0]).toBeLessThan(close.mock.invocationCallOrder[0]);
     expect(db.open).toBe(false);
+    // The container removed its own queue-status forwarder
+    expect(container.queueService.listenerCount('status')).toBe(0);
   });
 });

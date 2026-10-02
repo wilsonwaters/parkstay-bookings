@@ -33,7 +33,7 @@ const BookingDetail: React.FC = () => {
     try {
       setIsLoading(true);
       setError('');
-      const response = await window.api.booking.get(bookingId);
+      const response = await window.api.bookings.get(bookingId);
 
       if (response.success && response.data) {
         setBooking(response.data);
@@ -54,7 +54,7 @@ const BookingDetail: React.FC = () => {
       setIsCancelling(true);
       // Note: The booking update API should support status updates
       // For now we'll update the status in the UI
-      const response = await window.api.booking.update(booking.id, {} as any);
+      const response = await window.api.bookings.update(booking.id, {} as any);
 
       if (response.success) {
         setBooking({ ...booking, status: BookingStatus.CANCELLED });
@@ -75,7 +75,7 @@ const BookingDetail: React.FC = () => {
 
     try {
       setIsDeleting(true);
-      const response = await window.api.booking.delete(booking.id);
+      const response = await window.api.bookings.delete(booking.id);
 
       if (response.success) {
         success('Booking deleted successfully');

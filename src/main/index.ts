@@ -7,8 +7,16 @@ import { app, BrowserWindow } from 'electron';
 import path from 'path';
 import { openDatabase } from './database/connection';
 import { createContainer, AppContainer } from './app/container';
-import { registerIPCHandlers } from './ipc';
+import { createAppUrlMatcher, resolveRendererEntry } from './app/renderer-entry';
+import { registerIpcHandlers } from './ipc';
+import { createSenderGuard } from './ipc/sender-guard';
 import { logger } from './utils/logger';
+
+// Where the renderer is loaded from. The IPC sender guard trusts exactly this origin.
+const rendererEntry = resolveRendererEntry(
+  process.env,
+  path.join(__dirname, '../../../dist/renderer/index.html')
+);
 
 /**
  * Detect if app was launched at login and should start hidden
@@ -47,21 +55,19 @@ function createWindow(): void {
     show: false, // Don't show until ready
   });
 
-  // Load the app
-  // Check if we're in development by looking for Vite dev server
-  const isDev = process.env.ELECTRON_RENDERER_URL || process.env.NODE_ENV === 'development';
+  // Only this window's webContents may call IPC and receive events
+  container?.trustedWebContents.register(mainWindow.webContents);
 
-  if (isDev) {
+  // Load the app
+  if (rendererEntry.kind === 'dev-server') {
     // In development, load from Vite dev server
-    const devServerUrl = process.env.ELECTRON_RENDERER_URL || 'http://localhost:3000';
-    mainWindow.loadURL(devServerUrl);
+    mainWindow.loadURL(rendererEntry.url);
     mainWindow.webContents.openDevTools();
-    logger.info(`Loading from dev server: ${devServerUrl}`);
+    logger.info(`Loading from dev server: ${rendererEntry.url}`);
   } else {
     // In production, load the built files
-    const rendererPath = path.join(__dirname, '../../../dist/renderer/index.html');
-    mainWindow.loadFile(rendererPath);
-    logger.info(`Loading from file: ${rendererPath}`);
+    mainWindow.loadFile(rendererEntry.path);
+    logger.info(`Loading from file: ${rendererEntry.path}`);
   }
 
   // Show window when ready (unless launched hidden at login)
@@ -78,11 +84,8 @@ function createWindow(): void {
     mainWindow = null;
   });
 
-  // Initialize auto-updater after window creation
-  if (container) {
-    container.autoUpdater.setWindow(mainWindow);
-    container.autoUpdater.scheduleUpdateCheck();
-  }
+  // Check for updates once the window exists (results arrive as updater:* events)
+  container?.autoUpdater.scheduleUpdateCheck();
 }
 
 /**
@@ -99,7 +102,13 @@ async function initializeApp(): Promise<void> {
     container = createContainer({ db });
     container.profile.ensureLocalProfile();
 
-    registerIPCHandlers(container);
+    const trusted = container.trustedWebContents;
+    registerIpcHandlers(container, {
+      isTrustedSender: createSenderGuard({
+        isTrustedWebContents: (id) => trusted.isTrusted(id),
+        isAppUrl: createAppUrlMatcher(rendererEntry),
+      }),
+    });
 
     container.scheduler.start();
 

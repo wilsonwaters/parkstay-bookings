@@ -11,6 +11,7 @@ import { ParkStayService } from '../parkstay/parkstay.service';
 import { QueueService } from '../queue/queue.service';
 import { NotificationService } from '../notification/notification.service';
 import { computeDailyRolloverReleaseAt } from './release-timing';
+import { AppError } from '../../utils/app-error';
 
 /**
  * Site Sniper Service
@@ -46,6 +47,14 @@ export class SiteSniperService {
    * next check time for CANCELLATION mode.
    */
   async create(userId: number, input: SiteSnipeInput): Promise<SiteSnipe> {
+    // Cross-field rules (the IPC schema checks field types only)
+    if (input.departureDate <= input.arrivalDate) {
+      throw new AppError('VALIDATION', 'Departure date must be after arrival date');
+    }
+    if (input.releaseMode === SnipeReleaseMode.SCHEDULED && !input.releaseAt) {
+      throw new AppError('VALIDATION', 'A release date/time is required for scheduled releases');
+    }
+
     const prepared: SiteSnipeInput = { ...input };
 
     if (input.releaseMode === SnipeReleaseMode.DAILY_ROLLOVER) {

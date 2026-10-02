@@ -79,11 +79,11 @@ The renderer setup installs `createMockWindowApi()` from `tests/utils/window-api
 Every member, at any depth, is a `jest.fn()` that rejects with `window.api.<namespace>.<method> is not mocked in this test` until the test stubs it:
 
 ```typescript
-jest.mocked(window.api.watch.list).mockResolvedValue({ success: true, data: [] });
+jest.mocked(window.api.watches.list).mockResolvedValue({ success: true, data: [] });
 // or
 window.api.settings.get = jest.fn().mockResolvedValue({ success: true, data: null });
 
-expect(window.api.watch.list).toHaveBeenCalledWith(1);
+expect(window.api.watches.list).toHaveBeenCalledWith();
 ```
 
 - Stub in the test or in a `beforeEach`. Stubs made at module scope or in `beforeAll` are replaced before each test.

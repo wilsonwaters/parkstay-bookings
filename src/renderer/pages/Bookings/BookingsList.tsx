@@ -42,7 +42,7 @@ const BookingsList: React.FC = () => {
     try {
       setIsLoading(true);
       setError('');
-      const response = await window.api.booking.list();
+      const response = await window.api.bookings.list();
 
       if (response.success && response.data) {
         setBookings(response.data);
@@ -68,7 +68,7 @@ const BookingsList: React.FC = () => {
     if (!deleteConfirm.id) return;
 
     try {
-      const response = await window.api.booking.delete(deleteConfirm.id);
+      const response = await window.api.bookings.delete(deleteConfirm.id);
 
       if (response.success) {
         success('Booking deleted successfully');

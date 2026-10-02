@@ -38,7 +38,7 @@ const QueueStatus: React.FC = () => {
     fetchStatus();
 
     // Subscribe to queue status updates
-    window.api.on.queueStatusUpdate((event: QueueStatusEvent) => {
+    const unsubscribe = window.api.events.on('queue:status', (event: QueueStatusEvent) => {
       if (event.session) {
         setStatus((prev) => ({
           ...prev!,
@@ -62,7 +62,7 @@ const QueueStatus: React.FC = () => {
     const interval = setInterval(fetchStatus, 10000);
 
     return () => {
-      window.api.off.queueStatusUpdate();
+      unsubscribe();
       clearInterval(interval);
     };
   }, [fetchStatus]);

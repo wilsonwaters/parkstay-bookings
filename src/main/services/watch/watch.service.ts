@@ -3,6 +3,7 @@ import { WatchResult } from '@shared/types/common.types';
 import { WatchRepository } from '../../database/repositories';
 import { ParkStayService } from '../parkstay/parkstay.service';
 import { NotificationService } from '../notification/notification.service';
+import { AppError } from '../../utils/app-error';
 
 /**
  * Watch Service
@@ -94,7 +95,7 @@ export class WatchService {
   async execute(watchId: number): Promise<WatchExecutionResult> {
     const watch = this.watchRepo.findById(watchId);
     if (!watch) {
-      throw new Error('Watch not found');
+      throw new AppError('NOT_FOUND', 'Watch not found');
     }
 
     const checkedAt = new Date();

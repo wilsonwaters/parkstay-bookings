@@ -1,6 +1,7 @@
 import { BaseRepository } from './base.repository';
 import { SiteSnipe, SiteSnipeInput } from '@shared/types';
 import { SnipeResult, SnipeReleaseMode, SnipeStatus } from '@shared/types/common.types';
+import { AppError } from '../../utils/app-error';
 
 /**
  * Repository for Site Snipe entries (site_snipes table).
@@ -95,7 +96,7 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
 
     if (fields.length === 0) {
       const snipe = this.findById(id);
-      if (!snipe) throw new Error('Site snipe not found');
+      if (!snipe) throw new AppError('NOT_FOUND', 'Site snipe not found');
       return snipe;
     }
 
@@ -104,7 +105,7 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
     stmt.run(values);
 
     const snipe = this.findById(id);
-    if (!snipe) throw new Error('Site snipe not found');
+    if (!snipe) throw new AppError('NOT_FOUND', 'Site snipe not found');
     return snipe;
   }
 

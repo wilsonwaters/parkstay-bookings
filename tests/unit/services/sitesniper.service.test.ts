@@ -328,5 +328,34 @@ describe('SiteSniperService', () => {
         expect.any(Date)
       );
     });
+
+    it('rejects a departure that is not after the arrival, without storing anything', async () => {
+      await expect(
+        service.create(1, {
+          name: 'Backwards',
+          campgroundId: '34',
+          arrivalDate: new Date('2026-07-21T00:00:00Z'),
+          departureDate: new Date('2026-07-21T00:00:00Z'),
+          releaseMode: SnipeReleaseMode.CANCELLATION,
+        })
+      ).rejects.toMatchObject({
+        code: 'VALIDATION',
+        message: 'Departure date must be after arrival date',
+      });
+      expect(mockRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('requires a release time for a scheduled release', async () => {
+      await expect(
+        service.create(1, {
+          name: 'Scheduled',
+          campgroundId: '34',
+          arrivalDate: new Date('2026-07-19T00:00:00Z'),
+          departureDate: new Date('2026-07-21T00:00:00Z'),
+          releaseMode: SnipeReleaseMode.SCHEDULED,
+        })
+      ).rejects.toMatchObject({ code: 'VALIDATION' });
+      expect(mockRepo.create).not.toHaveBeenCalled();
+    });
   });
 });

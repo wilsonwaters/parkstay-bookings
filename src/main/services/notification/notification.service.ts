@@ -9,6 +9,7 @@ import { NotificationType, RelatedType } from '@shared/types/common.types';
 import { BOOKING_HOLD_MINUTES } from '@shared/constants';
 import { NotificationRepository } from '../../database/repositories';
 import { NotificationDispatcher } from './notification-dispatcher';
+import type { EventSink } from '@shared/contracts/events';
 import { Notification as ElectronNotification, app } from 'electron';
 import * as path from 'path';
 import { logger } from '../../utils/logger';
@@ -20,12 +21,19 @@ import { logger } from '../../utils/logger';
 export class NotificationService {
   private notificationRepo: NotificationRepository;
   private dispatcher: NotificationDispatcher | null = null;
+  private events: EventSink | null = null;
   private soundEnabled: boolean = true;
   private desktopEnabled: boolean = true;
 
-  constructor(notificationRepo: NotificationRepository, dispatcher?: NotificationDispatcher) {
+  /** `events` delivers `notification:created` to trusted renderers. */
+  constructor(
+    notificationRepo: NotificationRepository,
+    dispatcher?: NotificationDispatcher,
+    events?: EventSink
+  ) {
     this.notificationRepo = notificationRepo;
     this.dispatcher = dispatcher || null;
+    this.events = events || null;
   }
 
   /**
@@ -50,8 +58,8 @@ export class NotificationService {
       await this.playNotificationSound();
     }
 
-    // Send to renderer process via IPC
-    this.sendToRenderer(notification);
+    // Tell the renderer about the stored notification
+    this.events?.emit('notification:created', notification);
 
     // Dispatch to all enabled external providers (email, etc.)
     if (this.dispatcher) {
@@ -262,15 +270,6 @@ export class NotificationService {
     // Sound playback would be implemented here
     // Could use a library like node-wav-player or play system sounds
     console.log('Playing notification sound');
-  }
-
-  /**
-   * Send notification to renderer process
-   */
-  private sendToRenderer(notification: Notification): void {
-    // This would use IPC to send notification to renderer
-    // Implementation depends on how the app is structured
-    console.log('Sending notification to renderer:', notification.title);
   }
 
   /**

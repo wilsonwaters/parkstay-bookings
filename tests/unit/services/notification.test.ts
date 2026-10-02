@@ -48,6 +48,25 @@ describe('NotificationService', () => {
     });
   });
 
+  describe('notification:created', () => {
+    it('notify emits notification:created with the stored notification', async () => {
+      const events = { emit: jest.fn() };
+      const repository = new NotificationRepository(dbHelper.getDb());
+      const service = new NotificationService(repository, undefined, events);
+
+      const notification = await service.notify({
+        userId: testUserId,
+        type: NotificationType.INFO,
+        title: 'Emitted',
+        message: 'Sent to the renderer',
+      });
+
+      expect(events.emit).toHaveBeenCalledTimes(1);
+      expect(events.emit).toHaveBeenCalledWith('notification:created', notification);
+      expect(events.emit.mock.calls[0][1]).toEqual(repository.findById(notification.id));
+    });
+  });
+
   describe('notifyWatchFound', () => {
     it('should create watch found notification', async () => {
       const watch = { ...mockWatch, userId: testUserId };

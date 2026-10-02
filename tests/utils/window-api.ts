@@ -7,7 +7,7 @@
  * `jest.fn()` that rejects with "window.api.<path> is not mocked in this test" until a
  * test stubs it:
  *
- *   jest.mocked(window.api.watch.getAll).mockResolvedValue({ success: true, data: [] });
+ *   jest.mocked(window.api.watches.list).mockResolvedValue({ success: true, data: [] });
  *   window.api.settings.get = jest.fn().mockResolvedValue({ success: true, data: null });
  *
  * Accessing the same member twice returns the same mock, so a stub set by the test is the

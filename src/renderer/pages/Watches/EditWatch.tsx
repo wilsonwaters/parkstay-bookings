@@ -31,7 +31,7 @@ const EditWatch: React.FC = () => {
         return;
       }
 
-      const response = await window.api.watch.get(parseInt(id));
+      const response = await window.api.watches.get(parseInt(id));
 
       if (response.success && response.data) {
         setWatch(response.data);
@@ -54,7 +54,7 @@ const EditWatch: React.FC = () => {
         return;
       }
 
-      const response = await window.api.watch.update(parseInt(id), data);
+      const response = await window.api.watches.update(parseInt(id), data);
 
       if (response.success) {
         setShowSuccessToast(true);
@@ -80,7 +80,7 @@ const EditWatch: React.FC = () => {
       window.confirm('Are you sure you want to delete this watch? This action cannot be undone.')
     ) {
       try {
-        const response = await window.api.watch.delete(parseInt(id));
+        const response = await window.api.watches.delete(parseInt(id));
         if (response.success) {
           navigate('/watches');
         } else {

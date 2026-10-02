@@ -648,7 +648,8 @@ describe('QueueService', () => {
   });
 
   describe('destroy', () => {
-    it('should clean up timers and listeners', async () => {
+    it('should clean up its timers and leave each subscriber to remove its own listener', async () => {
+      jest.useFakeTimers();
       const apiResponse = mockQueueApiResponse({ status: 'Active', expiry_seconds: 600 });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
@@ -656,12 +657,19 @@ describe('QueueService', () => {
       await service.checkOrCreateSession();
 
       const handler = jest.fn();
+      const other = jest.fn();
       service.on('status', handler);
+      service.on('status', other);
+      expect(jest.getTimerCount()).toBeGreaterThan(0);
 
       service.destroy();
 
-      // Listeners should be removed
-      expect(service.listenerCount('status')).toBe(0);
+      // No refresh, poll or keep-alive timer survives
+      expect(jest.getTimerCount()).toBe(0);
+      // Subscribers own their listeners (the composition root removes its forwarder on
+      // dispose): destroy does not wipe one subscriber's listener for another.
+      service.off('status', handler);
+      expect(service.listeners('status')).toEqual([other]);
     });
   });
 

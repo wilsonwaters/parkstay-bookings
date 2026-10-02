@@ -102,7 +102,8 @@ const WatchForm: React.FC<WatchFormProps> = ({
       setCampgroundError(null);
       const response = await window.api.parkstay.getAllCampgrounds();
       if (response.success && response.data) {
-        setAllCampgrounds(response.data);
+        // ParkStay ids arrive as strings; this form's local Campground type predates the contract
+        setAllCampgrounds(response.data as unknown as Campground[]);
       } else {
         setCampgroundError(response.error || 'Failed to load campgrounds');
       }
