@@ -111,3 +111,6 @@ M
 - `SafeStorageLike` is the four-method subset of Electron's `safeStorage`. Tests use a deterministic fake built on AES with a fixed key; there is no real keyring in CI.
 - This task covers encryption at rest only. V1's `ScopedSecretVault` is a thin namespaced key-value layer over `vault.encrypt`/`decrypt` stored in `provider_state`.
 - B3 copies the legacy `gmail-oauth.json` unchanged into the new userData. This task's startup migration converts it there. The legacy folder stays untouched as a backup.
+
+## Orchestrator addendum (2026-10-02, from the V1 review)
+- [ ] Replace V1's `UnavailableSecretVault` placeholder in `src/main/app/container.ts` with a real vault-backed `ScopedSecretVault` factory, namespaced per provider (architecture-notes §12.30).
