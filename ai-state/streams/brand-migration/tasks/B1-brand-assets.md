@@ -76,7 +76,7 @@ M
 
 - [ ] `resources/brand/` contains the 6 SVGs from Scope 1 plus `README.md`. Each SVG opens in a browser.
 - [ ] Brand SVGs contain no `<text>`, `<image>`, `<filter>`, `<foreignObject>`, external `href`, or embedded `data:` raster (test).
-- [ ] Every `fill`/`stroke` hex in the colour SVGs is present in D1's token source. Mono SVGs use only `currentColor` or `none` (test).
+- [ ] Every `fill`/`stroke` hex in the colour SVGs matches a palette value in D1's token source `src/renderer/styles/tokens.css`. That file stores `--ws-<name>: R G B;` triples, so the test converts the hex to RGB before comparing. Mono SVGs use only `currentColor` or `none` (test).
 - [ ] `npm run icons` exits 0 with no network access. A second run leaves `git status` clean (byte-identical on the same machine).
 - [ ] `resources/icons/icon.ico` has exactly 7 entries: 16, 24, 32, 48, 64, 128, 256 (test parses the ICO directory).
 - [ ] `icon.png` is 1024×1024, and every `NxN.png` has its stated dimensions (test via `sharp().metadata()`).
@@ -118,7 +118,7 @@ M
 ## Context Files to Read First
 
 - `ai-state/architecture-notes.md` §8–§10. `ai-state/brief.md` O4 and scope 7.
-- `docs/design/design-language.md` (D1): palette, token source path, brushstroke atoms. If it is absent, stop and ask, because D1 is a hard dependency.
+- `docs/design/design-language.md` and `src/renderer/styles/tokens.css` (D1): palette, brushstroke rules, `src/renderer/assets/brush/` atoms. If they are absent, stop and ask, because D1 is a hard dependency. Also read `ai-state/streams/design-system/tasks/D1-design-language-and-tokens.md` (proposed palette: ocean-500 `#1C8CC8` is the brushstroke; sun-400 and coral-400 are decorative only).
 - `ai-state/streams/design-system/master-plan.md` (the B1 → D3 logo path contract).
 - `scripts/generate-icons.js`, `resources/README.md`, `electron-builder.json:22-121`, `.github/workflows/build.yml:91-97`, `README.md:1-8`.
 - `node_modules/app-builder-lib/out/targets/nsis/NsisTarget.js:390-410`.

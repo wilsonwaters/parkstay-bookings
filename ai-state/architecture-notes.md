@@ -271,3 +271,10 @@ interface ProviderContext {
     - `/settings/:section?`
     - **Prefill query contract** for create flows: `?provider=<id>&location=<externalId>&arrival=YYYY-MM-DD&departure=YYYY-MM-DD&adults=N&children=N`
 11. **Small main-process changes inside UX tasks are allowed** when they only wire existing services to the UI (settings → NotificationService, notification-click navigation). They must still follow the IPC conventions in §4 and §1.
+12. **Upgrade data safety (binding).**
+    - The v1 uninstaller (`resources/installer.nsh:71-77` in v1.x) shows a "delete all application data?" MessageBox with no `/SD` and no `--updated` guard. A v1 → v2 upgrade runs that old uninstaller, so a user clicking "Yes" would wipe `%APPDATA%\parkstay-bookings`.
+    - The v2 installer must therefore snapshot the legacy data folder (copy, never move) into `%APPDATA%\WA Stay\legacy-snapshot\` before the old uninstaller runs (`customInit`/`customCheckAppRunning`).
+    - B3 migration reads from the legacy folder if present, otherwise from the snapshot.
+    - The v2 `customUnInstall` guards with `${isUpdated}` and uses `/SD IDNO`.
+13. **Released v1.2.0 is schema v5.** Migration tests start from both v5 (v1.2.0) and v6 (main) SQL-dump fixtures. `*.db` files are gitignored.
+14. **Test-only env hooks** (`WA_STAY_USER_DATA_DIR`, `WA_STAY_LEGACY_DATA_DIR`, `WA_STAY_E2E_FIXTURES_DIR`, `WA_STAY_E2E_ALLOW_HOSTS`) are honoured only when `!app.isPackaged`. Test-support code lives in `src/main/testing/`.

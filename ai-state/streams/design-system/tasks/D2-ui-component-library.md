@@ -6,7 +6,7 @@
 
 The renderer currently has 4 copies of status badges, 4 error alerts, 5 modal overlays and 7 or more spinners. There are about 40 hand-rolled label+input+error blocks. Modals lack `role="dialog"`, focus traps and Escape, and icon buttons are unlabelled (ui-review #6, #7). Toast timers reset on every parent re-render because the effect depends on `onRemove` (`Toast.tsx:48`), so toasts on the Site Sniper page never dismiss.
 
-This task builds the design-system primitives in `src/renderer/components/ui/` on D1 tokens. Each one is accessible by construction, and tests assert roles, names and behaviour, never class names. It also replaces the legacy LoadingSpinner, ConfirmDialog and Toast at their call sites.
+This task builds the design-system primitives in `src/renderer/components/ui/` on D1 tokens. Each one is accessible by construction, and tests assert roles, names and behaviour, never class names. It also replaces the legacy LoadingSpinner, ConfirmDialog and Toast at their call sites. The list includes everything architecture-notes §12.8 requires (Combobox, Menu, Popover, Switch, Disclosure, RadioCard and Stepper).
 
 As a keyboard or screen-reader user, I can operate every control, dialog, menu and date picker in WA Stay, so I can plan and book without a mouse.
 
@@ -40,6 +40,8 @@ L. This is complex UI with about 30 primitives. Deliver it as two commits: (a) f
 - **Navigation and choice:**
   - `Tabs`: `tablist`/`tab`/`tabpanel`, roving tabindex, ←/→/Home/End, automatic activation, `aria-controls` and `aria-labelledby`.
   - `SegmentedControl`: `radiogroup`/`radio` with arrow keys.
+  - `RadioCard` + `RadioCardGroup`: a `radiogroup` of card-style native radios, each with a title, description, optional icon and optional trailing slot (for example a ProviderBadge or a "Soon" badge). Arrow keys move the selection. Used by the U1/U2 provider step.
+  - `Disclosure`: a button with `aria-expanded`/`aria-controls` that shows and hides a region. Built on `useDisclosure`, with a `ChevronDown` that rotates when open (no rotation under reduced motion).
 - **Overlays.** All are portalled to `document.body`, set `inert` on `#root` while modal, and lock scroll.
   - `Dialog`: `role="dialog"`, `aria-modal="true"`, `aria-labelledby` (title), `aria-describedby`. It traps focus with `useFocusTrap`, closes on Esc and overlay click (configurable), returns focus to the opener, and has sizes `sm|md|lg|full`.
   - `ConfirmDialog`: built on `Dialog`. Props `title`, `message`, `confirmLabel`, `tone: 'danger'|'primary'`, `onConfirm` (may return a Promise, which shows loading) and `onCancel`. Initial focus goes to **Cancel** for danger.
@@ -62,7 +64,8 @@ L. This is complex UI with about 30 primitives. Deliver it as two commits: (a) f
     - The summary reads "Fri 3 Oct – Sun 5 Oct · 2 nights", with Clear and Done buttons.
     - Day cells are named like "Friday 3 October 2026", with ", check-in" or ", check-out" when selected. Disabled days are `aria-disabled`.
     - Date maths uses date-fns on local calendar dates.
-  - `GuestsField` + `Stepper`: value `{ adults; children; infants }` with `limits` defaults (adults 1–16, children 0–10, infants 0–5) and hint defaults "18 or over", "6–17", "Under 6". Steppers use `IconButton` labelled "Decrease adults" and "Increase adults", disabled at the limits. The trigger summary reads "2 adults, 1 child" or "Add guests".
+  - `Stepper` (standalone, also used inside GuestsField and provider stay fields): a numeric −/+ control in a `role="group"` named by its label. Props `min`, `max` and `step`. The value is shown in an `<output aria-live="polite">`.
+  - `GuestsField`: value `{ adults; children; infants }` with `limits` defaults (adults 1–16, children 0–10, infants 0–5) and hint defaults "18 or over", "6–17", "Under 6". Steppers use `IconButton` labelled "Decrease adults" and "Increase adults", disabled at the limits. The trigger summary reads "2 adults, 1 child" or "Add guests".
 - **Hooks:** `useFocusTrap`, `usePosition`, `useAnnounce()` (a polite or assertive live-region announcer, with `AnnouncerProvider`) and `useDisclosure`.
 - **Migration:**
   - Delete `components/LoadingSpinner.tsx`, `ConfirmDialog.tsx`, `Toast.tsx` and their tests.
@@ -98,6 +101,7 @@ L. This is complex UI with about 30 primitives. Deliver it as two commits: (a) f
 - [ ] `DateRangeField` keyboard flow: arrow to a date, Enter, arrow 2 days, Enter. The value becomes `{arrival, departure}` strings, and the summary shows "2 nights". Dates before `minDate` cannot be chosen.
 - [ ] `GuestsField`: "Increase adults" increments, and "Decrease adults" is disabled at 1.
 - [ ] `Combobox`: typing filters the options, ↓ and Enter select, and `aria-activedescendant` tracks the highlighted option.
+- [ ] `RadioCardGroup`: arrow keys move the checked card, and each card's accessible name is its title, with the description wired as its description. `Disclosure` toggles `aria-expanded` and hides its region when collapsed. `Stepper` respects `min`/`max`.
 - [ ] `ProviderBadge`: the full variant shows monogram and shortName. The compact variant's accessible name is the provider name. An unknown provider shows its id with the name "Unknown provider".
 - [ ] The legacy pages compile against the new primitives. `components/LoadingSpinner.tsx`, `ConfirmDialog.tsx` and `Toast.tsx` no longer exist, and `grep -r "ToastContainer" src/renderer` is empty.
 - [ ] The token guard (D1) passes for `components/ui/**`, with no raw palette classes, hex or emoji.
@@ -147,6 +151,7 @@ L. This is complex UI with about 30 primitives. Deliver it as two commits: (a) f
 
 ## Notes
 
+- **Stepper** in §12.8 means the numeric −/+ control. The multi-step create-flow scaffold is U1's `StepFlow` (provider-ux master plan), not a D2 primitive.
 - **ProviderBadge** props are `{ providerId: string; info?: ProviderBadgeInfo; variant?: 'full'|'compact'; size?: 'sm'|'md' }`.
   - `ProviderBadgeInfo = { id; name; shortName; brand: { color; monogram } }` is structurally assignable from V1's `ProviderManifest`, so D2 does not wait for V1.
   - If `info` is omitted, the badge reads `ProviderManifestsContext`. D2 exports the context and `ProviderManifestsProvider`, and D3 fills it from `useProviders()`. This keeps `ui/` free of `window.api` and React Query.

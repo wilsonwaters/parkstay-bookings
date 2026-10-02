@@ -31,7 +31,7 @@ Execution order: D1, then D2, then D3 (lane R). D1 can start immediately. D2 doe
 | **P3 / P6** IPC and preload | The D3 hooks call `window.api.<namespace>` exactly as typed in `src/shared/contracts/`. `events.on()` returns an unsubscribe function. D3 adds no IPC. | P3 |
 | **P4** hardening | CSP `font-src 'self'` covers the bundled fonts. External links use `<a target="_blank">` and rely on `setWindowOpenHandler` → `shell.openExternal`. D3 sets `minWidth: 960, minHeight: 640` in `src/main/app/main-window.ts` (a single-line change; tell P4 if it is in flight). | P4 |
 | **E1–E3** Explore | These tasks use `components/ui/*`, `ROUTES`/`buildPath` from `app/routes.ts`, the `api/` patterns (`unwrap`, `queryKeys`, `useApiEvent`), the tray (map attribution must stay uncovered) and `useAnnounce`. D3 renders a placeholder `ExplorePage` at `/` until E1 replaces it. | D3 → E1 |
-| **U1–U5** provider-first UX | U1–U5 rebuild the legacy pages that D3 moves to `features/<domain>/legacy/`, using D2 primitives, and delete the legacy folders as they go. U5 rebuilds QueueStatus, UpdateNotification, NotificationBell and About inside the D3 header and tray slots. U4 owns `/settings/:tab`. | U-stream |
+| **U1–U5** provider-first UX | U1–U5 rebuild the legacy pages that D3 moves to `features/<domain>/legacy/`, using D2 primitives, and delete the legacy folders as they go. U5 rebuilds QueueStatus, UpdateNotification, NotificationBell and About inside the D3 header and tray slots. U4 owns `/settings/:section?` (§12.10). | U-stream |
 | **Q1** smoke E2E | Q1 relies on stable accessible names that D3 documents in `docs/design/shell.md`: nav links "Explore", "Watches", "Site Sniper, coming soon", "Bookings, coming soon"; the "Account and settings" button; one `h1` per page. | D3 → Q1 |
 | **B2** identity rename | The `index.html` `<title>` and the BrowserWindow title belong to B2. The D3 header wordmark only renders "WA Stay". | B2 |
 | **P1** test infra | Renderer tests run in the jsdom project. D3 adds shared test helpers in `tests/utils/renderer/` (`renderWithApp`, `createMockApi`). | P1 → D3 |
@@ -59,9 +59,10 @@ Execution order: D1, then D2, then D3 (lane R). D1 can start immediately. D2 doe
 | DQ1 | D2 holds about 30 primitives, more than 8 hours of work. Should it run as D2a (form and feedback: Button…Field, Badge, Spinner, Skeleton, Notice, Toast, EmptyState, PageHeader, Card) and D2b (overlays and composite: Dialog, Sheet, Menu, Popover, Tooltip, Tabs, SegmentedControl, Combobox, DateRangeField, GuestsField, ProviderBadge)? | D2 plan approval | Keep one issue with two commits in that order. Split if plan review estimates more than 2 days. |
 | DQ2 | Primary CTA colour: **coral-600 `#C4432A`** (Airbnb-like warmth, stands out against blue water and green parks), with ocean as the brand colour. Does the stakeholder sign off? | D1 design approval | Coral CTA |
 | DQ3 | Raise the minimum window size from 800×600 to **960×640** so the header and the Explore split view never break. | D3 | 960×640 |
-| DQ4 | The search pill's "Where" needs suggestions, and U1 needs a location picker. A `Combobox` primitive has been added to D2 (not in the original list). Confirm. | D2 | Include |
+| DQ4 | ~~Combobox addition~~: settled by architecture-notes §12.8, which also adds Disclosure, RadioCard and Stepper. | — | Resolved |
 | DQ5 | `Popover`, `Notice`, `VisuallyHidden` and `useAnnounce` have been added to D2 because DateRange, Guests, filter chips and error alerts need them. Confirm. | D2 | Include |
 
 ## Changelog
 
 - **2026-10-02:** Stream master plan created with D1–D3 specs. D2 additions (Combobox, Popover, Notice, VisuallyHidden, useAnnounce) and the 960×640 minimum window are recorded as open questions DQ3–DQ5.
+- **2026-10-02:** Aligned with architecture-notes §12. D2 adds Disclosure, RadioCard and a standalone Stepper (§12.8). D3 routes follow §12.10 (`/site-sniper/:id`, `/settings/:section?`, create redirects keep the query string). DQ4 is now settled by §12.8.
