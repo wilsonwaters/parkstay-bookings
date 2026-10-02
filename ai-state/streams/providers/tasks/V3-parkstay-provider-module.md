@@ -187,7 +187,7 @@ L. It covers several ParkStay concerns (catalogue, availability, queue, release,
   - with no known time it gives 00:00 AWST;
   - `scheduled` without `requestedAt` rejects;
   - `suggestScheduledAt` is ported with its tests from `release-timing.test.ts`.
-- [ ] `grep -rn "auth/login\|/account/\|accounts/logout\|queue/status\|campsite_availability/\|/bookings/" src/main` → 0 results.
+- [ ] `grep -rn "auth/login\|/account/\|accounts/logout\|queue/status\|campsite_availability/" src/main` → 0 results. `grep -rn "/bookings/" src/main/providers` → 0 results. The renderer route `/bookings/:id` in `notification.service.ts:192` is legitimate and stays.
 - [ ] `ls src/main/services/parkstay src/main/services/queue src/main/utils/browser-headers.ts` all fail (deleted).
 - [ ] No code path issues more than 4 concurrent ParkStay requests (limiter unit test). `grep -rn "/campsites/" src/main` → 0 results, because names now come from `sites[].name`.
 - [ ] `parkstay:get-all-campgrounds` returns only campgrounds (6 from the fixture; 169 live) and never parks or promo areas. `search_suggest` is no longer called.

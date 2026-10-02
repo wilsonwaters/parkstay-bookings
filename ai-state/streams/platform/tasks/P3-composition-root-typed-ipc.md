@@ -41,8 +41,9 @@ L
 - **Handlers and registration.** `registerIpcHandlers(container, { isTrustedSender })` replaces the positional function. There is one handler file per namespace in `ipc/handlers/`, all written on `handle()`, and no handler reads `userId` from a payload.
 - **`src/main/ipc/events.ts`**
   - `RendererEvents.emit(name, payload)` sends only to trusted webContents.
-  - Contract events: `notification:created`, `watch:updated`, `snipe:updated`, `booking:updated`, `updater:available|not-available|downloaded|progress|error`, plus the transitional `queue:status`.
+  - Contract events: `notification:created`, `watch:updated`, `snipe:updated`, `booking:updated`, `updater:available|not-available|downloaded|progress|error` and `app:navigate { path }` (§12.6; U5 emits it), plus the transitional `queue:status`.
   - Migrate the queue and updater emitters onto it. Wire `notification:created` from `NotificationService.notify`. V4 wires `watch:updated` and `snipe:updated`.
+- **Typed settings keys (§12.7).** `shared/contracts/settings.ts` holds a key registry: key → zod value schema, `valueType` and `category`, all owned by main. `settings.set(key, value)` no longer accepts `valueType`/`category` from the renderer (`settings.handlers.ts:39-49`). The registry starts with the key main already uses, `launchOnStartup` (`app.handler.ts:103-129`). U4 and U5 add their keys. An unknown key returns `VALIDATION`.
 - **Preload.**
   - Implements `WindowApi` from the contract. Each method maps its positional arguments to the payload object.
   - `events.on(name, cb)` returns `() => void`, which removes only that wrapper.
@@ -87,6 +88,7 @@ L
 - [ ] Two subscribers to one event: unsubscribing one leaves the other receiving events.
 - [ ] `grep -rn "removeAllListeners" src` returns nothing.
 - [ ] `NotificationService.notify` emits `notification:created` with the stored notification.
+- [ ] `settings.set('unknown.key', 1)` returns `VALIDATION`. `settings.set('launchOnStartup', 'yes')` returns `VALIDATION`. A valid set stores the registry's `valueType`/`category`.
 - [ ] Queue and updater events reach only trusted webContents.
 - [ ] `grep -rniE "notification.?provider|PROVIDER_(LIST|GET|CONFIGURE|ENABLE|DISABLE|TEST)" src tests` returns nothing. Stored channel values are unchanged.
 - [ ] `npm run type-check` passes with the transitional renderer.
@@ -118,7 +120,7 @@ L
 - **Integration:** about 2 tests. A container built on a migrated in-memory DB plus a fake `ipcMain`/event, running the `watches.create` → `watches.list` round trip and a `notifiers.configure` → `notifiers.get` round trip.
 
 ## Context Files to Read First
-- `ai-state/architecture-notes.md` §1, §2 (Notifier), §4 and §7. `ai-state/brief.md` O6.
+- `ai-state/architecture-notes.md` §1, §2 (Notifier), §4, §7 and §12 (items 6, 7 and 11). `ai-state/brief.md` O6.
 - `ai-state/research/tech-review.md` findings 1, 8, 13 and 15. `ai-state/research/ui-review.md` "Routes" and "Unused preload methods".
 - `src/main/index.ts`, `src/main/ipc/index.ts`, `src/main/ipc/handlers/*.ts`, `src/shared/constants/ipc-channels.ts` and `src/shared/types/api.types.ts:99-104`
 - `src/preload/index.ts`, `src/preload/window.d.ts`, `src/shared/schemas/*.ts` and `src/shared/types/notification-provider.types.ts`

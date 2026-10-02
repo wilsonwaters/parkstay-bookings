@@ -65,7 +65,7 @@ M
 - [ ] The legacy decryptors recover the fixture plaintexts:
   - P2's fixture `users` and `notifiers` rows, using machine id `fixture-machine-id`;
   - a legacy `gmail-oauth.json` generated **in the test** with the installed `conf@10.2.0` and the legacy key.
-- [ ] `migrateLegacySecrets` on v7-upgraded copies of the v5 and v6 fixtures:
+- [ ] `migrateLegacySecrets` on the v5 and v6 fixtures, loaded and upgraded to v7:
   - afterwards no `users`/`notifiers` value matches `/^[0-9a-f]{32}:[0-9a-f]{32}:/` or the hex column layout;
   - every value decrypts through the vault to the original plaintext;
   - a second run reports `migrated: 0`.

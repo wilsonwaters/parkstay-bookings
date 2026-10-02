@@ -56,11 +56,11 @@ L
   4. `DROP TRIGGER update_stq_timestamp` and `DROP TABLE skip_the_queue_entries`. Log the number of discarded rows.
   - Update the SQL in `notification-provider.repository.ts` to the new names. Class and file renames are P3's job.
 - **Code-level validation.** The CHECKs are gone, so `NotificationRepository.create` must reject a `type` or `relatedType` outside `NotificationType`/`RelatedType`. Reading must tolerate the legacy values `stq_success` and `stq`.
-- **Fixtures** in `tests/fixtures/db/`:
-  - `v5-release-1.2.0.sqlite`, generated with `connection.ts` from `dcccfa7`.
-  - `v6-branch.sqlite`, generated with `connection.ts` from `29bd91f`.
-  - A generator script and a `README.md` with the source SHAs, the row inventory and the fake plaintexts.
-  - `.gitignore` ignores `*.db`, so use the `.sqlite` extension.
+- **Fixtures** in `tests/fixtures/db/`. Per architecture-notes §12.13 these are **SQL dumps**; `*.db` is gitignored.
+  - `v5-release-1.2.0.sql`, generated with `connection.ts` from `dcccfa7`.
+  - `v6-branch.sql`, generated with `connection.ts` from `ec66641` or any later pre-P2 commit, such as `29bd91f`.
+  - Each dump contains every `sqlite_master` statement in creation order (tables, then indexes, then triggers), all rows, `sqlite_sequence` and the `migrations` rows. A helper `loadFixture(name)` replays a dump into a fresh temp DB with `foreign_keys=OFF`.
+  - Include a generator script and a `README.md` with the source SHAs, the row inventory and the fake plaintexts.
 - **Tests and helpers.** Update `tests/utils/database-helper.ts` (no `setDatabase`, no `SCHEMA_SQL`). Replace module mocks with constructor fakes in `queue.test.ts:21-27` and `sitesniper.service.test.ts:12-37`.
 - **Deletions.** Delete `schema.sql` and `connection.ts:492-547`.
 - **CLAUDE.md** "Database" section: the migration list up to v7, and the `applyMigration` step in "Adding a new migration".
@@ -83,14 +83,14 @@ L
 - [ ] `grep -rnE "'\\$\{[A-Z][A-Za-z]+\.[A-Z_]+\}'" src/main/database` returns nothing (no interpolated enums). Today it matches `site-sniper.repository.ts:130,140`.
 - [ ] `grep -n "electron" src/main/database/connection.ts` returns nothing.
 - [ ] A fresh DB reaches `MAX(version)` = 7. Its tables are exactly users, bookings, watches, notifications, notification_delivery_logs, notifiers, job_logs, settings, queue_session, site_snipes and migrations (plus `sqlite_*`).
-- [ ] The v5 and v6 fixtures (opened from temp copies) upgrade to v7 and meet all of the following:
+- [ ] The v5 and v6 fixtures, loaded with `loadFixture`, upgrade to v7 and meet all of the following:
   - row counts are preserved for every kept table;
   - `PRAGMA foreign_key_check` returns `[]` and `PRAGMA integrity_check` returns `ok`;
   - `PRAGMA foreign_key_list(notification_delivery_logs)` targets `notifications`;
   - the `notifiers` config ciphertext is byte-identical.
 - [ ] The normalised `sqlite_master` (type, name, tbl_name, sql) is identical for a fresh v7 DB, an upgraded v5 fixture and an upgraded v6 fixture.
 - [ ] Running `runMigrations` a second time changes nothing and throws nothing.
-- [ ] To force a failure inside v7, pre-create its temp table name in a fixture copy. Then:
+- [ ] To force a failure inside v7, pre-create its temp table name in a loaded fixture. Then:
   - a `MigrationError(7)` is thrown;
   - the version is unchanged and every original table and row is intact;
   - `PRAGMA foreign_keys` is back to 1.
@@ -102,7 +102,7 @@ L
 
 ## Edge Cases
 - `PRAGMA foreign_keys` and `journal_mode` are ignored inside transactions. Set them only outside `applyMigration`.
-- Tests must never open the committed fixture files directly. WAL mode creates `-wal`/`-shm` files and mutates the DB, so always copy to a temp dir first.
+- Replaying a dump must reproduce the v6 bug byte-for-byte: `CREATE TABLE … REFERENCES "notifications_old"(id)` is accepted at create time. Assert in the loader test that `PRAGMA foreign_key_list(notification_delivery_logs)` on the loaded v6 fixture targets `notifications_old`.
 - Index names are global across the schema. Create a rebuilt table's indexes only after the old table is dropped, or the names clash.
 - Delivery-log rows whose `notification_id` has no parent are copied with NULL, not dropped.
 - `skip_the_queue_entries` rows are discarded. The feature is gone, so log the count at info.
@@ -129,7 +129,7 @@ L
   - Update `tests/integration/database.test.ts` and `tests/unit/database/site-sniper.repository.test.ts` to the new API.
 
 ## Context Files to Read First
-- `ai-state/architecture-notes.md` §1, §2 and §5. `CLAUDE.md`, "Database" section.
+- `ai-state/architecture-notes.md` §1, §2, §5 and §12.13. `CLAUDE.md`, "Database" section.
 - `ai-state/research/tech-review.md`, findings 1, 3 and 12, and "Dead/duplicate code".
 - `src/main/database/connection.ts`, `src/main/database/repositories/*` and `src/main/database/schema.sql`
 - `src/main/services/watch/watch.service.ts:1-40`, `src/main/services/notification/notification.service.ts:1-50`, `src/main/services/sitesniper/sitesniper.service.ts:20-50`, `src/main/services/queue/queue.service.ts:40-145`
@@ -141,5 +141,5 @@ L
 - SQLite's documented rebuild procedure is at <https://www.sqlite.org/lang_altertable.html#otheralter>. Renaming the *new* table to the final name leaves the FKs that point at the final name intact.
 - **Fixture rows** (the same set in both fixtures, plus one snipe in v6): 1 user, 2 bookings, 2 watches (one with `last_availability` JSON), 3 notifications (one legacy `stq_success`/`stq`), 1 `email_smtp` notifier, 2 delivery logs, 3 settings, 1 queue_session and 1 skip_the_queue entry.
 - The user password and the SMTP config are encrypted with the **legacy** algorithms (`AuthService.ts:165-227`, `notification-provider.repository.ts:395-460`) using machine id `fixture-machine-id`. Record the fake plaintexts in the fixture README. P5 uses these rows to test legacy decryption.
-- Generate the v6 fixture by migrating a copy of the v5 data with the v6 code. Delivery-log rows therefore exist with the broken FK text, which is exactly what v7 must repair.
+- Generate the v6 dump by migrating a copy of the v5 data with the v6 code, then dumping it. Delivery-log rows therefore exist with the broken FK text, which is exactly what v7 must repair. Hand-editing a dump is not allowed; regenerate it instead.
 - Commit as a short series: tests and fixtures → repositories and injection → runner and v7.

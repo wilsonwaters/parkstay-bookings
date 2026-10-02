@@ -69,7 +69,8 @@ Status key: ⬜ not started · 🟦 in progress · ✅ done
 ### Provider-first UX stream (U)
 
 - **U4** surfaces P4's `hasPassword`/`hasClientSecret` flags and P5's `secretState: 'unreadable'` and vault `backend: 'local'` warnings.
-- **U5** uses `events.on('notification:created' | 'updater:*')`.
+- **U5** uses `events.on('notification:created' | 'updater:*')` and emits `app:navigate`, which P3 declares in the contract (§12.6).
+- **U4** and **U5** add their settings keys to P3's typed settings registry (§12.7).
 
 ### Docs & quality stream (Q)
 
@@ -100,7 +101,7 @@ Each question has a default that the task uses unless the stakeholder overrides 
 |---|---|---|---|
 | 1 | Once D3 removes the login gate, a fresh install has no `users` row, but every watch, snipe and notification has a NOT NULL FK to `users`. Who creates the local profile before V2's v8 lands? | P3 resolves `userId` as the first `users.id` and otherwise returns `code: 'NO_PROFILE'`. V2's v8 makes the profile independent of credentials. D3 must not ship "no gate" before V2, or must accept `NO_PROFILE` errors on create flows in the meantime. | P3, D3 |
 | 2 | §2 vocabulary says "notifier" in code, DB and UI, but §5's v7 list does not mention renaming DB objects. Should v7 rename them? | Yes. v7 renames `notification_providers` → `notifiers`, and the rebuilt log column becomes `notifier_channel`. The table is being rebuilt anyway, so this costs nothing. | P2 |
-| 3 | §5 asks for a v6 fixture, but the released v1.2.0 is v5. Which fixture should the tests use? | Commit both `v5-release-1.2.0` and `v6-branch` fixtures. Both must upgrade cleanly. | P2 |
+| 3 | §5 asks for a v6 fixture, but the released v1.2.0 is v5. Which fixture should the tests use? | **Resolved by architecture-notes §12.13:** use both a v5 (v1.2.0) and a v6 SQL-dump fixture. | P2 |
 | 4 | Secret storage when OS encryption is unavailable, or on Linux with `basic_text`: refuse to store secrets, or use a local key file? | Use a local AES-256-GCM key file (`<userData>/secret-vault.key`, mode 0600). Report `backend: 'local'` so U4 can warn. Upgrade to `os` automatically once it becomes available. | P5 |
 | 5 | CSP `img-src`: allow `https:` broadly, or allowlist image hosts declared in provider manifests? | Allow `https:` broadly, so new providers need no core change (brief success criterion 6). Revisit if V1 adds `imageHosts` to the manifest. | P4 |
 | 6 | `job_logs` is never written: drop it or start using it? | Drop it in the next free migration version (expected v9, after V2's v8). | P7 |
@@ -109,6 +110,9 @@ Each question has a default that the task uses unless the stakeholder overrides 
 ## Changelog
 
 - 2026-10-02 created. Specified P1–P7.
+- 2026-10-02 conformed to architecture-notes §12:
+  - P2 fixtures are SQL dumps (§12.13).
+  - P3 adds the typed settings-key registry (§12.7) and declares the `app:navigate` event (§12.6).
 - 2026-10-02 refined two tasks against streams.md:
   - **P7** is resized from S to M. It includes a migration, the cleanup wiring and folding the docs.
   - **P7**'s dependencies change from V3 to V3 + V4, so it no longer races V4's service moves.

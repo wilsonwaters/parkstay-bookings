@@ -284,3 +284,17 @@ interface ProviderContext {
 18. **`StayFieldDescriptor.appliesTo` is canonical**. Any spec that says `usedBy` means `appliesTo`.
 19. **Watch create route is `/watches/new`** with the §12.10 prefill query (`provider` + `location` = externalId, not the composite key). U1/U2 specs that say `/watches/create` or `?location=<key>` are superseded. D3 keeps a redirect from `/watches/create` → `/watches/new` that preserves the query string.
 20. **Primary CTA colour is coral; brand colour is ocean** (orchestrator decision, Airbnb pattern; shown to the stakeholder at PR review).
+21. **There is always a local profile row** (`users` id 1, the single local profile). Startup runs `ensureLocalProfile()`, introduced in P3 using the existing `users` table and kept by V2. A fresh install therefore never hits a `NO_PROFILE` state, and D3 is not blocked.
+22. **Nothing may ever delete the local profile row.** Today `auth.deleteCredentials` (`AuthService.ts:135-146`, called by Logout at `App.tsx:51`) deletes it, and `ON DELETE CASCADE` then wipes every watch, booking, snipe and notification. That is a data-loss bug, fixed as follows:
+    - P3 makes credential deletion clear only credential fields.
+    - D3 removes Logout.
+    - V6 provider sign-out touches only `provider_accounts` and the partition storage.
+    - P2 or V2 adds a test proving that no code path deletes the profile row.
+23. **`safeStorage` must not run before the final userData path is set.** On Windows the OSCrypt key lives in `Local State` inside userData. The required startup order is:
+    1. `app.setPath('userData')` (B3)
+    2. legacy migration
+    3. SecretVault first use
+    
+    Never copy `Local State` from another profile.
+24. **Notifier vocabulary reaches the DB in v7**: `notification_providers` → `notifiers`, `provider_channel` → `notifier_channel`. Agreed.
+25. **Production CSP is a build-time meta tag** (Vite plugin using a pure builder in `src/main/app/csp.ts`); dev uses a header. `img-src https:` is allowed broadly.

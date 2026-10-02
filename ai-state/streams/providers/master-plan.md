@@ -52,6 +52,7 @@ Every addition is additive and is listed here so reviewers can see each one.
 | `accounts.openSignInLink(providerId, url)` | V1, V6 | Fallback if ParkStay emails a magic link rather than a code (PQ1) |
 | v8 rebuilds `watches`, `site_snipes` and `bookings` instead of only adding columns. Legacy ParkStay columns move into `stay_params`, `queue_enabled` becomes `access_gate_enabled`, and `held_*` becomes `hold_*`. | V2 | Removes NOT NULL ParkStay columns and the `release_mode` CHECK that would block other providers. No duplicate columns are left behind (§1). |
 | `locations.detail` JSON plus `detail_fetched_at` | V2 | Location detail works offline (V5) |
+| `LocationDetail.fetchedAt?` and `stale?` | V1, V5 | Offline or failed-refresh detail is labelled honestly instead of looking fresh |
 
 **Answers to sibling streams' open questions:**
 
