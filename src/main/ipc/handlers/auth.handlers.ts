@@ -1,7 +1,8 @@
 /**
- * `auth` handlers: transitional ParkStay credential storage, ported as it was (V6 replaces
- * it). Logout (`deleteCredentials`) clears only the credential fields; the local profile row
- * and its data are kept.
+ * `auth` handlers: transitional ParkStay credential storage (V6 replaces it). The password
+ * is write-only: `getCredentials` returns `{ email, hasPassword }`. Logout
+ * (`deleteCredentials`) clears only the credential fields; the local profile row and its
+ * data are kept.
  */
 
 import { contract } from '@shared/contracts';
@@ -19,7 +20,7 @@ export function registerAuthHandlers(handle: Handle, c: AppContainer): void {
     return true;
   });
 
-  handle(auth.getCredentials, () => c.authService.getCredentials());
+  handle(auth.getCredentials, () => c.authService.getCredentialStatus());
 
   handle(auth.updateCredentials, async ({ email, newPassword }) => {
     if (!email || !newPassword) {

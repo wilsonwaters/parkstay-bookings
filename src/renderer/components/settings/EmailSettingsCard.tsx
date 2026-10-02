@@ -7,11 +7,12 @@ import React, { useState, useEffect } from 'react';
 import {
   NotifierChannel,
   SMTPPreset,
-  SMTPConfig,
+  SMTPConfigView,
   NotifierStatus,
   SMTP_PRESETS,
-  Notifier,
+  NotifierView,
 } from '@shared/types';
+import type { NotifierConfigureInput } from '@shared/contracts/notifiers';
 import SMTPSetupInstructions from './SMTPSetupInstructions';
 
 interface EmailSettingsCardProps {
@@ -24,6 +25,8 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
   const [preset, setPreset] = useState<SMTPPreset>(SMTPPreset.GMAIL);
   const [email, setEmail] = useState(''); // For Gmail/Outlook: email = username. For Custom: this is fromEmail
   const [appPassword, setAppPassword] = useState('');
+  // The stored password is never sent back; main only says whether there is one
+  const [hasPassword, setHasPassword] = useState(false);
   const [toEmail, setToEmail] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -57,17 +60,18 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
       const response = await window.api.notifiers.get(NotifierChannel.EMAIL_SMTP);
 
       if (response.success && response.data) {
-        const provider = response.data as Notifier;
-        const config = provider.config as SMTPConfig;
+        const provider = response.data as NotifierView;
+        const config = provider.config as SMTPConfigView;
 
         setEnabled(provider.enabled);
+        setHasPassword(provider.hasPassword);
         setNotifierStatus(provider.status);
         setLastTestedAt(provider.lastTestedAt ? new Date(provider.lastTestedAt) : null);
 
         if (config) {
           setPreset(config.preset || SMTPPreset.GMAIL);
           setToEmail(config.toEmail || '');
-          // Don't load password for security - user must re-enter
+          // The password is write-only: leave the field blank to keep the stored one
 
           if (config.preset === SMTPPreset.CUSTOM) {
             setCustomHost(config.host || '');
@@ -89,8 +93,10 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
     }
   };
 
-  const buildConfig = (): SMTPConfig => {
+  // A blank password is left out, which keeps the stored one
+  const buildConfig = (): NotifierConfigureInput['config'] => {
     const presetConfig = SMTP_PRESETS[preset];
+    const pass = appPassword || undefined;
 
     if (preset === SMTPPreset.CUSTOM) {
       const senderEmail = customFromEmail || customUsername;
@@ -101,7 +107,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
         secure: customSecure,
         auth: {
           user: customUsername,
-          pass: appPassword,
+          pass,
         },
         fromEmail: customFromEmail || undefined,
         toEmail: toEmail || senderEmail,
@@ -115,7 +121,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
       secure: presetConfig.secure,
       auth: {
         user: email,
-        pass: appPassword,
+        pass,
       },
       toEmail: toEmail || email,
     };
@@ -143,7 +149,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
       }
     }
 
-    if (!appPassword) {
+    if (!appPassword && !hasPassword) {
       setError('Password is required');
       return;
     }
@@ -161,6 +167,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
       if (response.success) {
         setSuccessMessage('Email settings saved successfully');
         setNotifierStatus(NotifierStatus.CONFIGURED);
+        setHasPassword(response.data?.hasPassword ?? true);
         setAppPassword(''); // Clear password after save
         onSaveSuccess?.();
       } else {
@@ -470,7 +477,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
               </button>
             </div>
             <p className="mt-1 text-xs text-gray-500">
-              {notifierStatus === NotifierStatus.CONFIGURED
+              {hasPassword
                 ? 'Leave blank to keep existing password, or enter a new one to update'
                 : preset === SMTPPreset.CUSTOM
                   ? 'Your SMTP server password'

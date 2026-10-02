@@ -88,7 +88,7 @@ describe('IPC through the container', () => {
       });
     });
 
-    it('notifiers.configure then notifiers.get round-trips the (encrypted) SMTP config', async () => {
+    it('notifiers.configure then notifiers.get round-trips the SMTP config, password write-only', async () => {
       const config = {
         preset: SMTPPreset.GMAIL,
         host: 'smtp.gmail.com',
@@ -109,7 +109,12 @@ describe('IPC through the container', () => {
       await expect(call('notifiers:get', { channel: NotifierChannel.EMAIL_SMTP })).resolves.toEqual(
         {
           success: true,
-          data: expect.objectContaining({ channel: 'email_smtp', enabled: true, config }),
+          data: expect.objectContaining({
+            channel: 'email_smtp',
+            enabled: true,
+            config: { ...config, auth: { user: 'me@example.com' } },
+            hasPassword: true,
+          }),
         }
       );
       const stored = container.db.prepare('SELECT channel, config FROM notifiers').get() as {

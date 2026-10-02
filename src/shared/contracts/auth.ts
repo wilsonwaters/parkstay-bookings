@@ -1,14 +1,20 @@
 /**
- * `auth`: transitional ParkStay credential storage, ported as it was. V6 replaces it with
- * per-provider accounts; P4 stops `getCredentials` returning the password.
+ * `auth`: transitional ParkStay credential storage. V6 replaces it with per-provider
+ * accounts. The password is write-only: `getCredentials` says only whether one is stored.
  */
 
 import { z } from 'zod';
-import type { UserCredentials, UserInput } from '../types/common.types';
+import type { UserInput } from '../types/common.types';
 import { CHANNELS } from './channels';
 import type { Namespace } from './define';
 
 const C = CHANNELS.auth;
+
+/** What the renderer may know about the stored ParkStay credentials: never the password. */
+export interface CredentialStatus {
+  email: string;
+  hasPassword: boolean;
+}
 
 export const credentialsInputSchema = z.object({
   email: z.string(),
@@ -29,7 +35,7 @@ export const auth = {
     channel: C.getCredentials,
     request: z.void(),
     args: {} as [],
-    response: {} as UserCredentials | null,
+    response: {} as CredentialStatus | null,
   },
   updateCredentials: {
     channel: C.updateCredentials,

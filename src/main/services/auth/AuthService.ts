@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { machineIdSync } from 'node-machine-id';
 import { UserRepository } from '../../database/repositories/user.repository';
 import { User, UserCredentials, UserInput } from '@shared/types';
+import type { CredentialStatus } from '@shared/contracts/auth';
 import { logger } from '../../utils/logger';
 
 // Secret salt for key derivation (in production, this would be stored securely)
@@ -84,7 +85,17 @@ export class AuthService {
   }
 
   /**
-   * Get stored credentials
+   * What the renderer may see: the email and whether a password is stored, never the
+   * password itself. Null when no credentials are stored.
+   */
+  getCredentialStatus(): CredentialStatus | null {
+    const user = this.userRepository.getFirstUser();
+    if (!user || !hasCredentials(user)) return null;
+    return { email: user.email, hasPassword: true };
+  }
+
+  /**
+   * Get stored credentials, password decrypted. Main process only: never return this over IPC.
    */
   async getCredentials(): Promise<UserCredentials | null> {
     try {

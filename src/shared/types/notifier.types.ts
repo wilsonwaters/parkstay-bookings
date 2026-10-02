@@ -75,6 +75,18 @@ export interface NotifierInput {
   config: SMTPConfig | Record<string, unknown>;
 }
 
+/** SMTP settings as the renderer sees them: the password is write-only and never returned. */
+export type SMTPConfigView = Omit<SMTPConfig, 'auth'> & { auth: { user: string } };
+
+/**
+ * A notifier as IPC returns it: secrets removed from `config`, and `hasPassword` saying
+ * whether one is stored.
+ */
+export interface NotifierView extends Omit<Notifier, 'config'> {
+  config: SMTPConfigView | Record<string, unknown>;
+  hasPassword: boolean;
+}
+
 /**
  * Notifier configuration for SMTP Email
  */

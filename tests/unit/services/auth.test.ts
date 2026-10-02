@@ -80,6 +80,24 @@ describe('AuthService', () => {
     });
   });
 
+  describe('getCredentialStatus', () => {
+    it('returns the email and hasPassword, never the password', async () => {
+      await authService.storeCredentials(mockUserInput);
+
+      const status = authService.getCredentialStatus();
+
+      expect(status).toEqual({ email: mockUserInput.email, hasPassword: true });
+      expect(JSON.stringify(status)).not.toContain(mockUserInput.password);
+    });
+
+    it('is null with no credentials stored, including after Logout', async () => {
+      expect(authService.getCredentialStatus()).toBeNull();
+      await authService.storeCredentials(mockUserInput);
+      await authService.deleteCredentials();
+      expect(authService.getCredentialStatus()).toBeNull();
+    });
+  });
+
   describe('getCredentials', () => {
     it('should retrieve and decrypt stored credentials', async () => {
       await authService.storeCredentials(mockUserInput);

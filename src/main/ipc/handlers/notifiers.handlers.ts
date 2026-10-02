@@ -1,10 +1,13 @@
 /**
- * `notifiers` handlers: outbound notification channels (email SMTP). Ported as they were;
- * P4 makes the SMTP password write-only.
+ * `notifiers` handlers: outbound notification channels (email SMTP). The SMTP password is
+ * write-only: every response is a `NotifierView` without it, and `configure` without a
+ * password keeps the stored one (in the database and in the dispatcher).
  */
 
 import { contract } from '@shared/contracts';
 import type { AppContainer } from '../../app/container';
+import { toNotifierView, withStoredPassword } from '../../services/notification/notifier-view';
+import { AppError } from '../../utils/app-error';
 import { logger } from '../../utils/logger';
 import type { Handle } from '../handle';
 
@@ -13,19 +16,26 @@ export function registerNotifiersHandlers(handle: Handle, c: AppContainer): void
   const repository = c.repositories.notifiers;
   const dispatcher = c.notifierDispatcher;
 
-  handle(notifiers.list, () => repository.findAll());
+  handle(notifiers.list, () => repository.findAll().map(toNotifierView));
 
-  handle(notifiers.get, ({ channel }) => repository.findByChannel(channel));
+  handle(notifiers.get, ({ channel }) => {
+    const notifier = repository.findByChannel(channel);
+    return notifier ? toNotifierView(notifier) : null;
+  });
 
   handle(notifiers.configure, (input) => {
-    const notifier = repository.upsert(input);
+    const stored = repository.findByChannel(input.channel);
+    const config = withStoredPassword(input.config, stored?.config);
+    if (!config.auth.pass) throw new AppError('VALIDATION', 'A password is required');
+
+    const notifier = repository.upsert({ ...input, config });
     dispatcher.configureNotifier(
       input.channel,
-      input.config as Record<string, unknown>,
+      config as unknown as Record<string, unknown>,
       input.enabled || false
     );
     logger.info(`Notifier ${input.channel} configured`);
-    return notifier;
+    return toNotifierView(notifier);
   });
 
   handle(notifiers.enable, ({ channel }) => {
