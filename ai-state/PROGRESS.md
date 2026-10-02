@@ -6,10 +6,12 @@ _Last updated: 2026-10-02 (orchestrator)_
 Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
 
 ## Currently in flight
-- **P2** (#13) Database foundation: implementation agent dispatched, lane M.
-- **D1** (#29) Design language and tokens: implemented on lane R (commit "feat(design)… (#29)"), rebased onto P1; review agent running.
+- **P2** (#13) Database foundation: implementation agent, lane M.
+- **D2** (#30) UI component library: implementation agent, lane R.
+- **B1** (#26) Brand assets: implementation agent, lane A. Three logo concepts; stakeholder to pick at review.
 
 ## Completed
+- **D1** (#29) Design language and tokens: reviewed (APPROVE + minors fixed in a fix commit; palette anchors re-sampled from the stakeholder reference: ocean #3A74B8, sun #E8B858, coral #D05830), merged.
 - **P1** (#12) Test infrastructure: reviewed (APPROVE, 1 minor + 3 nits fixed by the orchestrator, plus the CSS stub mock), merged.
 - Board: 30 `ai-planning` issues filed, #12–#41 (mapping in streams.md).
 - Kickoff: technical, UI and ParkStay API reviews (`ai-state/research/`).
