@@ -149,6 +149,7 @@ M. This is at the upper bound: shell, routes and data layer are one concern ("fr
 ## Notes
 
 - Keep **HashRouter**, because production loads `file://`. Do not adopt a data router: legacy pages are not loader-based.
+- `ROUTES` keys, which later tasks reference by name: `explore`, `placeDetail`, `watches`, `watchNew`, `watchDetail`, `watchEdit`, `snipes`, `snipeNew`, `snipeDetail`, `bookings`, `bookingDetail`, `settings` (optional `section`), `design`.
 - `ROUTES.placeDetail` is `buildPath('/places/:providerId/:externalId', …)`. E1 and E2 must use it, never string concatenation, and `externalId` is `encodeURIComponent`-ed.
 - Stable names for Q1: "Explore", "Watches", "Site Sniper, coming soon", "Bookings, coming soon", "Account and settings", "Skip to content". Changing them requires updating `docs/design/shell.md` and Q1.
 - On the Explore map, the tray sits bottom-right. E1 must move the Mapbox logo and attribution to bottom-left so the tray never covers them (Mapbox terms).

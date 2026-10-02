@@ -27,11 +27,7 @@ L. This is complex UI plus build wiring. Deliver it in two commits: (a) list-onl
   - Invalid values are dropped, and the URL is rewritten with `replace`.
   - Camera changes write `map` with `replace`, debounced 500 ms. The other state changes push history entries.
 - **Search pill** (`features/explore/search/SearchPill.tsx`): a `role="search"` form named "Search places".
-  - **Where** is a D2 `Combobox` (`appearance="segment"`) with up to 8 grouped suggestions (Regions, Areas, Places) from the cached unfiltered catalogue.
-    - A region sets the `regions` filter and fits the map to it.
-    - An area sets `q` to the area name.
-    - A place sets `sel` and flies to it.
-    - Free text with Enter sets `q`. Typing is debounced 250 ms.
+  - **Where** is a D2 `Combobox` (`appearance="segment"`) with up to 8 grouped suggestions (Regions, Areas, Places) from the cached unfiltered catalogue. A region sets the `regions` filter and fits the map to it. An area sets `q` to the area name. A place sets `sel` and flies to it. Free text with Enter sets `q`, and typing is debounced 250 ms.
   - **When** is a `DateRangeField` (`minDate` = today in Australia/Perth, `maxNights` 30). **Who** is a `GuestsField`.
   - A coral round `IconButton` "Search" applies `q` immediately.
   - Dates and guests go into the URL for E2 and E3. E1 does not use them otherwise.
@@ -52,30 +48,12 @@ L. This is complex UI plus build wiring. Deliver it in two commits: (a) list-onl
 - **Results** (`features/explore/results/ResultsList.tsx`):
   - An `h2` reads "{n} places", or "{n} places in map area" when following the map.
   - The grid has 1 column, or 2 at 1280 px and wider. It renders the first 40 cards, and "Show more places" adds 40 at a time.
-  - Shared `components/LocationCard.tsx` is a single link to `ROUTES.placeDetail(providerId, externalId)`, named by the location name. It shows:
-    - `LocationPhoto` (4:3, lazy, skeleton, falls back to D1 `PhotoPlaceholder`)
-    - the name, clamped to 2 lines
-    - "Area · Region"
-    - a compact `ProviderBadge` and the kind label
-    - up to 3 amenity icons plus "+n", each with a `VisuallyHidden` name
-    - a "Book online" or "Info only" tag
-    - "{unitCount} sites", with the noun taken from the kind
+  - Shared `components/LocationCard.tsx` is a single link to `ROUTES.placeDetail(providerId, externalId)`, named by the location name. It shows a `LocationPhoto` (4:3, lazy, skeleton, falling back to the D1 `PhotoPlaceholder`), the name (2-line clamp), "Area · Region", a compact `ProviderBadge` and the kind label, up to 3 amenity icons plus "+n" (each with a `VisuallyHidden` name), a "Book online" or "Info only" tag, and "{unitCount} sites" (the noun comes from the kind).
   - `components/amenityIcons.ts`: Dogs permitted → `Dog`, Toilet → `Toilet`, Road access for 2WD/SUV → `CarFront`, anything else → `MapPin`.
 - **Map** (`features/explore/map/`):
   - **Structure.** `MapView.tsx` is lazy-loaded. `mapboxController.ts` dynamically imports `mapbox-gl` and its CSS. Tests inject a fake through the `MapController` interface (`setData`, `setHovered`, `setSelected`, `fitBounds`, `flyTo`, `onMoveEnd`, `onFeatureHover`, `onFeatureClick`, `resize`, `destroy`).
-  - **Style and options.**
-    - Style `mapbox://styles/mapbox/outdoors-v12`.
-    - `projection: 'mercator'`, `dragRotate: false`, `pitchWithRotate: false`, `renderWorldCopies: false`, `minZoom: 3`.
-    - Initial `bounds [[112.5,-35.6],[129.2,-13.5]]` with 32 px padding, unless `map` is in the URL.
-    - `NavigationControl({ showCompass: false })` top-right.
-    - `logoPosition: 'bottom-left'` and a compact attribution bottom-left, so D3's bottom-right tray never covers them.
-  - **`applyWaPalette(map, tokens)`** (`waPalette.ts`) runs on `style.load` with token RGB values read from CSS variables:
-    - `land` → sand-50
-    - `water` and `waterway` → ocean-100/200
-    - `national-park` and park `landuse` → eucalypt-50
-    - `hillshade` exaggeration 0.25
-    - `contour-*` opacity 0.3
-    - Each call is guarded by `map.getLayer(id)`. A missing layer is skipped and logged once in DEV.
+  - **Style and options.** `mapbox://styles/mapbox/outdoors-v12` with `projection: 'mercator'`, `dragRotate: false`, `pitchWithRotate: false`, `renderWorldCopies: false` and `minZoom: 3`. Initial `bounds [[112.5,-35.6],[129.2,-13.5]]` with 32 px padding, unless `map` is in the URL. `NavigationControl({ showCompass: false })` sits top-right. `logoPosition: 'bottom-left'` and a compact attribution bottom-left keep them clear of D3's bottom-right tray.
+  - **`applyWaPalette(map, tokens)`** (`waPalette.ts`) runs on `style.load`, with token RGB values read from CSS variables: `land` → sand-50, `water`/`waterway` → ocean-100/200, `national-park` and park `landuse` → eucalypt-50, `hillshade` exaggeration 0.25, `contour-*` opacity 0.3. Each call is guarded by `map.getLayer(id)`, so a missing layer is skipped and logged once in DEV.
   - **Source `locations`.** GeoJSON with `promoteId: 'key'`, `cluster: true`, `clusterRadius: 48`, `clusterMaxZoom: 10`, built by the pure `toFeatureCollection(items)`. `setData` runs only when the filtered key set changes.
   - **Layers**, from the pure `buildLayers(tokens)`:
     - `clusters`: white circle, ink 1.5 px stroke, radius stepped by `point_count`, with an ink `cluster-count`.
@@ -124,14 +102,9 @@ L. This is complex UI plus build wiring. Deliver it in two commits: (a) list-onl
 - [ ] With "Search as I move the map" on, panning to the Kimberley narrows the list. With it off, "Search this area" appears, and applying it narrows the list.
 - [ ] At 960–1023 px wide, the "Show map"/"Show list" toggle switches panes and the map keeps its camera.
 - [ ] The Mapbox logo and attribution stay visible bottom-left while a toast and the queue status are in the tray.
-- [ ] Each state renders its exact copy:
-  - [ ] Loading: 8 skeletons, with the results region `aria-busy`.
-  - [ ] Syncing: "Getting places ready".
-  - [ ] Sync failed: "We couldn't load places" and "Try again", which calls `catalog.refresh`.
-  - [ ] No matches: "No places match your search" and "Clear filters".
-  - [ ] Empty map area: "No places in this part of the map" and "Show all of WA".
-  - [ ] Search error with previous data: a danger Notice with "Retry".
-  - [ ] Offline: "You're offline. Showing saved places; photos and map tiles may not load."
+- [ ] Loading shows 8 skeletons with the results region `aria-busy`. Syncing shows "Getting places ready". A failed sync shows "We couldn't load places" and "Try again", which calls `catalog.refresh`.
+- [ ] No matches shows "No places match your search" and "Clear filters". An empty map area shows "No places in this part of the map" and "Show all of WA".
+- [ ] A search error with previous data shows a danger Notice with "Retry". Offline shows "You're offline. Showing saved places; photos and map tiles may not load."
 - [ ] A broken image URL falls back to `PhotoPlaceholder`, named "No photo available for {name}".
 - [ ] `vite build` with `MAPBOX_ACCESS_TOKEN=sk.x` fails with the message. `.env.example` exists. `build.yml` passes the secret to the build step.
 - [ ] The token guard and API-boundary guard pass for `features/explore/**`, `components/LocationCard*` and `api/catalog.ts`.
@@ -158,28 +131,8 @@ L. This is complex UI plus build wiring. Deliver it in two commits: (a) list-onl
 
 ## Test Strategy
 
-- **Unit** (about 22 tests):
-  - `exploreParams` round trip and cleanup of invalid values.
-  - Facets and counts, plus suggestion ranking and grouping.
-  - `withinBbox`.
-  - `toFeatureCollection`: drops invalid coordinates and promotes the key.
-  - `buildLayers`: layer ids, the cluster filter, the pill minzoom.
-  - `applyWaPalette` with a fake map: skips missing layers without throwing.
-  - `getMapboxToken`: accepts `pk.`, rejects `sk.` and empty.
-  - The vite token resolver throws on `sk.`.
-  - The WebGL probe and the amenity icon fallback.
-- **Component** (about 20 tests, using `renderWithApp` + `createMockApi` + `FakeMapController`):
-  - List-only notice.
-  - Search debounce and URL updates.
-  - Each chip, Clear all, and the Book online toggle.
-  - Where suggestions.
-  - Every listed state.
-  - LocationCard name, tags and image fallback.
-  - Hover re-render count.
-  - Pin click selects and scrolls.
-  - Follow on/off and "Search this area".
-  - Narrow toggle and its focus.
-  - Announcements.
+- **Unit** (about 22 tests): the `exploreParams` round trip and invalid-value cleanup; facets and counts; suggestion ranking and grouping; `withinBbox`; `toFeatureCollection` (drops invalid coordinates, promotes the key); `buildLayers` (layer ids, cluster filter, pill minzoom); `applyWaPalette` with a fake map (missing layers skipped, no throw); `getMapboxToken` (accepts `pk.`, rejects `sk.` and empty); the vite token resolver (throws on `sk.`); the WebGL probe; and the amenity icon fallback.
+- **Component** (about 20 tests, using `renderWithApp` + `createMockApi` + `FakeMapController`): the list-only notice; search debounce and URL updates; each chip, Clear all and the Book online toggle; Where suggestions; every listed state; LocationCard name, tags and image fallback; the hover re-render count; pin click selecting and scrolling; follow on/off and "Search this area"; the narrow toggle and its focus; announcements.
 - **Integration:** `tests/integration/renderer/explore.test.tsx` runs shell → `/` → search → region chip → open a card → `/places/...`. A seeded 5k fixture lives in `tests/fixtures/catalog/synthetic-locations.ts`.
 - **Runtime verification:** map mode with the token, list-only mode without it, axe, and screenshots at 1440 and 1000 px.
 

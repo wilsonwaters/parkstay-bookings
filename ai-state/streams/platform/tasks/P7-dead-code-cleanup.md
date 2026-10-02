@@ -7,16 +7,17 @@ The technical review ("Dead/duplicate code") lists code, constants, a table and 
 
 What remains dead today:
 
-- **Unused constants** in `src/shared/constants/app-constants.ts`:
+- **Unused constants.** On 2026-10-02, the check command in Completion Criteria reports **33 of the 43** exported constants in `src/shared/constants/app-constants.ts` as unreferenced. Examples:
   - `APP_NAME` and `APP_VERSION` (`:3-4`), the latter claiming `1.0.0`;
   - `REBOOK_ADVANCE_DAYS_MIN/MAX` (`:12-13`);
   - `MIN/MAX_WATCH_INTERVAL` (`:25-26`);
   - `MAX_CONCURRENT_WATCHES` (`:39`);
   - `DB_NAME` (`:43`);
-  - `MAX_RETRIES`, `INITIAL_RETRY_DELAY_MS`, `MAX_RETRY_DELAY_MS` and `RETRY_BACKOFF_MULTIPLIER` (`:46-49`);
+  - `MAX_RETRIES` and the retry and back-off constants (`:46-49`);
   - `RATE_LIMIT_*` (`:52-53`);
-  - `SESSION_TIMEOUT_HOURS` (`:56`);
-  - `ERROR_LOG_RETENTION_DAYS` and `MAX_NOTIFICATIONS_PER_USER` (`:60,62`).
+  - `SESSION_TIMEOUT_HOURS` (`:56`).
+
+  ParkStay domain values such as `BOOKING_WINDOW_DAYS`, `NINGALOO_RELEASE_HOUR_AWST` and the `DEFAULT_SNIPE_*` defaults are also unreferenced today. V3 is expected to adopt or move them into `providers/parkstay/`, so whatever is still unreferenced after V3 is deleted here.
 - **Booking placeholders.** `BookingService.importBooking` and `syncBooking` (`BookingService.ts:184-215`) are placeholders, and `getBookingStats` (`:292`) is unused. Behind them sit the `booking:sync` and `booking:sync-all` channels (`booking.handlers.ts:141-185`).
 - **Site Sniper.** `SiteSniperService.runSnipeWindow` (`sitesniper.service.ts:305`) is never called.
 - **Cleanup job.** `JobScheduler.runCleanup` (`job-scheduler.ts:438-440`) only logs. Its 02:00 AWST cron (`:409-423`) therefore deletes nothing, so notifications and delivery logs grow without bound.
@@ -38,7 +39,7 @@ M. This was S in `streams.md`. It includes a migration, the cleanup wiring and f
 ## Scope
 - **Constants.** Delete every exported constant in `app-constants.ts` that has no reference outside that file.
   - A constant used only by tests is inlined into those tests.
-  - Keep `NOTIFICATION_RETENTION_DAYS`: the cleanup below uses it.
+  - Keep `NOTIFICATION_RETENTION_DAYS`, which is unreferenced today, because the cleanup below starts using it.
 - **Booking dead code.** Remove `getBookingStats` and the placeholder `syncBooking`/`importBooking` together with their channels, contract entries and preload methods. **Exception:** if V4 or U3 has already replaced `import` with a provider-backed `bookings.import(providerId, reference)`, keep that and remove only the placeholder.
 - **Site Sniper dead code.** Remove `runSnipeWindow` and any helper used only by it, such as the private `delay`. Do the same for `setBooked`/`notifySnipeBooked` if they are still never triggered after V4.
 - **Cleanup job.** Implement `runCleanup`:
