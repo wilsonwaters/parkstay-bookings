@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide explains how to use the advanced features (Watch system and Beat the Crowd) in the WA ParkStay Bookings application.
+This guide explains how to use the advanced features (Watch system and Site Sniper) in the WA ParkStay Bookings application.
 
 ## Watch System
 
@@ -84,99 +84,69 @@ await window.api.watch.delete(watchId);
 - Watch can auto-deactivate after first notification (if `notifyOnly` is true)
 - Watch can auto-book when availability is found (if `autoBook` is true)
 
-## Beat the Crowd System
+## Site Sniper System
 
-Beat the Crowd helps you manage bookings in advance of ParkStay's 180-day booking limit by automatically cancelling and rebooking your reservation as the booking window advances. This lets you secure popular campsites well before others can book them.
+Site Sniper (formerly the mislabelled "Skip The Queue" / "Beat the Crowd") automatically
+secures a high-demand campsite **at the earliest possible legal moment it becomes available**.
+It prepares ahead of time and reacts the instant a target site opens, placing a 30-minute
+temporary hold so you can complete payment before anyone else takes it.
 
-### Creating an Entry
+See [SITE_SNIPER.md](./SITE_SNIPER.md) for the full feature guide, the two release regimes
+(daily midnight-AWST rollover vs. Ningaloo scheduled releases), the cancellation-watch mode,
+and the compliance rules. Payment is intentionally left to you (it requires DBCA SSO + BPOINT);
+Site Sniper stops at the hold and notifies you immediately with a link to finish.
+
+### Creating a Snipe
 
 ```typescript
 // From renderer process
-const stqEntry = await window.api.stq.create(userId, {
-  bookingId: 123,
-  bookingReference: 'PS123456',
-  checkIntervalMinutes: 60, // Optional, default 60 (1 hour)
-  maxAttempts: 1000, // Optional, default 1000
-  notes: 'Monitor for cancellations',
+const snipe = await window.api.siteSniper.create(userId, {
+  name: 'Osprey Bay — September long weekend',
+  campgroundId: '123',
+  campgroundName: 'Osprey Bay',
+  targetSiteIds: ['456', '457'], // Optional; empty => any site in the campground
+  siteType: 'tent', // gear_type: tent | campervan | caravan | all
+  arrivalDate: new Date('2026-09-25'),
+  departureDate: new Date('2026-09-28'),
+  numAdult: 2,
+  numVehicle: 1,
+  releaseMode: 'scheduled', // daily_rollover | scheduled | cancellation
+  releaseAt: new Date('2026-09-01T02:00:00Z'), // 10:00 AWST — required for 'scheduled'
+  queueEnabled: true, // establish the DBCA queue session (Ningaloo)
+  leadTimeSeconds: 120, // warm up / join queue before release
+  pollIntervalMs: 1500, // tight-poll cadence during the snipe window
+  windowDurationMs: 900000, // keep trying for 15 minutes after release
+  maxAttempts: 0, // 0 = unlimited within the window
+  notes: 'Shaded sites preferred',
 });
 ```
 
-### STQ Properties
-
-- **bookingId**: ID of the booking to monitor
-- **bookingReference**: ParkStay booking reference
-- **checkIntervalMinutes**: How often to check (60-1440 minutes)
-- **maxAttempts**: Stop after this many attempts
-- **notes**: Optional notes
-
-### Managing STQ Entries
+### Managing Snipes
 
 ```typescript
-// List all entries
-const entries = await window.api.stq.list(userId);
-
-// Get specific entry
-const entry = await window.api.stq.get(stqId);
-
-// Update entry
-const updated = await window.api.stq.update(stqId, {
-  checkIntervalMinutes: 5,
-  maxAttempts: 2000,
-});
-
-// Activate/deactivate
-await window.api.stq.activate(stqId);
-await window.api.stq.deactivate(stqId);
-
-// Execute immediately (manual check)
-await window.api.stq.execute(stqId);
-
-// Delete entry
-await window.api.stq.delete(stqId);
+const snipes = await window.api.siteSniper.list(userId);
+const snipe = await window.api.siteSniper.get(snipeId);
+await window.api.siteSniper.update(snipeId, { pollIntervalMs: 1000 });
+await window.api.siteSniper.activate(snipeId); // arm
+await window.api.siteSniper.deactivate(snipeId); // disarm
+await window.api.siteSniper.execute(snipeId); // run one attempt now
+await window.api.siteSniper.delete(snipeId);
 ```
 
-### STQ Lifecycle
+### Snipe Lifecycle
 
-1. **Created**: Entry is created but not scheduled
-2. **Activated**: Entry is scheduled and checks at intervals
-3. **Checking**: Entry is checking booking status
-4. **Rebooked**: Successfully rebooked the cancelled booking
-5. **Max Attempts**: Reached maximum attempts
-6. **Deactivated**: Entry is paused (manual or auto)
+`armed → waiting_release → queueing → sniping → held → booked`
+(`failed` / `expired` / `disabled` are terminal/paused states)
 
-### 180-Day Booking Window Strategy
+1. **armed**: created and scheduled; a precise timer targets the release instant
+2. **waiting_release**: counting down to `releaseAt − leadTimeSeconds`
+3. **queueing**: (if `queueEnabled`) establishing/holding the DBCA queue session
+4. **sniping**: at the release instant, tight-polling availability every `pollIntervalMs`
+5. **held**: a matching site opened and a 30-minute hold was placed — you complete payment
+6. **booked**: recorded once you confirm the booking
 
-The STQ service includes a helper for calculating booking schedules:
-
-```typescript
-// From main process (service layer)
-const schedule = stqService.calculateBookingSchedule(
-  new Date('2025-06-01'), // Target start date
-  new Date('2025-06-15'), // Target end date
-  false // Is peak season?
-);
-
-// Returns:
-// {
-//   initialBookingDate: Date, // 180 days before target
-//   rebookCheckDates: Date[], // When to check for rebooking
-//   maxStayNights: number, // 14 or 28 depending on season
-// }
-```
-
-### Understanding the 180-Day Window
-
-ParkStay allows bookings up to 180 days in advance. For stays longer than max stay limits:
-
-1. Book initial segment 180 days in advance
-2. Monitor 21-28 days before the 180-day threshold for next segment
-3. Rebook to extend the stay as the window opens
-
-Example: 30-night stay starting June 1
-- Book nights 1-14 on December 3 (180 days before)
-- Monitor for nights 15-28 starting May 11
-- Book nights 15-28 when available
-- Monitor for nights 29-30 starting May 25
+Because the release instant needs sub-second precision, snipes are scheduled with real timers
+(`setTimeout`/`setInterval`, long-timer-safe), not minute-granularity cron.
 
 ## Notifications
 
@@ -211,10 +181,10 @@ const unsubscribeWatch = window.api.events.onWatchResult((result) => {
   // Update watch status in UI
 });
 
-// Listen for STQ results
-const unsubscribeSTQ = window.api.events.onSTQResult((result) => {
-  console.log('STQ executed:', result);
-  // Update STQ status in UI
+// Listen for Site Sniper status updates
+const unsubscribeSnipe = window.api.on.snipeStatusUpdate((snipe) => {
+  console.log('Snipe status:', snipe.status);
+  // Update snipe status in UI
 });
 
 // Clean up listeners when component unmounts
@@ -222,7 +192,7 @@ useEffect(() => {
   return () => {
     unsubscribe();
     unsubscribeWatch();
-    unsubscribeSTQ();
+    unsubscribeSnipe();
   };
 }, []);
 ```
@@ -230,7 +200,8 @@ useEffect(() => {
 ### Notification Types
 
 - `watch_found`: Watch found availability
-- `stq_success`: STQ successfully rebooked
+- `snipe_held`: Site Sniper placed a temporary hold (complete payment now)
+- `snipe_booked`: A sniped booking was confirmed
 - `booking_confirmed`: Booking was confirmed
 - `error`: Error occurred
 - `warning`: Warning message
@@ -240,18 +211,21 @@ useEffect(() => {
 
 ### How It Works
 
-The job scheduler runs in the main process and uses cron jobs to execute watches and STQ checks at their specified intervals.
+The job scheduler runs in the main process. Watches use cron jobs at their configured
+intervals; Site Sniper snipes use precise real timers (`setTimeout`/`setInterval`) armed for
+the exact release instant, because release timing needs sub-second precision that cron cannot
+provide.
 
 ```typescript
 // From main process
-const jobScheduler = new JobScheduler(watchService, stqService);
+const jobScheduler = new JobScheduler(watchService, siteSniperService);
 
 // Start scheduler
 jobScheduler.start();
 
 // Get status
 const status = jobScheduler.getJobStatus();
-// Returns: { isRunning: boolean, totalJobs: number, watches: number, stqs: number }
+// Returns: { isRunning: boolean, totalJobs: number, watches: number, snipes: number }
 
 // Stop scheduler
 jobScheduler.stop();
@@ -259,9 +233,9 @@ jobScheduler.stop();
 
 ### Automatic Scheduling
 
-- When a watch is created and activated, it's automatically scheduled
-- When an STQ entry is created and activated, it's automatically scheduled
-- Updates to interval reschedule the job
+- When a watch is created and activated, it's automatically scheduled (cron)
+- When a snipe is created and activated, a precise timer is armed for its release instant
+- Updates reschedule the job
 - Deactivation unschedules the job
 - Jobs persist across application restarts
 
@@ -271,8 +245,8 @@ jobScheduler.stop();
 // Execute a watch immediately (outside of schedule)
 await jobScheduler.executeWatchNow(watchId);
 
-// Execute an STQ check immediately
-await jobScheduler.executeSTQNow(stqId);
+// Run a snipe attempt immediately
+await jobScheduler.executeSnipeNow(snipeId);
 ```
 
 ## ParkStay API Integration
@@ -389,13 +363,14 @@ if (response.success) {
 4. **Auto-Booking**: Only enable if you're confident in the criteria
 5. **Multiple Watches**: Create separate watches for different date ranges
 
-### Beat the Crowd
+### Site Sniper
 
-1. **Check Intervals**: 1-4 hours is usually sufficient
-2. **Max Attempts**: Set a reasonable limit (1000 = ~42 days at 1-hour intervals)
-3. **Monitor Regularly**: Check the status periodically
-4. **Booking References**: Ensure the booking reference is correct
-5. **Active Monitoring**: Keep entries active only when needed
+1. **Release Mode**: Use `daily_rollover` for standard parks, `scheduled` for Ningaloo releases, `cancellation` to watch for freed sites
+2. **Release Instant**: For `scheduled` mode, set `releaseAt` to the published open time (AWST)
+3. **Queue**: Enable it only for Ningaloo scheduled releases; it gives no advantage otherwise
+4. **Poll Interval**: 1000–2000 ms during a release window; keep cancellation polling ≥ 3 s
+5. **Complete Payment**: A held site expires in 30 minutes — finish payment promptly
+6. **One Booking Per Night**: Never run overlapping snipes that could double-book a night
 
 ### Performance
 
@@ -437,11 +412,12 @@ console.log('Watch from DB:', watch);
 - Check scheduler status: `jobScheduler.getJobStatus()`
 - Check for errors in console
 
-**STQ not rebooking:**
-- Check if entry is active: `entry.isActive`
-- Check attempts count: `entry.attemptsCount`
-- Verify booking reference is correct
-- Check ParkStay session is valid
+**Snipe not placing a hold:**
+- Check the snipe is active/armed: `snipe.isActive` / `snipe.status`
+- Check the release instant (`releaseAt`) is correct and in AWST
+- Confirm every night in the range shows `open` at release time
+- For Ningaloo, confirm the queue session became active (`queueEnabled`)
+- Check attempts and last error: `snipe.attemptsCount`, `snipe.lastError`
 
 **Notifications not appearing:**
 - Check notification service configuration
@@ -511,7 +487,7 @@ For issues or questions:
 ### Version 1.0.0 (2025-10-31)
 - Initial implementation
 - Watch system complete
-- Beat the Crowd (formerly Skip The Queue) complete
+- Site Sniper (replaces the former Skip The Queue / Beat the Crowd) complete
 - Job scheduler complete
 - Notification system complete
 - ParkStay API integration complete

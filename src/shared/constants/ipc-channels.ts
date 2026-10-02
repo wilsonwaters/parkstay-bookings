@@ -32,15 +32,15 @@ export const IPC_CHANNELS = {
   WATCH_DEACTIVATE: 'watch:deactivate',
   WATCH_EXECUTE: 'watch:execute',
 
-  // Skip The Queue
-  STQ_CREATE: 'stq:create',
-  STQ_GET: 'stq:get',
-  STQ_LIST: 'stq:list',
-  STQ_UPDATE: 'stq:update',
-  STQ_DELETE: 'stq:delete',
-  STQ_ACTIVATE: 'stq:activate',
-  STQ_DEACTIVATE: 'stq:deactivate',
-  STQ_EXECUTE: 'stq:execute',
+  // Site Sniper
+  SNIPE_CREATE: 'snipe:create',
+  SNIPE_GET: 'snipe:get',
+  SNIPE_LIST: 'snipe:list',
+  SNIPE_UPDATE: 'snipe:update',
+  SNIPE_DELETE: 'snipe:delete',
+  SNIPE_ACTIVATE: 'snipe:activate',
+  SNIPE_DEACTIVATE: 'snipe:deactivate',
+  SNIPE_EXECUTE: 'snipe:execute',
 
   // Notifications
   NOTIFICATION_LIST: 'notification:list',
@@ -98,7 +98,7 @@ export const IPC_CHANNELS = {
   NOTIFICATION_CREATED: 'notification:created',
   BOOKING_UPDATED: 'booking:updated',
   WATCH_RESULT: 'watch:result',
-  STQ_RESULT: 'stq:result',
+  SNIPE_STATUS_UPDATE: 'snipe:status-update',
   QUEUE_STATUS_UPDATE: 'queue:status-update',
   UPDATE_AVAILABLE: 'update:available',
   UPDATE_NOT_AVAILABLE: 'update:not-available',

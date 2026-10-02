@@ -7,7 +7,7 @@ import { TestDatabaseHelper } from '@tests/utils/database-helper';
 import { UserRepository } from '@main/database/repositories/UserRepository';
 import { mockUserInput } from '@tests/fixtures/users';
 import { mockWatch } from '@tests/fixtures/watches';
-import { mockSTQEntry } from '@tests/fixtures/stq';
+import { mockSiteSnipe } from '@tests/fixtures/site-sniper';
 import { NotificationType } from '@shared/types/common.types';
 
 describe('NotificationService', () => {
@@ -60,14 +60,26 @@ describe('NotificationService', () => {
     });
   });
 
-  describe('notifySTQSuccess', () => {
-    it('should create STQ success notification', async () => {
-      const entry = { ...mockSTQEntry, userId: testUserId };
-      await notificationService.notifySTQSuccess(entry, 'BK789012');
+  describe('notifySnipeHeld', () => {
+    it('should create snipe held notification', async () => {
+      const snipe = { ...mockSiteSnipe, userId: testUserId };
+      await notificationService.notifySnipeHeld(snipe);
 
       const notifications = await notificationService.getNotifications(testUserId);
       expect(notifications).toHaveLength(1);
-      expect(notifications[0].type).toBe(NotificationType.STQ_SUCCESS);
+      expect(notifications[0].type).toBe(NotificationType.SNIPE_HELD);
+      expect(notifications[0].actionUrl).toBe(`/site-sniper/${snipe.id}`);
+    });
+  });
+
+  describe('notifySnipeBooked', () => {
+    it('should create snipe booked notification', async () => {
+      const snipe = { ...mockSiteSnipe, userId: testUserId, bookedReference: 'PS0098765' };
+      await notificationService.notifySnipeBooked(snipe);
+
+      const notifications = await notificationService.getNotifications(testUserId);
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0].type).toBe(NotificationType.SNIPE_BOOKED);
     });
   });
 

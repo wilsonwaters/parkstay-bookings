@@ -14,8 +14,8 @@ import WatchesPage from './pages/Watches';
 import CreateWatch from './pages/Watches/CreateWatch';
 import EditWatch from './pages/Watches/EditWatch';
 import WatchDetail from './pages/Watches/WatchDetail';
-import SkipTheQueuePage from './pages/SkipTheQueue';
-import CreateSTQ from './pages/SkipTheQueue/CreateSTQ';
+import SiteSniperPage from './pages/SiteSniper';
+import CreateSiteSnipe from './pages/SiteSniper/CreateSiteSnipe';
 import Settings from './pages/Settings';
 import ErrorBoundary from './components/ErrorBoundary';
 import LoadingSpinner from './components/LoadingSpinner';
@@ -79,8 +79,8 @@ const App: React.FC = () => {
           <Route path="/watches/create" element={<CreateWatch />} />
           <Route path="/watches/:id" element={<WatchDetail />} />
           <Route path="/watches/:id/edit" element={<EditWatch />} />
-          <Route path="/skip-the-queue" element={<SkipTheQueuePage />} />
-          <Route path="/skip-the-queue/create" element={<CreateSTQ />} />
+          <Route path="/site-sniper" element={<SiteSniperPage />} />
+          <Route path="/site-sniper/create" element={<CreateSiteSnipe />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

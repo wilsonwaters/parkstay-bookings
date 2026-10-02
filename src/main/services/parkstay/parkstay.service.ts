@@ -10,6 +10,9 @@ import {
   CampgroundSearchResult,
   CampsiteAvailability,
   QueueSessionInfo,
+  SiteAvailabilityView,
+  SiteAvailabilityEntry,
+  SiteDayStatus,
 } from '@shared/types';
 import { PARKSTAY_API_BASE_URL, PARKSTAY_BASE_URL } from '@shared/constants';
 import { QueueService } from '../queue/queue.service';
@@ -803,6 +806,229 @@ export class ParkStayService {
         queueActive: false,
       };
       return this.queueSession;
+    }
+  }
+
+  /**
+   * Establish a queue session before an API call, only when the caller opts in.
+   * Availability polling generally passes useQueue=false so it never blocks; the
+   * Site Sniper decides when the DBCA virtual queue (Ningaloo) must be joined.
+   */
+  private async maybeQueue(useQueue: boolean): Promise<void> {
+    if (useQueue) {
+      await this.ensureQueueAccess();
+    }
+  }
+
+  /**
+   * Build the list of night date strings (YYYY-MM-DD) in [arrival, departure).
+   */
+  private nightsInRange(arrivalDate: string, departureDate: string): string[] {
+    const nights: string[] = [];
+    const start = new Date(`${arrivalDate}T00:00:00Z`);
+    const end = new Date(`${departureDate}T00:00:00Z`);
+    for (let t = start.getTime(); t < end.getTime(); t += 24 * 60 * 60 * 1000) {
+      nights.push(new Date(t).toISOString().slice(0, 10));
+    }
+    return nights;
+  }
+
+  /**
+   * Normalise a site/class entry's per-day availability into SiteDayStatus[].
+   * Tolerates both shapes: `availability: [{date,status}, ...]` and the map form
+   * `{ 'YYYY-MM-DD': [status, ...] }`.
+   */
+  private parseAvailabilityDays(entry: any): SiteDayStatus[] {
+    const days: SiteDayStatus[] = [];
+    const raw = entry?.availability;
+    if (Array.isArray(raw)) {
+      for (const day of raw) {
+        if (day && typeof day === 'object') {
+          const date = day.date ?? day.day ?? '';
+          const status = Array.isArray(day.status) ? day.status[0] : (day.status ?? '');
+          if (date) days.push({ date: String(date), status: String(status) });
+        }
+      }
+    } else if (raw && typeof raw === 'object') {
+      for (const [date, value] of Object.entries(raw)) {
+        const status = Array.isArray(value) ? value[0] : value;
+        days.push({ date: String(date), status: String(status) });
+      }
+    }
+    return days;
+  }
+
+  /**
+   * Get the campsite availability view for a campground.
+   *
+   * Real endpoint: GET /api/campsite_availablity_view/{campgroundId}/
+   * (note the intentional misspelling "availablity" in the real URL).
+   *
+   * Query: arrival, departure (YYYY-MM-DD), num_adult, num_concession, num_child,
+   * num_infant, gear_type. Browser UA + Referer are applied by the axios defaults.
+   *
+   * A date is bookable iff its status === 'open'. Before release it reports
+   * 'toofar'/'closed'; at the release instant it flips to 'open'. `allOpen` is true
+   * for a site iff every night in [arrival, departure) is 'open'.
+   *
+   * Parsing is defensive: never throws on an unexpected body shape (returns empty
+   * sites); only throws on a network error.
+   */
+  async getSiteAvailabilityView(
+    campgroundId: string,
+    params: {
+      arrivalDate: string;
+      departureDate: string;
+      numAdult?: number;
+      numConcession?: number;
+      numChild?: number;
+      numInfant?: number;
+      gearType?: string;
+    },
+    useQueue: boolean = false
+  ): Promise<SiteAvailabilityView> {
+    await this.maybeQueue(useQueue);
+
+    let data: any;
+    try {
+      const response = await this.client.get(`/campsite_availablity_view/${campgroundId}/`, {
+        params: {
+          arrival: params.arrivalDate,
+          departure: params.departureDate,
+          num_adult: params.numAdult ?? 2,
+          num_concession: params.numConcession ?? 0,
+          num_child: params.numChild ?? 0,
+          num_infant: params.numInfant ?? 0,
+          gear_type: params.gearType || 'all',
+        },
+      });
+      data = response.data;
+    } catch (error) {
+      console.error('Get site availability view failed:', error);
+      throw new Error('Failed to get site availability view');
+    }
+
+    // Parse defensively — never throw on shape issues.
+    try {
+      const nights = this.nightsInRange(params.arrivalDate, params.departureDate);
+      const sites: SiteAvailabilityEntry[] = [];
+
+      const buildEntry = (entry: any, fallbackId: string, classId?: string): void => {
+        const days = this.parseAvailabilityDays(entry);
+        const statusByDate = new Map(days.map((d) => [d.date, d.status]));
+        const allOpen = nights.length > 0 && nights.every((n) => statusByDate.get(n) === 'open');
+        sites.push({
+          siteId: String(entry?.id ?? entry?.campsite_id ?? fallbackId),
+          siteName: entry?.name ?? entry?.campsite_name ?? undefined,
+          siteClassId: classId ?? (entry?.class_id != null ? String(entry.class_id) : undefined),
+          days,
+          allOpen,
+        });
+      };
+
+      const rawSites = Array.isArray(data?.sites) ? data.sites : [];
+      rawSites.forEach((s: any, i: number) => buildEntry(s, `site-${i}`));
+
+      // Some responses carry class-level availability under `classes`.
+      if (data?.classes && typeof data.classes === 'object') {
+        for (const [classId, cls] of Object.entries<any>(data.classes)) {
+          if (cls && cls.availability) {
+            buildEntry(cls, `class-${classId}`, classId);
+          }
+        }
+      }
+
+      return {
+        campgroundId: String(data?.id ?? campgroundId),
+        campgroundName: data?.name ?? undefined,
+        releaseDate: data?.release_date ?? undefined,
+        bookingOpenDate: data?.booking_open_date ?? undefined,
+        bookingTimeOpen: Boolean(data?.booking_time_open),
+        sites,
+      };
+    } catch (parseError) {
+      console.error('Parsing site availability view failed:', parseError);
+      return {
+        campgroundId: String(campgroundId),
+        bookingTimeOpen: false,
+        sites: [],
+      };
+    }
+  }
+
+  /**
+   * Place a 30-minute temporary booking hold via the real create_booking endpoint.
+   *
+   * Real endpoint: POST /api/create_booking — CSRF-EXEMPT, body is
+   * application/x-www-form-urlencoded (URLSearchParams), NOT JSON.
+   *
+   * Success → { status:'success', pk }. If a booking is already in the session →
+   * { status:'error', inprogress_booking:true }. If the site was taken between the
+   * availability check and this call the server returns an error (the race we try
+   * to win). Never throws on a 400 — returns { success:false, error }.
+   */
+  async createBookingHold(
+    params: {
+      campgroundId: string;
+      campsiteId?: string;
+      campsiteClassId?: string;
+      arrivalDate: string;
+      departureDate: string;
+      numAdult: number;
+      numConcession?: number;
+      numChild?: number;
+      numInfant?: number;
+      numVehicle?: number;
+      postcode?: string;
+    },
+    useQueue: boolean = false
+  ): Promise<{ success: boolean; pk?: string; inProgress?: boolean; error?: string }> {
+    try {
+      await this.maybeQueue(useQueue);
+
+      const body = new URLSearchParams();
+      body.set('campground', params.campgroundId);
+      body.set('arrival', params.arrivalDate);
+      body.set('departure', params.departureDate);
+      body.set('num_adult', String(params.numAdult));
+      body.set('num_concession', String(params.numConcession ?? 0));
+      body.set('num_child', String(params.numChild ?? 0));
+      body.set('num_infant', String(params.numInfant ?? 0));
+      body.set('num_vehicle', String(params.numVehicle ?? 1));
+      body.set('num_campervan', '0');
+      body.set('num_caravan', '0');
+      body.set('num_motorcycle', '0');
+      body.set('num_trailer', '0');
+      if (params.postcode) body.set('postcode', params.postcode);
+      if (params.campsiteId) {
+        body.set('campsite', params.campsiteId);
+      } else if (params.campsiteClassId) {
+        body.set('campsite_class', params.campsiteClassId);
+      }
+
+      const response = await this.client.post('/create_booking', body);
+      const data = response.data || {};
+
+      if (data.status === 'success' && data.pk != null) {
+        return { success: true, pk: String(data.pk) };
+      }
+      if (data.status === 'error' && data.inprogress_booking) {
+        return { success: false, inProgress: true, error: 'A booking is already in progress' };
+      }
+      return {
+        success: false,
+        error: data.message || data.error || data.status || 'Booking hold failed',
+      };
+    } catch (error: any) {
+      console.error('Create booking hold failed:', error);
+      const data = error.response?.data;
+      if (data?.inprogress_booking) {
+        return { success: false, inProgress: true, error: 'A booking is already in progress' };
+      }
+      return {
+        success: false,
+        error: data?.message || data?.error || error.message || 'Failed to create booking hold',
+      };
     }
   }
 

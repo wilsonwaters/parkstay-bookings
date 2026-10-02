@@ -12,8 +12,8 @@ import {
   Booking,
   WatchInput,
   Watch,
-  STQInput,
-  SkipTheQueueEntry,
+  SiteSnipe,
+  SiteSnipeInput,
   Notification,
   APIResponse,
   SettingValueType,
@@ -119,31 +119,31 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.WATCH_EXECUTE, id),
   },
 
-  // Skip The Queue APIs
-  stq: {
-    create: (userId: number, input: STQInput): Promise<APIResponse<SkipTheQueueEntry>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.STQ_CREATE, userId, input),
+  // Site Sniper APIs
+  siteSniper: {
+    create: (userId: number, input: SiteSnipeInput): Promise<APIResponse<SiteSnipe>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SNIPE_CREATE, userId, input),
 
-    get: (id: number): Promise<APIResponse<SkipTheQueueEntry | null>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.STQ_GET, id),
+    get: (id: number): Promise<APIResponse<SiteSnipe | null>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SNIPE_GET, id),
 
-    list: (userId: number): Promise<APIResponse<SkipTheQueueEntry[]>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.STQ_LIST, userId),
+    list: (userId: number): Promise<APIResponse<SiteSnipe[]>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SNIPE_LIST, userId),
 
-    update: (id: number, updates: Partial<STQInput>): Promise<APIResponse<SkipTheQueueEntry>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.STQ_UPDATE, id, updates),
+    update: (id: number, updates: Partial<SiteSnipeInput>): Promise<APIResponse<SiteSnipe>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SNIPE_UPDATE, id, updates),
 
     delete: (id: number): Promise<APIResponse<boolean>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.STQ_DELETE, id),
+      ipcRenderer.invoke(IPC_CHANNELS.SNIPE_DELETE, id),
 
     activate: (id: number): Promise<APIResponse<boolean>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.STQ_ACTIVATE, id),
+      ipcRenderer.invoke(IPC_CHANNELS.SNIPE_ACTIVATE, id),
 
     deactivate: (id: number): Promise<APIResponse<boolean>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.STQ_DEACTIVATE, id),
+      ipcRenderer.invoke(IPC_CHANNELS.SNIPE_DEACTIVATE, id),
 
     execute: (id: number): Promise<APIResponse<any>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.STQ_EXECUTE, id),
+      ipcRenderer.invoke(IPC_CHANNELS.SNIPE_EXECUTE, id),
   },
 
   // Notification APIs
@@ -296,8 +296,8 @@ const api = {
       ipcRenderer.on(IPC_CHANNELS.WATCH_RESULT, (_event, result) => callback(result));
     },
 
-    stqResult: (callback: (result: any) => void) => {
-      ipcRenderer.on(IPC_CHANNELS.STQ_RESULT, (_event, result) => callback(result));
+    snipeStatusUpdate: (callback: (result: any) => void) => {
+      ipcRenderer.on(IPC_CHANNELS.SNIPE_STATUS_UPDATE, (_event, result) => callback(result));
     },
 
     queueStatusUpdate: (callback: (event: QueueStatusEvent) => void) => {
@@ -342,8 +342,8 @@ const api = {
       ipcRenderer.removeAllListeners(IPC_CHANNELS.WATCH_RESULT);
     },
 
-    stqResult: () => {
-      ipcRenderer.removeAllListeners(IPC_CHANNELS.STQ_RESULT);
+    snipeStatusUpdate: () => {
+      ipcRenderer.removeAllListeners(IPC_CHANNELS.SNIPE_STATUS_UPDATE);
     },
 
     queueStatusUpdate: () => {

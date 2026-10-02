@@ -13,15 +13,39 @@ export enum WatchResult {
   ERROR = 'error',
 }
 
-export enum STQResult {
-  SUCCESS = 'success',
+export enum SnipeResult {
+  PENDING = 'pending',
+  HELD = 'held', // temp hold placed, awaiting payment
+  BOOKED = 'booked', // user completed payment (confirmed later)
   UNAVAILABLE = 'unavailable',
+  TOO_EARLY = 'too_early', // not open yet (toofar/closed)
+  QUEUE_FULL = 'queue_full',
+  EXPIRED = 'expired', // window/hold expired
   ERROR = 'error',
+}
+
+export enum SnipeReleaseMode {
+  DAILY_ROLLOVER = 'daily_rollover', // non-Ningaloo midnight AWST rollover
+  SCHEDULED = 'scheduled', // explicit release datetime (Ningaloo 10:00 first Tue)
+  CANCELLATION = 'cancellation', // no fixed release; poll for freed site
+}
+
+export enum SnipeStatus {
+  ARMED = 'armed', // scheduled, waiting for release window
+  WAITING_RELEASE = 'waiting_release',
+  QUEUEING = 'queueing', // establishing/holding queue session
+  SNIPING = 'sniping', // tight-polling availability
+  HELD = 'held', // hold placed, awaiting user payment
+  BOOKED = 'booked',
+  FAILED = 'failed',
+  EXPIRED = 'expired',
+  DISABLED = 'disabled',
 }
 
 export enum NotificationType {
   WATCH_FOUND = 'watch_found',
-  STQ_SUCCESS = 'stq_success',
+  SNIPE_HELD = 'snipe_held',
+  SNIPE_BOOKED = 'snipe_booked',
   BOOKING_CONFIRMED = 'booking_confirmed',
   ERROR = 'error',
   WARNING = 'warning',
@@ -31,12 +55,12 @@ export enum NotificationType {
 export enum RelatedType {
   BOOKING = 'booking',
   WATCH = 'watch',
-  STQ = 'stq',
+  SNIPE = 'snipe',
 }
 
 export enum JobType {
   WATCH_POLL = 'watch_poll',
-  STQ_CHECK = 'stq_check',
+  SNIPE = 'snipe',
   CLEANUP = 'cleanup',
 }
 
@@ -57,7 +81,7 @@ export enum SettingCategory {
   GENERAL = 'general',
   NOTIFICATIONS = 'notifications',
   WATCHES = 'watches',
-  STQ = 'stq',
+  SNIPER = 'sniper',
   UI = 'ui',
   ADVANCED = 'advanced',
 }
@@ -136,9 +160,9 @@ export interface AppSettings {
     maxConcurrent: number;
     autoBookEnabled: boolean;
   };
-  stq: {
-    defaultInterval: number;
-    maxAttempts: number;
+  siteSniper: {
+    defaultPollIntervalMs: number;
+    defaultLeadTimeSeconds: number;
     enabled: boolean;
   };
   ui: {

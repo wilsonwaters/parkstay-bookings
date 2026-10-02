@@ -2,10 +2,11 @@ import {
   Notification,
   NotificationInput,
   Watch,
-  SkipTheQueueEntry,
+  SiteSnipe,
   AvailabilityResult,
 } from '@shared/types';
 import { NotificationType, RelatedType } from '@shared/types/common.types';
+import { BOOKING_HOLD_MINUTES } from '@shared/constants';
 import { NotificationRepository } from '../../database/repositories';
 import { NotificationDispatcher } from './notification-dispatcher';
 import { Notification as ElectronNotification, app } from 'electron';
@@ -127,20 +128,50 @@ export class NotificationService {
   }
 
   /**
-   * Notify when STQ successfully rebooks
+   * Notify when a Site Snipe places a temporary hold (payment still required).
    */
-  async notifySTQSuccess(entry: SkipTheQueueEntry, newBookingReference: string): Promise<void> {
-    const message = `Successfully rebooked ${entry.bookingReference}. New booking reference: ${newBookingReference}`;
+  async notifySnipeHeld(snipe: SiteSnipe): Promise<void> {
+    const arrival = snipe.arrivalDate.toLocaleDateString();
+    const departure = snipe.departureDate.toLocaleDateString();
+    const where = snipe.campgroundName || snipe.campgroundId;
+    const message = `Site held at ${where} for ${arrival}–${departure}. Complete payment within ${BOOKING_HOLD_MINUTES} minutes.`;
 
-    await this.notify({
-      userId: entry.userId,
-      type: NotificationType.STQ_SUCCESS,
-      title: 'Rebooking Successful!',
-      message,
-      relatedId: entry.id,
-      relatedType: RelatedType.STQ,
-      actionUrl: `/stq/${entry.id}`,
-    });
+    await this.notify(
+      {
+        userId: snipe.userId,
+        type: NotificationType.SNIPE_HELD,
+        title: 'Site Held — Complete Payment!',
+        message,
+        relatedId: snipe.id,
+        relatedType: RelatedType.SNIPE,
+        actionUrl: `/site-sniper/${snipe.id}`,
+      },
+      { campgroundName: snipe.campgroundName }
+    );
+  }
+
+  /**
+   * Notify when a Site Snipe booking is completed (payment confirmed).
+   */
+  async notifySnipeBooked(snipe: SiteSnipe): Promise<void> {
+    const arrival = snipe.arrivalDate.toLocaleDateString();
+    const departure = snipe.departureDate.toLocaleDateString();
+    const where = snipe.campgroundName || snipe.campgroundId;
+    const reference = snipe.bookedReference ? ` (ref ${snipe.bookedReference})` : '';
+    const message = `Booking confirmed at ${where} for ${arrival}–${departure}${reference}.`;
+
+    await this.notify(
+      {
+        userId: snipe.userId,
+        type: NotificationType.SNIPE_BOOKED,
+        title: 'Snipe Booked!',
+        message,
+        relatedId: snipe.id,
+        relatedType: RelatedType.SNIPE,
+        actionUrl: `/site-sniper/${snipe.id}`,
+      },
+      { campgroundName: snipe.campgroundName }
+    );
   }
 
   /**

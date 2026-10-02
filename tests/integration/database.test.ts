@@ -7,13 +7,13 @@ import { TestDatabaseHelper } from '@tests/utils/database-helper';
 import { UserRepository } from '@main/database/repositories/UserRepository';
 import { BookingRepository } from '@main/database/repositories/BookingRepository';
 import { WatchRepository } from '@main/database/repositories';
-import { STQRepository } from '@main/database/repositories';
+import { SiteSniperRepository } from '@main/database/repositories';
 import { NotificationRepository } from '@main/database/repositories';
 import { mockUserInput } from '@tests/fixtures/users';
 import { createMockBookingInput } from '@tests/fixtures/bookings';
 import { createMockWatchInput } from '@tests/fixtures/watches';
-import { createMockSTQInput } from '@tests/fixtures/stq';
-import { BookingStatus } from '@shared/types';
+import { createMockSiteSnipeInput } from '@tests/fixtures/site-sniper';
+import { SnipeStatus } from '@shared/types/common.types';
 import { NotificationType } from '@shared/types/common.types';
 
 describe('Database Integration', () => {
@@ -41,6 +41,7 @@ describe('Database Integration', () => {
       expect(tableNames).toContain('bookings');
       expect(tableNames).toContain('watches');
       expect(tableNames).toContain('skip_the_queue_entries');
+      expect(tableNames).toContain('site_snipes');
       expect(tableNames).toContain('notifications');
       expect(tableNames).toContain('settings');
       expect(tableNames).toContain('job_logs');
@@ -122,34 +123,30 @@ describe('Database Integration', () => {
       expect(notification.relatedId).toBe(watch.id);
     });
 
-    it('should handle STQ workflow', async () => {
+    it('should handle Site Sniper workflow', async () => {
       const db = dbHelper.getDb();
       const userRepo = new UserRepository(db);
-      const bookingRepo = new BookingRepository(db);
-      const stqRepo = new STQRepository();
+      const snipeRepo = new SiteSniperRepository();
 
-      // Create user and booking
+      // Create user
       const user = userRepo.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag');
-      const bookingInput = createMockBookingInput();
-      const booking = bookingRepo.create(user.id, bookingInput);
 
-      // Create STQ entry
-      const stqInput = createMockSTQInput({
-        bookingId: booking.id,
-        bookingReference: booking.bookingReference,
-      });
-      const stqEntry = stqRepo.create(user.id, stqInput);
+      // Create site snipe
+      const snipeInput = createMockSiteSnipeInput();
+      const snipe = snipeRepo.create(user.id, snipeInput);
 
-      expect(stqEntry.bookingId).toBe(booking.id);
-      expect(stqEntry.userId).toBe(user.id);
+      expect(snipe.userId).toBe(user.id);
+      expect(snipe.status).toBe(SnipeStatus.ARMED);
+      expect(snipe.targetSiteIds).toEqual(snipeInput.targetSiteIds);
 
-      // Simulate successful rebooking
-      const newReference = 'BK999999';
-      stqRepo.markSuccess(stqEntry.id, newReference);
+      // Simulate a successful hold
+      const heldExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
+      snipeRepo.setHeld(snipe.id, '987654', heldExpiresAt, 'https://parkstay/booking/', '136');
 
-      const updated = stqRepo.findById(stqEntry.id);
-      expect(updated?.newBookingReference).toBe(newReference);
-      expect(updated?.successDate).toBeDefined();
+      const updated = snipeRepo.findById(snipe.id);
+      expect(updated?.status).toBe(SnipeStatus.HELD);
+      expect(updated?.heldBookingPk).toBe('987654');
+      expect(updated?.heldExpiresAt).toBeDefined();
     });
   });
 

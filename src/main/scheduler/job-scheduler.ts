@@ -1,28 +1,52 @@
 import * as cron from 'node-cron';
-import { Watch, SkipTheQueueEntry } from '@shared/types';
+import { Watch, SiteSnipe } from '@shared/types';
+import { SnipeReleaseMode, SnipeResult, SnipeStatus } from '@shared/types/common.types';
+import { CANCELLATION_POLL_MIN_MS } from '@shared/constants';
 import { WatchService } from '../services/watch/watch.service';
-import { STQService } from '../services/stq/stq.service';
+import { SiteSniperService } from '../services/sitesniper/sitesniper.service';
 
 interface ScheduledJob {
   id: string;
   task: cron.ScheduledTask;
-  type: 'watch' | 'stq';
+  type: 'watch' | 'cleanup';
   relatedId: number;
 }
 
 /**
+ * Set of timers backing a single scheduled snipe. All must be cleared when the
+ * snipe is unscheduled/stopped to avoid leaks and stray executions.
+ */
+interface SnipeTimers {
+  warmupTimer?: NodeJS.Timeout; // fires at (releaseAt - leadTime), reused for the release fire
+  pollInterval?: NodeJS.Timeout; // tight-poll cadence during the snipe window
+  stopTimer?: NodeJS.Timeout; // fires at (releaseAt + windowDuration) to give up
+  rearmTimer?: NodeJS.Timeout; // long-timer-safe re-arm for far-future releases
+}
+
+// setTimeout is only reliable up to ~24.8 days (2^31-1 ms). For anything further
+// out we re-arm periodically instead of scheduling one enormous timeout.
+const MAX_TIMER_MS = 2_000_000_000;
+const REARM_INTERVAL_MS = 24 * 60 * 60 * 1000; // 1 day
+
+/**
  * Job Scheduler
- * Manages scheduled background jobs for watches and STQ checks
+ *
+ * Manages background jobs:
+ * - Watches: node-cron (minute-granularity is fine for polling).
+ * - Site Snipes: precise setTimeout/setInterval scheduling. node-cron cannot hit
+ *   a sub-minute release instant, so snipes use timers armed to the exact release.
+ * - Daily cleanup: node-cron.
  */
 export class JobScheduler {
   private jobs: Map<string, ScheduledJob> = new Map();
+  private snipeTimers: Map<string, SnipeTimers> = new Map();
   private watchService: WatchService;
-  private stqService: STQService;
+  private siteSniperService: SiteSniperService;
   private isRunning: boolean = false;
 
-  constructor(watchService: WatchService, stqService: STQService) {
+  constructor(watchService: WatchService, siteSniperService: SiteSniperService) {
     this.watchService = watchService;
-    this.stqService = stqService;
+    this.siteSniperService = siteSniperService;
   }
 
   /**
@@ -37,13 +61,8 @@ export class JobScheduler {
     console.log('Starting job scheduler...');
     this.isRunning = true;
 
-    // Load active watches and schedule them
     this.scheduleActiveWatches();
-
-    // Load active STQ entries and schedule them
-    this.scheduleActiveSTQEntries();
-
-    // Schedule cleanup job (runs daily at 2 AM)
+    this.scheduleActiveSnipes();
     this.scheduleCleanupJob();
 
     console.log('Job scheduler started');
@@ -60,11 +79,12 @@ export class JobScheduler {
 
     console.log('Stopping job scheduler...');
 
-    // Stop all jobs
-    this.jobs.forEach((job) => {
-      job.task.stop();
-    });
+    this.jobs.forEach((job) => job.task.stop());
     this.jobs.clear();
+
+    // Clear all snipe timers.
+    Array.from(this.snipeTimers.keys()).forEach((key) => this.clearSnipeTimers(key));
+    this.snipeTimers.clear();
 
     this.isRunning = false;
     console.log('Job scheduler stopped');
@@ -78,38 +98,30 @@ export class JobScheduler {
   scheduleWatch(watch: Watch): void {
     const jobId = `watch-${watch.id}`;
 
-    // Remove existing job if any
     this.unscheduleJob(jobId);
 
     if (!watch.isActive) {
       return;
     }
 
-    // Use creation time to determine the minute/hour offset for scheduling
     const createdAt = new Date(watch.createdAt);
     const minute = createdAt.getMinutes();
     const hour = createdAt.getHours();
 
-    // Create cron expression based on interval
-    // This distributes load by using the watch's creation time as the run time offset
     let cronExpression: string;
     const intervalMinutes = watch.checkIntervalMinutes;
 
     if (intervalMinutes <= 60) {
-      // Hourly: run at the same minute each hour
       cronExpression = `${minute} * * * *`;
     } else if (intervalMinutes <= 240) {
-      // 4 hours: run at specific hours based on creation hour
       const hourOffset = hour % 4;
       const hours = [0, 4, 8, 12, 16, 20].map((h) => (h + hourOffset) % 24).sort((a, b) => a - b);
       cronExpression = `${minute} ${hours.join(',')} * * *`;
     } else if (intervalMinutes <= 720) {
-      // 12 hours: run twice daily at offset hours
       const hourOffset = hour % 12;
       const hours = [hourOffset, (hourOffset + 12) % 24].sort((a, b) => a - b);
       cronExpression = `${minute} ${hours.join(',')} * * *`;
     } else {
-      // 24 hours: run once daily at the creation hour/minute
       cronExpression = `${minute} ${hour} * * *`;
     }
 
@@ -142,53 +154,181 @@ export class JobScheduler {
   }
 
   /**
-   * Schedule an STQ entry
+   * Schedule a Site Snipe.
+   *
+   * - CANCELLATION: continuous setInterval poll (clamped to a politeness floor).
+   * - DAILY_ROLLOVER / SCHEDULED: arm a warm-up timer at (releaseAt - leadTime),
+   *   then poll tightly from the release instant until the window elapses. Uses a
+   *   long-timer-safe re-arm for far-future releases.
    */
-  scheduleSTQ(entry: SkipTheQueueEntry): void {
-    const jobId = `stq-${entry.id}`;
+  scheduleSnipe(snipe: SiteSnipe): void {
+    this.unscheduleSnipe(snipe.id);
 
-    // Remove existing job if any
-    this.unscheduleJob(jobId);
-
-    if (!entry.isActive) {
+    if (!snipe.isActive) {
       return;
     }
 
-    // Create cron expression for interval (every N minutes)
-    const cronExpression = `*/${entry.checkIntervalMinutes} * * * *`;
+    const key = `snipe-${snipe.id}`;
 
-    const task = cron.schedule(
-      cronExpression,
-      async () => {
-        try {
-          console.log(`Executing STQ ${entry.id} for booking ${entry.bookingReference}`);
-          const result = await this.stqService.execute(entry.id);
+    if (snipe.releaseMode === SnipeReleaseMode.CANCELLATION) {
+      const interval = Math.max(snipe.pollIntervalMs, CANCELLATION_POLL_MIN_MS);
+      const timers: SnipeTimers = {};
+      timers.pollInterval = setInterval(() => {
+        void this.runSnipeTick(snipe);
+      }, interval);
+      this.snipeTimers.set(key, timers);
+      this.siteSniperService.setStatus(snipe.id, SnipeStatus.SNIPING);
+      console.log(`Scheduled cancellation snipe ${snipe.id} polling every ${interval}ms`);
+      return;
+    }
 
-          // If successful or max attempts reached, unschedule
-          if (result.rebooked || !entry.isActive) {
-            this.unscheduleJob(jobId);
-          }
-        } catch (error) {
-          console.error(`Error executing STQ ${entry.id}:`, error);
-        }
-      },
-      {
-        scheduled: true,
-      }
-    );
+    const releaseAt = this.siteSniperService.computeReleaseAt(snipe);
+    if (!releaseAt) {
+      console.warn(`Snipe ${snipe.id} has no release instant; not scheduling`);
+      return;
+    }
 
-    this.jobs.set(jobId, {
-      id: jobId,
-      task,
-      type: 'stq',
-      relatedId: entry.id,
-    });
+    const timers: SnipeTimers = {};
+    this.snipeTimers.set(key, timers);
 
-    console.log(`Scheduled STQ ${entry.id} with interval ${entry.checkIntervalMinutes} minutes`);
+    const warmupAt = releaseAt.getTime() - snipe.leadTimeSeconds * 1000;
+    const delay = warmupAt - Date.now();
+
+    if (delay > MAX_TIMER_MS) {
+      // Too far out for a single timer — re-arm periodically.
+      timers.rearmTimer = setTimeout(() => this.scheduleSnipe(snipe), REARM_INTERVAL_MS);
+      console.log(
+        `Snipe ${snipe.id} release far in the future; re-arm scheduled in ${REARM_INTERVAL_MS}ms`
+      );
+      return;
+    }
+
+    if (delay <= 0) {
+      // Warm-up window already reached — start immediately.
+      void this.startWarmup(snipe, releaseAt);
+    } else {
+      timers.warmupTimer = setTimeout(() => void this.startWarmup(snipe, releaseAt), delay);
+      console.log(
+        `Scheduled snipe ${snipe.id} warm-up in ${delay}ms (release at ${releaseAt.toISOString()})`
+      );
+    }
   }
 
   /**
-   * Unschedule a job
+   * Warm-up phase: establish the DBCA queue session if required, then wait for the
+   * exact release instant.
+   */
+  private async startWarmup(snipe: SiteSnipe, releaseAt: Date): Promise<void> {
+    const key = `snipe-${snipe.id}`;
+    const timers = this.snipeTimers.get(key);
+    if (!timers) return;
+
+    const current = await this.siteSniperService.get(snipe.id);
+    if (!current || !current.isActive) {
+      this.unscheduleSnipe(snipe.id);
+      return;
+    }
+
+    if (snipe.queueEnabled) {
+      this.siteSniperService.setStatus(snipe.id, SnipeStatus.QUEUEING);
+      const queue = this.siteSniperService.getQueueService();
+      try {
+        await queue.waitForActive();
+        // Legitimate session refresh only — see QueueService.startKeepAlive.
+        queue.startKeepAlive();
+      } catch (error) {
+        console.error(`Snipe ${snipe.id} queue warm-up failed:`, error);
+      }
+    }
+
+    this.siteSniperService.setStatus(snipe.id, SnipeStatus.WAITING_RELEASE);
+
+    const untilRelease = releaseAt.getTime() - Date.now();
+    if (untilRelease <= 0) {
+      this.startSniping(snipe, releaseAt);
+    } else {
+      timers.warmupTimer = setTimeout(
+        () => this.startSniping(snipe, releaseAt),
+        Math.min(untilRelease, MAX_TIMER_MS)
+      );
+    }
+  }
+
+  /**
+   * Sniping phase: tight-poll availability until held/booked, or until the window
+   * elapses (then expire + deactivate).
+   */
+  private startSniping(snipe: SiteSnipe, releaseAt: Date): void {
+    const key = `snipe-${snipe.id}`;
+    const timers = this.snipeTimers.get(key);
+    if (!timers) return;
+
+    this.siteSniperService.setStatus(snipe.id, SnipeStatus.SNIPING);
+
+    timers.pollInterval = setInterval(() => {
+      void this.runSnipeTick(snipe);
+    }, snipe.pollIntervalMs);
+
+    const stopDelay = releaseAt.getTime() + snipe.windowDurationMs - Date.now();
+    timers.stopTimer = setTimeout(() => void this.stopSnipeWindow(snipe), Math.max(stopDelay, 0));
+
+    console.log(`Snipe ${snipe.id} sniping (poll ${snipe.pollIntervalMs}ms)`);
+  }
+
+  /**
+   * One poll tick: run an attempt and stop the schedule if terminal.
+   */
+  private async runSnipeTick(snipe: SiteSnipe): Promise<void> {
+    try {
+      const result = await this.siteSniperService.execute(snipe.id);
+      const current = await this.siteSniperService.get(snipe.id);
+      const done =
+        result.held || result.result === SnipeResult.BOOKED || !current || !current.isActive;
+      if (done) {
+        if (snipe.queueEnabled) {
+          this.siteSniperService.getQueueService().stopKeepAlive();
+        }
+        this.unscheduleSnipe(snipe.id);
+      }
+    } catch (error) {
+      console.error(`Error executing snipe ${snipe.id}:`, error);
+    }
+  }
+
+  /**
+   * Window expired without a hold: mark expired, deactivate, stop keepalive.
+   */
+  private async stopSnipeWindow(snipe: SiteSnipe): Promise<void> {
+    const current = await this.siteSniperService.get(snipe.id);
+    if (
+      current &&
+      current.isActive &&
+      current.status !== SnipeStatus.HELD &&
+      current.status !== SnipeStatus.BOOKED
+    ) {
+      this.siteSniperService.setStatus(snipe.id, SnipeStatus.EXPIRED);
+      await this.siteSniperService.deactivate(snipe.id);
+    }
+    if (snipe.queueEnabled) {
+      this.siteSniperService.getQueueService().stopKeepAlive();
+    }
+    this.unscheduleSnipe(snipe.id);
+  }
+
+  /**
+   * Clear (but do not delete the map entry for) all timers of a snipe.
+   */
+  private clearSnipeTimers(key: string): void {
+    const timers = this.snipeTimers.get(key);
+    if (!timers) return;
+    if (timers.warmupTimer) clearTimeout(timers.warmupTimer);
+    if (timers.stopTimer) clearTimeout(timers.stopTimer);
+    if (timers.rearmTimer) clearTimeout(timers.rearmTimer);
+    if (timers.pollInterval) clearInterval(timers.pollInterval);
+  }
+
+  /**
+   * Unschedule a job (watch/cleanup cron)
    */
   unscheduleJob(jobId: string): void {
     const job = this.jobs.get(jobId);
@@ -207,10 +347,15 @@ export class JobScheduler {
   }
 
   /**
-   * Unschedule an STQ entry
+   * Unschedule a snipe — clears every timer and removes the entry.
    */
-  unscheduleSTQ(stqId: number): void {
-    this.unscheduleJob(`stq-${stqId}`);
+  unscheduleSnipe(snipeId: number): void {
+    const key = `snipe-${snipeId}`;
+    if (this.snipeTimers.has(key)) {
+      this.clearSnipeTimers(key);
+      this.snipeTimers.delete(key);
+      console.log(`Unscheduled snipe ${snipeId}`);
+    }
   }
 
   /**
@@ -218,16 +363,25 @@ export class JobScheduler {
    */
   async executeWatchNow(watchId: number): Promise<any> {
     console.log(`Executing watch ${watchId} immediately`);
-    const result = await this.watchService.execute(watchId);
-    return result;
+    return this.watchService.execute(watchId);
   }
 
   /**
-   * Execute an STQ entry immediately (outside of schedule)
+   * Execute a snipe immediately (outside of schedule)
    */
-  async executeSTQNow(stqId: number): Promise<void> {
-    console.log(`Executing STQ ${stqId} immediately`);
-    await this.stqService.execute(stqId);
+  async executeSnipeNow(snipeId: number): Promise<any> {
+    console.log(`Executing snipe ${snipeId} immediately`);
+    return this.siteSniperService.execute(snipeId);
+  }
+
+  /**
+   * Reschedule a snipe (e.g. after an update)
+   */
+  async rescheduleSnipe(snipeId: number): Promise<void> {
+    const snipe = await this.siteSniperService.get(snipeId);
+    if (snipe) {
+      this.scheduleSnipe(snipe);
+    }
   }
 
   /**
@@ -240,19 +394,18 @@ export class JobScheduler {
   }
 
   /**
-   * Schedule all active STQ entries
+   * Schedule all active snipes
    */
-  private scheduleActiveSTQEntries(): void {
-    const activeEntries = this.stqService.getActiveEntries();
-    console.log(`Scheduling ${activeEntries.length} active STQ entries`);
-    activeEntries.forEach((entry) => this.scheduleSTQ(entry));
+  scheduleActiveSnipes(): void {
+    const activeSnipes = this.siteSniperService.getActive();
+    console.log(`Scheduling ${activeSnipes.length} active snipes`);
+    activeSnipes.forEach((snipe) => this.scheduleSnipe(snipe));
   }
 
   /**
    * Schedule cleanup job
    */
   private scheduleCleanupJob(): void {
-    // Run daily at 2 AM
     const task = cron.schedule(
       '0 2 * * *',
       async () => {
@@ -272,7 +425,7 @@ export class JobScheduler {
     this.jobs.set('cleanup', {
       id: 'cleanup',
       task,
-      type: 'watch', // Doesn't matter for cleanup
+      type: 'cleanup',
       relatedId: 0,
     });
 
@@ -283,9 +436,6 @@ export class JobScheduler {
    * Run cleanup tasks
    */
   private async runCleanup(): Promise<void> {
-    // Clean up old notifications (older than 30 days)
-    // Clean up old job logs (older than 30 days)
-    // Vacuum database
     console.log('Cleanup completed');
   }
 
@@ -296,21 +446,18 @@ export class JobScheduler {
     isRunning: boolean;
     totalJobs: number;
     watches: number;
-    stqs: number;
+    snipes: number;
   } {
     let watches = 0;
-    let stqs = 0;
-
     this.jobs.forEach((job) => {
       if (job.type === 'watch') watches++;
-      else if (job.type === 'stq') stqs++;
     });
 
     return {
       isRunning: this.isRunning,
-      totalJobs: this.jobs.size,
+      totalJobs: this.jobs.size + this.snipeTimers.size,
       watches,
-      stqs,
+      snipes: this.snipeTimers.size,
     };
   }
 
@@ -321,16 +468,6 @@ export class JobScheduler {
     const watch = await this.watchService.get(watchId);
     if (watch) {
       this.scheduleWatch(watch);
-    }
-  }
-
-  /**
-   * Reschedule STQ entry (useful when entry is updated)
-   */
-  async rescheduleSTQ(stqId: number): Promise<void> {
-    const entry = await this.stqService.get(stqId);
-    if (entry) {
-      this.scheduleSTQ(entry);
     }
   }
 }

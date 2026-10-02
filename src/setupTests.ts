@@ -32,8 +32,8 @@ global.window = global.window || {};
     delete: jest.fn(),
     toggleActive: jest.fn(),
   },
-  // STQ handlers
-  stq: {
+  // Site Sniper handlers
+  siteSniper: {
     getAll: jest.fn(),
     getById: jest.fn(),
     create: jest.fn(),

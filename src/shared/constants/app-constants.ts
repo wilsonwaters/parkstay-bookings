@@ -25,13 +25,18 @@ export const DEFAULT_WATCH_INTERVAL = 5;
 export const MIN_WATCH_INTERVAL = 1;
 export const MAX_WATCH_INTERVAL = 60;
 
-export const DEFAULT_STQ_INTERVAL = 2;
-export const MIN_STQ_INTERVAL = 1;
-export const MAX_STQ_INTERVAL = 30;
+// Site Sniper
+export const DEFAULT_SNIPE_POLL_INTERVAL_MS = 1500;
+export const MIN_SNIPE_POLL_INTERVAL_MS = 500;
+export const MAX_SNIPE_POLL_INTERVAL_MS = 60000;
+export const DEFAULT_SNIPE_LEAD_TIME_SECONDS = 120;
+export const DEFAULT_SNIPE_WINDOW_MS = 900000; // 15 min
+export const CANCELLATION_POLL_MIN_MS = 3000; // politeness floor for continuous cancellation polling
+export const NINGALOO_RELEASE_HOUR_AWST = 10; // 10:00 AWST first Tuesday (subject to change per DBCA)
+export const BOOKING_HOLD_MINUTES = 30; // create_booking temp hold
 
 // Limits
 export const MAX_CONCURRENT_WATCHES = 10;
-export const DEFAULT_MAX_STQ_ATTEMPTS = 1000;
 export const MAX_GUESTS = 50;
 
 // Database

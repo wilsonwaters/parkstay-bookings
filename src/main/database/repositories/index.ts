@@ -4,6 +4,6 @@ export * from './UserRepository';
 export * from './BookingRepository';
 export * from './SettingsRepository';
 export * from './watch.repository';
-export * from './stq.repository';
+export * from './site-sniper.repository';
 export * from './notification.repository';
 export * from './notification-provider.repository';
