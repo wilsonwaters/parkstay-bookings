@@ -121,8 +121,8 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 
 ## UI Status
 
-- **Active pages:** Dashboard, Watches, Site Sniper, Settings, Login
-- **Disabled in sidebar:** Bookings shows `ComingSoonBanner` (being finalized)
+- **Active pages:** Dashboard, Watches, Settings, Login
+- **Marked "Soon" in sidebar (greyed pill) but still usable:** Bookings and Site Sniper — both are navigable and show a `ComingSoonBanner` on the page (being finalized)
 - **Settings page** includes email/SMTP configuration (`EmailSettingsCard`)
 - **Key components:** AvailabilityGrid, QueueStatus, NotificationBell, WatchForm, SiteSniperForm, UpdateNotification, AboutDialog
 

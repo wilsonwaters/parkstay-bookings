@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { SiteSnipe, SnipeStatus } from '@shared/types';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import ComingSoonBanner from '../../components/ComingSoonBanner';
 import ToastContainer, { useToast } from '../../components/Toast';
 
 /**
@@ -180,6 +181,9 @@ export default function SiteSniperPage() {
   return (
     <>
       <div className="p-6">
+        {/* Coming Soon Banner */}
+        <ComingSoonBanner featureName="Site Sniper" />
+
         <div className="mb-6 flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold">Site Sniper</h1>
