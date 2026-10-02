@@ -278,3 +278,9 @@ interface ProviderContext {
     - The v2 `customUnInstall` guards with `${isUpdated}` and uses `/SD IDNO`.
 13. **Released v1.2.0 is schema v5.** Migration tests start from both v5 (v1.2.0) and v6 (main) SQL-dump fixtures. `*.db` files are gitignored.
 14. **Test-only env hooks** (`WA_STAY_USER_DATA_DIR`, `WA_STAY_LEGACY_DATA_DIR`, `WA_STAY_E2E_FIXTURES_DIR`, `WA_STAY_E2E_ALLOW_HOSTS`) are honoured only when `!app.isPackaged`. Test-support code lives in `src/main/testing/`.
+15. **`CatalogQuery`**: `{ text?, providerIds?, kinds?, regions?, amenities?, bookingModes?, bbox?: [w,s,e,n], limit? (default 5000 = all), offset? }`. Map-area ("search as I move the map") filtering may be done in the renderer over the full result set while catalogues stay small.
+16. **`UnitSummary`**: `{ id, name, type?, maxPeople?, equipment?: string[], amenities?: string[] }`.
+17. **`LocationAvailability.bookingUrl?`**: a stay-specific deep link, owned by V3 and V5. E2 prefers it over the date-less `LocationDetail.bookingUrl`.
+18. **`StayFieldDescriptor.appliesTo` is canonical**. Any spec that says `usedBy` means `appliesTo`.
+19. **Watch create route is `/watches/new`** with the §12.10 prefill query (`provider` + `location` = externalId, not the composite key). U1/U2 specs that say `/watches/create` or `?location=<key>` are superseded. D3 keeps a redirect from `/watches/create` → `/watches/new` that preserves the query string.
+20. **Primary CTA colour is coral; brand colour is ocean** (orchestrator decision, Airbnb pattern; shown to the stakeholder at PR review).

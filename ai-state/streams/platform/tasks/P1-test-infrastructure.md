@@ -40,7 +40,7 @@ M
   - On a `NODE_MODULE_VERSION` mismatch it prints both ABI numbers, explains that Electron's build is installed, and gives the fix `npm rebuild better-sqlite3`. It then exits 1.
   - With `AUTO_REBUILD_NATIVE=1` it runs the rebuild itself and re-checks.
   - The parsing logic lives in `scripts/lib/native-abi.js`, so it can be unit tested.
-- `format` and `format:check` also cover `tests/**/*.{ts,tsx}` and `scripts/**/*.js`.
+- `format` and `format:check` also cover `tests/**/*.{ts,tsx}` and `scripts/**/*.{js,mjs}`.
 - Update `tests/README.md`: the two projects, the setup files, the window.api mock and the ABI guard.
 
 ## Non-goals

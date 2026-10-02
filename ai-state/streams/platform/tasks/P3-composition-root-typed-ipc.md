@@ -11,10 +11,7 @@ Every later stream adds services and IPC methods. Today that means:
 
 The 65 `ipcMain.handle` calls across 12 handler files each copy the same try/catch, and none validates input at runtime. Other problems:
 
-- **The renderer supplies `userId`.**
-  - Handlers: `watch.handlers.ts:17,40`, `notification.handlers.ts:12,51`, and the matching site-sniper handlers.
-  - Preload: `preload/index.ts:97-104,124-131,151-161`.
-  - Bookings already resolve the user in main (`ipc/index.ts:51`).
+- **The renderer supplies `userId`** (handlers `watch.handlers.ts:17,40`, `notification.handlers.ts:12,51` and the site-sniper equivalents; preload `preload/index.ts:97-104,124-131,151-161`). Bookings already resolve the user in main (`ipc/index.ts:51`).
 - **Listeners.** Preload `on.*` returns nothing, and `off.*` calls `removeAllListeners`, which also wipes other subscribers (`preload/index.ts:284-368`).
 - **Events.** Main only emits queue status, broadcast to every window (`queue.handlers.ts:127-133`), and updater events (`auto-updater.service.ts:103-107`).
 - **Name clash.** Notification "providers" collide with accommodation providers.
@@ -31,27 +28,17 @@ L
   - `GmailOTPService` gets a public constructor that takes its `OAuth2Handler`.
 - **`src/main/app/profile.ts`.** `requireUserId()` returns the first `users.id`. If there is none, it throws `AppError('NO_PROFILE')`. See master-plan open question 1.
 - **`src/shared/contracts/`**
-  - One file per namespace:
-    - final names (§4): `bookings`, `watches`, `snipes`, `notifications`, `notifiers`, `gmail`, `settings`, `app`, `updater`;
-    - transitional, to be replaced by V1, V3 and V6: `auth`, `parkstay`, `queue`.
-  - Plus `events.ts` and an `index.ts` exporting `contract` and `type WindowApi`.
+  - One file per namespace: the final §4 names (`bookings`, `watches`, `snipes`, `notifications`, `notifiers`, `gmail`, `settings`, `app`, `updater`) and the transitional `auth`, `parkstay` and `queue`, which V1, V3 and V6 replace. Plus `events.ts` and an `index.ts` exporting `contract` and `type WindowApi`.
   - Each method declares a `channel` (`<namespace>:<kebab-method>`), a zod `request` schema (one object payload, or `z.void()`) and a TS response type.
   - Channel names live in a zod-free module, so the preload never pulls in zod.
   - Delete `src/shared/constants/ipc-channels.ts`.
 - **`src/main/ipc/handle.ts`.** `handle(def, fn)` is the **only** caller of `ipcMain.handle`. For each call it:
   1. Validates the sender. `event.sender.id` must be registered as trusted. `event.senderFrame` must be non-null, be the top frame, and have a URL on the app origin: the dev server URL, or the `file:` URL of `dist/renderer/index.html` built with `pathToFileURL`.
   2. Parses the payload with zod.
-  3. Maps results to `APIResponse`: `{ success: true, data }`, or `{ success: false, code, error }`. Codes:
-     - `VALIDATION`, with issue paths;
-     - `FORBIDDEN`;
-     - `NO_PROFILE`, `NOT_FOUND`;
-     - `INTERNAL`: an `Error`'s message is kept; a non-Error throw becomes `Unexpected error`.
+  3. Maps results to `APIResponse`: `{ success: true, data }`, or `{ success: false, code, error }` with code `VALIDATION` (plus issue paths), `FORBIDDEN`, `NO_PROFILE`, `NOT_FOUND` or `INTERNAL`. For `INTERNAL`, an `Error`'s message is kept and a non-Error throw becomes `Unexpected error`.
   4. Logs the channel name, never the payload or a stack in the response.
   - Add `code?: ApiErrorCode` to `APIResponse` (`shared/types/api.types.ts:99-104`).
-- **Handlers and registration.**
-  - `registerIpcHandlers(container, { isTrustedSender })` replaces the positional function.
-  - One handler file per namespace in `ipc/handlers/`, all written on `handle()`.
-  - Handlers never read `userId` from a payload.
+- **Handlers and registration.** `registerIpcHandlers(container, { isTrustedSender })` replaces the positional function. There is one handler file per namespace in `ipc/handlers/`, all written on `handle()`, and no handler reads `userId` from a payload.
 - **`src/main/ipc/events.ts`**
   - `RendererEvents.emit(name, payload)` sends only to trusted webContents.
   - Contract events: `notification:created`, `watch:updated`, `snipe:updated`, `booking:updated`, `updater:available|not-available|downloaded|progress|error`, plus the transitional `queue:status`.
@@ -148,11 +135,5 @@ export const watches = {
 } satisfies Namespace;
 ```
 
-- Commit as a small series:
-  1. container and profile;
-  2. contracts, `handle.ts` and handlers;
-  3. preload and renderer call sites;
-  4. notifier rename.
-
-  Each commit must pass the gate.
+- Commit as a small series, each commit passing the gate: (1) container and profile, (2) contracts, `handle.ts` and handlers, (3) preload and renderer call sites, (4) notifier rename.
 - V1 extends the same `contract` object. Do not create a second registry.

@@ -52,7 +52,7 @@ L
 - **Migration v7** (architecture-notes §5 plus the §2 "notifier" vocabulary; master-plan open question 2). Rebuild tables only with the pattern *create under a temp name → copy → drop old → rename new → final*. Never rename the old table aside.
   1. Rebuild `notifications` without either CHECK constraint, then recreate its 4 indexes.
   2. Rebuild `notification_delivery_logs` with `FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE`. Rename `provider_channel` → `notifier_channel`. Copy orphan `notification_id` values as NULL. Recreate the indexes, with `idx_delivery_logs_provider` becoming `idx_delivery_logs_notifier`.
-  3. `ALTER TABLE notification_providers RENAME TO notifiers`. Rename its two indexes to `idx_notifiers_*`.
+  3. `ALTER TABLE notification_providers RENAME TO notifiers`. SQLite cannot rename an index, so drop its two indexes and recreate them as `idx_notifiers_*`.
   4. `DROP TRIGGER update_stq_timestamp` and `DROP TABLE skip_the_queue_entries`. Log the number of discarded rows.
   - Update the SQL in `notification-provider.repository.ts` to the new names. Class and file renames are P3's job.
 - **Code-level validation.** The CHECKs are gone, so `NotificationRepository.create` must reject a `type` or `relatedType` outside `NotificationType`/`RelatedType`. Reading must tolerate the legacy values `stq_success` and `stq`.
@@ -77,10 +77,10 @@ L
 
 ## Completion Criteria
 - [ ] Before any v7 code exists, a test (fresh DB → `runMigrations` → insert a delivery log with and without `notification_id`) fails with `no such table: main.notifications_old`. Record this in the PR notes. The test passes once v7 lands.
-- [ ] `ls src/main/database/repositories` shows one base file (`base.repository.ts`) and only kebab-case `*.repository.ts` files.
+- [ ] `ls src/main/database/repositories` shows only `index.ts` and kebab-case `*.repository.ts` files. Exactly one of them is a base class (`base.repository.ts`).
 - [ ] `grep -rn "getDatabase\|setDatabase\|findWhere\|findOneWhere\|deleteWhere" src tests` returns nothing.
 - [ ] `grep -rn "new [A-Za-z]*Repository(" src/main/services` returns nothing.
-- [ ] `grep -rnE "'\\$\{[A-Z][A-Za-z]+\.[A-Z_]+\}'" src/main/database` returns nothing (no interpolated enums).
+- [ ] `grep -rnE "'\\$\{[A-Z][A-Za-z]+\.[A-Z_]+\}'" src/main/database` returns nothing (no interpolated enums). Today it matches `site-sniper.repository.ts:130,140`.
 - [ ] `grep -n "electron" src/main/database/connection.ts` returns nothing.
 - [ ] A fresh DB reaches `MAX(version)` = 7. Its tables are exactly users, bookings, watches, notifications, notification_delivery_logs, notifiers, job_logs, settings, queue_session, site_snipes and migrations (plus `sqlite_*`).
 - [ ] The v5 and v6 fixtures (opened from temp copies) upgrade to v7 and meet all of the following:
@@ -103,6 +103,7 @@ L
 ## Edge Cases
 - `PRAGMA foreign_keys` and `journal_mode` are ignored inside transactions. Set them only outside `applyMigration`.
 - Tests must never open the committed fixture files directly. WAL mode creates `-wal`/`-shm` files and mutates the DB, so always copy to a temp dir first.
+- Index names are global across the schema. Create a rebuilt table's indexes only after the old table is dropped, or the names clash.
 - Delivery-log rows whose `notification_id` has no parent are copied with NULL, not dropped.
 - `skip_the_queue_entries` rows are discarded. The feature is gone, so log the count at info.
 - Pre-v2 installs that have tables but no `migrations` rows start at version 0. v1's `CREATE … IF NOT EXISTS` must stay harmless there.
