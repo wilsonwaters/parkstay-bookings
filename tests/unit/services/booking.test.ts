@@ -4,9 +4,9 @@
  */
 
 import { BookingService } from '@main/services/booking/BookingService';
-import { BookingRepository } from '@main/database/repositories/BookingRepository';
+import { BookingRepository } from '@main/database/repositories/booking.repository';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
-import { UserRepository } from '@main/database/repositories/UserRepository';
+import { UserRepository } from '@main/database/repositories/user.repository';
 import {
   mockBookingInput,
   mockBooking,

@@ -7,7 +7,7 @@ import { WatchRepository } from '@main/database/repositories';
 import { ParkStayService } from '@main/services/parkstay/parkstay.service';
 import { NotificationService } from '@main/services/notification/notification.service';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
-import { UserRepository } from '@main/database/repositories/UserRepository';
+import { UserRepository } from '@main/database/repositories/user.repository';
 import { mockWatchInput, createMockWatchInput } from '@tests/fixtures/watches';
 import { mockUserInput } from '@tests/fixtures/users';
 import { MockParkStayAPI } from '@tests/utils/mock-api';
@@ -37,9 +37,13 @@ describe('WatchService', () => {
 
     // Create mocked services
     parkStayService = new ParkStayService(null as any) as jest.Mocked<ParkStayService>;
-    notificationService = new NotificationService() as jest.Mocked<NotificationService>;
+    notificationService = new NotificationService(null as any) as jest.Mocked<NotificationService>;
 
-    watchService = new WatchService(parkStayService, notificationService);
+    watchService = new WatchService(
+      new WatchRepository(dbHelper.getDb()),
+      parkStayService,
+      notificationService
+    );
   });
 
   afterEach(async () => {

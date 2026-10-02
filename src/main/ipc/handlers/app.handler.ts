@@ -6,7 +6,7 @@
 import { ipcMain, IpcMainInvokeEvent, app, shell } from 'electron';
 import { IPC_CHANNELS } from '@shared/constants/ipc-channels';
 import { APIResponse, SettingValueType, SettingCategory } from '@shared/types';
-import { SettingsRepository } from '../../database/repositories/SettingsRepository';
+import { SettingsRepository } from '../../database/repositories/settings.repository';
 import { logger } from '../../utils/logger';
 import path from 'path';
 import os from 'os';

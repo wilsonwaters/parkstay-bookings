@@ -3,7 +3,7 @@
  * Handles booking management operations
  */
 
-import { BookingRepository } from '../../database/repositories/BookingRepository';
+import { BookingRepository } from '../../database/repositories/booking.repository';
 import { Booking, BookingInput, BookingStatus } from '@shared/types';
 import { logger } from '../../utils/logger';
 

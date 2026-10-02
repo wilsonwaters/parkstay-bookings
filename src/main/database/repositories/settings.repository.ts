@@ -3,8 +3,7 @@
  * Handles CRUD operations for application settings
  */
 
-import Database from 'better-sqlite3';
-import { BaseRepository } from './BaseRepository';
+import { BaseRepository } from './base.repository';
 import { Setting, SettingValueType, SettingCategory } from '@shared/types';
 import { logger } from '../../utils/logger';
 
@@ -17,15 +16,14 @@ interface SettingRow {
   updated_at: string;
 }
 
-export class SettingsRepository extends BaseRepository<Setting> {
-  constructor(db: Database.Database) {
-    super(db, 'settings');
-  }
+export class SettingsRepository extends BaseRepository<Setting, string> {
+  protected readonly tableName = 'settings';
+  protected readonly idColumn = 'key';
 
   /**
    * Map database row to Setting model
    */
-  protected mapRowToModel(row: SettingRow): Setting {
+  protected mapRow(row: SettingRow): Setting {
     return {
       key: row.key,
       value: row.value,
@@ -37,25 +35,12 @@ export class SettingsRepository extends BaseRepository<Setting> {
   }
 
   /**
-   * Map Setting model to database row
-   */
-  protected mapModelToRow(setting: Partial<Setting>): Partial<SettingRow> {
-    return {
-      key: setting.key,
-      value: setting.value,
-      value_type: setting.valueType,
-      category: setting.category,
-      description: setting.description || null,
-    };
-  }
-
-  /**
    * Get setting by key
    */
   get(key: string): Setting | null {
     try {
       const row = this.db.prepare('SELECT * FROM settings WHERE key = ?').get(key);
-      return row ? this.mapRowToModel(row as SettingRow) : null;
+      return row ? this.mapRow(row as SettingRow) : null;
     } catch (error) {
       logger.error(`Error getting setting ${key}:`, error);
       throw error;
@@ -132,7 +117,7 @@ export class SettingsRepository extends BaseRepository<Setting> {
   getByCategory(category: SettingCategory): Setting[] {
     try {
       const rows = this.db.prepare('SELECT * FROM settings WHERE category = ?').all(category);
-      return rows.map((row) => this.mapRowToModel(row as SettingRow));
+      return rows.map((row) => this.mapRow(row as SettingRow));
     } catch (error) {
       logger.error(`Error getting settings by category ${category}:`, error);
       throw error;

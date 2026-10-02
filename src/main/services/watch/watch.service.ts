@@ -13,8 +13,12 @@ export class WatchService {
   private parkStayService: ParkStayService;
   private notificationService: NotificationService;
 
-  constructor(parkStayService: ParkStayService, notificationService: NotificationService) {
-    this.watchRepo = new WatchRepository();
+  constructor(
+    watchRepo: WatchRepository,
+    parkStayService: ParkStayService,
+    notificationService: NotificationService
+  ) {
+    this.watchRepo = watchRepo;
     this.parkStayService = parkStayService;
     this.notificationService = notificationService;
   }
@@ -45,7 +49,7 @@ export class WatchService {
   /**
    * Get watch by ID
    */
-  async get(id: number): Promise<Watch | undefined> {
+  async get(id: number): Promise<Watch | null> {
     return this.watchRepo.findById(id);
   }
 
@@ -67,7 +71,7 @@ export class WatchService {
    * Delete watch
    */
   async delete(id: number): Promise<boolean> {
-    return this.watchRepo.delete(id);
+    return this.watchRepo.deleteById(id);
   }
 
   /**

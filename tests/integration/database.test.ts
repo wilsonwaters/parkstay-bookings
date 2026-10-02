@@ -4,8 +4,8 @@
  */
 
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
-import { UserRepository } from '@main/database/repositories/UserRepository';
-import { BookingRepository } from '@main/database/repositories/BookingRepository';
+import { UserRepository } from '@main/database/repositories/user.repository';
+import { BookingRepository } from '@main/database/repositories/booking.repository';
 import { WatchRepository } from '@main/database/repositories';
 import { SiteSniperRepository } from '@main/database/repositories';
 import { NotificationRepository } from '@main/database/repositories';
@@ -91,7 +91,7 @@ describe('Database Integration', () => {
       const userRepo = new UserRepository(db);
       const bookingRepo = new BookingRepository(db);
       const watchRepo = new WatchRepository(db);
-      const notifRepo = new NotificationRepository();
+      const notifRepo = new NotificationRepository(db);
 
       // Create user
       const user = userRepo.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag');
@@ -126,7 +126,7 @@ describe('Database Integration', () => {
     it('should handle Site Sniper workflow', async () => {
       const db = dbHelper.getDb();
       const userRepo = new UserRepository(db);
-      const snipeRepo = new SiteSniperRepository();
+      const snipeRepo = new SiteSniperRepository(db);
 
       // Create user
       const user = userRepo.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag');

@@ -17,10 +17,16 @@ import { BookingService } from './services/booking/BookingService';
 import { JobScheduler } from './scheduler/job-scheduler';
 import { registerIPCHandlers } from './ipc';
 import { logger } from './utils/logger';
-import { SettingsRepository } from './database/repositories/SettingsRepository';
-import { UserRepository } from './database/repositories/UserRepository';
-import { BookingRepository } from './database/repositories/BookingRepository';
-import { NotificationProviderRepository } from './database/repositories/notification-provider.repository';
+import {
+  BookingRepository,
+  NotificationProviderRepository,
+  NotificationRepository,
+  QueueSessionRepository,
+  SettingsRepository,
+  SiteSniperRepository,
+  UserRepository,
+  WatchRepository,
+} from './database/repositories';
 import { AutoUpdaterService } from './services/updater/auto-updater.service';
 
 /**
@@ -111,25 +117,33 @@ async function initializeApp(): Promise<void> {
     initializeDatabase();
     const db = getDatabase();
 
-    // Create repositories
+    // Create repositories (P3 moves this wiring into the composition root)
     const userRepository = new UserRepository(db);
     const bookingRepository = new BookingRepository(db);
     const settingsRepository = new SettingsRepository(db);
     const notificationProviderRepository = new NotificationProviderRepository(db);
+    const notificationRepository = new NotificationRepository(db);
+    const watchRepository = new WatchRepository(db);
+    const siteSniperRepository = new SiteSniperRepository(db);
+    const queueSessionRepository = new QueueSessionRepository(db);
 
     // Create notification dispatcher for pluggable providers
     const notificationDispatcher = new NotificationDispatcher(notificationProviderRepository);
 
     // Create queue service (handles DBCA queue system)
-    queueService = new QueueService();
+    queueService = new QueueService(queueSessionRepository);
 
     // Create services
     const parkStayService = new ParkStayService(queueService);
     const authService = new AuthService(userRepository);
     const bookingService = new BookingService(bookingRepository);
-    const notificationService = new NotificationService(notificationDispatcher);
-    const watchService = new WatchService(parkStayService, notificationService);
+    const notificationService = new NotificationService(
+      notificationRepository,
+      notificationDispatcher
+    );
+    const watchService = new WatchService(watchRepository, parkStayService, notificationService);
     const siteSniperService = new SiteSniperService(
+      siteSniperRepository,
       parkStayService,
       queueService,
       notificationService

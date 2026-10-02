@@ -3,7 +3,7 @@
  */
 
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
-import { UserRepository } from '@main/database/repositories/UserRepository';
+import { UserRepository } from '@main/database/repositories/user.repository';
 import { SiteSniperRepository } from '@main/database/repositories';
 import { mockUserInput } from '@tests/fixtures/users';
 import { createMockSiteSnipeInput } from '@tests/fixtures/site-sniper';
@@ -22,7 +22,7 @@ describe('SiteSniperRepository', () => {
     const user = userRepo.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag');
     userId = user.id;
 
-    repo = new SiteSniperRepository();
+    repo = new SiteSniperRepository(dbHelper.getDb());
   });
 
   afterEach(async () => {

@@ -8,7 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import type { FixtureName } from '@tests/fixtures/db/constants';
-import { runMigrations, setDatabase, SCHEMA_SQL } from '@main/database/connection';
+import { runMigrations, SCHEMA_SQL } from '@main/database/connection';
 
 export class TestDatabaseHelper {
   private db: Database.Database | null = null;
@@ -41,9 +41,6 @@ export class TestDatabaseHelper {
     // Run production migrations
     runMigrations(this.db);
 
-    // Set as global db so repos using getDatabase() work
-    setDatabase(this.db);
-
     return this.db;
   }
 
@@ -51,7 +48,6 @@ export class TestDatabaseHelper {
    * Clean up test database
    */
   async teardown(): Promise<void> {
-    setDatabase(null);
     if (this.db) {
       this.db.close();
       this.db = null;

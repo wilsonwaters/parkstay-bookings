@@ -6,7 +6,7 @@ import { AuthService } from '../services/auth/AuthService';
 import { BookingService } from '../services/booking/BookingService';
 import { ParkStayService } from '../services/parkstay/parkstay.service';
 import { QueueService } from '../services/queue/queue.service';
-import { SettingsRepository } from '../database/repositories/SettingsRepository';
+import { SettingsRepository } from '../database/repositories/settings.repository';
 import { NotificationProviderRepository } from '../database/repositories/notification-provider.repository';
 import { JobScheduler } from '../scheduler/job-scheduler';
 import { GmailOTPService } from '../services/gmail/GmailOTPService';

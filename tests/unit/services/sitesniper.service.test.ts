@@ -1,24 +1,20 @@
 /**
  * SiteSniperService unit tests.
  *
- * The repository is mocked (no real database) and the ParkStay / Notification
- * services are injected as jest mocks, so we exercise the service logic in
- * isolation. Mirrors queue.test.ts's approach of mocking '@main/database/connection'.
+ * The repository, ParkStay, queue and notification dependencies are injected as
+ * constructor fakes (no real database), so we exercise the service logic in isolation.
  */
 
 import { SiteSnipe } from '@shared/types';
 import { SnipeReleaseMode, SnipeResult, SnipeStatus } from '@shared/types/common.types';
+import { SiteSniperService } from '@main/services/sitesniper/sitesniper.service';
+import type { SiteSniperRepository } from '@main/database/repositories';
 
-// Avoid the native better-sqlite3 binary via the connection module.
-jest.mock('@main/database/connection', () => ({
-  getDatabase: () => ({}),
-}));
-
-// Mock the repository barrel so `new SiteSniperRepository()` returns our mock.
+// Constructor fake for the repository.
 const mockRepo = {
   create: jest.fn(),
   update: jest.fn(),
-  delete: jest.fn(),
+  deleteById: jest.fn(),
   findById: jest.fn(),
   findByUserId: jest.fn(),
   findActive: jest.fn(),
@@ -34,11 +30,6 @@ const mockRepo = {
   setResult: jest.fn(),
   hasReachedMaxAttempts: jest.fn(),
 };
-jest.mock('@main/database/repositories', () => ({
-  SiteSniperRepository: jest.fn().mockImplementation(() => mockRepo),
-}));
-
-import { SiteSniperService } from '@main/services/sitesniper/sitesniper.service';
 
 function makeSnipe(overrides: Partial<SiteSnipe> = {}): SiteSnipe {
   return {
@@ -105,12 +96,17 @@ describe('SiteSniperService', () => {
     mockRepo.hasReachedMaxAttempts.mockReturnValue(false);
     mockRepo.findByUserId.mockReturnValue([]);
 
-    service = new SiteSniperService(parkStay as any, queue, notifications as any);
+    service = new SiteSniperService(
+      mockRepo as unknown as SiteSniperRepository,
+      parkStay as any,
+      queue,
+      notifications as any
+    );
   });
 
   describe('execute', () => {
     it('returns ERROR when the snipe is not found', async () => {
-      mockRepo.findById.mockReturnValue(undefined);
+      mockRepo.findById.mockReturnValue(null);
 
       const result = await service.execute(1);
 

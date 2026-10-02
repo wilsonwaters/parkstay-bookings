@@ -3,8 +3,7 @@
  * Handles CRUD operations for users with encrypted credentials
  */
 
-import Database from 'better-sqlite3';
-import { BaseRepository } from './BaseRepository';
+import { BaseRepository } from './base.repository';
 import { User, UserInput } from '@shared/types';
 import { logger } from '../../utils/logger';
 
@@ -23,14 +22,12 @@ interface UserRow {
 }
 
 export class UserRepository extends BaseRepository<User> {
-  constructor(db: Database.Database) {
-    super(db, 'users');
-  }
+  protected readonly tableName = 'users';
 
   /**
    * Map database row to User model
    */
-  protected mapRowToModel(row: UserRow): User {
+  protected mapRow(row: UserRow): User {
     return {
       id: row.id,
       email: row.email,
@@ -43,22 +40,6 @@ export class UserRepository extends BaseRepository<User> {
       phone: row.phone || undefined,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
-    };
-  }
-
-  /**
-   * Map User model to database row
-   */
-  protected mapModelToRow(user: Partial<User>): Partial<UserRow> {
-    return {
-      email: user.email,
-      encrypted_password: user.encryptedPassword,
-      encryption_key: user.encryptionKey,
-      encryption_iv: user.encryptionIv,
-      encryption_auth_tag: user.encryptionAuthTag,
-      first_name: user.firstName || null,
-      last_name: user.lastName || null,
-      phone: user.phone || null,
     };
   }
 
@@ -110,7 +91,7 @@ export class UserRepository extends BaseRepository<User> {
   findByEmail(email: string): User | null {
     try {
       const row = this.db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-      return row ? this.mapRowToModel(row as UserRow) : null;
+      return row ? this.mapRow(row as UserRow) : null;
     } catch (error) {
       logger.error(`Error finding user by email ${email}:`, error);
       throw error;
@@ -194,7 +175,7 @@ export class UserRepository extends BaseRepository<User> {
   getFirstUser(): User | null {
     try {
       const row = this.db.prepare('SELECT * FROM users LIMIT 1').get();
-      return row ? this.mapRowToModel(row as UserRow) : null;
+      return row ? this.mapRow(row as UserRow) : null;
     } catch (error) {
       logger.error('Error getting first user:', error);
       throw error;

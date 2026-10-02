@@ -3,8 +3,7 @@
  * Handles CRUD operations for bookings
  */
 
-import Database from 'better-sqlite3';
-import { BaseRepository } from './BaseRepository';
+import { BaseRepository } from './base.repository';
 import { Booking, BookingInput, BookingStatus } from '@shared/types';
 import { logger } from '../../utils/logger';
 
@@ -31,14 +30,12 @@ interface BookingRow {
 }
 
 export class BookingRepository extends BaseRepository<Booking> {
-  constructor(db: Database.Database) {
-    super(db, 'bookings');
-  }
+  protected readonly tableName = 'bookings';
 
   /**
    * Map database row to Booking model
    */
-  protected mapRowToModel(row: BookingRow): Booking {
+  protected mapRow(row: BookingRow): Booking {
     return {
       id: row.id,
       userId: row.user_id,
@@ -59,29 +56,6 @@ export class BookingRepository extends BaseRepository<Booking> {
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
       syncedAt: this.parseDate(row.synced_at),
-    };
-  }
-
-  /**
-   * Map Booking model to database row
-   */
-  protected mapModelToRow(booking: Partial<Booking>): Partial<BookingRow> {
-    return {
-      user_id: booking.userId,
-      booking_reference: booking.bookingReference,
-      park_name: booking.parkName,
-      campground_name: booking.campgroundName,
-      site_number: booking.siteNumber || null,
-      site_type: booking.siteType || null,
-      arrival_date: this.formatDate(booking.arrivalDate) || '',
-      departure_date: this.formatDate(booking.departureDate) || '',
-      num_nights: booking.numNights || 0,
-      num_guests: booking.numGuests || 0,
-      total_cost: booking.totalCost || null,
-      currency: booking.currency || 'AUD',
-      status: booking.status || BookingStatus.PENDING,
-      booking_data: this.stringifyJson(booking.bookingData),
-      notes: booking.notes || null,
     };
   }
 
@@ -140,7 +114,7 @@ export class BookingRepository extends BaseRepository<Booking> {
       const rows = this.db
         .prepare('SELECT * FROM bookings WHERE user_id = ? ORDER BY arrival_date DESC')
         .all(userId);
-      return rows.map((row) => this.mapRowToModel(row as BookingRow));
+      return rows.map((row) => this.mapRow(row as BookingRow));
     } catch (error) {
       logger.error(`Error finding bookings for user ${userId}:`, error);
       throw error;
@@ -155,7 +129,7 @@ export class BookingRepository extends BaseRepository<Booking> {
       const row = this.db
         .prepare('SELECT * FROM bookings WHERE booking_reference = ?')
         .get(reference);
-      return row ? this.mapRowToModel(row as BookingRow) : null;
+      return row ? this.mapRow(row as BookingRow) : null;
     } catch (error) {
       logger.error(`Error finding booking by reference ${reference}:`, error);
       throw error;
@@ -293,7 +267,7 @@ export class BookingRepository extends BaseRepository<Booking> {
         `
         )
         .all(userId);
-      return rows.map((row) => this.mapRowToModel(row as BookingRow));
+      return rows.map((row) => this.mapRow(row as BookingRow));
     } catch (error) {
       logger.error(`Error finding upcoming bookings for user ${userId}:`, error);
       throw error;
@@ -315,7 +289,7 @@ export class BookingRepository extends BaseRepository<Booking> {
         `
         )
         .all(userId);
-      return rows.map((row) => this.mapRowToModel(row as BookingRow));
+      return rows.map((row) => this.mapRow(row as BookingRow));
     } catch (error) {
       logger.error(`Error finding past bookings for user ${userId}:`, error);
       throw error;

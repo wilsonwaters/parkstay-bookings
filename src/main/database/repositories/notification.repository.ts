@@ -3,7 +3,7 @@ import { Notification, NotificationInput } from '@shared/types';
 import { NotificationType, RelatedType } from '@shared/types/common.types';
 
 export class NotificationRepository extends BaseRepository<Notification> {
-  protected tableName = 'notifications';
+  protected readonly tableName = 'notifications';
 
   /**
    * Create a new notification
@@ -41,7 +41,7 @@ export class NotificationRepository extends BaseRepository<Notification> {
       : `SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC`;
     const stmt = this.db.prepare(sql);
     const rows = limit ? stmt.all(userId, limit) : stmt.all(userId);
-    return rows.map((row) => this.mapToModel(row));
+    return rows.map((row) => this.mapRow(row));
   }
 
   /**
@@ -54,14 +54,17 @@ export class NotificationRepository extends BaseRepository<Notification> {
       ORDER BY created_at DESC
     `);
     const rows = stmt.all(userId);
-    return rows.map((row) => this.mapToModel(row));
+    return rows.map((row) => this.mapRow(row));
   }
 
   /**
    * Get unread count
    */
   getUnreadCount(userId: number): number {
-    return this.count('user_id = ? AND is_read = 0', [userId]);
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS count FROM notifications WHERE user_id = ? AND is_read = 0')
+      .get(userId) as { count: number };
+    return row.count;
   }
 
   /**
@@ -86,17 +89,19 @@ export class NotificationRepository extends BaseRepository<Notification> {
   deleteOld(days: number): number {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - days);
-    return this.deleteWhere('created_at < ?', [cutoffDate.toISOString()]);
+    return this.db
+      .prepare('DELETE FROM notifications WHERE created_at < ?')
+      .run(cutoffDate.toISOString()).changes;
   }
 
   /**
    * Delete all notifications for user
    */
   deleteAllForUser(userId: number): number {
-    return this.deleteWhere('user_id = ?', [userId]);
+    return this.db.prepare('DELETE FROM notifications WHERE user_id = ?').run(userId).changes;
   }
 
-  protected mapToModel(row: any): Notification {
+  protected mapRow(row: any): Notification {
     return {
       id: row.id,
       userId: row.user_id,
@@ -108,19 +113,6 @@ export class NotificationRepository extends BaseRepository<Notification> {
       actionUrl: row.action_url,
       isRead: Boolean(row.is_read),
       createdAt: this.parseDate(row.created_at)!,
-    };
-  }
-
-  protected mapToRow(model: Partial<Notification>): any {
-    return {
-      user_id: model.userId,
-      type: model.type,
-      title: model.title,
-      message: model.message,
-      related_id: model.relatedId,
-      related_type: model.relatedType,
-      action_url: model.actionUrl,
-      is_read: model.isRead ? 1 : 0,
     };
   }
 }

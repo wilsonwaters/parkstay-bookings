@@ -6,7 +6,7 @@
 import Database from 'better-sqlite3';
 import crypto from 'crypto';
 import { machineIdSync } from 'node-machine-id';
-import { BaseRepository } from './BaseRepository';
+import { BaseRepository } from './base.repository';
 import {
   NotificationProvider,
   NotificationProviderInput,
@@ -45,18 +45,19 @@ interface DeliveryLogRow {
 }
 
 export class NotificationProviderRepository extends BaseRepository<NotificationProvider> {
+  protected readonly tableName = 'notification_providers';
   private encryptionKey: Buffer | null = null;
   private machineId: string;
 
   constructor(db: Database.Database) {
-    super(db, 'notification_providers');
+    super(db);
     this.machineId = machineIdSync();
   }
 
   /**
    * Map database row to NotificationProvider model
    */
-  protected mapRowToModel(row: ProviderRow): NotificationProvider {
+  protected mapRow(row: ProviderRow): NotificationProvider {
     let config: Record<string, unknown> = {};
     try {
       const decryptedConfig = this.decryptConfig(row.config);
@@ -76,21 +77,6 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
       lastError: row.last_error || undefined,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
-    };
-  }
-
-  /**
-   * Map NotificationProvider model to database row
-   */
-  protected mapModelToRow(model: Partial<NotificationProvider>): Partial<ProviderRow> {
-    return {
-      channel: model.channel,
-      display_name: model.displayName,
-      enabled: model.enabled ? 1 : 0,
-      config: model.config ? this.encryptConfig(JSON.stringify(model.config)) : undefined,
-      status: model.status,
-      last_tested_at: model.lastTestedAt?.toISOString() || null,
-      last_error: model.lastError || null,
     };
   }
 
@@ -195,7 +181,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
       const row = this.db
         .prepare('SELECT * FROM notification_providers WHERE channel = ?')
         .get(channel);
-      return row ? this.mapRowToModel(row as ProviderRow) : null;
+      return row ? this.mapRow(row as ProviderRow) : null;
     } catch (error) {
       logger.error(`Error finding provider by channel ${channel}:`, error);
       throw error;
@@ -210,7 +196,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
       const rows = this.db
         .prepare('SELECT * FROM notification_providers WHERE enabled = 1')
         .all() as ProviderRow[];
-      return rows.map((row) => this.mapRowToModel(row));
+      return rows.map((row) => this.mapRow(row));
     } catch (error) {
       logger.error('Error finding enabled providers:', error);
       throw error;

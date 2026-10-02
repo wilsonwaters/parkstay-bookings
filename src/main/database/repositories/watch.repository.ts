@@ -3,7 +3,7 @@ import { Watch, WatchInput } from '@shared/types';
 import { WatchResult } from '@shared/types/common.types';
 
 export class WatchRepository extends BaseRepository<Watch> {
-  protected tableName = 'watches';
+  protected readonly tableName = 'watches';
 
   /**
    * Create a new watch
@@ -135,14 +135,16 @@ export class WatchRepository extends BaseRepository<Watch> {
    * Find watches by user ID
    */
   findByUserId(userId: number): Watch[] {
-    return this.findWhere('user_id = ?', [userId]);
+    const rows = this.db.prepare('SELECT * FROM watches WHERE user_id = ?').all(userId);
+    return rows.map((row) => this.mapRow(row));
   }
 
   /**
    * Find active watches
    */
   findActive(): Watch[] {
-    return this.findWhere('is_active = 1');
+    const rows = this.db.prepare('SELECT * FROM watches WHERE is_active = 1').all();
+    return rows.map((row) => this.mapRow(row));
   }
 
   /**
@@ -150,7 +152,12 @@ export class WatchRepository extends BaseRepository<Watch> {
    */
   findDueForCheck(): Watch[] {
     const now = new Date().toISOString();
-    return this.findWhere('is_active = 1 AND (next_check_at IS NULL OR next_check_at <= ?)', [now]);
+    const rows = this.db
+      .prepare(
+        'SELECT * FROM watches WHERE is_active = 1 AND (next_check_at IS NULL OR next_check_at <= ?)'
+      )
+      .all(now);
+    return rows.map((row) => this.mapRow(row));
   }
 
   /**
@@ -205,7 +212,7 @@ export class WatchRepository extends BaseRepository<Watch> {
     stmt.run(JSON.stringify(availability), id);
   }
 
-  protected mapToModel(row: any): Watch {
+  protected mapRow(row: any): Watch {
     return {
       id: row.id,
       userId: row.user_id,
@@ -233,33 +240,6 @@ export class WatchRepository extends BaseRepository<Watch> {
       notes: row.notes,
       createdAt: this.parseDate(row.created_at)!,
       updatedAt: this.parseDate(row.updated_at)!,
-    };
-  }
-
-  protected mapToRow(model: Partial<Watch>): any {
-    return {
-      user_id: model.userId,
-      name: model.name,
-      park_id: model.parkId,
-      park_name: model.parkName,
-      campground_id: model.campgroundId,
-      campground_name: model.campgroundName,
-      arrival_date: this.formatDate(model.arrivalDate),
-      departure_date: this.formatDate(model.departureDate),
-      num_guests: model.numGuests,
-      preferred_sites: this.stringifyJson(model.preferredSites),
-      site_type: model.siteType,
-      check_interval_minutes: model.checkIntervalMinutes,
-      is_active: model.isActive ? 1 : 0,
-      last_checked_at: this.formatDate(model.lastCheckedAt),
-      next_check_at: this.formatDate(model.nextCheckAt),
-      last_result: model.lastResult,
-      last_availability: this.stringifyJson(model.lastAvailability),
-      found_count: model.foundCount,
-      auto_book: model.autoBook ? 1 : 0,
-      notify_only: model.notifyOnly ? 1 : 0,
-      max_price: model.maxPrice,
-      notes: model.notes,
     };
   }
 }

@@ -6,7 +6,7 @@ import { SnipeResult, SnipeReleaseMode, SnipeStatus } from '@shared/types/common
  * Repository for Site Snipe entries (site_snipes table).
  */
 export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
-  protected tableName = 'site_snipes';
+  protected readonly tableName = 'site_snipes';
 
   /**
    * Create a new Site Snipe. Applies sensible defaults for optional fields.
@@ -112,23 +112,28 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
    * Find all snipes for a user (newest first).
    */
   findByUserId(userId: number): SiteSnipe[] {
-    return this.findWhere('user_id = ? ORDER BY created_at DESC', [userId]);
+    const rows = this.db
+      .prepare('SELECT * FROM site_snipes WHERE user_id = ? ORDER BY created_at DESC')
+      .all(userId);
+    return rows.map((row) => this.mapRow(row));
   }
 
   /**
    * Find all active snipes.
    */
   findActive(): SiteSnipe[] {
-    return this.findWhere('is_active = 1');
+    const rows = this.db.prepare('SELECT * FROM site_snipes WHERE is_active = 1').all();
+    return rows.map((row) => this.mapRow(row));
   }
 
   /**
    * Find snipes that are armed and awaiting their release window.
    */
   findArmed(): SiteSnipe[] {
-    return this.findWhere(
-      `is_active = 1 AND status IN ('${SnipeStatus.ARMED}', '${SnipeStatus.WAITING_RELEASE}')`
-    );
+    const rows = this.db
+      .prepare('SELECT * FROM site_snipes WHERE is_active = 1 AND status IN (?, ?)')
+      .all(SnipeStatus.ARMED, SnipeStatus.WAITING_RELEASE);
+    return rows.map((row) => this.mapRow(row));
   }
 
   /**
@@ -136,11 +141,14 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
    */
   findDueForCheck(): SiteSnipe[] {
     const now = new Date().toISOString();
-    return this.findWhere(
-      `is_active = 1 AND release_mode = '${SnipeReleaseMode.CANCELLATION}'
-       AND (next_check_at IS NULL OR next_check_at <= ?)`,
-      [now]
-    );
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM site_snipes
+         WHERE is_active = 1 AND release_mode = ?
+           AND (next_check_at IS NULL OR next_check_at <= ?)`
+      )
+      .all(SnipeReleaseMode.CANCELLATION, now);
+    return rows.map((row) => this.mapRow(row));
   }
 
   /**
@@ -250,7 +258,7 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
     return snipe.attemptsCount >= snipe.maxAttempts;
   }
 
-  protected mapToModel(row: any): SiteSnipe {
+  protected mapRow(row: any): SiteSnipe {
     return {
       id: row.id,
       userId: row.user_id,
@@ -288,44 +296,6 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
       notes: row.notes || undefined,
       createdAt: this.parseDate(row.created_at)!,
       updatedAt: this.parseDate(row.updated_at)!,
-    };
-  }
-
-  protected mapToRow(model: Partial<SiteSnipe>): any {
-    return {
-      user_id: model.userId,
-      name: model.name,
-      campground_id: model.campgroundId,
-      campground_name: model.campgroundName,
-      target_site_ids: this.stringifyJson(model.targetSiteIds),
-      site_type: model.siteType,
-      arrival_date: this.formatDate(model.arrivalDate),
-      departure_date: this.formatDate(model.departureDate),
-      num_adult: model.numAdult,
-      num_concession: model.numConcession,
-      num_child: model.numChild,
-      num_infant: model.numInfant,
-      num_vehicle: model.numVehicle,
-      postcode: model.postcode,
-      release_mode: model.releaseMode,
-      release_at: this.formatDate(model.releaseAt),
-      queue_enabled: model.queueEnabled ? 1 : 0,
-      lead_time_seconds: model.leadTimeSeconds,
-      poll_interval_ms: model.pollIntervalMs,
-      window_duration_ms: model.windowDurationMs,
-      status: model.status,
-      is_active: model.isActive ? 1 : 0,
-      attempts_count: model.attemptsCount,
-      max_attempts: model.maxAttempts,
-      last_checked_at: this.formatDate(model.lastCheckedAt),
-      next_check_at: this.formatDate(model.nextCheckAt),
-      last_result: model.lastResult,
-      last_error: model.lastError,
-      held_booking_pk: model.heldBookingPk,
-      held_expires_at: this.formatDate(model.heldExpiresAt),
-      payment_url: model.paymentUrl,
-      booked_reference: model.bookedReference,
-      notes: model.notes,
     };
   }
 }

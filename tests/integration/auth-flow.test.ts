@@ -4,8 +4,8 @@
  */
 
 import { AuthService } from '@main/services/auth/AuthService';
-import { UserRepository } from '@main/database/repositories/UserRepository';
-import { BookingRepository } from '@main/database/repositories/BookingRepository';
+import { UserRepository } from '@main/database/repositories/user.repository';
+import { BookingRepository } from '@main/database/repositories/booking.repository';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
 import { mockUserInput } from '@tests/fixtures/users';
 import { createMockBookingInput } from '@tests/fixtures/bookings';

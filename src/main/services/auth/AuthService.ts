@@ -5,7 +5,7 @@
 
 import crypto from 'crypto';
 import { machineIdSync } from 'node-machine-id';
-import { UserRepository } from '../../database/repositories/UserRepository';
+import { UserRepository } from '../../database/repositories/user.repository';
 import { User, UserCredentials, UserInput } from '@shared/types';
 import { logger } from '../../utils/logger';
 

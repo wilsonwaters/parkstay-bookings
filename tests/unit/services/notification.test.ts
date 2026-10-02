@@ -4,7 +4,8 @@
 
 import { NotificationService } from '@main/services/notification/notification.service';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
-import { UserRepository } from '@main/database/repositories/UserRepository';
+import { UserRepository } from '@main/database/repositories/user.repository';
+import { NotificationRepository } from '@main/database/repositories';
 import { mockUserInput } from '@tests/fixtures/users';
 import { mockWatch } from '@tests/fixtures/watches';
 import { mockSiteSnipe } from '@tests/fixtures/site-sniper';
@@ -23,7 +24,7 @@ describe('NotificationService', () => {
     const user = userRepo.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag');
     testUserId = user.id;
 
-    notificationService = new NotificationService();
+    notificationService = new NotificationService(new NotificationRepository(dbHelper.getDb()));
   });
 
   afterEach(async () => {

@@ -23,8 +23,8 @@ export class NotificationService {
   private soundEnabled: boolean = true;
   private desktopEnabled: boolean = true;
 
-  constructor(dispatcher?: NotificationDispatcher) {
-    this.notificationRepo = new NotificationRepository();
+  constructor(notificationRepo: NotificationRepository, dispatcher?: NotificationDispatcher) {
+    this.notificationRepo = notificationRepo;
     this.dispatcher = dispatcher || null;
   }
 
@@ -319,7 +319,7 @@ export class NotificationService {
    * Delete notification
    */
   async delete(id: number): Promise<boolean> {
-    return this.notificationRepo.delete(id);
+    return this.notificationRepo.deleteById(id);
   }
 
   /**

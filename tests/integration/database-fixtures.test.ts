@@ -15,7 +15,7 @@ import {
   V5_ROW_COUNTS,
   V6_ROW_COUNTS,
 } from '@tests/fixtures/db/constants';
-import { UserRepository } from '@main/database/repositories/UserRepository';
+import { UserRepository } from '@main/database/repositories/user.repository';
 import { NotificationProviderRepository } from '@main/database/repositories/notification-provider.repository';
 import { AuthService } from '@main/services/auth/AuthService';
 import { NotificationChannel } from '@shared/types';

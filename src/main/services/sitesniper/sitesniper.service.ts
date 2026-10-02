@@ -30,11 +30,12 @@ export class SiteSniperService {
   private notificationService: NotificationService;
 
   constructor(
+    repo: SiteSniperRepository,
     parkStayService: ParkStayService,
     queueService: QueueService,
     notificationService: NotificationService
   ) {
-    this.repo = new SiteSniperRepository();
+    this.repo = repo;
     this.parkStayService = parkStayService;
     this.queueService = queueService;
     this.notificationService = notificationService;
@@ -67,7 +68,7 @@ export class SiteSniperService {
   /**
    * Get a snipe by id.
    */
-  async get(id: number): Promise<SiteSnipe | undefined> {
+  async get(id: number): Promise<SiteSnipe | null> {
     return this.repo.findById(id);
   }
 
@@ -101,7 +102,7 @@ export class SiteSniperService {
    * Delete a snipe.
    */
   async delete(id: number): Promise<boolean> {
-    return this.repo.delete(id);
+    return this.repo.deleteById(id);
   }
 
   /**

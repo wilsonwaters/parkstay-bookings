@@ -10,24 +10,39 @@
  * - Queue wait delays
  */
 
-import { QueueAPIResponse } from '@shared/types';
+import { QueueAPIResponse, QueueSession } from '@shared/types';
 import axios from 'axios';
+import { QueueService } from '@main/services/queue/queue.service';
+import type { QueueSessionRepository } from '@main/database/repositories/queue-session.repository';
 
 // Mock axios
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
-// Mock the database module so we don't need the native better-sqlite3 binary
-const mockDbPrepare = jest.fn();
-const mockDb = {
-  prepare: mockDbPrepare,
+// Constructor fake for the session repository: no database needed.
+const sessionRepo = {
+  get: jest.fn<QueueSession | null, []>(),
+  save: jest.fn<void, [QueueSession]>(),
+  clear: jest.fn<void, []>(),
 };
-jest.mock('@main/database/connection', () => ({
-  getDatabase: () => mockDb,
-}));
 
-// Import after mocks are set up
-import { QueueService } from '@main/services/queue/queue.service';
+function createService(config?: ConstructorParameters<typeof QueueService>[1]): QueueService {
+  return new QueueService(sessionRepo as unknown as QueueSessionRepository, config);
+}
+
+function storedSession(overrides: Partial<QueueSession> = {}): QueueSession {
+  return {
+    sessionKey: 'RESTOREDKEY12345678901234567890123456789012345678901',
+    status: 'Active',
+    position: 0,
+    estimatedWaitSeconds: 0,
+    expirySeconds: 600,
+    createdAt: new Date(),
+    expiresAt: new Date(Date.now() + 300000),
+    lastCheckedAt: new Date(),
+    ...overrides,
+  };
+}
 
 // Helper: build a queue API response
 function mockQueueApiResponse(overrides: Partial<QueueAPIResponse> = {}): QueueAPIResponse {
@@ -63,10 +78,9 @@ describe('QueueService', () => {
     mockedAxios.create.mockReturnValue(mockAxiosInstance as any);
 
     // Default: database has no stored session
-    mockDbPrepare.mockReturnValue({
-      get: jest.fn().mockReturnValue(null),
-      run: jest.fn(),
-    });
+    sessionRepo.get.mockReset().mockReturnValue(null);
+    sessionRepo.save.mockReset();
+    sessionRepo.clear.mockReset();
   });
 
   afterEach(() => {
@@ -79,7 +93,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse({ status: 'Active', queue_position: 0 });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       const session = await service.checkOrCreateSession();
 
       expect(session).toBeDefined();
@@ -101,7 +115,7 @@ describe('QueueService', () => {
       });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       const session = await service.checkOrCreateSession();
 
       expect(session.status).toBe('Waiting');
@@ -115,7 +129,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse();
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       await service.checkOrCreateSession();
 
       expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/check-create-session/', {
@@ -133,7 +147,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse({ session_key: customKey });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       await service.checkOrCreateSession(customKey);
 
       expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/check-create-session/', {
@@ -149,7 +163,7 @@ describe('QueueService', () => {
     it('should throw an error when the queue API fails', async () => {
       mockAxiosInstance.get.mockRejectedValue(new Error('Network error'));
 
-      const service = new QueueService();
+      const service = createService();
       // Must listen for 'error' event to prevent Node unhandled error
       service.on('error', () => {});
       await expect(service.checkOrCreateSession()).rejects.toThrow(
@@ -163,7 +177,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse({ status: 'Active' });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       const statusHandler = jest.fn();
       service.on('status_changed', statusHandler);
 
@@ -183,7 +197,7 @@ describe('QueueService', () => {
     it('should emit error event when API fails', async () => {
       mockAxiosInstance.get.mockRejectedValue(new Error('Connection refused'));
 
-      const service = new QueueService();
+      const service = createService();
       const errorHandler = jest.fn();
       service.on('error', errorHandler);
 
@@ -201,22 +215,15 @@ describe('QueueService', () => {
     });
 
     it('should persist session to database', async () => {
-      const mockRun = jest.fn();
-      mockDbPrepare.mockReturnValue({ get: jest.fn().mockReturnValue(null), run: mockRun });
-
       const apiResponse = mockQueueApiResponse({ status: 'Active' });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       await service.checkOrCreateSession();
 
-      // Should have called prepare with INSERT OR REPLACE for queue_session
-      const insertCalls = mockDbPrepare.mock.calls.filter(
-        (call: string[]) =>
-          typeof call[0] === 'string' && call[0].includes('INSERT OR REPLACE INTO queue_session')
+      expect(sessionRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionKey: apiResponse.session_key, status: 'Active' })
       );
-      expect(insertCalls.length).toBeGreaterThan(0);
-      expect(mockRun).toHaveBeenCalled();
 
       service.destroy();
     });
@@ -227,7 +234,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse({ status: 'Active', expiry_seconds: 600 });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       await service.checkOrCreateSession();
 
       expect(service.isSessionActive()).toBe(true);
@@ -240,7 +247,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse({ status: 'Waiting' });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       await service.checkOrCreateSession();
 
       expect(service.isSessionActive()).toBe(false);
@@ -249,7 +256,7 @@ describe('QueueService', () => {
     });
 
     it('isSessionActive returns false when no session exists', () => {
-      const service = new QueueService();
+      const service = createService();
 
       expect(service.isSessionActive()).toBe(false);
       expect(service.isSessionExpired()).toBe(true);
@@ -261,7 +268,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse();
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       await service.checkOrCreateSession();
 
       expect(service.getSessionCookie()).toBe(apiResponse.session_key);
@@ -270,7 +277,7 @@ describe('QueueService', () => {
     });
 
     it('getSessionCookie returns null when no session', () => {
-      const service = new QueueService();
+      const service = createService();
       expect(service.getSessionCookie()).toBeNull();
       service.destroy();
     });
@@ -281,7 +288,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse({ status: 'Active' });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       const result = await service.waitForActive();
 
       expect(result.success).toBe(true);
@@ -313,7 +320,7 @@ describe('QueueService', () => {
           }),
         });
 
-      const service = new QueueService({
+      const service = createService({
         pollIntervalMs: 1000,
         sessionRefreshBufferMs: 120000,
         maxRetries: 3,
@@ -363,7 +370,7 @@ describe('QueueService', () => {
           }),
         });
 
-      const service = new QueueService({
+      const service = createService({
         pollIntervalMs: 1000,
         sessionRefreshBufferMs: 120000,
         maxRetries: 3,
@@ -391,7 +398,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse({ status: 'Active' });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       const activeHandler = jest.fn();
       service.on('session_active', activeHandler);
 
@@ -406,7 +413,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse({ status: 'Active' });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
 
       // Start two concurrent waits
       const wait1 = service.waitForActive();
@@ -434,7 +441,7 @@ describe('QueueService', () => {
           data: mockQueueApiResponse({ status: 'Active' }),
         });
 
-      const service = new QueueService({
+      const service = createService({
         pollIntervalMs: 1000,
         sessionRefreshBufferMs: 120000,
         maxRetries: 3,
@@ -460,13 +467,10 @@ describe('QueueService', () => {
 
   describe('clearSession', () => {
     it('should clear session from memory and database', async () => {
-      const mockRun = jest.fn();
-      mockDbPrepare.mockReturnValue({ get: jest.fn().mockReturnValue(null), run: mockRun });
-
       const apiResponse = mockQueueApiResponse({ status: 'Active' });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       await service.checkOrCreateSession();
 
       expect(service.getSession()).not.toBeNull();
@@ -477,12 +481,8 @@ describe('QueueService', () => {
       expect(service.getSessionCookie()).toBeNull();
       expect(service.isSessionActive()).toBe(false);
 
-      // Should have called DELETE on database
-      const deleteCalls = mockDbPrepare.mock.calls.filter(
-        (call: string[]) =>
-          typeof call[0] === 'string' && call[0].includes('DELETE FROM queue_session')
-      );
-      expect(deleteCalls.length).toBeGreaterThan(0);
+      // Should have cleared the stored session
+      expect(sessionRepo.clear).toHaveBeenCalled();
 
       service.destroy();
     });
@@ -490,22 +490,9 @@ describe('QueueService', () => {
 
   describe('database persistence', () => {
     it('should restore a valid (non-expired) session from database on startup', () => {
-      const futureExpiry = new Date(Date.now() + 300000).toISOString();
-      mockDbPrepare.mockReturnValue({
-        get: jest.fn().mockReturnValue({
-          session_key: 'RESTOREDKEY12345678901234567890123456789012345678901',
-          status: 'Active',
-          position: 0,
-          estimated_wait_seconds: 0,
-          expiry_seconds: 600,
-          expires_at: futureExpiry,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }),
-        run: jest.fn(),
-      });
+      sessionRepo.get.mockReturnValue(storedSession());
 
-      const service = new QueueService();
+      const service = createService();
       const session = service.getSession();
 
       expect(session).not.toBeNull();
@@ -516,33 +503,17 @@ describe('QueueService', () => {
     });
 
     it('should not restore an expired session from database', () => {
-      const pastExpiry = new Date(Date.now() - 60000).toISOString();
-      const mockRun = jest.fn();
-      mockDbPrepare.mockReturnValue({
-        get: jest.fn().mockReturnValue({
-          session_key: 'EXPIREDKEY',
-          status: 'Active',
-          position: 0,
-          estimated_wait_seconds: 0,
-          expiry_seconds: 600,
-          expires_at: pastExpiry,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }),
-        run: mockRun,
-      });
+      sessionRepo.get.mockReturnValue(
+        storedSession({ sessionKey: 'EXPIREDKEY', expiresAt: new Date(Date.now() - 60000) })
+      );
 
-      const service = new QueueService();
+      const service = createService();
       const session = service.getSession();
 
       expect(session).toBeNull();
 
-      // Should have called DELETE to clear expired session
-      const deleteCalls = mockDbPrepare.mock.calls.filter(
-        (call: string[]) =>
-          typeof call[0] === 'string' && call[0].includes('DELETE FROM queue_session')
-      );
-      expect(deleteCalls.length).toBeGreaterThan(0);
+      // Should have cleared the expired stored session
+      expect(sessionRepo.clear).toHaveBeenCalled();
 
       service.destroy();
     });
@@ -553,7 +524,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse({ status: 'Waiting', wait_time: 45 });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       await service.checkOrCreateSession();
 
       expect(service.getEstimatedWaitFormatted()).toBe('45 seconds');
@@ -565,7 +536,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse({ status: 'Waiting', wait_time: 180 });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       await service.checkOrCreateSession();
 
       expect(service.getEstimatedWaitFormatted()).toBe('3 minutes');
@@ -577,7 +548,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse({ status: 'Waiting', wait_time: 60 });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       await service.checkOrCreateSession();
 
       expect(service.getEstimatedWaitFormatted()).toBe('1 minute');
@@ -586,7 +557,7 @@ describe('QueueService', () => {
     });
 
     it('should return Unknown when no session', () => {
-      const service = new QueueService();
+      const service = createService();
       expect(service.getEstimatedWaitFormatted()).toBe('Unknown');
       service.destroy();
     });
@@ -597,7 +568,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse({ status: 'Active', expiry_seconds: 300 });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       await service.checkOrCreateSession();
 
       const remaining = service.getExpiryTimeRemaining();
@@ -608,7 +579,7 @@ describe('QueueService', () => {
     });
 
     it('should return "No session" when no session exists', () => {
-      const service = new QueueService();
+      const service = createService();
       expect(service.getExpiryTimeRemaining()).toBe('No session');
       service.destroy();
     });
@@ -619,7 +590,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse();
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       await service.checkOrCreateSession();
 
       // Verify the session key passed to the API was 52 chars
@@ -634,7 +605,7 @@ describe('QueueService', () => {
 
   describe('isWaitingInQueue', () => {
     it('should return false initially', () => {
-      const service = new QueueService();
+      const service = createService();
       expect(service.isWaitingInQueue()).toBe(false);
       service.destroy();
     });
@@ -647,7 +618,7 @@ describe('QueueService', () => {
         data: mockQueueApiResponse({ status: 'Waiting', queue_position: 10 }),
       });
 
-      const service = new QueueService({
+      const service = createService({
         pollIntervalMs: 1000,
         sessionRefreshBufferMs: 120000,
         maxRetries: 3,
@@ -681,7 +652,7 @@ describe('QueueService', () => {
       const apiResponse = mockQueueApiResponse({ status: 'Active', expiry_seconds: 600 });
       mockAxiosInstance.get.mockResolvedValue({ data: apiResponse });
 
-      const service = new QueueService();
+      const service = createService();
       await service.checkOrCreateSession();
 
       const handler = jest.fn();
@@ -716,7 +687,7 @@ describe('QueueService', () => {
           data: mockQueueApiResponse({ status: 'Active', queue_position: 0, wait_time: 0 }),
         });
 
-      const service = new QueueService({
+      const service = createService({
         pollIntervalMs: 5000,
         sessionRefreshBufferMs: 120000,
         maxRetries: 3,

@@ -12,11 +12,10 @@
 
 import axios, { AxiosInstance } from 'axios';
 import { EventEmitter } from 'events';
-import { getDatabase } from '../../database/connection';
+import { QueueSessionRepository } from '../../database/repositories/queue-session.repository';
 import {
   QueueSession,
   QueueAPIResponse,
-  QueueStatus,
   QueueServiceConfig,
   QueueStatusEvent,
   QueueWaitResult,
@@ -39,6 +38,7 @@ const DEFAULT_CONFIG: QueueServiceConfig = {
 };
 
 export class QueueService extends EventEmitter {
+  private sessionRepo: QueueSessionRepository;
   private client: AxiosInstance;
   private session: QueueSession | null = null;
   private config: QueueServiceConfig;
@@ -48,8 +48,9 @@ export class QueueService extends EventEmitter {
   private isWaiting: boolean = false;
   private waitPromise: Promise<QueueWaitResult> | null = null;
 
-  constructor(config: Partial<QueueServiceConfig> = {}) {
+  constructor(sessionRepo: QueueSessionRepository, config: Partial<QueueServiceConfig> = {}) {
     super();
+    this.sessionRepo = sessionRepo;
     this.config = { ...DEFAULT_CONFIG, ...config };
 
     this.client = axios.create({
@@ -67,30 +68,12 @@ export class QueueService extends EventEmitter {
    */
   private loadSessionFromDatabase(): void {
     try {
-      const db = getDatabase();
-      const row = db
-        .prepare(
-          `SELECT session_key, status, position, estimated_wait_seconds,
-                  expiry_seconds, expires_at, created_at, updated_at
-           FROM queue_session WHERE id = 1`
-        )
-        .get() as any;
+      const stored = this.sessionRepo.get();
 
-      if (row && row.session_key) {
-        const expiresAt = new Date(row.expires_at);
-
+      if (stored) {
         // Only restore if not expired
-        if (expiresAt > new Date()) {
-          this.session = {
-            sessionKey: row.session_key,
-            status: row.status as QueueStatus,
-            position: row.position || 0,
-            estimatedWaitSeconds: row.estimated_wait_seconds || 0,
-            expirySeconds: row.expiry_seconds || 0,
-            createdAt: new Date(row.created_at),
-            expiresAt,
-            lastCheckedAt: new Date(row.updated_at),
-          };
+        if (stored.expiresAt > new Date()) {
+          this.session = stored;
           console.log('Restored queue session from database:', this.session.sessionKey);
 
           // Schedule refresh for restored session
@@ -112,21 +95,7 @@ export class QueueService extends EventEmitter {
     if (!this.session) return;
 
     try {
-      const db = getDatabase();
-      db.prepare(
-        `INSERT OR REPLACE INTO queue_session
-         (id, session_key, status, position, estimated_wait_seconds, expiry_seconds, expires_at, created_at, updated_at)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(
-        this.session.sessionKey,
-        this.session.status,
-        this.session.position,
-        this.session.estimatedWaitSeconds,
-        this.session.expirySeconds,
-        this.session.expiresAt.toISOString(),
-        this.session.createdAt.toISOString(),
-        new Date().toISOString()
-      );
+      this.sessionRepo.save(this.session);
     } catch (error) {
       console.error('Failed to save queue session to database:', error);
     }
@@ -137,8 +106,7 @@ export class QueueService extends EventEmitter {
    */
   private clearSessionFromDatabase(): void {
     try {
-      const db = getDatabase();
-      db.prepare('DELETE FROM queue_session WHERE id = 1').run();
+      this.sessionRepo.clear();
     } catch (error) {
       console.error('Failed to clear queue session from database:', error);
     }
