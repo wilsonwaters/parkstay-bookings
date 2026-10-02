@@ -236,3 +236,38 @@ interface ProviderContext {
 
 - Author is the stakeholder (repo git config already set). **Never** add `Co-Authored-By`, `Claude-Session`, "Generated with Claude Code" or any AI attribution to commits, files or GitHub text.
 - Use conventional commits with the issue number: `feat(providers): add provider registry (#12)`. One commit (or a small series) per task.
+
+## 12. Contract amendments (2026-10-02, from stream planning — binding)
+
+1. **`ProviderManifest.stayFields?: StayFieldDescriptor[]`.** Provider-specific stay inputs such as gear type, vehicles, postcode and concessions, rendered generically by the renderer.
+   ```ts
+   interface StayFieldDescriptor {
+     key: string; label: string; help?: string;
+     type: 'select' | 'number' | 'text' | 'boolean';
+     options?: { value: string; label: string }[]; min?: number; max?: number; default?: string | number | boolean;
+     appliesTo: Array<'availability' | 'watch' | 'snipe' | 'hold'>;
+     required?: boolean;
+   }
+   ```
+   Values are stored in `stay_params` JSON and validated in main against the descriptor. The renderer never contains per-provider code.
+2. **`capabilities.accessGate: boolean`.** True when the provider has a waiting room or queue (ParkStay: DBCA queue). It drives the queue toggle in Site Sniper and the access-status chip in the tray.
+3. **Release modes are provider-described.**
+   ```ts
+   interface ReleaseModeDescriptor { id: string; label: string; description: string; usesAccessGate: boolean; fields?: StayFieldDescriptor[] }
+   ```
+   This is exposed via `ProviderManifest.releaseModes?` when `capabilities.snipes`. The core `SiteSniperService` calls `provider.release.computeReleaseAt(modeId, stay, params, now)`. ParkStay modes are `daily_rollover`, `scheduled` and `cancellation`.
+4. **Watch auto-hold.** The no-op "auto-book" checkbox becomes **"Hold a site automatically when found"**. It is implemented in V4 via `provider.holds` (same path and safety guards as snipes: one hold per night, payment hand-off notification). It is shown only when `capabilities.holds`.
+5. **Booking management link.** `provider.links.manageBooking?(reference): string | null` is surfaced as `Booking.manageUrl`. The UI shows "Manage on {shortName}" when present. The fake cancel is removed.
+6. **Events:** add `app:navigate` with `{ path }`. Main emits it when an OS notification is clicked, and the renderer only follows allow-listed internal paths.
+7. **Typed settings keys** live in `shared/contracts/settings.ts`, for example `notifications.desktop`, `notifications.sound`, `app.startMinimised`. Main owns `valueType` and `category`, not the renderer.
+8. **D2 primitives must include** Combobox (ARIA 1.2 pattern), Menu, Popover, Switch, Disclosure, RadioCard, Stepper, in addition to the D2 list. A primitive found missing later is added to `components/ui/` with tests, never hand-rolled inside a feature.
+9. **Provider choice is always visible.** The provider filter and the provider step show even when only one provider qualifies (it is pre-selected). This follows the stakeholder brief: provider is "the first level of each function".
+10. **Routes (final):**
+    - `/` Explore
+    - `/places/:providerId/:externalId` location detail
+    - `/watches`, `/watches/new`, `/watches/:id`, `/watches/:id/edit`
+    - `/site-sniper`, `/site-sniper/new`, `/site-sniper/:id`
+    - `/bookings`, `/bookings/:id`
+    - `/settings/:section?`
+    - **Prefill query contract** for create flows: `?provider=<id>&location=<externalId>&arrival=YYYY-MM-DD&departure=YYYY-MM-DD&adults=N&children=N`
+11. **Small main-process changes inside UX tasks are allowed** when they only wire existing services to the UI (settings → NotificationService, notification-click navigation). They must still follow the IPC conventions in §4 and §1.
