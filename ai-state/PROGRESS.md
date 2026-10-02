@@ -8,9 +8,11 @@ Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task spe
 ## Currently in flight
 - **P4** (#15) Main-process hardening: implementation agent, lane M.
 - **V1** (#19) Provider SDK and contract: implementation agent, lane V (`/home/user/wt/lane-v`).
-- **D2** (#30) UI component library: review REQUEST_CHANGES (toast viewport inert inside modals, plus minors); fix agent running in lane R.
+- **D3** (#31) App shell: lane R.
+- Two container restarts so far. In-progress lane work was preserved as `wip:` checkpoint commits and resumed by fresh agents; wip commits are squashed before merge.
 
 ## Completed
+- **D2** (#30) UI component library: review REQUEST_CHANGES (toasts inert under modals, plus minors), fixed (toasts portalled outside `#root`, persistent live region, focus-trap robustness, calendar band), merged.
 - **P3** (#14) Composition root and typed IPC: reviewed (APPROVE; verified with a real untrusted window), small follow-ups fixed by the orchestrator, merged. Logout no longer deletes the profile (§12.22).
 - **B1** (#26) Brand assets: the stakeholder chose the "Roofline sunset" logo. Review found a Windows CRLF CI failure (pre-existing in a D1 test); fixed with `.gitattributes` `eol=lf` plus CRLF-tolerant tests. Optical centring fixed, merged.
 - **P2** (#13) Database foundation: reviewed (APPROVE; minors fixed in a fix commit, which adds the FK baseline rule, full-row upgrade assertions and an FK-off guard), merged. The v6 delivery-log FK bug is reproduced and fixed by v7.
