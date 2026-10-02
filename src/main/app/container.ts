@@ -11,7 +11,7 @@ import type Database from 'better-sqlite3';
 import { closeDatabase } from '../database/connection';
 import {
   BookingRepository,
-  NotificationProviderRepository,
+  NotifierRepository,
   NotificationRepository,
   QueueSessionRepository,
   SettingsRepository,
@@ -25,7 +25,7 @@ import { GmailOTPService } from '../services/gmail/GmailOTPService';
 import { OAuth2Handler } from '../services/gmail/oauth2-handler';
 import { NotificationDispatcher } from '../services/notification/notification-dispatcher';
 import { NotificationService } from '../services/notification/notification.service';
-import { SMTPEmailProvider } from '../services/notification/providers/email-smtp.provider';
+import { SmtpEmailNotifier } from '../services/notification/notifiers/email-smtp.notifier';
 import { ParkStayService } from '../services/parkstay/parkstay.service';
 import { QueueService } from '../services/queue/queue.service';
 import { SiteSniperService } from '../services/sitesniper/sitesniper.service';
@@ -38,7 +38,7 @@ export interface AppRepositories {
   readonly users: UserRepository;
   readonly bookings: BookingRepository;
   readonly settings: SettingsRepository;
-  readonly notifiers: NotificationProviderRepository;
+  readonly notifiers: NotifierRepository;
   readonly notifications: NotificationRepository;
   readonly watches: WatchRepository;
   readonly snipes: SiteSniperRepository;
@@ -74,7 +74,7 @@ export function createContainer({ db }: ContainerOptions): AppContainer {
     users: new UserRepository(db),
     bookings: new BookingRepository(db),
     settings: new SettingsRepository(db),
-    notifiers: new NotificationProviderRepository(db),
+    notifiers: new NotifierRepository(db),
     notifications: new NotificationRepository(db),
     watches: new WatchRepository(db),
     snipes: new SiteSniperRepository(db),
@@ -84,7 +84,7 @@ export function createContainer({ db }: ContainerOptions): AppContainer {
   const profile = createLocalProfile(repositories.users);
 
   const notifierDispatcher = new NotificationDispatcher(repositories.notifiers, [
-    new SMTPEmailProvider(),
+    new SmtpEmailNotifier(),
   ]);
   const queueService = new QueueService(repositories.queueSessions);
   const parkStayService = new ParkStayService(queueService);

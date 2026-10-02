@@ -9,20 +9,20 @@
 
 import Database from 'better-sqlite3';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
-import { NotificationProviderRepository } from '@main/database/repositories/notification-provider.repository';
-import { NotificationChannel } from '@shared/types';
+import { NotifierRepository } from '@main/database/repositories/notifier.repository';
+import { NotifierChannel } from '@shared/types';
 
 jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }));
 
 describe('notification delivery log on a freshly migrated database', () => {
   let dbHelper: TestDatabaseHelper;
   let db: Database.Database;
-  let repo: NotificationProviderRepository;
+  let repo: NotifierRepository;
 
   beforeEach(async () => {
     dbHelper = new TestDatabaseHelper('delivery-log-fk');
     db = await dbHelper.setup();
-    repo = new NotificationProviderRepository(db);
+    repo = new NotifierRepository(db);
   });
 
   afterEach(async () => {
@@ -31,7 +31,7 @@ describe('notification delivery log on a freshly migrated database', () => {
 
   test('accepts a delivery log without a notification_id', () => {
     const log = repo.logDelivery({
-      providerChannel: NotificationChannel.EMAIL_SMTP,
+      notifierChannel: NotifierChannel.EMAIL_SMTP,
       status: 'failed',
       errorMessage: 'Invalid login',
     });
@@ -52,7 +52,7 @@ describe('notification delivery log on a freshly migrated database', () => {
 
     const log = repo.logDelivery({
       notificationId: 1,
-      providerChannel: NotificationChannel.EMAIL_SMTP,
+      notifierChannel: NotifierChannel.EMAIL_SMTP,
       status: 'sent',
       sentAt: new Date('2026-01-01T00:00:00Z'),
     });

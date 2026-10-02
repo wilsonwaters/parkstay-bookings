@@ -67,7 +67,7 @@ The same rows are in both fixtures. v6 adds one `site_snipes` row and the v6 `mi
 The secrets are encrypted with the **legacy** v1.x algorithms (AES-256-GCM, key from
 PBKDF2-SHA512 over machine id + app constant, 100,000 iterations), as in
 `AuthService.ts` (`encryptPassword`/`getEncryptionKey`) and
-`notification-provider.repository.ts` (`encryptConfig`/`getEncryptionKey`). P5 uses them to
+`notifier.repository.ts` (`encryptConfig`/`getEncryptionKey`). P5 uses them to
 test legacy decryption.
 
 | Value | Plaintext |

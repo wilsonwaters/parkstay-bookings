@@ -68,13 +68,13 @@ export const IPC_CHANNELS = {
   PARKSTAY_GET_ALL_CAMPGROUNDS: 'parkstay:get-all-campgrounds',
   PARKSTAY_CHECK_AVAILABILITY: 'parkstay:check-availability',
 
-  // Notification Providers
-  PROVIDER_LIST: 'provider:list',
-  PROVIDER_GET: 'provider:get',
-  PROVIDER_CONFIGURE: 'provider:configure',
-  PROVIDER_ENABLE: 'provider:enable',
-  PROVIDER_DISABLE: 'provider:disable',
-  PROVIDER_TEST: 'provider:test',
+  // Notifiers
+  NOTIFIERS_LIST: 'notifiers:list',
+  NOTIFIERS_GET: 'notifiers:get',
+  NOTIFIERS_CONFIGURE: 'notifiers:configure',
+  NOTIFIERS_ENABLE: 'notifiers:enable',
+  NOTIFIERS_DISABLE: 'notifiers:disable',
+  NOTIFIERS_TEST: 'notifiers:test',
 
   // Queue
   QUEUE_CHECK: 'queue:check',

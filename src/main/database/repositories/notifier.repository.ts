@@ -1,6 +1,6 @@
 /**
- * Notification Provider Repository
- * Handles CRUD operations for notification providers with encrypted config
+ * Notifier Repository
+ * Handles CRUD operations for notifiers (the `notifiers` table) with encrypted config
  */
 
 import Database from 'better-sqlite3';
@@ -8,19 +8,20 @@ import crypto from 'crypto';
 import { machineIdSync } from 'node-machine-id';
 import { BaseRepository } from './base.repository';
 import {
-  NotificationProvider,
-  NotificationProviderInput,
-  NotificationChannel,
-  ProviderStatus,
+  Notifier,
+  NotifierInput,
+  NotifierChannel,
+  NotifierStatus,
   NotificationDeliveryLog,
   NotificationDeliveryLogInput,
 } from '@shared/types';
 import { logger } from '../../utils/logger';
 
-// Secret salt for key derivation
-const PROVIDER_SECRET = 'parkstay-notification-providers-v1';
+// Legacy key-derivation inputs (v1.x). Stored configs were encrypted with them, so the
+// values must never change; P5 migrates the configs to the SecretVault.
+const NOTIFIER_CONFIG_SECRET = 'parkstay-notification-providers-v1';
 
-interface ProviderRow {
+interface NotifierRow {
   id: number;
   channel: string;
   display_name: string;
@@ -44,7 +45,7 @@ interface DeliveryLogRow {
   created_at: string;
 }
 
-export class NotificationProviderRepository extends BaseRepository<NotificationProvider> {
+export class NotifierRepository extends BaseRepository<Notifier> {
   protected readonly tableName = 'notifiers';
   private encryptionKey: Buffer | null = null;
   private machineId: string;
@@ -55,24 +56,24 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
   }
 
   /**
-   * Map database row to NotificationProvider model
+   * Map database row to Notifier model
    */
-  protected mapRow(row: ProviderRow): NotificationProvider {
+  protected mapRow(row: NotifierRow): Notifier {
     let config: Record<string, unknown> = {};
     try {
       const decryptedConfig = this.decryptConfig(row.config);
       config = JSON.parse(decryptedConfig);
     } catch {
-      logger.warn(`Failed to decrypt config for provider ${row.channel}`);
+      logger.warn(`Failed to decrypt config for notifier ${row.channel}`);
     }
 
     return {
       id: row.id,
-      channel: row.channel as NotificationChannel,
+      channel: row.channel as NotifierChannel,
       displayName: row.display_name,
       enabled: row.enabled === 1,
       config,
-      status: row.status as ProviderStatus,
+      status: row.status as NotifierStatus,
       lastTestedAt: row.last_tested_at ? new Date(row.last_tested_at) : undefined,
       lastError: row.last_error || undefined,
       createdAt: new Date(row.created_at),
@@ -81,18 +82,18 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
   }
 
   /**
-   * Create or update a notification provider
+   * Create or update a notifier
    */
-  upsert(input: NotificationProviderInput): NotificationProvider {
+  upsert(input: NotifierInput): Notifier {
     try {
       const existing = this.findByChannel(input.channel);
 
       if (existing) {
-        // Update existing provider
-        return this.updateProvider(existing.id, input);
+        // Update existing notifier
+        return this.updateNotifier(existing.id, input);
       }
 
-      // Create new provider
+      // Create new notifier
       const encryptedConfig = this.encryptConfig(JSON.stringify(input.config));
 
       const stmt = this.db.prepare(`
@@ -107,24 +108,24 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
         input.displayName,
         input.enabled ? 1 : 0,
         encryptedConfig,
-        ProviderStatus.CONFIGURED
+        NotifierStatus.CONFIGURED
       );
 
-      const provider = this.findById(result.lastInsertRowid as number);
-      if (!provider) throw new Error('Failed to create provider');
+      const notifier = this.findById(result.lastInsertRowid as number);
+      if (!notifier) throw new Error('Failed to create notifier');
 
-      logger.info(`Notification provider created: ${input.channel}`);
-      return provider;
+      logger.info(`Notifier created: ${input.channel}`);
+      return notifier;
     } catch (error) {
-      logger.error('Error creating notification provider:', error);
+      logger.error('Error creating notifier:', error);
       throw error;
     }
   }
 
   /**
-   * Update a provider
+   * Update a notifier
    */
-  updateProvider(id: number, input: Partial<NotificationProviderInput>): NotificationProvider {
+  updateNotifier(id: number, input: Partial<NotifierInput>): Notifier {
     try {
       const updates: string[] = [];
       const values: any[] = [];
@@ -143,12 +144,12 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
         updates.push('config = ?');
         values.push(this.encryptConfig(JSON.stringify(input.config)));
         updates.push('status = ?');
-        values.push(ProviderStatus.CONFIGURED);
+        values.push(NotifierStatus.CONFIGURED);
       }
 
       if (updates.length === 0) {
         const existing = this.findById(id);
-        if (!existing) throw new Error('Provider not found');
+        if (!existing) throw new Error('Notifier not found');
         return existing;
       }
 
@@ -162,79 +163,79 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
 
       stmt.run(...values);
 
-      const provider = this.findById(id);
-      if (!provider) throw new Error('Failed to update provider');
+      const notifier = this.findById(id);
+      if (!notifier) throw new Error('Failed to update notifier');
 
-      logger.info(`Notification provider updated: ID ${id}`);
-      return provider;
+      logger.info(`Notifier updated: ID ${id}`);
+      return notifier;
     } catch (error) {
-      logger.error('Error updating notification provider:', error);
+      logger.error('Error updating notifier:', error);
       throw error;
     }
   }
 
   /**
-   * Find provider by channel
+   * Find notifier by channel
    */
-  findByChannel(channel: NotificationChannel): NotificationProvider | null {
+  findByChannel(channel: NotifierChannel): Notifier | null {
     try {
       const row = this.db.prepare('SELECT * FROM notifiers WHERE channel = ?').get(channel);
-      return row ? this.mapRow(row as ProviderRow) : null;
+      return row ? this.mapRow(row as NotifierRow) : null;
     } catch (error) {
-      logger.error(`Error finding provider by channel ${channel}:`, error);
+      logger.error(`Error finding notifier by channel ${channel}:`, error);
       throw error;
     }
   }
 
   /**
-   * Find all enabled providers
+   * Find all enabled notifiers
    */
-  findEnabled(): NotificationProvider[] {
+  findEnabled(): Notifier[] {
     try {
       const rows = this.db
         .prepare('SELECT * FROM notifiers WHERE enabled = 1')
-        .all() as ProviderRow[];
+        .all() as NotifierRow[];
       return rows.map((row) => this.mapRow(row));
     } catch (error) {
-      logger.error('Error finding enabled providers:', error);
+      logger.error('Error finding enabled notifiers:', error);
       throw error;
     }
   }
 
   /**
-   * Enable a provider
+   * Enable a notifier
    */
-  enable(channel: NotificationChannel): boolean {
+  enable(channel: NotifierChannel): boolean {
     try {
       const result = this.db
         .prepare('UPDATE notifiers SET enabled = 1 WHERE channel = ?')
         .run(channel);
       return result.changes > 0;
     } catch (error) {
-      logger.error(`Error enabling provider ${channel}:`, error);
+      logger.error(`Error enabling notifier ${channel}:`, error);
       throw error;
     }
   }
 
   /**
-   * Disable a provider
+   * Disable a notifier
    */
-  disable(channel: NotificationChannel): boolean {
+  disable(channel: NotifierChannel): boolean {
     try {
       const result = this.db
         .prepare('UPDATE notifiers SET enabled = 0 WHERE channel = ?')
         .run(channel);
       return result.changes > 0;
     } catch (error) {
-      logger.error(`Error disabling provider ${channel}:`, error);
+      logger.error(`Error disabling notifier ${channel}:`, error);
       throw error;
     }
   }
 
   /**
-   * Update provider status
+   * Update notifier status
    */
-  updateStatus(channel: NotificationChannel, status: ProviderStatus, error?: string): void {
+  updateStatus(channel: NotifierChannel, status: NotifierStatus, error?: string): void {
     try {
       this.db
         .prepare(
@@ -246,7 +247,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
         )
         .run(status, error || null, channel);
     } catch (err) {
-      logger.error(`Error updating provider status ${channel}:`, err);
+      logger.error(`Error updating notifier status ${channel}:`, err);
       throw err;
     }
   }
@@ -254,7 +255,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
   /**
    * Update last tested timestamp
    */
-  updateLastTested(channel: NotificationChannel, success: boolean, error?: string): void {
+  updateLastTested(channel: NotifierChannel, success: boolean, error?: string): void {
     try {
       this.db
         .prepare(
@@ -266,7 +267,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
           WHERE channel = ?
         `
         )
-        .run(success ? ProviderStatus.CONFIGURED : ProviderStatus.ERROR, error || null, channel);
+        .run(success ? NotifierStatus.CONFIGURED : NotifierStatus.ERROR, error || null, channel);
     } catch (err) {
       logger.error(`Error updating last tested for ${channel}:`, err);
       throw err;
@@ -287,7 +288,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
 
       const result = stmt.run(
         input.notificationId || null,
-        input.providerChannel,
+        input.notifierChannel,
         input.status,
         input.messageId || null,
         input.errorMessage || null,
@@ -315,7 +316,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
       return {
         id: row.id,
         notificationId: row.notification_id || undefined,
-        providerChannel: row.notifier_channel as NotificationChannel,
+        notifierChannel: row.notifier_channel as NotifierChannel,
         status: row.status as 'sent' | 'failed' | 'pending',
         messageId: row.message_id || undefined,
         errorMessage: row.error_message || undefined,
@@ -340,7 +341,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
       return rows.map((row) => ({
         id: row.id,
         notificationId: row.notification_id || undefined,
-        providerChannel: row.notifier_channel as NotificationChannel,
+        notifierChannel: row.notifier_channel as NotifierChannel,
         status: row.status as 'sent' | 'failed' | 'pending',
         messageId: row.message_id || undefined,
         errorMessage: row.error_message || undefined,
@@ -382,7 +383,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
     }
 
     this.encryptionKey = crypto.pbkdf2Sync(
-      this.machineId + PROVIDER_SECRET,
+      this.machineId + NOTIFIER_CONFIG_SECRET,
       'parkstay-provider-salt',
       100000,
       32,

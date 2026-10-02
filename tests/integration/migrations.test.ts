@@ -23,11 +23,8 @@ import {
   openDatabase,
   runMigrations,
 } from '@main/database/connection';
-import {
-  NotificationProviderRepository,
-  NotificationRepository,
-} from '@main/database/repositories';
-import { NotificationChannel } from '@shared/types';
+import { NotifierRepository, NotificationRepository } from '@main/database/repositories';
+import { NotifierChannel } from '@shared/types';
 import { logger } from '@main/utils/logger';
 
 jest.mock('node-machine-id', () => ({ machineIdSync: () => FIXTURE_MACHINE_ID }));
@@ -239,19 +236,17 @@ describe('database migrations', () => {
     it('keeps the notifier config ciphertext byte-identical and still decryptable', () => {
       expect(notifierConfig(db, 'notifiers')).toBe(configBefore);
 
-      const notifier = new NotificationProviderRepository(db).findByChannel(
-        NotificationChannel.EMAIL_SMTP
-      );
+      const notifier = new NotifierRepository(db).findByChannel(NotifierChannel.EMAIL_SMTP);
       expect(notifier?.config).toMatchObject({
         auth: { user: 'fixture.user@example.com', pass: FIXTURE_SMTP_PASSWORD },
       });
     });
 
     it('accepts new delivery logs and keeps legacy notification types readable', () => {
-      const notifiers = new NotificationProviderRepository(db);
+      const notifiers = new NotifierRepository(db);
       const log = notifiers.logDelivery({
         notificationId: 2,
-        providerChannel: NotificationChannel.EMAIL_SMTP,
+        notifierChannel: NotifierChannel.EMAIL_SMTP,
         status: 'sent',
       });
       expect(log.notificationId).toBe(2);

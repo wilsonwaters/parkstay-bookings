@@ -1,12 +1,13 @@
 /**
- * Notification Provider Types
- * Types for the pluggable notification provider system
+ * Notifier Types
+ * Types for the pluggable notifier system: outbound notification channels such as email
+ * (SMTP). In WA Stay a "provider" is an accommodation source, never a notifier.
  */
 
 /**
  * Supported notification channels
  */
-export enum NotificationChannel {
+export enum NotifierChannel {
   DESKTOP = 'desktop',
   EMAIL_SMTP = 'email_smtp',
   // Future channels
@@ -15,16 +16,16 @@ export enum NotificationChannel {
 }
 
 /**
- * Provider status
+ * Notifier status
  */
-export enum ProviderStatus {
+export enum NotifierStatus {
   NOT_CONFIGURED = 'not_configured',
   CONFIGURED = 'configured',
   ERROR = 'error',
 }
 
 /**
- * SMTP provider preset types
+ * SMTP notifier preset types
  */
 export enum SMTPPreset {
   GMAIL = 'gmail',
@@ -49,15 +50,15 @@ export interface SMTPConfig {
 }
 
 /**
- * Base notification provider configuration stored in DB
+ * Notifier configuration stored in the `notifiers` table
  */
-export interface NotificationProvider {
+export interface Notifier {
   id: number;
-  channel: NotificationChannel;
+  channel: NotifierChannel;
   displayName: string;
   enabled: boolean;
-  config: SMTPConfig | Record<string, unknown>; // Provider-specific config
-  status: ProviderStatus;
+  config: SMTPConfig | Record<string, unknown>; // Notifier-specific config
+  status: NotifierStatus;
   lastTestedAt?: Date;
   lastError?: string;
   createdAt: Date;
@@ -65,20 +66,20 @@ export interface NotificationProvider {
 }
 
 /**
- * Input for creating/updating a provider
+ * Input for creating/updating a notifier
  */
-export interface NotificationProviderInput {
-  channel: NotificationChannel;
+export interface NotifierInput {
+  channel: NotifierChannel;
   displayName: string;
   enabled?: boolean;
   config: SMTPConfig | Record<string, unknown>;
 }
 
 /**
- * Provider configuration for SMTP Email
+ * Notifier configuration for SMTP Email
  */
-export interface SMTPProviderConfig {
-  channel: NotificationChannel.EMAIL_SMTP;
+export interface SmtpNotifierConfig {
+  channel: NotifierChannel.EMAIL_SMTP;
   config: SMTPConfig;
 }
 
@@ -94,7 +95,7 @@ export interface NotificationMessage {
 }
 
 /**
- * Result of sending a notification through a provider
+ * Result of sending a notification through a notifier
  */
 export interface NotificationDeliveryResult {
   success: boolean;
@@ -108,7 +109,7 @@ export interface NotificationDeliveryResult {
 export interface NotificationDeliveryLog {
   id: number;
   notificationId?: number;
-  providerChannel: NotificationChannel;
+  notifierChannel: NotifierChannel;
   status: 'sent' | 'failed' | 'pending';
   messageId?: string;
   errorMessage?: string;
@@ -121,7 +122,7 @@ export interface NotificationDeliveryLog {
  */
 export interface NotificationDeliveryLogInput {
   notificationId?: number;
-  providerChannel: NotificationChannel;
+  notifierChannel: NotifierChannel;
   status: 'sent' | 'failed' | 'pending';
   messageId?: string;
   errorMessage?: string;
@@ -138,9 +139,9 @@ export interface TestConnectionResult {
 }
 
 /**
- * Provider validation result
+ * Notifier validation result
  */
-export interface ProviderValidationResult {
+export interface NotifierValidationResult {
   valid: boolean;
   errors: string[];
 }

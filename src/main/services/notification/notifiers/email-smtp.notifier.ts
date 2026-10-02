@@ -1,27 +1,27 @@
 /**
- * SMTP Email Notification Provider
+ * SMTP Email Notifier
  * Sends notifications via email using SMTP (Nodemailer)
  */
 
 import nodemailer, { Transporter } from 'nodemailer';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
 import {
-  NotificationChannel,
+  NotifierChannel,
   NotificationMessage,
   NotificationDeliveryResult,
   TestConnectionResult,
-  ProviderValidationResult,
+  NotifierValidationResult,
   SMTPConfig,
   SMTP_PRESETS,
   SMTPPreset,
 } from '@shared/types';
-import { BaseNotificationProvider } from './base.provider';
+import { BaseNotifier } from './base.notifier';
 
-export class SMTPEmailProvider extends BaseNotificationProvider {
+export class SmtpEmailNotifier extends BaseNotifier {
   private transporter: Transporter<SMTPTransport.SentMessageInfo> | null = null;
 
   constructor() {
-    super(NotificationChannel.EMAIL_SMTP, 'Email (SMTP)');
+    super(NotifierChannel.EMAIL_SMTP, 'Email (SMTP)');
   }
 
   /**
@@ -63,7 +63,7 @@ export class SMTPEmailProvider extends BaseNotificationProvider {
   }
 
   /**
-   * Configure the provider
+   * Configure the notifier
    */
   configure(config: Record<string, unknown>): void {
     super.configure(config);
@@ -193,7 +193,7 @@ export class SMTPEmailProvider extends BaseNotificationProvider {
   /**
    * Validate the SMTP configuration
    */
-  validate(): ProviderValidationResult {
+  validate(): NotifierValidationResult {
     const errors: string[] = [];
     const config = this.config as Partial<SMTPConfig>;
 

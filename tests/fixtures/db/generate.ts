@@ -88,7 +88,7 @@ function encryptUserPassword(password: string) {
   );
 }
 
-/** `NotificationProviderRepository.encryptConfig` (v1.2.0): `iv:authTag:ciphertext`. */
+/** The v1.2.0 notifier repository's `encryptConfig` (now `NotifierRepository`): `iv:authTag:ciphertext`. */
 function encryptNotifierConfig(config: object): string {
   const { encrypted, iv, authTag } = legacyEncrypt(
     'parkstay-notification-providers-v1',

@@ -5,12 +5,12 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  NotificationChannel,
+  NotifierChannel,
   SMTPPreset,
   SMTPConfig,
-  ProviderStatus,
+  NotifierStatus,
   SMTP_PRESETS,
-  NotificationProvider,
+  Notifier,
 } from '@shared/types';
 import SMTPSetupInstructions from './SMTPSetupInstructions';
 
@@ -40,8 +40,8 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
   const [isTesting, setIsTesting] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [providerStatus, setProviderStatus] = useState<ProviderStatus>(
-    ProviderStatus.NOT_CONFIGURED
+  const [providerStatus, setNotifierStatus] = useState<NotifierStatus>(
+    NotifierStatus.NOT_CONFIGURED
   );
   const [lastTestedAt, setLastTestedAt] = useState<Date | null>(null);
 
@@ -54,14 +54,14 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
       setIsLoading(true);
       setError('');
 
-      const response = await window.api.notificationProvider.get(NotificationChannel.EMAIL_SMTP);
+      const response = await window.api.notifiers.get(NotifierChannel.EMAIL_SMTP);
 
       if (response.success && response.data) {
-        const provider = response.data as NotificationProvider;
+        const provider = response.data as Notifier;
         const config = provider.config as SMTPConfig;
 
         setEnabled(provider.enabled);
-        setProviderStatus(provider.status);
+        setNotifierStatus(provider.status);
         setLastTestedAt(provider.lastTestedAt ? new Date(provider.lastTestedAt) : null);
 
         if (config) {
@@ -151,8 +151,8 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
     try {
       setIsSaving(true);
 
-      const response = await window.api.notificationProvider.configure({
-        channel: NotificationChannel.EMAIL_SMTP,
+      const response = await window.api.notifiers.configure({
+        channel: NotifierChannel.EMAIL_SMTP,
         displayName: 'Email (SMTP)',
         enabled,
         config: buildConfig(),
@@ -160,7 +160,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
 
       if (response.success) {
         setSuccessMessage('Email settings saved successfully');
-        setProviderStatus(ProviderStatus.CONFIGURED);
+        setNotifierStatus(NotifierStatus.CONFIGURED);
         setAppPassword(''); // Clear password after save
         onSaveSuccess?.();
       } else {
@@ -186,16 +186,16 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
     try {
       setIsTesting(true);
 
-      const response = await window.api.notificationProvider.test(NotificationChannel.EMAIL_SMTP);
+      const response = await window.api.notifiers.test(NotifierChannel.EMAIL_SMTP);
 
       if (response.success && response.data) {
         if (response.data.success) {
           setSuccessMessage(response.data.message || 'Test email sent successfully!');
-          setProviderStatus(ProviderStatus.CONFIGURED);
+          setNotifierStatus(NotifierStatus.CONFIGURED);
           setLastTestedAt(new Date());
         } else {
           setError(response.data.error || 'Test failed');
-          setProviderStatus(ProviderStatus.ERROR);
+          setNotifierStatus(NotifierStatus.ERROR);
         }
       } else {
         setError(response.error || 'Failed to test email connection');
@@ -211,12 +211,12 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
     setEnabled(newEnabled);
 
     // If already configured, update enabled state in database
-    if (providerStatus !== ProviderStatus.NOT_CONFIGURED) {
+    if (providerStatus !== NotifierStatus.NOT_CONFIGURED) {
       try {
         if (newEnabled) {
-          await window.api.notificationProvider.enable(NotificationChannel.EMAIL_SMTP);
+          await window.api.notifiers.enable(NotifierChannel.EMAIL_SMTP);
         } else {
-          await window.api.notificationProvider.disable(NotificationChannel.EMAIL_SMTP);
+          await window.api.notifiers.disable(NotifierChannel.EMAIL_SMTP);
         }
       } catch (err) {
         console.error('Error toggling provider:', err);
@@ -226,13 +226,13 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
 
   const getStatusBadge = () => {
     switch (providerStatus) {
-      case ProviderStatus.CONFIGURED:
+      case NotifierStatus.CONFIGURED:
         return (
           <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
             Configured
           </span>
         );
-      case ProviderStatus.ERROR:
+      case NotifierStatus.ERROR:
         return (
           <span className="px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-800">
             Error
@@ -470,7 +470,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
               </button>
             </div>
             <p className="mt-1 text-xs text-gray-500">
-              {providerStatus === ProviderStatus.CONFIGURED
+              {providerStatus === NotifierStatus.CONFIGURED
                 ? 'Leave blank to keep existing password, or enter a new one to update'
                 : preset === SMTPPreset.CUSTOM
                   ? 'Your SMTP server password'
@@ -527,7 +527,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
             <button
               type="button"
               onClick={handleTest}
-              disabled={isTesting || providerStatus === ProviderStatus.NOT_CONFIGURED}
+              disabled={isTesting || providerStatus === NotifierStatus.NOT_CONFIGURED}
               className="btn-secondary"
             >
               {isTesting ? 'Sending...' : 'Send Test Email'}

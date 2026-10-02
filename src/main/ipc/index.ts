@@ -2,7 +2,7 @@ import type { AppContainer } from '../app/container';
 import { registerWatchHandlers } from './handlers/watch.handlers';
 import { registerSiteSniperHandlers } from './handlers/site-sniper.handlers';
 import { registerNotificationHandlers } from './handlers/notification.handlers';
-import { registerNotificationProviderHandlers } from './handlers/notification-provider.handlers';
+import { registerNotifiersHandlers } from './handlers/notifiers.handlers';
 import { registerAuthHandlers } from './handlers/auth.handlers';
 import { registerBookingHandlers } from './handlers/booking.handlers';
 import { registerSettingsHandlers } from './handlers/settings.handlers';
@@ -27,10 +27,7 @@ export function registerIPCHandlers(container: AppContainer): void {
   registerNotificationHandlers(container.notificationService);
   registerGmailHandlers(container.gmailService);
   registerParkStayHandlers(container.parkStayService);
-  registerNotificationProviderHandlers(
-    container.repositories.notifiers,
-    container.notifierDispatcher
-  );
+  registerNotifiersHandlers(container.repositories.notifiers, container.notifierDispatcher);
   registerQueueHandlers(container.queueService);
   registerUpdaterHandlers(container.autoUpdater);
   registerAppHandlers(container.repositories.settings);

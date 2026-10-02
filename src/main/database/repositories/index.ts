@@ -6,5 +6,5 @@ export * from './settings.repository';
 export * from './watch.repository';
 export * from './site-sniper.repository';
 export * from './notification.repository';
-export * from './notification-provider.repository';
+export * from './notifier.repository';
 export * from './queue-session.repository';

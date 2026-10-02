@@ -8,26 +8,26 @@
 
 import Database from 'better-sqlite3';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
-import { NotificationProviderRepository } from '@main/database/repositories';
+import { NotifierRepository } from '@main/database/repositories';
 import { NotificationDispatcher } from '@main/services/notification/notification-dispatcher';
-import { BaseNotificationProvider } from '@main/services/notification/providers/base.provider';
+import { BaseNotifier } from '@main/services/notification/notifiers/base.notifier';
 import { logger } from '@main/utils/logger';
 import {
-  NotificationChannel,
+  NotifierChannel,
   NotificationDeliveryResult,
   NotificationMessage,
-  ProviderValidationResult,
+  NotifierValidationResult,
   TestConnectionResult,
 } from '@shared/types';
 
 jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }));
 
 /** In-memory notifier: records what it receives, or throws when told to. */
-class FakeNotifier extends BaseNotificationProvider {
+class FakeNotifier extends BaseNotifier {
   readonly received: NotificationMessage[] = [];
 
   constructor(
-    channel: NotificationChannel,
+    channel: NotifierChannel,
     private readonly behaviour: 'deliver' | 'throw'
   ) {
     super(channel, `Fake ${channel}`);
@@ -44,7 +44,7 @@ class FakeNotifier extends BaseNotificationProvider {
     return { success: true, message: 'ok' };
   }
 
-  validate(): ProviderValidationResult {
+  validate(): NotifierValidationResult {
     return { valid: true, errors: [] };
   }
 }
@@ -59,14 +59,14 @@ interface LogRow {
 describe('NotificationDispatcher delivery logging', () => {
   let dbHelper: TestDatabaseHelper;
   let db: Database.Database;
-  let notifierRepo: NotificationProviderRepository;
+  let notifierRepo: NotifierRepository;
   let dispatcher: NotificationDispatcher;
 
   const message: NotificationMessage = { title: 'Availability found', message: 'Site 136 is free' };
 
   /** Puts fakes in the dispatcher's notifier map, in dispatch order. */
   function useNotifiers(...notifiers: FakeNotifier[]): void {
-    const registry = dispatcher.getAllProviders();
+    const registry = dispatcher.getAllNotifiers();
     registry.clear();
     for (const notifier of notifiers) registry.set(notifier.getChannel(), notifier);
   }
@@ -82,7 +82,7 @@ describe('NotificationDispatcher delivery logging', () => {
   beforeEach(async () => {
     dbHelper = new TestDatabaseHelper('notification-dispatch');
     db = await dbHelper.setup();
-    notifierRepo = new NotificationProviderRepository(db);
+    notifierRepo = new NotifierRepository(db);
     dispatcher = new NotificationDispatcher(notifierRepo, []);
   });
 
@@ -92,7 +92,7 @@ describe('NotificationDispatcher delivery logging', () => {
   });
 
   it('writes a delivery-log row for a successful send', async () => {
-    const email = new FakeNotifier(NotificationChannel.EMAIL_SMTP, 'deliver');
+    const email = new FakeNotifier(NotifierChannel.EMAIL_SMTP, 'deliver');
     useNotifiers(email);
 
     const results = await dispatcher.dispatch(message);
@@ -100,7 +100,7 @@ describe('NotificationDispatcher delivery logging', () => {
     expect(email.received).toEqual([message]);
     expect(results).toEqual([
       {
-        channel: NotificationChannel.EMAIL_SMTP,
+        channel: NotifierChannel.EMAIL_SMTP,
         result: { success: true, messageId: '<email_smtp-1@example.com>' },
       },
     ]);
@@ -115,16 +115,16 @@ describe('NotificationDispatcher delivery logging', () => {
   });
 
   it('keeps dispatching to the next notifier after one throws, and logs both', async () => {
-    const failing = new FakeNotifier(NotificationChannel.EMAIL_SMTP, 'throw');
-    const next = new FakeNotifier(NotificationChannel.DESKTOP, 'deliver');
+    const failing = new FakeNotifier(NotifierChannel.EMAIL_SMTP, 'throw');
+    const next = new FakeNotifier(NotifierChannel.DESKTOP, 'deliver');
     useNotifiers(failing, next);
 
     const results = await dispatcher.dispatch(message);
 
     expect(next.received).toEqual([message]);
     expect(results.map((r) => [r.channel, r.result.success])).toEqual([
-      [NotificationChannel.EMAIL_SMTP, false],
-      [NotificationChannel.DESKTOP, true],
+      [NotifierChannel.EMAIL_SMTP, false],
+      [NotifierChannel.DESKTOP, true],
     ]);
     expect(logs()).toEqual([
       {
@@ -148,8 +148,8 @@ describe('NotificationDispatcher delivery logging', () => {
       throw new Error('no such table: main.notifications_old');
     });
     const error = jest.spyOn(logger, 'error').mockImplementation(() => logger);
-    const failing = new FakeNotifier(NotificationChannel.EMAIL_SMTP, 'throw');
-    const next = new FakeNotifier(NotificationChannel.DESKTOP, 'deliver');
+    const failing = new FakeNotifier(NotifierChannel.EMAIL_SMTP, 'throw');
+    const next = new FakeNotifier(NotifierChannel.DESKTOP, 'deliver');
     useNotifiers(failing, next);
 
     const results = await dispatcher.dispatch(message);
@@ -157,11 +157,11 @@ describe('NotificationDispatcher delivery logging', () => {
     expect(next.received).toEqual([message]);
     expect(results).toEqual([
       {
-        channel: NotificationChannel.EMAIL_SMTP,
+        channel: NotifierChannel.EMAIL_SMTP,
         result: { success: false, error: 'SMTP connection reset' },
       },
       {
-        channel: NotificationChannel.DESKTOP,
+        channel: NotifierChannel.DESKTOP,
         result: { success: true, messageId: '<desktop-1@example.com>' },
       },
     ]);

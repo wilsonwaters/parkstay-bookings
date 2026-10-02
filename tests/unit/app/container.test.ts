@@ -14,7 +14,7 @@ import { GmailOTPService } from '@main/services/gmail/GmailOTPService';
 import { OAuth2Handler } from '@main/services/gmail/oauth2-handler';
 import { NotificationDispatcher } from '@main/services/notification/notification-dispatcher';
 import { NotificationService } from '@main/services/notification/notification.service';
-import { SMTPEmailProvider } from '@main/services/notification/providers/email-smtp.provider';
+import { SmtpEmailNotifier } from '@main/services/notification/notifiers/email-smtp.notifier';
 import { ParkStayService } from '@main/services/parkstay/parkstay.service';
 import { QueueService } from '@main/services/queue/queue.service';
 import { SiteSniperService } from '@main/services/sitesniper/sitesniper.service';
@@ -71,8 +71,8 @@ jest.mock('@main/services/notification/notification-dispatcher', () =>
 jest.mock('@main/services/notification/notification.service', () =>
   mockCountedModule('@main/services/notification/notification.service')
 );
-jest.mock('@main/services/notification/providers/email-smtp.provider', () =>
-  mockCountedModule('@main/services/notification/providers/email-smtp.provider')
+jest.mock('@main/services/notification/notifiers/email-smtp.notifier', () =>
+  mockCountedModule('@main/services/notification/notifiers/email-smtp.notifier')
 );
 jest.mock('@main/services/parkstay/parkstay.service', () =>
   mockCountedModule('@main/services/parkstay/parkstay.service')
@@ -97,7 +97,7 @@ const CONSTRUCTED_ONCE = {
   UserRepository: repositories.UserRepository,
   BookingRepository: repositories.BookingRepository,
   SettingsRepository: repositories.SettingsRepository,
-  NotificationProviderRepository: repositories.NotificationProviderRepository,
+  NotifierRepository: repositories.NotifierRepository,
   NotificationRepository: repositories.NotificationRepository,
   WatchRepository: repositories.WatchRepository,
   SiteSniperRepository: repositories.SiteSniperRepository,
@@ -108,7 +108,7 @@ const CONSTRUCTED_ONCE = {
   OAuth2Handler,
   NotificationDispatcher,
   NotificationService,
-  SMTPEmailProvider,
+  SmtpEmailNotifier,
   ParkStayService,
   QueueService,
   SiteSniperService,
@@ -160,7 +160,7 @@ describe('createContainer', () => {
     expect(JobScheduler).toHaveBeenCalledWith(container.watchService, container.siteSniperService);
     expect(GmailOTPService).toHaveBeenCalledWith(jest.mocked(OAuth2Handler).mock.results[0].value);
     expect(NotificationDispatcher).toHaveBeenCalledWith(r.notifiers, [
-      jest.mocked(SMTPEmailProvider).mock.results[0].value,
+      jest.mocked(SmtpEmailNotifier).mock.results[0].value,
     ]);
   });
 

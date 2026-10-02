@@ -105,7 +105,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 | ParkStayService | `src/main/services/parkstay/parkstay.service.ts` | ParkStay API client |
 | QueueService | `src/main/services/queue/queue.service.ts` | DBCA queue system handler |
 | NotificationService | `src/main/services/notification/notification.service.ts` | Desktop/in-app notifications |
-| NotificationDispatcher | `src/main/services/notification/notification-dispatcher.ts` | External providers (email) |
+| NotificationDispatcher | `src/main/services/notification/notification-dispatcher.ts` | External notifiers (email) |
 | GmailOTPService | `src/main/services/gmail/GmailOTPService.ts` | Gmail OAuth2 OTP extraction |
 | AutoUpdaterService | `src/main/services/updater/auto-updater.service.ts` | Auto-updates via GitHub Releases |
 | JobScheduler | `src/main/scheduler/job-scheduler.ts` | Cron-based watch execution + timer-based Site Sniper scheduling |
@@ -113,10 +113,10 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 ## Notification System
 
 - `NotificationService` handles desktop/in-app notifications
-- `NotificationDispatcher` sends to external providers (email, etc.)
-- Providers are in `src/main/services/notification/providers/`
-- Provider configs are encrypted with AES-256-GCM in the database
-- Email SMTP provider: `providers/email-smtp.provider.ts`
+- `NotificationDispatcher` sends to external **notifiers** (email, etc.). "Notifier" is the outbound channel; a "provider" is an accommodation source (architecture-notes §2)
+- Notifiers are in `src/main/services/notification/notifiers/` (`BaseNotifier`), built in `app/container.ts` and passed to the dispatcher
+- Notifier configs (`notifiers` table, `NotifierRepository`) are encrypted with AES-256-GCM in the database
+- Email SMTP notifier: `notifiers/email-smtp.notifier.ts` (`SmtpEmailNotifier`)
 
 ## IPC Pattern
 

@@ -22,9 +22,9 @@ import {
   GmailAuthStatus,
   OTPResult,
   GmailMessage,
-  NotificationProvider,
-  NotificationProviderInput,
-  NotificationChannel,
+  Notifier,
+  NotifierInput,
+  NotifierChannel,
   TestConnectionResult,
   QueueSession,
   QueueStatusEvent,
@@ -212,25 +212,24 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.GMAIL_TEST_SEARCH, fromEmail, subject),
   },
 
-  // Notification Provider APIs
-  notificationProvider: {
-    list: (): Promise<APIResponse<NotificationProvider[]>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.PROVIDER_LIST),
+  // Notifier APIs
+  notifiers: {
+    list: (): Promise<APIResponse<Notifier[]>> => ipcRenderer.invoke(IPC_CHANNELS.NOTIFIERS_LIST),
 
-    get: (channel: NotificationChannel): Promise<APIResponse<NotificationProvider | null>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.PROVIDER_GET, channel),
+    get: (channel: NotifierChannel): Promise<APIResponse<Notifier | null>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.NOTIFIERS_GET, channel),
 
-    configure: (input: NotificationProviderInput): Promise<APIResponse<NotificationProvider>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.PROVIDER_CONFIGURE, input),
+    configure: (input: NotifierInput): Promise<APIResponse<Notifier>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.NOTIFIERS_CONFIGURE, input),
 
-    enable: (channel: NotificationChannel): Promise<APIResponse<boolean>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.PROVIDER_ENABLE, channel),
+    enable: (channel: NotifierChannel): Promise<APIResponse<boolean>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.NOTIFIERS_ENABLE, channel),
 
-    disable: (channel: NotificationChannel): Promise<APIResponse<boolean>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.PROVIDER_DISABLE, channel),
+    disable: (channel: NotifierChannel): Promise<APIResponse<boolean>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.NOTIFIERS_DISABLE, channel),
 
-    test: (channel: NotificationChannel): Promise<APIResponse<TestConnectionResult>> =>
-      ipcRenderer.invoke(IPC_CHANNELS.PROVIDER_TEST, channel),
+    test: (channel: NotifierChannel): Promise<APIResponse<TestConnectionResult>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.NOTIFIERS_TEST, channel),
   },
 
   // Updater APIs

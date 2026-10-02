@@ -1,93 +1,90 @@
 /**
  * Notification Dispatcher
- * Orchestrates sending notifications through all enabled providers
+ * Orchestrates sending notifications through all enabled notifiers
  */
 
 import {
-  NotificationChannel,
+  NotifierChannel,
   NotificationMessage,
   NotificationDeliveryResult,
   NotificationDeliveryLogInput,
   TestConnectionResult,
-  ProviderValidationResult,
+  NotifierValidationResult,
 } from '@shared/types';
-import { BaseNotificationProvider } from './providers/base.provider';
-import { NotificationProviderRepository } from '../../database/repositories/notification-provider.repository';
+import { BaseNotifier } from './notifiers/base.notifier';
+import { NotifierRepository } from '../../database/repositories/notifier.repository';
 import { logger } from '../../utils/logger';
 
 export interface DispatchResult {
-  channel: NotificationChannel;
+  channel: NotifierChannel;
   result: NotificationDeliveryResult;
 }
 
 export class NotificationDispatcher {
-  private providers: Map<NotificationChannel, BaseNotificationProvider> = new Map();
-  private providerRepository: NotificationProviderRepository;
+  private notifiers: Map<NotifierChannel, BaseNotifier> = new Map();
+  private notifierRepository: NotifierRepository;
 
   /** The notifiers are built by the composition root (`app/container.ts`) and passed in. */
-  constructor(
-    providerRepository: NotificationProviderRepository,
-    providers: BaseNotificationProvider[]
-  ) {
-    this.providerRepository = providerRepository;
-    this.initializeProviders(providers);
+  constructor(notifierRepository: NotifierRepository, notifiers: BaseNotifier[]) {
+    this.notifierRepository = notifierRepository;
+    this.registerNotifiers(notifiers);
   }
 
   /**
-   * Register the given providers, one per channel
+   * Register the given notifiers, one per channel
    */
-  private initializeProviders(providers: BaseNotificationProvider[]): void {
-    for (const provider of providers) {
-      this.providers.set(provider.getChannel(), provider);
+  private registerNotifiers(notifiers: BaseNotifier[]): void {
+    for (const notifier of notifiers) {
+      this.notifiers.set(notifier.getChannel(), notifier);
     }
 
     // Load configurations from database
-    this.loadProviderConfigurations();
+    this.loadNotifierConfigurations();
 
     logger.info(
-      'Notification dispatcher initialized with providers:',
-      Array.from(this.providers.keys())
+      'Notification dispatcher initialized with notifiers:',
+      Array.from(this.notifiers.keys())
     );
   }
 
   /**
-   * Load provider configurations from database
+   * Load notifier configurations from database
    */
-  loadProviderConfigurations(): void {
+  loadNotifierConfigurations(): void {
     try {
-      const dbProviders = this.providerRepository.findAll();
+      const storedNotifiers = this.notifierRepository.findAll();
 
-      for (const dbProvider of dbProviders) {
-        const provider = this.providers.get(dbProvider.channel);
-        if (provider) {
-          provider.configure(dbProvider.config as Record<string, unknown>);
-          provider.setEnabled(dbProvider.enabled);
-          logger.debug(`Loaded configuration for ${dbProvider.channel}`, {
-            enabled: dbProvider.enabled,
+      for (const stored of storedNotifiers) {
+        const notifier = this.notifiers.get(stored.channel);
+        if (notifier) {
+          notifier.configure(stored.config as Record<string, unknown>);
+          notifier.setEnabled(stored.enabled);
+          logger.debug(`Loaded configuration for ${stored.channel}`, {
+            enabled: stored.enabled,
           });
         }
       }
     } catch (error) {
-      logger.error('Error loading provider configurations:', error);
+      logger.error('Error loading notifier configurations:', error);
     }
   }
 
   /**
-   * Dispatch a notification to all enabled providers
+   * Dispatch a notification to all enabled notifiers
    */
   async dispatch(message: NotificationMessage): Promise<DispatchResult[]> {
     const results: DispatchResult[] = [];
 
-    for (const [channel, provider] of this.providers) {
-      if (!provider.isEnabled()) {
-        logger.debug(`Skipping disabled provider: ${channel}`);
+    for (const [channel, notifier] of this.notifiers) {
+      if (!notifier.isEnabled()) {
+        logger.debug(`Skipping disabled notifier: ${channel}`);
         continue;
       }
 
       // Validate configuration before sending
-      const validation = provider.validate();
+      const validation = notifier.validate();
       if (!validation.valid) {
-        logger.warn(`Provider ${channel} validation failed:`, validation.errors);
+        logger.warn(`Notifier ${channel} validation failed:`, validation.errors);
         results.push({
           channel,
           result: {
@@ -100,12 +97,12 @@ export class NotificationDispatcher {
 
       try {
         logger.info(`Dispatching notification via ${channel}:`, { title: message.title });
-        const result = await provider.send(message);
+        const result = await notifier.send(message);
         results.push({ channel, result });
 
         // Log the delivery to database
         this.recordDelivery({
-          providerChannel: channel,
+          notifierChannel: channel,
           status: result.success ? 'sent' : 'failed',
           messageId: result.messageId,
           errorMessage: result.error,
@@ -131,7 +128,7 @@ export class NotificationDispatcher {
 
         // Log the failed delivery
         this.recordDelivery({
-          providerChannel: channel,
+          notifierChannel: channel,
           status: 'failed',
           errorMessage: error.message || 'Unknown error',
         });
@@ -147,59 +144,59 @@ export class NotificationDispatcher {
    */
   private recordDelivery(entry: NotificationDeliveryLogInput): void {
     try {
-      this.providerRepository.logDelivery(entry);
+      this.notifierRepository.logDelivery(entry);
     } catch (error) {
-      logger.error(`Failed to write delivery log for ${entry.providerChannel}:`, error);
+      logger.error(`Failed to write delivery log for ${entry.notifierChannel}:`, error);
     }
   }
 
   /**
-   * Get a specific provider
+   * Get a specific notifier
    */
-  getProvider(channel: NotificationChannel): BaseNotificationProvider | undefined {
-    return this.providers.get(channel);
+  getNotifier(channel: NotifierChannel): BaseNotifier | undefined {
+    return this.notifiers.get(channel);
   }
 
   /**
-   * Get all registered providers
+   * Get all registered notifiers
    */
-  getAllProviders(): Map<NotificationChannel, BaseNotificationProvider> {
-    return this.providers;
+  getAllNotifiers(): Map<NotifierChannel, BaseNotifier> {
+    return this.notifiers;
   }
 
   /**
-   * Configure a specific provider
+   * Configure a specific notifier
    */
-  configureProvider(
-    channel: NotificationChannel,
+  configureNotifier(
+    channel: NotifierChannel,
     config: Record<string, unknown>,
     enabled: boolean
   ): void {
-    const provider = this.providers.get(channel);
-    if (provider) {
-      provider.configure(config);
-      provider.setEnabled(enabled);
-      logger.info(`Provider ${channel} configured`, { enabled });
+    const notifier = this.notifiers.get(channel);
+    if (notifier) {
+      notifier.configure(config);
+      notifier.setEnabled(enabled);
+      logger.info(`Notifier ${channel} configured`, { enabled });
     } else {
-      logger.warn(`Provider not found: ${channel}`);
+      logger.warn(`Notifier not found: ${channel}`);
     }
   }
 
   /**
-   * Test a provider's connection
+   * Test a notifier's connection
    */
-  async testProvider(channel: NotificationChannel): Promise<TestConnectionResult> {
-    const provider = this.providers.get(channel);
-    if (!provider) {
+  async testNotifier(channel: NotifierChannel): Promise<TestConnectionResult> {
+    const notifier = this.notifiers.get(channel);
+    if (!notifier) {
       return {
         success: false,
-        message: 'Provider not found',
+        message: 'Notifier not found',
         error: `Unknown channel: ${channel}`,
       };
     }
 
     // Validate configuration first
-    const validation = provider.validate();
+    const validation = notifier.validate();
     if (!validation.valid) {
       return {
         success: false,
@@ -209,7 +206,7 @@ export class NotificationDispatcher {
     }
 
     try {
-      return await provider.testConnection();
+      return await notifier.testConnection();
     } catch (error: any) {
       return {
         success: false,
@@ -220,43 +217,43 @@ export class NotificationDispatcher {
   }
 
   /**
-   * Validate a provider's configuration
+   * Validate a notifier's configuration
    */
-  validateProvider(channel: NotificationChannel): ProviderValidationResult {
-    const provider = this.providers.get(channel);
-    if (!provider) {
+  validateNotifier(channel: NotifierChannel): NotifierValidationResult {
+    const notifier = this.notifiers.get(channel);
+    if (!notifier) {
       return {
         valid: false,
         errors: [`Unknown channel: ${channel}`],
       };
     }
 
-    return provider.validate();
+    return notifier.validate();
   }
 
   /**
-   * Get provider status information
+   * Get notifier status information
    */
-  getProviderStatus(channel: NotificationChannel): {
+  getNotifierStatus(channel: NotifierChannel): {
     exists: boolean;
     enabled: boolean;
     valid: boolean;
     errors: string[];
   } {
-    const provider = this.providers.get(channel);
-    if (!provider) {
+    const notifier = this.notifiers.get(channel);
+    if (!notifier) {
       return {
         exists: false,
         enabled: false,
         valid: false,
-        errors: ['Provider not found'],
+        errors: ['Notifier not found'],
       };
     }
 
-    const validation = provider.validate();
+    const validation = notifier.validate();
     return {
       exists: true,
-      enabled: provider.isEnabled(),
+      enabled: notifier.isEnabled(),
       valid: validation.valid,
       errors: validation.errors,
     };

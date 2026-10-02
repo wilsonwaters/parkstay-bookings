@@ -1,24 +1,24 @@
 /**
- * Base Notification Provider
- * Abstract base class for all notification providers
+ * Base Notifier
+ * Abstract base class for all notifiers
  */
 
 import {
-  NotificationChannel,
+  NotifierChannel,
   NotificationMessage,
   NotificationDeliveryResult,
   TestConnectionResult,
-  ProviderValidationResult,
+  NotifierValidationResult,
 } from '@shared/types';
 import { logger } from '../../../utils/logger';
 
-export abstract class BaseNotificationProvider {
-  protected channel: NotificationChannel;
+export abstract class BaseNotifier {
+  protected channel: NotifierChannel;
   protected displayName: string;
   protected enabled: boolean = false;
   protected config: Record<string, unknown> = {};
 
-  constructor(channel: NotificationChannel, displayName: string) {
+  constructor(channel: NotifierChannel, displayName: string) {
     this.channel = channel;
     this.displayName = displayName;
   }
@@ -26,7 +26,7 @@ export abstract class BaseNotificationProvider {
   /**
    * Get the channel identifier
    */
-  getChannel(): NotificationChannel {
+  getChannel(): NotifierChannel {
     return this.channel;
   }
 
@@ -38,7 +38,7 @@ export abstract class BaseNotificationProvider {
   }
 
   /**
-   * Check if provider is enabled
+   * Check if the notifier is enabled
    */
   isEnabled(): boolean {
     return this.enabled;
@@ -52,7 +52,7 @@ export abstract class BaseNotificationProvider {
   }
 
   /**
-   * Configure the provider with settings
+   * Configure the notifier with settings
    */
   configure(config: Record<string, unknown>): void {
     this.config = config;
@@ -67,24 +67,24 @@ export abstract class BaseNotificationProvider {
 
   /**
    * Send a notification
-   * Must be implemented by each provider
+   * Must be implemented by each notifier
    */
   abstract send(message: NotificationMessage): Promise<NotificationDeliveryResult>;
 
   /**
    * Test the connection/configuration
-   * Must be implemented by each provider
+   * Must be implemented by each notifier
    */
   abstract testConnection(): Promise<TestConnectionResult>;
 
   /**
    * Validate the configuration
-   * Must be implemented by each provider
+   * Must be implemented by each notifier
    */
-  abstract validate(): ProviderValidationResult;
+  abstract validate(): NotifierValidationResult;
 
   /**
-   * Log a message with provider context
+   * Log a message with notifier context
    */
   protected log(level: 'info' | 'warn' | 'error' | 'debug', message: string, data?: unknown): void {
     const prefix = `[${this.displayName}]`;

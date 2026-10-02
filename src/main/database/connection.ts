@@ -451,13 +451,13 @@ export function runMigrations(database: Database.Database): void {
       });
     }
 
-    // Migration 003: Add notification providers tables
+    // Migration 003: Add the notifier tables (named notification_providers until v7)
     if (currentVersion < 3) {
       applyMigration(database, 3, ['notification_providers', 'notification_delivery_logs'], () => {
-        logger.info('Running migration 003: Add notification providers tables');
+        logger.info('Running migration 003: Add notifier tables');
 
         database.exec(`
-      -- Notification providers table
+      -- Notifiers table (named notification_providers until v7)
       CREATE TABLE IF NOT EXISTS notification_providers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         channel TEXT NOT NULL UNIQUE,
