@@ -282,7 +282,7 @@ Rules:
 
 ## Iconography
 
-- **lucide-react only**, at stroke **1.75** and 20 px by default. Both are set once by `<LucideProvider strokeWidth={1.75} size={20}>` (in `main.tsx`, then `app/AppProviders.tsx` from D3), so components normally pass no size or stroke.
+- **lucide-react only**, at stroke **1.75** and 20 px by default. Both are set once by `<LucideProvider strokeWidth={1.75} size={20}>` (in `app/AppProviders.tsx`), so components normally pass no size or stroke.
 - Sizes: 16 px in badges and dense rows, 20 px default, 24 px in empty states, 28–40 px in the photo placeholder.
 - Icons use `currentColor` and take the colour of their text. A state icon takes its state's `-fg` colour.
 - An icon next to text is decorative (lucide renders it `aria-hidden`). An icon-only button must have an accessible name (D2 `IconButton` requires `label`).

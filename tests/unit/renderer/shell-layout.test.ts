@@ -1,0 +1,40 @@
+/**
+ * @jest-environment node
+ *
+ * D3 retired the login gate, the Dashboard and the sidebar layout, and moved every page under
+ * features/. None of the old files may come back.
+ */
+import fs from 'fs';
+import path from 'path';
+
+const RENDERER = path.resolve(__dirname, '../../../src/renderer');
+
+describe('renderer layout after the shell rebuild', () => {
+  it.each([
+    'pages',
+    'App.tsx',
+    'components/layouts/MainLayout.tsx',
+    'components/ErrorBoundary.tsx',
+    'pages/Login.tsx',
+    'pages/Dashboard.tsx',
+  ])('src/renderer/%s no longer exists', (file) => {
+    expect(fs.existsSync(path.join(RENDERER, file))).toBe(false);
+  });
+
+  it('keeps the legacy pages under features/<domain>/legacy/', () => {
+    for (const file of [
+      'features/watches/legacy/index.tsx',
+      'features/snipes/legacy/index.tsx',
+      'features/bookings/legacy/BookingsList.tsx',
+      'features/settings/legacy/Settings.tsx',
+    ]) {
+      expect(fs.existsSync(path.join(RENDERER, file))).toBe(true);
+    }
+  });
+
+  it('has main.tsx import nothing from the app but app/App', () => {
+    const main = fs.readFileSync(path.join(RENDERER, 'main.tsx'), 'utf8');
+    const imports = [...main.matchAll(/^import .* from '([^']+)';$/gm)].map((m) => m[1]);
+    expect(imports).toEqual(['react', 'react-dom/client', './app/App']);
+  });
+});

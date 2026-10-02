@@ -2,8 +2,9 @@
  * @jest-environment node
  *
  * Token guard: new renderer code builds only on design tokens.
- * Scans components/ui, components/brand, app, features, api and components/LocationCard* (legacy folders
- * excluded) for raw Tailwind colour classes, hex literals, numeric colour functions and emoji.
+ * Scans components/ui, components/brand, app, features, api and components/LocationCard* for raw
+ * Tailwind colour classes, hex literals, numeric colour functions and emoji. The pre-redesign
+ * pages in those folders are skipped by an explicit list (LEGACY_FILES) that only ever shrinks.
  *
  * A line that legitimately needs one of these (a "Site #101" label, `querySelector('#add')`)
  * opts out with a `token-guard-ignore` comment on that line, ideally with a reason:
@@ -11,12 +12,31 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { stripComments } from '../../utils/strip-comments';
 
 const RENDERER = path.resolve(__dirname, '../../../src/renderer');
 const SCAN_DIRS = ['components/ui', 'components/brand', 'app', 'features', 'api'];
 const SCAN_FILE_PREFIXES = ['components/LocationCard'];
 const SOURCE = /\.(ts|tsx)$/;
 const IGNORE_MARKER = 'token-guard-ignore';
+
+/**
+ * Pre-redesign pages, moved unchanged into features/<domain>/legacy/ by D3. The U tasks delete
+ * an entry when they rebuild its page. The list never grows: a new file is held to the guard.
+ */
+const LEGACY_FILES = [
+  'features/bookings/legacy/BookingDetail.tsx',
+  'features/bookings/legacy/BookingsList.tsx',
+  'features/settings/legacy/Settings.tsx',
+  'features/snipes/legacy/CreateSiteSnipe.tsx',
+  'features/snipes/legacy/index.tsx',
+  'features/watches/legacy/CreateWatch.tsx',
+  'features/watches/legacy/EditWatch.tsx',
+  'features/watches/legacy/WatchDetail.tsx',
+  'features/watches/legacy/index.tsx',
+];
+/** The length LEGACY_FILES had when D3 wrote it. Lower it as entries go; never raise it. */
+const LEGACY_FILES_MAX = 9;
 
 /** Every Tailwind utility that takes a colour. */
 const COLOUR_UTILITY =
@@ -63,78 +83,6 @@ interface Violation {
   match: string;
 }
 
-/**
- * Blanks out comments while keeping line numbers, so commented-out classes are ignored.
- * String-aware: `//` or `/*` inside a quoted string or template literal is not a comment.
- * A `//` straight after `:` (a URL in JSX text) or `\` (an escaped slash in a regex) is not
- * treated as a comment either.
- * Quoted strings end at a newline, so an apostrophe in JSX text ("Don't") cannot swallow
- * more than the rest of its line; the guard then errs towards scanning, never towards hiding.
- */
-function stripComments(source: string): string {
-  const blank = (s: string) => s.replace(/[^\n]/g, ' ');
-  let out = '';
-  let mode: 'code' | 'single' | 'double' | 'template' = 'code';
-  // Brace depth inside code, and the depth each open `${` of a template literal started at.
-  let depth = 0;
-  const templateExprs: number[] = [];
-  let i = 0;
-  while (i < source.length) {
-    const c = source[i];
-    const next = source[i + 1];
-    if (mode === 'code') {
-      const prev = source[i - 1];
-      if (c === '/' && next === '/' && prev !== ':' && prev !== '\\') {
-        const end = source.indexOf('\n', i);
-        const stop = end === -1 ? source.length : end;
-        out += blank(source.slice(i, stop));
-        i = stop;
-        continue;
-      }
-      if (c === '/' && next === '*') {
-        const end = source.indexOf('*/', i + 2);
-        const stop = end === -1 ? source.length : end + 2;
-        out += blank(source.slice(i, stop));
-        i = stop;
-        continue;
-      }
-      if (c === "'") mode = 'single';
-      else if (c === '"') mode = 'double';
-      else if (c === '`') mode = 'template';
-      else if (c === '{') depth++;
-      else if (c === '}') {
-        if (templateExprs.length && templateExprs[templateExprs.length - 1] === depth) {
-          templateExprs.pop();
-          mode = 'template';
-        } else depth--;
-      }
-      out += c;
-      i++;
-      continue;
-    }
-    if (c === '\\' && next !== '\n' && next !== undefined) {
-      out += c + next;
-      i += 2;
-      continue;
-    }
-    if (mode === 'template') {
-      if (c === '`') mode = 'code';
-      else if (c === '$' && next === '{') {
-        templateExprs.push(depth);
-        mode = 'code';
-        out += '${';
-        i += 2;
-        continue;
-      }
-    } else if (c === '\n' || c === (mode === 'single' ? "'" : '"')) {
-      mode = 'code';
-    }
-    out += c;
-    i++;
-  }
-  return out;
-}
-
 /** Lines whose own comment carries the opt-out marker (a marker inside a string does not count). */
 function ignoredLines(source: string, code: string): Set<number> {
   const original = source.split(/\r?\n/);
@@ -172,7 +120,7 @@ function walk(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) return entry.name === 'legacy' ? [] : walk(full);
+    if (entry.isDirectory()) return walk(full);
     return SOURCE.test(entry.name) ? [full] : [];
   });
 }
@@ -184,7 +132,8 @@ function filesToScan(): string[] {
     const base = path.basename(prefix);
     return walk(dir).filter((f) => path.dirname(f) === dir && path.basename(f).startsWith(base));
   });
-  return [...new Set([...fromDirs, ...fromPrefixes])];
+  const legacy = new Set(LEGACY_FILES.map((f) => path.join(RENDERER, f)));
+  return [...new Set([...fromDirs, ...fromPrefixes])].filter((f) => !legacy.has(f));
 }
 
 const matches = (source: string) => scanSource(source).map((v) => v.match);
@@ -363,11 +312,23 @@ describe('token guard self-test', () => {
 describe('token guard', () => {
   const files = filesToScan();
 
-  it('scans the design-system folders (components/ui at least)', () => {
-    expect(files.some((f) => f.includes(`${path.sep}components${path.sep}ui${path.sep}`))).toBe(
-      true
-    );
-    expect(files.every((f) => !f.split(path.sep).includes('legacy'))).toBe(true);
+  it('scans the design-system folders (components/ui, app and api at least)', () => {
+    for (const dir of ['components/ui', 'app', 'api']) {
+      const prefix = path.join(RENDERER, dir) + path.sep;
+      expect(files.some((f) => f.startsWith(prefix))).toBe(true);
+    }
+  });
+
+  it('skips only the listed legacy files, each of which still exists', () => {
+    for (const file of LEGACY_FILES) {
+      expect(fs.existsSync(path.join(RENDERER, file))).toBe(true);
+      expect(files).not.toContain(path.join(RENDERER, file));
+    }
+  });
+
+  it('never grows the legacy list', () => {
+    expect(new Set(LEGACY_FILES).size).toBe(LEGACY_FILES.length);
+    expect(LEGACY_FILES.length).toBeLessThanOrEqual(LEGACY_FILES_MAX);
   });
 
   it('finds no raw colour classes, hex literals, colour functions or emoji', () => {

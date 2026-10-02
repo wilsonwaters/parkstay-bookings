@@ -2,7 +2,7 @@
  * Jest configuration: two projects built from one shared base.
  *
  * - main:     Electron main process, shared code and Node scripts (testEnvironment: node)
- * - renderer: React renderer (testEnvironment: jsdom)
+ * - renderer: React renderer (testEnvironment: jsdom), including tests/integration/renderer
  *
  * Jest projects do not inherit root options, so everything both projects need
  * (roots, transform, module aliases) lives in `base` and is spread into each.
@@ -64,6 +64,8 @@ module.exports = {
         `<rootDir>/src/main/**/${TEST_FILE}`,
         `<rootDir>/src/shared/**/${TEST_FILE}`,
       ],
+      // Renderer integration tests need jsdom: the renderer project runs them.
+      testPathIgnorePatterns: ['/node_modules/', '<rootDir>/tests/integration/renderer/'],
       setupFiles: ['<rootDir>/tests/setup/main.ts'],
     },
     {
@@ -73,6 +75,7 @@ module.exports = {
       testMatch: [
         `<rootDir>/src/renderer/**/${TEST_FILE}`,
         `<rootDir>/tests/renderer/**/${TEST_FILE}`,
+        `<rootDir>/tests/integration/renderer/**/${TEST_FILE}`,
       ],
       setupFilesAfterEnv: ['<rootDir>/tests/setup/renderer.ts'],
     },

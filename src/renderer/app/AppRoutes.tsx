@@ -1,0 +1,96 @@
+/**
+ * The route table (architecture-notes §12.10). Addresses are built with `ROUTES` from
+ * `./routes`; docs/design/shell.md lists every route and what renders it.
+ *
+ * (It is not called `routes.tsx`: `./routes` would then be ambiguous, and every tool resolves
+ * it to `routes.ts` first.)
+ */
+import { lazy, Suspense, type ReactNode } from 'react';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Spinner } from '../components/ui';
+import ExplorePage from '../features/explore/ExplorePage';
+import WatchesPage from '../features/watches/legacy';
+import CreateWatch from '../features/watches/legacy/CreateWatch';
+import EditWatch from '../features/watches/legacy/EditWatch';
+import WatchDetail from '../features/watches/legacy/WatchDetail';
+import SiteSniperPage from '../features/snipes/legacy';
+import CreateSiteSnipe from '../features/snipes/legacy/CreateSiteSnipe';
+import BookingsList from '../features/bookings/legacy/BookingsList';
+import BookingDetail from '../features/bookings/legacy/BookingDetail';
+import Settings from '../features/settings/legacy/Settings';
+import { AppShell } from './AppShell';
+import { LegacyPageFrame } from './LegacyPageFrame';
+import { NotFoundPage } from './NotFoundPage';
+import { LEGACY_REDIRECTS, PATTERNS } from './routes';
+
+// Vite replaces `process.env.NODE_ENV` in renderer code; Jest runs on Node (as in ui/dev.ts).
+declare const process: { env: { NODE_ENV?: string } };
+
+// Dev-only design preview. The constant condition lets Vite drop the page and its chunk from
+// production builds.
+const DesignPreviewPage =
+  process.env.NODE_ENV !== 'production'
+    ? lazy(() => import('../features/design-preview/DesignPreviewPage'))
+    : null;
+
+/** Sends an old create address to its new one, keeping the prefill query (§12.10, §12.19). */
+function RedirectKeepingQuery({ to }: { to: string }) {
+  const { search, hash } = useLocation();
+  return <Navigate to={{ pathname: to, search, hash }} replace />;
+}
+
+const legacy = (page: ReactNode) => <LegacyPageFrame>{page}</LegacyPageFrame>;
+
+export function AppRoutes() {
+  return (
+    <Routes>
+      <Route element={<AppShell />}>
+        <Route path={PATTERNS.explore} element={<ExplorePage />} />
+        {/* Reserved for E2 (location detail). */}
+        <Route path={PATTERNS.placeDetail} element={<NotFoundPage />} />
+
+        <Route path={PATTERNS.watches} element={legacy(<WatchesPage />)} />
+        <Route path={PATTERNS.watchNew} element={legacy(<CreateWatch />)} />
+        <Route path={PATTERNS.watchDetail} element={legacy(<WatchDetail />)} />
+        <Route path={PATTERNS.watchEdit} element={legacy(<EditWatch />)} />
+
+        <Route path={PATTERNS.snipes} element={legacy(<SiteSniperPage />)} />
+        <Route path={PATTERNS.snipeNew} element={legacy(<CreateSiteSnipe />)} />
+        {/* Reserved for U2 (snipe detail). */}
+        <Route path={PATTERNS.snipeDetail} element={<NotFoundPage />} />
+
+        <Route path={PATTERNS.bookings} element={legacy(<BookingsList />)} />
+        <Route path={PATTERNS.bookingDetail} element={legacy(<BookingDetail />)} />
+
+        {/* The legacy page ignores `:section` until U4 rebuilds Settings. */}
+        <Route path={PATTERNS.settings} element={legacy(<Settings />)} />
+
+        {LEGACY_REDIRECTS.map(({ from, to }) => (
+          <Route key={from} path={from} element={<RedirectKeepingQuery to={to} />} />
+        ))}
+
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+
+      {DesignPreviewPage && (
+        // Outside the shell: the gallery is a whole page with its own header and main.
+        <Route
+          path={PATTERNS.design}
+          element={
+            <Suspense
+              fallback={
+                <div className="flex min-h-screen items-center justify-center">
+                  <Spinner size="lg" label="Loading design preview" />
+                </div>
+              }
+            >
+              <DesignPreviewPage />
+            </Suspense>
+          }
+        />
+      )}
+    </Routes>
+  );
+}
+
+export default AppRoutes;

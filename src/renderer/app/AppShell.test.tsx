@@ -1,0 +1,351 @@
+import { act, screen, waitFor, within } from '@testing-library/react';
+import { activeQueue, createMockApi, fail, ok } from '@tests/utils/renderer/createMockApi';
+import { currentRoute, getBanners, renderWithApp } from '@tests/utils/renderer/renderWithApp';
+
+const nav = () => screen.getByRole('navigation', { name: 'Primary' });
+const navLink = (name: string) => within(nav()).getByRole('link', { name });
+
+describe('App shell', () => {
+  describe('startup', () => {
+    it('opens on Explore with no login screen and no session check', async () => {
+      const { mock } = renderWithApp();
+      expect(await screen.findByRole('heading', { level: 1, name: 'Explore' })).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Explore is coming together' })).toBeVisible();
+      expect(currentRoute()).toBe('/');
+      expect(screen.queryByRole('button', { name: /log ?in|sign in|log ?out/i })).toBeNull();
+      expect(screen.queryByLabelText(/password/i)).toBeNull();
+      expect(mock?.api.auth.validateSession).not.toHaveBeenCalled();
+    });
+
+    it('renders a deep link straight into its page on cold start', async () => {
+      renderWithApp({ route: '/watches' });
+      expect(await screen.findByRole('heading', { level: 1, name: 'Watches' })).toBeInTheDocument();
+      expect(navLink('Watches')).toHaveAttribute('aria-current', 'page');
+    });
+  });
+
+  describe('header', () => {
+    it('has the lockup, four nav links, the bell and the account menu', async () => {
+      renderWithApp();
+      const [banner] = getBanners();
+      expect(within(banner).getByRole('link', { name: 'WA Stay, Explore' })).toHaveAttribute(
+        'href',
+        '#/'
+      );
+      expect(
+        within(nav())
+          .getAllByRole('link')
+          .map((link) => link.textContent && link.getAttribute('href'))
+      ).toEqual(['#/', '#/watches', '#/site-sniper', '#/bookings']);
+      expect(navLink('Explore')).toBeInTheDocument();
+      expect(navLink('Watches')).toBeInTheDocument();
+      expect(within(banner).getByRole('button', { name: 'Notifications' })).toBeInTheDocument();
+      expect(
+        within(banner).getByRole('button', { name: 'Account and settings' })
+      ).toBeInTheDocument();
+      await screen.findByRole('heading', { level: 1, name: 'Explore' });
+    });
+
+    it.each([
+      ['/watches/12', 'Watches'],
+      ['/watches/new', 'Watches'],
+      ['/places/parkstay/1', 'Explore'],
+      ['/', 'Explore'],
+      ['/site-sniper/new', 'Site Sniper, coming soon'],
+      ['/bookings/3', 'Bookings, coming soon'],
+    ])('on %s only "%s" is the current page', async (route, current) => {
+      renderWithApp({ route });
+      await screen.findByRole('main');
+      const links = within(nav()).getAllByRole('link');
+      const currentLinks = links.filter((l) => l.getAttribute('aria-current') === 'page');
+      expect(currentLinks).toEqual([navLink(current)]);
+    });
+
+    it('marks no nav link current on Settings, which lives in the account menu', async () => {
+      renderWithApp({ route: '/settings' });
+      await screen.findByRole('heading', { level: 1, name: 'Settings' });
+      expect(within(nav()).queryByRole('link', { current: 'page' })).toBeNull();
+    });
+
+    it('hides the active brushstroke from assistive technology', async () => {
+      renderWithApp({ route: '/watches' });
+      const active = navLink('Watches');
+      const stroke = active.querySelector('svg');
+      expect(stroke).toHaveAttribute('aria-hidden', 'true');
+      expect(navLink('Explore').querySelector('svg')).toBeNull();
+      await screen.findByRole('heading', { level: 1, name: 'Watches' });
+    });
+
+    it.each([
+      ['Site Sniper, coming soon', '/site-sniper', 'Site Sniper'],
+      ['Bookings, coming soon', '/bookings', 'Your Bookings'],
+    ])('"%s" navigates to its page', async (name, route, heading) => {
+      const { user } = renderWithApp();
+      await user.click(screen.getByRole('link', { name }));
+      expect(currentRoute()).toBe(route);
+      expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name })).toHaveAttribute('aria-current', 'page');
+    });
+  });
+
+  describe('account menu', () => {
+    it('opens with Enter; Settings goes to /settings', async () => {
+      const { user } = renderWithApp({ route: '/watches' });
+      const button = screen.getByRole('button', { name: 'Account and settings' });
+      act(() => button.focus());
+      await user.keyboard('{Enter}');
+      const menu = screen.getByRole('menu', { name: 'Account and settings' });
+      expect(
+        within(menu)
+          .getAllByRole('menuitem')
+          .map((i) => i.textContent)
+      ).toEqual(['Settings', 'About WA Stay']);
+      expect(within(menu).getByRole('menuitem', { name: 'Settings' })).toHaveFocus();
+      await user.keyboard('{Enter}');
+      await waitFor(() => expect(currentRoute()).toBe('/settings'));
+      // Looked up afresh: the legacy page re-renders its heading after loading.
+      await waitFor(() =>
+        expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible()
+      );
+      expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    it('About WA Stay opens a named dialog and returns focus to the menu button', async () => {
+      const { user } = renderWithApp();
+      const button = screen.getByRole('button', { name: 'Account and settings' });
+      act(() => button.focus());
+      await user.keyboard('{Enter}');
+      await user.keyboard('{ArrowDown}{Enter}');
+
+      const dialog = await screen.findByRole('dialog', { name: 'About WA Stay' });
+      expect(await within(dialog).findByText('Version 2.0.0-test')).toBeVisible();
+      expect(within(dialog).getByText('28.3.3')).toBeVisible();
+
+      await user.click(within(dialog).getByRole('button', { name: 'Done' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(button).toHaveFocus();
+    });
+  });
+
+  describe('routes', () => {
+    it.each([
+      ['/', 'Explore'],
+      ['/watches', 'Watches'],
+      ['/watches/new', 'Create Watch'],
+      ['/site-sniper', 'Site Sniper'],
+      ['/site-sniper/new', 'Create Site Snipe'],
+      ['/bookings', 'Your Bookings'],
+      ['/settings', 'Settings'],
+      ['/settings/notifications', 'Settings'],
+      ['/places/parkstay/1', 'Page not found'],
+      ['/site-sniper/4', 'Page not found'],
+      ['/does-not-exist', 'Page not found'],
+    ])('%s renders "%s" inside the shell', async (route, heading) => {
+      renderWithApp({ route });
+      expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument();
+      expect(getBanners()).toHaveLength(1);
+      expect(screen.getByRole('main')).toContainElement(
+        screen.getByRole('heading', { name: heading })
+      );
+    });
+
+    it.each([
+      ['/watches/12', 'watches', 'get', 'Watch not found'],
+      ['/watches/12/edit', 'watches', 'get', 'Watch not found'],
+      ['/bookings/3', 'bookings', 'get', 'Booking not found'],
+    ])('%s renders its legacy page with its data', async (route, namespace, method, text) => {
+      const get = jest.fn().mockResolvedValue(fail(text, 'NOT_FOUND'));
+      renderWithApp({ route, api: { [namespace]: { [method]: get } } });
+      expect(await screen.findByText(text)).toBeInTheDocument();
+      expect(get).toHaveBeenCalled();
+    });
+
+    it('/__design renders the design preview outside the shell in development', async () => {
+      renderWithApp({ route: '/__design' });
+      expect(
+        await screen.findByRole(
+          'heading',
+          { level: 1, name: 'Design language' },
+          { timeout: 15000 }
+        )
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull();
+    }, 30000);
+
+    it('shows NotFound with a way back to Explore', async () => {
+      const { user } = renderWithApp({ route: '/does-not-exist' });
+      expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+      expect(screen.getByText('/does-not-exist')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Back to Explore' }));
+      expect(currentRoute()).toBe('/');
+      expect(await screen.findByRole('heading', { level: 1, name: 'Explore' })).toBeInTheDocument();
+    });
+
+    it.each([
+      ['/watches/create?location=1&adults=2', '/watches/new?location=1&adults=2'],
+      [
+        '/site-sniper/create?provider=parkstay&location=9',
+        '/site-sniper/new?provider=parkstay&location=9',
+      ],
+    ])('redirects %s to %s, keeping the query', async (from, to) => {
+      renderWithApp({ route: from });
+      await waitFor(() => expect(currentRoute()).toBe(to));
+      expect(await screen.findByRole('heading', { level: 1 })).toBeInTheDocument();
+    });
+  });
+
+  describe('accessibility', () => {
+    it('makes "Skip to content" the first Tab stop, and it focuses main', async () => {
+      const { user } = renderWithApp();
+      await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      await user.tab();
+      const skip = screen.getByRole('link', { name: 'Skip to content' });
+      expect(skip).toHaveFocus();
+      await user.keyboard('{Enter}');
+      expect(screen.getByRole('main')).toHaveFocus();
+      expect(screen.getByRole('main')).toHaveAttribute('id', 'main');
+      expect(currentRoute()).toBe('/');
+    });
+
+    it('has one banner, one main and one navigation named Primary', async () => {
+      renderWithApp();
+      await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      expect(getBanners()).toHaveLength(1);
+      expect(screen.getAllByRole('main')).toHaveLength(1);
+      expect(screen.getAllByRole('navigation', { name: 'Primary' })).toHaveLength(1);
+    });
+
+    it.each([
+      ['/', 'Explore'],
+      ['/does-not-exist', 'Page not found'],
+      ['/settings', 'Settings'],
+    ])('%s has exactly one h1', async (route, name) => {
+      renderWithApp({ route });
+      await screen.findByRole('heading', { level: 1, name });
+      expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    });
+
+    it('moves focus to the new page h1 and announces it, but not on query changes', async () => {
+      const { user } = renderWithApp({ route: '/does-not-exist' });
+      await screen.findByRole('heading', { level: 1, name: 'Page not found' });
+      await user.click(navLink('Explore'));
+
+      const heading = await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      await waitFor(() => expect(heading).toHaveFocus());
+      await waitFor(() =>
+        expect(
+          document.querySelector('[aria-live="polite"][aria-atomic="true"]')
+        ).toHaveTextContent('Explore')
+      );
+
+      // A query-string change on the same page leaves focus where the person put it.
+      const skip = screen.getByRole('link', { name: 'Skip to content' });
+      act(() => skip.focus());
+      window.location.hash = '#/?arrival=2026-12-01';
+      await waitFor(() => expect(currentRoute()).toBe('/?arrival=2026-12-01'));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(skip).toHaveFocus();
+    });
+
+    it('focuses a loading page h1 once it appears', async () => {
+      const { user } = renderWithApp();
+      await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      await user.click(navLink('Watches'));
+      const heading = await screen.findByRole('heading', { level: 1, name: 'Watches' });
+      await waitFor(() => expect(heading).toHaveFocus());
+    });
+
+    it('focuses only the last page of a quick run of navigations', async () => {
+      const { user } = renderWithApp();
+      await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      await user.click(navLink('Watches'));
+      await user.click(navLink('Explore'));
+      const heading = await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      await waitFor(() => expect(heading).toHaveFocus());
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(heading).toHaveFocus();
+    });
+  });
+
+  describe('tray', () => {
+    it('stacks a toast, the update card and queue status in that order in one container', async () => {
+      const mock = createMockApi({
+        providers: { list: jest.fn().mockResolvedValue(fail('Registry offline', 'NOT_FOUND')) },
+        queue: { getStatus: jest.fn().mockResolvedValue(ok(activeQueue())) },
+      });
+      renderWithApp({ api: mock });
+      const toast = await screen.findByRole('alert');
+      expect(toast).toHaveTextContent("Provider details couldn't be loaded. Registry offline");
+      mock.emit('updater:available', { version: '2.1.0' });
+      const update = await screen.findByText('Update Available');
+      const queue = await screen.findByText('Queue Status');
+
+      const tray = screen.getByTestId('tray');
+      expect(tray).toContainElement(toast);
+      expect(tray).toContainElement(update);
+      expect(tray).toContainElement(queue);
+      // Outside #root, so a modal's inert never reaches it.
+      expect(document.getElementById('root')).not.toContainElement(tray);
+      const follows = (a: Node, b: Node) =>
+        Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(follows(toast, update)).toBe(true);
+      expect(follows(update, queue)).toBe(true);
+    });
+
+    it('collapses to nothing but the toast region when idle', async () => {
+      renderWithApp();
+      await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      const tray = screen.getByTestId('tray');
+      const region = within(tray).getByRole('region', { name: 'Notifications' });
+      expect(within(region).queryAllByRole('listitem')).toHaveLength(0);
+      // Idle cards render nothing, and their slots add no box of their own.
+      expect(tray.textContent).toBe('');
+      expect(tray.querySelectorAll('[role="alert"], [role="status"], button')).toHaveLength(0);
+    });
+
+    it('keeps toasts usable above a modal and sets the other cards aside until it closes', async () => {
+      const mock = createMockApi();
+      const { user } = renderWithApp({ api: mock });
+      mock.emit('updater:available', { version: '2.1.0' });
+      const update = await screen.findByText('Update Available');
+      const tray = screen.getByTestId('tray');
+
+      await user.click(screen.getByRole('button', { name: 'Account and settings' }));
+      await user.click(screen.getByRole('menuitem', { name: 'About WA Stay' }));
+      await screen.findByRole('dialog', { name: 'About WA Stay' });
+      await waitFor(() => expect(tray).toHaveAttribute('data-modal-open'));
+      expect(update.closest('[inert]')).not.toBeNull();
+      expect(
+        within(tray).getByRole('region', { name: 'Notifications' }).closest('[inert]')
+      ).toBeNull();
+
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(tray).not.toHaveAttribute('data-modal-open'));
+      expect(update.closest('[inert]')).toBeNull();
+    });
+
+    it('raises one error toast, without retry loops, when providers cannot be loaded', async () => {
+      const list = jest.fn().mockResolvedValue(fail('Registry offline', 'INTERNAL'));
+      renderWithApp({ api: { providers: { list } } });
+      expect(await screen.findByRole('alert', {}, { timeout: 4000 })).toHaveTextContent(
+        'Registry offline'
+      );
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(screen.getAllByRole('alert')).toHaveLength(1);
+      // One retry (INTERNAL is retryable), then it stops.
+      expect(list).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('without window.api', () => {
+    it('renders the shell with a notice instead of crashing', async () => {
+      const { user } = renderWithApp({ api: null });
+      expect(await screen.findByRole('heading', { level: 1, name: 'Explore' })).toBeVisible();
+      expect(screen.getByText('Running outside the WA Stay app')).toBeVisible();
+      expect(screen.queryByRole('button', { name: 'Notifications' })).toBeNull();
+      expect(screen.queryByRole('alert')).toBeNull();
+      await user.click(screen.getByRole('button', { name: 'Account and settings' }));
+      expect(screen.getByRole('menuitem', { name: 'Settings' })).toBeVisible();
+    });
+  });
+});

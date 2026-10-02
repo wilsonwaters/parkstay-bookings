@@ -55,7 +55,7 @@ const UpdateNotification: React.FC = () => {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 max-w-sm w-full">
+    <div className="pointer-events-auto max-w-sm w-full">
       <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-4">
         <div className="flex items-start justify-between">
           <div className="flex-1">
