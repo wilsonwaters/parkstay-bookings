@@ -11,6 +11,7 @@ import { TestDatabaseHelper } from '@tests/utils/database-helper';
 import { NotificationProviderRepository } from '@main/database/repositories';
 import { NotificationDispatcher } from '@main/services/notification/notification-dispatcher';
 import { BaseNotificationProvider } from '@main/services/notification/providers/base.provider';
+import { logger } from '@main/utils/logger';
 import {
   NotificationChannel,
   NotificationDeliveryResult,
@@ -58,6 +59,7 @@ interface LogRow {
 describe('NotificationDispatcher delivery logging', () => {
   let dbHelper: TestDatabaseHelper;
   let db: Database.Database;
+  let notifierRepo: NotificationProviderRepository;
   let dispatcher: NotificationDispatcher;
 
   const message: NotificationMessage = { title: 'Availability found', message: 'Site 136 is free' };
@@ -80,10 +82,12 @@ describe('NotificationDispatcher delivery logging', () => {
   beforeEach(async () => {
     dbHelper = new TestDatabaseHelper('notification-dispatch');
     db = await dbHelper.setup();
-    dispatcher = new NotificationDispatcher(new NotificationProviderRepository(db));
+    notifierRepo = new NotificationProviderRepository(db);
+    dispatcher = new NotificationDispatcher(notifierRepo);
   });
 
   afterEach(async () => {
+    jest.restoreAllMocks();
     await dbHelper.teardown();
   });
 
@@ -136,5 +140,35 @@ describe('NotificationDispatcher delivery logging', () => {
         error_message: null,
       },
     ]);
+  });
+
+  it('keeps dispatching, and reports sends truthfully, when writing the delivery log fails', async () => {
+    // The pre-v7 failure mode: every delivery-log insert threw.
+    const logDelivery = jest.spyOn(notifierRepo, 'logDelivery').mockImplementation(() => {
+      throw new Error('no such table: main.notifications_old');
+    });
+    const error = jest.spyOn(logger, 'error').mockImplementation(() => logger);
+    const failing = new FakeNotifier(NotificationChannel.EMAIL_SMTP, 'throw');
+    const next = new FakeNotifier(NotificationChannel.DESKTOP, 'deliver');
+    useNotifiers(failing, next);
+
+    const results = await dispatcher.dispatch(message);
+
+    expect(next.received).toEqual([message]);
+    expect(results).toEqual([
+      {
+        channel: NotificationChannel.EMAIL_SMTP,
+        result: { success: false, error: 'SMTP connection reset' },
+      },
+      {
+        channel: NotificationChannel.DESKTOP,
+        result: { success: true, messageId: '<desktop-1@example.com>' },
+      },
+    ]);
+    expect(logDelivery).toHaveBeenCalledTimes(2);
+    expect(error).toHaveBeenCalledWith(
+      'Failed to write delivery log for desktop:',
+      expect.objectContaining({ message: 'no such table: main.notifications_old' })
+    );
   });
 });

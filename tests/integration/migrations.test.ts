@@ -16,6 +16,7 @@ import {
   V6_ROW_COUNTS,
 } from '@tests/fixtures/db/constants';
 import {
+  applyMigration,
   closeDatabase,
   LATEST_SCHEMA_VERSION,
   MigrationError,
@@ -46,12 +47,22 @@ const V7_TABLES = [
   'watches',
 ];
 
+/** Tables v7 must carry over row for row, column for column, with no change at all. */
+const UNCHANGED_TABLES = [
+  'users',
+  'bookings',
+  'watches',
+  'notifications',
+  'job_logs',
+  'settings',
+  'queue_session',
+];
+
+type Row = Record<string, unknown>;
+type Snapshot = Record<string, Row[]>;
+
 function count(db: Database.Database, table: string): number {
   return (db.prepare(`SELECT COUNT(*) AS n FROM "${table}"`).get() as { n: number }).n;
-}
-
-function counts(db: Database.Database, tables: string[]): Record<string, number> {
-  return Object.fromEntries(tables.map((t) => [t, count(db, t)]));
 }
 
 function version(db: Database.Database): number {
@@ -82,11 +93,61 @@ function normalisedSchema(db: Database.Database) {
   ).map((o) => ({ ...o, sql: o.sql === null ? null : o.sql.replace(/\s+/g, ' ').trim() }));
 }
 
-/** Every row of every table, including sqlite_sequence. */
-function snapshot(db: Database.Database) {
+function byName(a: Row, b: Row): number {
+  return String(a.name) < String(b.name) ? -1 : String(a.name) > String(b.name) ? 1 : 0;
+}
+
+/**
+ * Every row and column of every table. sqlite_sequence is ordered by name, because v7's
+ * table rebuilds delete and re-insert its rows.
+ */
+function snapshot(db: Database.Database): Snapshot {
   return Object.fromEntries(
-    tables(db).map((t) => [t, db.prepare(`SELECT * FROM "${t}" ORDER BY rowid`).all()])
+    tables(db).map((t) => [
+      t,
+      db
+        .prepare(`SELECT * FROM "${t}" ORDER BY ${t === 'sqlite_sequence' ? 'name' : 'rowid'}`)
+        .all() as Row[],
+    ])
   );
+}
+
+/**
+ * The full v7 contents a v5 or v6 snapshot must turn into. Only the documented changes are
+ * mapped; every other table must come through identical (UNCHANGED_TABLES):
+ * - `notification_providers` is renamed to `notifiers`, rows untouched (and its
+ *   sqlite_sequence row with it);
+ * - `notification_delivery_logs.provider_channel` becomes `notifier_channel`, and a
+ *   `notification_id` with no parent notification becomes NULL;
+ * - `skip_the_queue_entries` is dropped (and SQLite drops its sqlite_sequence row);
+ * - `site_snipes` exists (v6 creates it empty when upgrading v5);
+ * - `migrations` keeps its rows and gains one per version applied.
+ */
+function expectedAfterV7(before: Snapshot): Snapshot {
+  const notificationIds = new Set(before.notifications.map((n) => n.id));
+  const applied = new Set(before.migrations.map((m) => m.version));
+  return {
+    ...Object.fromEntries(UNCHANGED_TABLES.map((t) => [t, before[t]])),
+    site_snipes: before.site_snipes ?? [],
+    notifiers: before.notification_providers,
+    notification_delivery_logs: before.notification_delivery_logs.map(
+      ({ provider_channel, ...log }) => ({
+        ...log,
+        notification_id: notificationIds.has(log.notification_id) ? log.notification_id : null,
+        notifier_channel: provider_channel,
+      })
+    ),
+    migrations: [
+      ...before.migrations,
+      ...[6, 7]
+        .filter((v) => !applied.has(v))
+        .map((v) => ({ version: v, applied_at: expect.any(String) })),
+    ],
+    sqlite_sequence: before.sqlite_sequence
+      .filter((s) => s.name !== 'skip_the_queue_entries')
+      .map((s) => (s.name === 'notification_providers' ? { ...s, name: 'notifiers' } : s))
+      .sort(byName),
+  };
 }
 
 function notifierConfig(db: Database.Database, table: string): string {
@@ -126,35 +187,36 @@ describe('database migrations', () => {
   describe.each<[FixtureName, Readonly<Record<string, number>>]>([
     ['v5-release-1.2.0', V5_ROW_COUNTS],
     ['v6-branch', V6_ROW_COUNTS],
-  ])('upgrading the %s fixture', (fixture, before) => {
+  ])('upgrading the %s fixture', (fixture, rowCounts) => {
     let db: Database.Database;
     let configBefore: string;
+    let rowsBefore: Snapshot;
 
     beforeEach(() => {
       db = loadFixture(fixture);
       configBefore = notifierConfig(db, 'notification_providers');
+      rowsBefore = snapshot(db);
       runMigrations(db);
     });
 
     afterEach(() => disposeFixture(db));
 
-    it('reaches v7 and keeps every row of every kept table', () => {
-      // v7 renames notification_providers, drops skip_the_queue_entries and adds a version.
-      const {
-        notification_providers: notifiers,
-        skip_the_queue_entries: _dropped,
-        migrations: _versions,
-        ...kept
-      } = before;
+    it('reaches v7 and keeps every row and column of every kept table', () => {
+      // The fixture holds the documented rows, so the comparison below is not vacuous.
+      const { sqlite_sequence: sequences, ...data } = rowsBefore;
+      expect(Object.fromEntries(Object.entries(data).map(([t, rows]) => [t, rows.length]))).toEqual(
+        rowCounts
+      );
+      expect(sequences.length).toBeGreaterThan(0);
+      expect(rowsBefore.users[0]).toMatchObject({
+        encrypted_password: expect.stringMatching(/^[0-9a-f]+$/),
+        encryption_iv: expect.stringMatching(/^[0-9a-f]+$/),
+        encryption_auth_tag: expect.stringMatching(/^[0-9a-f]+$/),
+      });
 
       expect(version(db)).toBe(7);
       expect(tables(db)).toEqual(V7_TABLES);
-      expect(counts(db, [...Object.keys(kept), 'notifiers', 'migrations'])).toEqual({
-        ...kept,
-        notifiers,
-        migrations: 7,
-      });
-      expect(count(db, 'site_snipes')).toBe(before.site_snipes ?? 0);
+      expect(snapshot(db)).toEqual(expectedAfterV7(rowsBefore));
     });
 
     it('passes foreign_key_check and integrity_check with the delivery-log FK repaired', () => {
@@ -352,18 +414,68 @@ describe('database migrations', () => {
     }
   });
 
-  it('logs, without failing, the broken v6 FK it inherits when upgrading v5 data', () => {
+  it('lets historic v6 break the delivery-log FK on v5 data, with a warning, because v7 repairs it', () => {
     const db = loadFixture('v5-release-1.2.0');
     const warn = jest.spyOn(logger, 'warn');
     try {
       runMigrations(db);
 
       expect(warn).toHaveBeenCalledWith(
-        expect.stringContaining(
-          'Migration 6: 1 existing foreign-key violation(s) outside this step: notification_delivery_logs -> notifications_old (1)'
-        )
+        'Migration 6: historic step introduced 1 foreign-key violation(s), to be repaired by a later migration: notification_delivery_logs -> notifications_old (1)'
+      );
+      // v7 found the violation in its own table and had to leave that table clean.
+      expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('Migration 7'));
+      expect(version(db)).toBe(7);
+      expect(db.pragma('foreign_key_check')).toEqual([]);
+    } finally {
+      disposeFixture(db);
+    }
+  });
+
+  it('repairs the delivery-log FK a v6 database already has, without any warning', () => {
+    const db = loadFixture('v6-branch');
+    const warn = jest.spyOn(logger, 'warn');
+    try {
+      expect(db.pragma('foreign_key_check')).toHaveLength(1);
+
+      runMigrations(db);
+
+      expect(warn).not.toHaveBeenCalled();
+      expect(version(db)).toBe(7);
+      expect(db.pragma('foreign_key_check')).toEqual([]);
+    } finally {
+      disposeFixture(db);
+    }
+  });
+
+  it('rejects, and rolls back, a v8-style step that breaks a foreign key in a table it does not list', () => {
+    const db = loadFixture('v5-release-1.2.0');
+    try {
+      runMigrations(db);
+      const data = snapshot(db);
+      // As runMigrations does around every step.
+      db.pragma('foreign_keys = OFF');
+
+      let thrown: unknown;
+      try {
+        applyMigration(db, 8, ['site_snipes'], () => {
+          db.exec('ALTER TABLE site_snipes ADD COLUMN v8_note TEXT');
+          db.exec('UPDATE watches SET user_id = 999 WHERE id = 1');
+        });
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(MigrationError);
+      expect((thrown as MigrationError).version).toBe(8);
+      expect((thrown as Error).message).toBe(
+        'Database migration 8 failed: foreign_key_check found 1 new violation(s) introduced by this step: watches -> users (1)'
       );
       expect(version(db)).toBe(7);
+      expect(snapshot(db)).toEqual(data);
+      expect(
+        (db.pragma('table_info(site_snipes)') as { name: string }[]).map((c) => c.name)
+      ).not.toContain('v8_note');
     } finally {
       disposeFixture(db);
     }

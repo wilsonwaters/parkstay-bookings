@@ -9,9 +9,7 @@ import { TestDatabaseHelper } from '@tests/utils/database-helper';
 import { UserRepository } from '@main/database/repositories/user.repository';
 import {
   mockBookingInput,
-  mockBooking,
   createMockBookingInput,
-  createMultipleMockBookings,
   invalidBookingInputs,
 } from '@tests/fixtures/bookings';
 import { mockUserInput } from '@tests/fixtures/users';

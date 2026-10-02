@@ -54,7 +54,7 @@ describe('Authentication Flow Integration', () => {
 
     it('should handle user data persistence across service restarts', async () => {
       // Create user
-      const user = await authService.storeCredentials(mockUserInput);
+      await authService.storeCredentials(mockUserInput);
 
       // Create new service instance (simulating app restart)
       const newAuthService = new AuthService(userRepository);

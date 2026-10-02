@@ -7,6 +7,7 @@ import {
   NotificationChannel,
   NotificationMessage,
   NotificationDeliveryResult,
+  NotificationDeliveryLogInput,
   TestConnectionResult,
   ProviderValidationResult,
 } from '@shared/types';
@@ -100,7 +101,7 @@ export class NotificationDispatcher {
         results.push({ channel, result });
 
         // Log the delivery to database
-        this.providerRepository.logDelivery({
+        this.recordDelivery({
           providerChannel: channel,
           status: result.success ? 'sent' : 'failed',
           messageId: result.messageId,
@@ -126,7 +127,7 @@ export class NotificationDispatcher {
         });
 
         // Log the failed delivery
-        this.providerRepository.logDelivery({
+        this.recordDelivery({
           providerChannel: channel,
           status: 'failed',
           errorMessage: error.message || 'Unknown error',
@@ -135,6 +136,18 @@ export class NotificationDispatcher {
     }
 
     return results;
+  }
+
+  /**
+   * Writes a delivery-log row. A logging failure is logged and swallowed: it must not turn a
+   * send into a failure, nor stop dispatch to the remaining notifiers.
+   */
+  private recordDelivery(entry: NotificationDeliveryLogInput): void {
+    try {
+      this.providerRepository.logDelivery(entry);
+    } catch (error) {
+      logger.error(`Failed to write delivery log for ${entry.providerChannel}:`, error);
+    }
   }
 
   /**

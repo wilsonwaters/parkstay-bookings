@@ -8,7 +8,9 @@
  * 1. Bump LATEST_SCHEMA_VERSION to the new version N
  * 2. Add a new `if (currentVersion < N)` block at the bottom of runMigrations()
  * 3. Wrap its body in applyMigration(db, N, [tables it creates or rebuilds], () => { ... }).
- *    applyMigration runs the body and records version N in one transaction.
+ *    applyMigration runs the body and records version N in one transaction. The listed
+ *    tables must be free of foreign-key violations when it commits, and the step may not
+ *    introduce a violation in any other table (see assertForeignKeys).
  *
  * This module never imports the app shell: the caller passes the database file path.
  */
@@ -251,29 +253,72 @@ function summariseViolations(violations: ForeignKeyViolation[]): string {
 }
 
 /**
- * Runs `PRAGMA foreign_key_check` inside a migration. A violation in, or pointing at, one of
- * `checkedTables` is fatal. Any other violation is old data the step did not cause: it is
- * logged as a warning so it cannot brick startup.
+ * The first migration held to the strict foreign-key rule (see assertForeignKeys).
+ * v1-v6 are the historic steps: their SQL is frozen as released, and v6 is known to break
+ * the delivery-log FK, which v7 repairs.
+ */
+const STRICT_FK_FROM_VERSION = 7;
+
+function readViolations(db: Database.Database): ForeignKeyViolation[] {
+  return db.pragma('foreign_key_check') as ForeignKeyViolation[];
+}
+
+/** Identity of a violation: the same child row, FK and parent table. */
+function violationKey(v: ForeignKeyViolation): string {
+  return JSON.stringify([v.table, v.rowid, v.fkid, v.parent]);
+}
+
+/**
+ * Runs `PRAGMA foreign_key_check` at the end of migration `version` and compares it with
+ * `baseline`, the check taken just before the step ran (same transaction). The rule:
+ *
+ * 1. **The step's own tables must be fully clean.** Any violation in, or pointing at, one of
+ *    `checkedTables` is fatal, even one that is in the baseline. A step that creates or
+ *    rebuilds a table controls every row it writes there, so it must leave it clean. This is
+ *    what proves v7 actually repairs the delivery-log FK that v6 broke: without it, that
+ *    violation would be "pre-existing" from v7's point of view and only warned about.
+ * 2. **From STRICT_FK_FROM_VERSION (v7) on, a step may not introduce a violation anywhere.**
+ *    A violation that is not in the baseline is fatal in any table, listed or not.
+ * 3. **A historic step (v1-v6) that introduces a violation outside its own tables only warns.**
+ *    Their SQL is frozen, and v6 breaks `notification_delivery_logs -> notifications_old` on
+ *    every database that has delivery logs. A later step of the same run (v7) repairs it,
+ *    and rule 1 makes v7 prove it did, so a v5 -> v7 upgrade succeeds.
+ * 4. **Pre-existing violations outside the step's own tables only warn.** That is old orphan
+ *    data the step did not cause, and it must not brick startup.
  */
 function assertForeignKeys(
   db: Database.Database,
   version: number,
-  checkedTables: readonly string[]
+  checkedTables: readonly string[],
+  baseline: readonly ForeignKeyViolation[]
 ): void {
-  const violations = db.pragma('foreign_key_check') as ForeignKeyViolation[];
-  const own = violations.filter(
+  const before = new Set(baseline.map(violationKey));
+  const after = readViolations(db);
+  const own = after.filter(
     (v) => checkedTables.includes(v.table) || checkedTables.includes(v.parent)
   );
-  const other = violations.filter((v) => !own.includes(v));
+  const other = after.filter((v) => !own.includes(v));
+  const introduced = other.filter((v) => !before.has(violationKey(v)));
+  const preExisting = other.filter((v) => before.has(violationKey(v)));
 
-  if (other.length > 0) {
-    logger.warn(
-      `Migration ${version}: ${other.length} existing foreign-key violation(s) outside this step: ${summariseViolations(other)}`
-    );
-  }
   if (own.length > 0) {
     throw new Error(
-      `foreign_key_check found ${own.length} violation(s): ${summariseViolations(own)}`
+      `foreign_key_check found ${own.length} violation(s) in this step's tables: ${summariseViolations(own)}`
+    );
+  }
+  if (introduced.length > 0) {
+    if (version >= STRICT_FK_FROM_VERSION) {
+      throw new Error(
+        `foreign_key_check found ${introduced.length} new violation(s) introduced by this step: ${summariseViolations(introduced)}`
+      );
+    }
+    logger.warn(
+      `Migration ${version}: historic step introduced ${introduced.length} foreign-key violation(s), to be repaired by a later migration: ${summariseViolations(introduced)}`
+    );
+  }
+  if (preExisting.length > 0) {
+    logger.warn(
+      `Migration ${version}: ${preExisting.length} pre-existing foreign-key violation(s), not introduced by migration ${version}: ${summariseViolations(preExisting)}`
     );
   }
 }
@@ -283,9 +328,10 @@ function assertForeignKeys(
  * `INSERT INTO migrations` run in a single transaction, so a crash or error leaves the
  * database at the previous version. Any failure is rethrown as `MigrationError(version)`.
  *
- * `checkedTables` lists the tables the step creates or rebuilds; they must be free of
- * foreign-key violations when it commits. The caller turns `foreign_keys` off around the
- * steps, because the pragma is a no-op inside a transaction.
+ * `checkedTables` lists the tables the step creates or rebuilds. They must be completely
+ * free of foreign-key violations when it commits; see assertForeignKeys for the full rule,
+ * including how violations elsewhere are treated. The caller turns `foreign_keys` off around
+ * the steps, because the pragma is a no-op inside a transaction.
  */
 export function applyMigration(
   db: Database.Database,
@@ -295,8 +341,9 @@ export function applyMigration(
 ): void {
   try {
     db.transaction(() => {
+      const baseline = readViolations(db);
       fn();
-      assertForeignKeys(db, version, checkedTables);
+      assertForeignKeys(db, version, checkedTables, baseline);
       db.prepare('INSERT INTO migrations (version) VALUES (?)').run(version);
     })();
   } catch (error) {
@@ -355,9 +402,21 @@ export function runMigrations(database: Database.Database): void {
   }
 
   // Table rebuilds need foreign keys off. The pragma is ignored inside a transaction, so it
-  // is set here, around all the steps, and always restored.
+  // is set here, around all the steps, and always restored. Refuse to run if it cannot take
+  // effect: a rebuild with foreign keys on would cascade-delete or reject rows.
+  if (database.inTransaction) {
+    throw new Error(
+      'runMigrations cannot run inside an open transaction: PRAGMA foreign_keys is a no-op there, so table rebuilds would run with foreign keys on'
+    );
+  }
   database.pragma('foreign_keys = OFF');
   try {
+    if (database.pragma('foreign_keys', { simple: true }) !== 0) {
+      throw new Error(
+        'runMigrations could not turn foreign keys off (PRAGMA foreign_keys still reads on); no migration was run'
+      );
+    }
+
     // Migration 001: Initial schema. Every statement is CREATE ... IF NOT EXISTS, so it is
     // harmless on pre-v2 installs that already have the tables. It writes no rows, so it
     // has no tables to check.

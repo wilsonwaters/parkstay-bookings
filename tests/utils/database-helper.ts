@@ -151,9 +151,11 @@ const FIXTURE_DIR = path.join(__dirname, '../fixtures/db');
 
 /**
  * Replays a schema-fixture SQL dump (`tests/fixtures/db/<name>.sql`) into a fresh database
- * file in its own temp directory. Foreign keys are OFF, as for any freshly opened connection,
- * so the dump replays exactly as written (including the v6 FK to "notifications_old").
- * Release it with `disposeFixture`.
+ * file in its own temp directory. better-sqlite3 opens connections with foreign keys ON, so
+ * the helper turns them OFF explicitly before replaying: the dump then replays exactly as
+ * written, including the delivery-log rows behind the v6 FK to "notifications_old", which an
+ * FK-enforcing connection would reject. The returned connection still has foreign keys OFF
+ * (`runMigrations` turns them back ON). Release it with `disposeFixture`.
  */
 export function loadFixture(name: FixtureName): Database.Database {
   const sql = fs.readFileSync(path.join(FIXTURE_DIR, `${name}.sql`), 'utf8');

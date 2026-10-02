@@ -6,7 +6,7 @@
 import { AuthService } from '@main/services/auth/AuthService';
 import { UserRepository } from '@main/database/repositories/user.repository';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
-import { mockUserInput, mockUser, invalidUserInputs } from '@tests/fixtures/users';
+import { mockUserInput } from '@tests/fixtures/users';
 import { expectAsyncThrow } from '@tests/utils/test-helpers';
 
 describe('AuthService', () => {
