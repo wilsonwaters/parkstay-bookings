@@ -139,3 +139,8 @@ export const watches = {
 
 - Commit as a small series, each commit passing the gate: (1) container and profile, (2) contracts, `handle.ts` and handlers, (3) preload and renderer call sites, (4) notifier rename.
 - V1 extends the same `contract` object. Do not create a second registry.
+
+## Orchestrator addendum (2026-10-02, from the P2 review)
+- [ ] `auth.deleteCredentials` and Logout clear only the credential fields. They never delete the local profile row (architecture-notes §12.21–22). `ensureLocalProfile()` runs at startup.
+- [ ] `tests/integration/local-profile.test.ts` is changed from `test.failing` to `test` and passes.
+- [ ] The notifier class, file and the `providerChannel` field are renamed to match the DB (`notifiers` / `notifier_channel`, done in v7).
