@@ -2,20 +2,52 @@
  * Database Connection & Migrations
  *
  * THIS IS THE SINGLE SOURCE OF TRUTH FOR DATABASE INITIALIZATION AND MIGRATIONS.
- * All migrations should be added to the runMigrations() function below.
+ * All migrations live in the runMigrations() function below.
  *
  * To add a new migration:
- * 1. Check the current max version in runMigrations()
- * 2. Add a new `if (currentVersion < N)` block with your migration
- * 3. Always INSERT the new version number into the migrations table at the end
+ * 1. Bump LATEST_SCHEMA_VERSION to the new version N
+ * 2. Add a new `if (currentVersion < N)` block at the bottom of runMigrations()
+ * 3. Wrap its body in applyMigration(db, N, [tables it creates or rebuilds], () => { ... }).
+ *    applyMigration runs the body and records version N in one transaction.
+ *
+ * This module never imports the app shell: the caller passes the database file path.
  */
 
 import Database from 'better-sqlite3';
-import { app } from 'electron';
-import * as path from 'path';
 import * as fs from 'fs';
+import * as path from 'path';
+import { logger } from '../utils/logger';
 
-let db: Database.Database | null = null;
+/** Schema version this build creates and understands. */
+export const LATEST_SCHEMA_VERSION = 7;
+
+/** A migration step failed. Its transaction was rolled back, so the database is still at the previous version. */
+export class MigrationError extends Error {
+  readonly version: number;
+
+  constructor(version: number, cause: unknown) {
+    const reason = cause instanceof Error ? cause.message : String(cause);
+    super(`Database migration ${version} failed: ${reason}`, { cause });
+    this.name = 'MigrationError';
+    this.version = version;
+  }
+}
+
+/** The database was written by a newer build. Nothing is migrated: this build does not know that schema. */
+export class DatabaseTooNewError extends Error {
+  readonly version: number;
+  readonly supportedVersion: number;
+
+  constructor(version: number, supportedVersion: number) {
+    super(
+      `Database schema version ${version} is newer than this app supports (${supportedVersion}). ` +
+        'Install the latest version of the app to open it.'
+    );
+    this.name = 'DatabaseTooNewError';
+    this.version = version;
+    this.supportedVersion = supportedVersion;
+  }
+}
 
 // Inlined schema to avoid file I/O issues in packaged (asar) builds
 const SCHEMA_SQL = `
@@ -201,11 +233,100 @@ const SCHEMA_SQL = `
   END;
 `;
 
-export { SCHEMA_SQL };
+interface ForeignKeyViolation {
+  table: string;
+  rowid: number | null;
+  parent: string;
+  fkid: number;
+}
+
+/** "child -> parent (count)" for each table pair, e.g. "notification_delivery_logs -> notifications_old (1)". */
+function summariseViolations(violations: ForeignKeyViolation[]): string {
+  const counts = new Map<string, number>();
+  for (const v of violations) {
+    const pair = `${v.table} -> ${v.parent}`;
+    counts.set(pair, (counts.get(pair) ?? 0) + 1);
+  }
+  return [...counts].map(([pair, n]) => `${pair} (${n})`).join(', ');
+}
 
 /**
- * Run database migrations
- * Add new migrations at the bottom of this function
+ * Runs `PRAGMA foreign_key_check` inside a migration. A violation in, or pointing at, one of
+ * `checkedTables` is fatal. Any other violation is old data the step did not cause: it is
+ * logged as a warning so it cannot brick startup.
+ */
+function assertForeignKeys(
+  db: Database.Database,
+  version: number,
+  checkedTables: readonly string[]
+): void {
+  const violations = db.pragma('foreign_key_check') as ForeignKeyViolation[];
+  const own = violations.filter(
+    (v) => checkedTables.includes(v.table) || checkedTables.includes(v.parent)
+  );
+  const other = violations.filter((v) => !own.includes(v));
+
+  if (other.length > 0) {
+    logger.warn(
+      `Migration ${version}: ${other.length} existing foreign-key violation(s) outside this step: ${summariseViolations(other)}`
+    );
+  }
+  if (own.length > 0) {
+    throw new Error(
+      `foreign_key_check found ${own.length} violation(s): ${summariseViolations(own)}`
+    );
+  }
+}
+
+/**
+ * Applies one migration step atomically: `fn`, the foreign-key check and the
+ * `INSERT INTO migrations` run in a single transaction, so a crash or error leaves the
+ * database at the previous version. Any failure is rethrown as `MigrationError(version)`.
+ *
+ * `checkedTables` lists the tables the step creates or rebuilds; they must be free of
+ * foreign-key violations when it commits. The caller turns `foreign_keys` off around the
+ * steps, because the pragma is a no-op inside a transaction.
+ */
+export function applyMigration(
+  db: Database.Database,
+  version: number,
+  checkedTables: readonly string[],
+  fn: () => void
+): void {
+  try {
+    db.transaction(() => {
+      fn();
+      assertForeignKeys(db, version, checkedTables);
+      db.prepare('INSERT INTO migrations (version) VALUES (?)').run(version);
+    })();
+  } catch (error) {
+    throw error instanceof MigrationError ? error : new MigrationError(version, error);
+  }
+  logger.info(`Migration ${String(version).padStart(3, '0')} completed`);
+}
+
+/** The AUTOINCREMENT high-water mark of `table`, if it has one. */
+function readSequence(db: Database.Database, table: string): number | undefined {
+  const row = db.prepare('SELECT seq FROM sqlite_sequence WHERE name = ?').get(table) as
+    | { seq: number }
+    | undefined;
+  return row?.seq;
+}
+
+/** Restores a rebuilt table's AUTOINCREMENT high-water mark, so deleted ids are not reused. */
+function restoreSequence(db: Database.Database, table: string, seq: number | undefined): void {
+  if (seq === undefined) return;
+  const updated = db
+    .prepare('UPDATE sqlite_sequence SET seq = MAX(seq, ?) WHERE name = ?')
+    .run(seq, table);
+  if (updated.changes === 0) {
+    db.prepare('INSERT INTO sqlite_sequence (name, seq) VALUES (?, ?)').run(table, seq);
+  }
+}
+
+/**
+ * Brings the database up to LATEST_SCHEMA_VERSION.
+ * Add new migrations at the bottom of this function.
  */
 export function runMigrations(database: Database.Database): void {
   // Create migrations table if it doesn't exist
@@ -216,38 +337,67 @@ export function runMigrations(database: Database.Database): void {
     )
   `);
 
-  // Get current version
+  // Get current version. Pre-v2 installs have tables but no rows here, so they start at 0.
   const currentVersion =
-    (database.prepare('SELECT MAX(version) as version FROM migrations').get() as any)?.version || 0;
+    (
+      database.prepare('SELECT MAX(version) as version FROM migrations').get() as {
+        version: number | null;
+      }
+    ).version ?? 0;
 
-  console.log(`Current database migration version: ${currentVersion}`);
+  logger.info(`Current database migration version: ${currentVersion}`);
 
-  // Migration 002: Add last_availability column to watches
-  if (currentVersion < 2) {
-    console.log('Running migration 002: Add last_availability column');
-
-    // Check if column already exists
-    const tableInfo = database.prepare('PRAGMA table_info(watches)').all() as any[];
-    const hasColumn = tableInfo.some((col: any) => col.name === 'last_availability');
-
-    if (!hasColumn) {
-      database.exec('ALTER TABLE watches ADD COLUMN last_availability JSON');
-      console.log('Added last_availability column to watches table');
-    } else {
-      console.log('last_availability column already exists');
-    }
-
-    // Record migration (use INSERT OR IGNORE in case version 1 wasn't recorded)
-    database.prepare('INSERT OR IGNORE INTO migrations (version) VALUES (?)').run(1);
-    database.prepare('INSERT INTO migrations (version) VALUES (?)').run(2);
-    console.log('Migration 002 completed');
+  if (currentVersion > LATEST_SCHEMA_VERSION) {
+    throw new DatabaseTooNewError(currentVersion, LATEST_SCHEMA_VERSION);
+  }
+  if (currentVersion === LATEST_SCHEMA_VERSION) {
+    return;
   }
 
-  // Migration 003: Add notification providers tables
-  if (currentVersion < 3) {
-    console.log('Running migration 003: Add notification providers tables');
+  // Table rebuilds need foreign keys off. The pragma is ignored inside a transaction, so it
+  // is set here, around all the steps, and always restored.
+  database.pragma('foreign_keys = OFF');
+  try {
+    // Migration 001: Initial schema. Every statement is CREATE ... IF NOT EXISTS, so it is
+    // harmless on pre-v2 installs that already have the tables. It writes no rows, so it
+    // has no tables to check.
+    if (currentVersion < 1) {
+      applyMigration(database, 1, [], () => {
+        logger.info('Running migration 001: Initial schema');
+        database.exec(SCHEMA_SQL);
+      });
+    }
 
-    database.exec(`
+    // Migration 002: Add last_availability column to watches
+    if (currentVersion < 2) {
+      applyMigration(database, 2, [], () => {
+        logger.info('Running migration 002: Add last_availability column');
+
+        // Check if column already exists
+        const tableInfo = database.prepare('PRAGMA table_info(watches)').all() as {
+          name: string;
+        }[];
+        const hasColumn = tableInfo.some((col) => col.name === 'last_availability');
+
+        if (!hasColumn) {
+          database.exec('ALTER TABLE watches ADD COLUMN last_availability JSON');
+          logger.info('Added last_availability column to watches table');
+        } else {
+          logger.info('last_availability column already exists');
+        }
+
+        // Kept from the original v2. Migration 001 now always records itself first, so this
+        // is a no-op.
+        database.prepare('INSERT OR IGNORE INTO migrations (version) VALUES (?)').run(1);
+      });
+    }
+
+    // Migration 003: Add notification providers tables
+    if (currentVersion < 3) {
+      applyMigration(database, 3, ['notification_providers', 'notification_delivery_logs'], () => {
+        logger.info('Running migration 003: Add notification providers tables');
+
+        database.exec(`
       -- Notification providers table
       CREATE TABLE IF NOT EXISTS notification_providers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -283,16 +433,15 @@ export function runMigrations(database: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_delivery_logs_status ON notification_delivery_logs(status);
       CREATE INDEX IF NOT EXISTS idx_delivery_logs_created_at ON notification_delivery_logs(created_at);
     `);
+      });
+    }
 
-    database.prepare('INSERT INTO migrations (version) VALUES (?)').run(3);
-    console.log('Migration 003 completed');
-  }
+    // Migration 004: Add queue_session table for persisting queue position
+    if (currentVersion < 4) {
+      applyMigration(database, 4, ['queue_session'], () => {
+        logger.info('Running migration 004: Add queue_session table');
 
-  // Migration 004: Add queue_session table for persisting queue position
-  if (currentVersion < 4) {
-    console.log('Running migration 004: Add queue_session table');
-
-    database.exec(`
+        database.exec(`
       -- Queue session table for persisting queue position across restarts
       CREATE TABLE IF NOT EXISTS queue_session (
         id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -306,37 +455,38 @@ export function runMigrations(database: Database.Database): void {
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
     `);
-
-    database.prepare('INSERT INTO migrations (version) VALUES (?)').run(4);
-    console.log('Migration 004 completed');
-  }
-
-  // Migration 005: Add allow_partial_match column to watches
-  if (currentVersion < 5) {
-    console.log('Running migration 005: Add allow_partial_match column to watches');
-
-    const tableInfo = database.prepare('PRAGMA table_info(watches)').all() as any[];
-    const hasColumn = tableInfo.some((col: any) => col.name === 'allow_partial_match');
-
-    if (!hasColumn) {
-      database.exec('ALTER TABLE watches ADD COLUMN allow_partial_match BOOLEAN DEFAULT 0');
-      console.log('Added allow_partial_match column to watches table');
-    } else {
-      console.log('allow_partial_match column already exists');
+      });
     }
 
-    database.prepare('INSERT INTO migrations (version) VALUES (?)').run(5);
-    console.log('Migration 005 completed');
-  }
+    // Migration 005: Add allow_partial_match column to watches
+    if (currentVersion < 5) {
+      applyMigration(database, 5, [], () => {
+        logger.info('Running migration 005: Add allow_partial_match column to watches');
 
-  // Migration 006: Add site_snipes table (Site Sniper feature, replaces STQ) and
-  // widen the notifications type/related_type CHECK constraints to include snipe types.
-  // NOTE: the legacy skip_the_queue_entries table is intentionally left in place
-  // (harmless; existing installs may hold data). It is simply no longer used.
-  if (currentVersion < 6) {
-    console.log('Running migration 006: Add site_snipes table + widen notifications CHECK');
+        const tableInfo = database.prepare('PRAGMA table_info(watches)').all() as {
+          name: string;
+        }[];
+        const hasColumn = tableInfo.some((col) => col.name === 'allow_partial_match');
 
-    database.exec(`
+        if (!hasColumn) {
+          database.exec('ALTER TABLE watches ADD COLUMN allow_partial_match BOOLEAN DEFAULT 0');
+          logger.info('Added allow_partial_match column to watches table');
+        } else {
+          logger.info('allow_partial_match column already exists');
+        }
+      });
+    }
+
+    // Migration 006: Add site_snipes table (Site Sniper feature, replaces STQ) and
+    // widen the notifications type/related_type CHECK constraints to include snipe types.
+    // NOTE: renaming notifications aside makes SQLite rewrite the delivery-log FK to
+    // "notifications_old", which is then dropped. The SQL is kept as released (so v5 → v7
+    // upgrades replay it exactly); migration 007 repairs the damage.
+    if (currentVersion < 6) {
+      applyMigration(database, 6, ['site_snipes', 'notifications'], () => {
+        logger.info('Running migration 006: Add site_snipes table + widen notifications CHECK');
+
+        database.exec(`
       -- Site Sniper entries table
       CREATE TABLE IF NOT EXISTS site_snipes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -388,11 +538,10 @@ export function runMigrations(database: Database.Database): void {
       END;
     `);
 
-    // Widen the notifications CHECK constraints. SQLite cannot ALTER a CHECK, so we
-    // rebuild the table. Old values ('stq_success', related_type 'stq') are preserved
-    // for backward compatibility with existing rows; new values are added.
-    database.exec(`
-      PRAGMA foreign_keys=off;
+        // Widen the notifications CHECK constraints. SQLite cannot ALTER a CHECK, so we
+        // rebuild the table. Old values ('stq_success', related_type 'stq') are preserved
+        // for backward compatibility with existing rows; new values are added.
+        database.exec(`
       ALTER TABLE notifications RENAME TO notifications_old;
       CREATE TABLE notifications (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -414,134 +563,172 @@ export function runMigrations(database: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
       CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type);
       CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
-      PRAGMA foreign_keys=on;
     `);
+      });
+    }
 
-    database.prepare('INSERT INTO migrations (version) VALUES (?)').run(6);
-    console.log('Migration 006 completed');
+    // Migration 007: Integrity.
+    // - Rebuild notifications without its CHECK constraints (types are validated in code).
+    // - Rebuild notification_delivery_logs with a real FK to notifications (repairs 006),
+    //   renaming provider_channel to notifier_channel.
+    // - Rename notification_providers to notifiers.
+    // - Drop the dead Skip The Queue table and its trigger.
+    // Tables are rebuilt as: create under a temp name -> copy -> drop old -> rename new.
+    // The old table is never renamed aside, because SQLite would then rewrite other tables'
+    // FKs to the aside name (the 006 bug). Indexes are created only after the old table is
+    // dropped, because index names are global.
+    if (currentVersion < 7) {
+      applyMigration(
+        database,
+        7,
+        ['notifications', 'notification_delivery_logs', 'notifiers'],
+        () => {
+          logger.info('Running migration 007: Repair delivery-log FK, notifiers, drop STQ');
+
+          // 1. notifications, without the CHECK constraints
+          const notificationsSeq = readSequence(database, 'notifications');
+          database.exec(`
+            CREATE TABLE notifications_v7 (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              user_id INTEGER NOT NULL,
+              type TEXT NOT NULL,
+              title TEXT NOT NULL,
+              message TEXT NOT NULL,
+              related_id INTEGER,
+              related_type TEXT,
+              action_url TEXT,
+              is_read BOOLEAN DEFAULT 0,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            INSERT INTO notifications_v7 (id, user_id, type, title, message, related_id,
+                related_type, action_url, is_read, created_at)
+              SELECT id, user_id, type, title, message, related_id,
+                related_type, action_url, is_read, created_at
+              FROM notifications;
+            DROP TABLE notifications;
+            ALTER TABLE notifications_v7 RENAME TO notifications;
+            CREATE INDEX idx_notifications_user_id ON notifications(user_id);
+            CREATE INDEX idx_notifications_is_read ON notifications(is_read);
+            CREATE INDEX idx_notifications_type ON notifications(type);
+            CREATE INDEX idx_notifications_created_at ON notifications(created_at);
+          `);
+          restoreSequence(database, 'notifications', notificationsSeq);
+
+          // 2. notification_delivery_logs, with a real FK. Logs whose notification no
+          //    longer exists are kept, with notification_id cleared.
+          const orphaned = (
+            database
+              .prepare(
+                `SELECT COUNT(*) AS n FROM notification_delivery_logs
+                 WHERE notification_id IS NOT NULL
+                   AND notification_id NOT IN (SELECT id FROM notifications)`
+              )
+              .get() as { n: number }
+          ).n;
+          const logsSeq = readSequence(database, 'notification_delivery_logs');
+          database.exec(`
+            CREATE TABLE notification_delivery_logs_v7 (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              notification_id INTEGER,
+              notifier_channel TEXT NOT NULL,
+              status TEXT NOT NULL,
+              message_id TEXT,
+              error_message TEXT,
+              sent_at DATETIME,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE
+            );
+            INSERT INTO notification_delivery_logs_v7 (id, notification_id, notifier_channel,
+                status, message_id, error_message, sent_at, created_at)
+              SELECT id,
+                CASE WHEN notification_id IN (SELECT id FROM notifications)
+                  THEN notification_id END,
+                provider_channel, status, message_id, error_message, sent_at, created_at
+              FROM notification_delivery_logs;
+            DROP TABLE notification_delivery_logs;
+            ALTER TABLE notification_delivery_logs_v7 RENAME TO notification_delivery_logs;
+            CREATE INDEX idx_delivery_logs_notification_id ON notification_delivery_logs(notification_id);
+            CREATE INDEX idx_delivery_logs_notifier ON notification_delivery_logs(notifier_channel);
+            CREATE INDEX idx_delivery_logs_status ON notification_delivery_logs(status);
+            CREATE INDEX idx_delivery_logs_created_at ON notification_delivery_logs(created_at);
+          `);
+          restoreSequence(database, 'notification_delivery_logs', logsSeq);
+          if (orphaned > 0) {
+            logger.info(
+              `Migration 007: cleared notification_id on ${orphaned} delivery log(s) whose notification no longer exists`
+            );
+          }
+
+          // 3. notification_providers -> notifiers. SQLite cannot rename an index, so the
+          //    two indexes are dropped and recreated under the new name.
+          database.exec(`
+            ALTER TABLE notification_providers RENAME TO notifiers;
+            DROP INDEX IF EXISTS idx_notification_providers_channel;
+            DROP INDEX IF EXISTS idx_notification_providers_enabled;
+            CREATE INDEX idx_notifiers_channel ON notifiers(channel);
+            CREATE INDEX idx_notifiers_enabled ON notifiers(enabled);
+          `);
+
+          // 4. Skip The Queue is gone; its rows are discarded.
+          const hasStq = database
+            .prepare(
+              "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'skip_the_queue_entries'"
+            )
+            .get();
+          const discarded = hasStq
+            ? (
+                database.prepare('SELECT COUNT(*) AS n FROM skip_the_queue_entries').get() as {
+                  n: number;
+                }
+              ).n
+            : 0;
+          database.exec(`
+            DROP TRIGGER IF EXISTS update_stq_timestamp;
+            DROP TABLE IF EXISTS skip_the_queue_entries;
+          `);
+          logger.info(
+            `Migration 007: dropped skip_the_queue_entries, discarding ${discarded} row(s)`
+          );
+        }
+      );
+    }
+  } finally {
+    database.pragma('foreign_keys = ON');
   }
 }
 
 /**
- * Initialize database connection and create tables
+ * Opens (creating if needed) the database at `filePath`, enables foreign keys and WAL, and
+ * migrates it to LATEST_SCHEMA_VERSION. On any failure the connection is closed and the
+ * error rethrown.
  */
-export function initializeDatabase(): Database.Database {
-  if (db) {
-    return db;
-  }
+export function openDatabase(filePath: string): Database.Database {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
 
-  // Determine database path
-  const userDataPath = app.getPath('userData');
-  const dbPath = path.join(userDataPath, 'parkstay.db');
-
-  // Ensure directory exists
-  if (!fs.existsSync(userDataPath)) {
-    fs.mkdirSync(userDataPath, { recursive: true });
-  }
-
-  // Create database connection
-  db = new Database(dbPath, {
+  const db = new Database(filePath, {
     verbose: process.env.NODE_ENV === 'development' ? console.log : undefined,
   });
 
-  // Enable foreign keys
-  db.pragma('foreign_keys = ON');
-
-  // Enable WAL mode for better concurrency
-  db.pragma('journal_mode = WAL');
-
-  // Create initial schema
-  db.exec(SCHEMA_SQL);
-
-  // Run migrations
-  runMigrations(db);
-
-  console.log(`Database initialized at: ${dbPath}`);
-
-  return db;
-}
-
-/**
- * Get database instance
- */
-export function getDatabase(): Database.Database {
-  if (!db) {
-    throw new Error('Database not initialized. Call initializeDatabase() first.');
-  }
-  return db;
-}
-
-/**
- * Set the database instance (for testing only)
- */
-export function setDatabase(database: Database.Database | null): void {
-  db = database;
-}
-
-/**
- * Close database connection
- */
-export function closeDatabase(): void {
-  if (db) {
+  try {
+    db.pragma('foreign_keys = ON');
+    db.pragma('journal_mode = WAL');
+    runMigrations(db);
+  } catch (error) {
     db.close();
-    db = null;
-    console.log('Database connection closed');
+    throw error;
   }
+
+  logger.info(`Database initialized at: ${filePath}`);
+  return db;
 }
 
 /**
- * Execute a raw SQL query
+ * Closes a database connection opened by openDatabase.
  */
-export function query<T = any>(sql: string, params?: any[]): T[] {
-  const database = getDatabase();
-  const stmt = database.prepare(sql);
-  return stmt.all(params) as T[];
-}
-
-/**
- * Execute a single SQL query and return first result
- */
-export function queryOne<T = any>(sql: string, params?: any[]): T | undefined {
-  const database = getDatabase();
-  const stmt = database.prepare(sql);
-  return stmt.get(params) as T | undefined;
-}
-
-/**
- * Execute SQL query without returning results
- */
-export function execute(sql: string, params?: any[]): Database.RunResult {
-  const database = getDatabase();
-  const stmt = database.prepare(sql);
-  return stmt.run(params);
-}
-
-/**
- * Begin a transaction
- */
-export function beginTransaction(): void {
-  getDatabase().prepare('BEGIN TRANSACTION').run();
-}
-
-/**
- * Commit a transaction
- */
-export function commitTransaction(): void {
-  getDatabase().prepare('COMMIT').run();
-}
-
-/**
- * Rollback a transaction
- */
-export function rollbackTransaction(): void {
-  getDatabase().prepare('ROLLBACK').run();
-}
-
-/**
- * Execute operations in a transaction
- */
-export function withTransaction<T>(callback: () => T): T {
-  const database = getDatabase();
-  const transaction = database.transaction(callback);
-  return transaction();
+export function closeDatabase(db: Database.Database): void {
+  if (db.open) {
+    db.close();
+    logger.info('Database connection closed');
+  }
 }

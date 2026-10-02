@@ -40,7 +40,10 @@ describe('Database Integration', () => {
       expect(tableNames).toContain('users');
       expect(tableNames).toContain('bookings');
       expect(tableNames).toContain('watches');
-      expect(tableNames).toContain('skip_the_queue_entries');
+      expect(tableNames).toContain('notifiers');
+      expect(tableNames).toContain('notification_delivery_logs');
+      expect(tableNames).toContain('queue_session');
+      expect(tableNames).not.toContain('skip_the_queue_entries');
       expect(tableNames).toContain('site_snipes');
       expect(tableNames).toContain('notifications');
       expect(tableNames).toContain('settings');
@@ -187,7 +190,8 @@ describe('Database Integration', () => {
       expect(indexNames).toContain('idx_bookings_user_id');
       expect(indexNames).toContain('idx_watches_user_id');
       expect(indexNames).toContain('idx_watches_active');
-      expect(indexNames).toContain('idx_stq_booking_id');
+      expect(indexNames).toContain('idx_delivery_logs_notification_id');
+      expect(indexNames).toContain('idx_notifiers_channel');
       expect(indexNames).toContain('idx_notifications_user_id');
     });
   });

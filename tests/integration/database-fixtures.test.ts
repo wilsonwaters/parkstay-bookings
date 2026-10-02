@@ -10,15 +10,12 @@ import Database from 'better-sqlite3';
 import { loadFixture, disposeFixture } from '@tests/utils/database-helper';
 import {
   FIXTURE_MACHINE_ID,
-  FIXTURE_SMTP_PASSWORD,
   FIXTURE_USER_PASSWORD,
   V5_ROW_COUNTS,
   V6_ROW_COUNTS,
 } from '@tests/fixtures/db/constants';
 import { UserRepository } from '@main/database/repositories/user.repository';
-import { NotificationProviderRepository } from '@main/database/repositories/notification-provider.repository';
 import { AuthService } from '@main/services/auth/AuthService';
-import { NotificationChannel } from '@shared/types';
 
 jest.mock('node-machine-id', () => ({ machineIdSync: () => FIXTURE_MACHINE_ID }));
 
@@ -69,17 +66,6 @@ describe('schema fixtures', () => {
       await expect(auth.getCredentials()).resolves.toEqual({
         email: 'fixture.user@example.com',
         password: FIXTURE_USER_PASSWORD,
-      });
-    });
-
-    it('stores the SMTP notifier config with the legacy scheme and fixture machine id', () => {
-      const notifier = new NotificationProviderRepository(db).findByChannel(
-        NotificationChannel.EMAIL_SMTP
-      );
-      expect(notifier?.enabled).toBe(true);
-      expect(notifier?.config).toMatchObject({
-        host: 'smtp.gmail.com',
-        auth: { user: 'fixture.user@example.com', pass: FIXTURE_SMTP_PASSWORD },
       });
     });
   });

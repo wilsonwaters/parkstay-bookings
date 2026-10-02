@@ -5,7 +5,8 @@
 
 import { app, BrowserWindow } from 'electron';
 import path from 'path';
-import { initializeDatabase, closeDatabase, getDatabase } from './database/connection';
+import type Database from 'better-sqlite3';
+import { openDatabase, closeDatabase } from './database/connection';
 import { ParkStayService } from './services/parkstay/parkstay.service';
 import { QueueService } from './services/queue/queue.service';
 import { NotificationService } from './services/notification/notification.service';
@@ -42,6 +43,7 @@ function isHiddenLaunch(): boolean {
 }
 
 // Global references
+let db: Database.Database | null = null;
 let mainWindow: BrowserWindow | null = null;
 let jobScheduler: JobScheduler | null = null;
 let queueService: QueueService | null = null;
@@ -113,9 +115,8 @@ async function initializeApp(): Promise<void> {
   try {
     logger.info('Initializing application...');
 
-    // Initialize database
-    initializeDatabase();
-    const db = getDatabase();
+    // Open and migrate the database (B3 moves it to the WA Stay data folder)
+    db = openDatabase(path.join(app.getPath('userData'), 'parkstay.db'));
 
     // Create repositories (P3 moves this wiring into the composition root)
     const userRepository = new UserRepository(db);
@@ -231,7 +232,10 @@ app.on('before-quit', () => {
   }
 
   // Close database connection
-  closeDatabase();
+  if (db) {
+    closeDatabase(db);
+    db = null;
+  }
 
   logger.info('Application shut down successfully');
 });

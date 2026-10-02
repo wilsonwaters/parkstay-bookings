@@ -2,13 +2,25 @@ import { BaseRepository } from './base.repository';
 import { Notification, NotificationInput } from '@shared/types';
 import { NotificationType, RelatedType } from '@shared/types/common.types';
 
+const NOTIFICATION_TYPES: ReadonlySet<string> = new Set(Object.values(NotificationType));
+const RELATED_TYPES: ReadonlySet<string> = new Set(Object.values(RelatedType));
+
 export class NotificationRepository extends BaseRepository<Notification> {
   protected readonly tableName = 'notifications';
 
   /**
-   * Create a new notification
+   * Create a new notification. The table has no CHECK constraints (since v7), so `type` and
+   * `relatedType` are validated here. Reads do not validate: legacy rows (`stq_success`,
+   * related type `stq`) stay readable.
    */
   create(input: NotificationInput): Notification {
+    if (!NOTIFICATION_TYPES.has(input.type)) {
+      throw new Error(`Unknown notification type: ${String(input.type)}`);
+    }
+    if (input.relatedType && !RELATED_TYPES.has(input.relatedType)) {
+      throw new Error(`Unknown notification related type: ${String(input.relatedType)}`);
+    }
+
     const stmt = this.db.prepare(`
       INSERT INTO notifications (
         user_id, type, title, message, related_id, related_type, action_url

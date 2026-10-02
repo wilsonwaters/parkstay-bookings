@@ -29,7 +29,7 @@ describe('notification delivery log on a freshly migrated database', () => {
     await dbHelper.teardown();
   });
 
-  test.failing('accepts a delivery log without a notification_id', () => {
+  test('accepts a delivery log without a notification_id', () => {
     const log = repo.logDelivery({
       providerChannel: NotificationChannel.EMAIL_SMTP,
       status: 'failed',
@@ -40,7 +40,7 @@ describe('notification delivery log on a freshly migrated database', () => {
     expect(log.status).toBe('failed');
   });
 
-  test.failing('accepts a delivery log linked to a notification', () => {
+  test('accepts a delivery log linked to a notification', () => {
     db.prepare(
       `INSERT INTO users (id, email, encrypted_password, encryption_key, encryption_iv,
          encryption_auth_tag) VALUES (1, 'a@example.com', 'p', 'k', 'iv', 'tag')`

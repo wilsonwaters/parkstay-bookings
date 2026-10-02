@@ -8,7 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import type { FixtureName } from '@tests/fixtures/db/constants';
-import { runMigrations, SCHEMA_SQL } from '@main/database/connection';
+import { openDatabase } from '@main/database/connection';
 
 export class TestDatabaseHelper {
   private db: Database.Database | null = null;
@@ -25,22 +25,8 @@ export class TestDatabaseHelper {
    * Initialize test database
    */
   async setup(): Promise<Database.Database> {
-    // Ensure test database directory exists
-    const dbDir = path.dirname(this.dbPath);
-    if (!fs.existsSync(dbDir)) {
-      fs.mkdirSync(dbDir, { recursive: true });
-    }
-
-    this.db = new Database(this.dbPath);
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('foreign_keys = ON');
-
-    // Execute the production schema
-    this.db.exec(SCHEMA_SQL);
-
-    // Run production migrations
-    runMigrations(this.db);
-
+    // Same path as the app: foreign keys on, WAL, and every production migration
+    this.db = openDatabase(this.dbPath);
     return this.db;
   }
 
@@ -89,11 +75,14 @@ export class TestDatabaseHelper {
     if (!this.db) return;
 
     const tables = [
+      'notification_delivery_logs',
       'notifications',
+      'notifiers',
       'job_logs',
-      'skip_the_queue_entries',
+      'site_snipes',
       'watches',
       'bookings',
+      'queue_session',
       'users',
       'settings',
     ];

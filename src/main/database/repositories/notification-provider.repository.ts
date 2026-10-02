@@ -36,7 +36,7 @@ interface ProviderRow {
 interface DeliveryLogRow {
   id: number;
   notification_id: number | null;
-  provider_channel: string;
+  notifier_channel: string;
   status: string;
   message_id: string | null;
   error_message: string | null;
@@ -45,7 +45,7 @@ interface DeliveryLogRow {
 }
 
 export class NotificationProviderRepository extends BaseRepository<NotificationProvider> {
-  protected readonly tableName = 'notification_providers';
+  protected readonly tableName = 'notifiers';
   private encryptionKey: Buffer | null = null;
   private machineId: string;
 
@@ -96,7 +96,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
       const encryptedConfig = this.encryptConfig(JSON.stringify(input.config));
 
       const stmt = this.db.prepare(`
-        INSERT INTO notification_providers (
+        INSERT INTO notifiers (
           channel, display_name, enabled, config, status
         )
         VALUES (?, ?, ?, ?, ?)
@@ -155,7 +155,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
       values.push(id);
 
       const stmt = this.db.prepare(`
-        UPDATE notification_providers
+        UPDATE notifiers
         SET ${updates.join(', ')}
         WHERE id = ?
       `);
@@ -178,9 +178,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
    */
   findByChannel(channel: NotificationChannel): NotificationProvider | null {
     try {
-      const row = this.db
-        .prepare('SELECT * FROM notification_providers WHERE channel = ?')
-        .get(channel);
+      const row = this.db.prepare('SELECT * FROM notifiers WHERE channel = ?').get(channel);
       return row ? this.mapRow(row as ProviderRow) : null;
     } catch (error) {
       logger.error(`Error finding provider by channel ${channel}:`, error);
@@ -194,7 +192,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
   findEnabled(): NotificationProvider[] {
     try {
       const rows = this.db
-        .prepare('SELECT * FROM notification_providers WHERE enabled = 1')
+        .prepare('SELECT * FROM notifiers WHERE enabled = 1')
         .all() as ProviderRow[];
       return rows.map((row) => this.mapRow(row));
     } catch (error) {
@@ -209,7 +207,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
   enable(channel: NotificationChannel): boolean {
     try {
       const result = this.db
-        .prepare('UPDATE notification_providers SET enabled = 1 WHERE channel = ?')
+        .prepare('UPDATE notifiers SET enabled = 1 WHERE channel = ?')
         .run(channel);
       return result.changes > 0;
     } catch (error) {
@@ -224,7 +222,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
   disable(channel: NotificationChannel): boolean {
     try {
       const result = this.db
-        .prepare('UPDATE notification_providers SET enabled = 0 WHERE channel = ?')
+        .prepare('UPDATE notifiers SET enabled = 0 WHERE channel = ?')
         .run(channel);
       return result.changes > 0;
     } catch (error) {
@@ -241,7 +239,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
       this.db
         .prepare(
           `
-          UPDATE notification_providers
+          UPDATE notifiers
           SET status = ?, last_error = ?
           WHERE channel = ?
         `
@@ -261,7 +259,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
       this.db
         .prepare(
           `
-          UPDATE notification_providers
+          UPDATE notifiers
           SET last_tested_at = CURRENT_TIMESTAMP,
               status = ?,
               last_error = ?
@@ -282,7 +280,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
     try {
       const stmt = this.db.prepare(`
         INSERT INTO notification_delivery_logs (
-          notification_id, provider_channel, status, message_id, error_message, sent_at
+          notification_id, notifier_channel, status, message_id, error_message, sent_at
         )
         VALUES (?, ?, ?, ?, ?, ?)
       `);
@@ -317,7 +315,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
       return {
         id: row.id,
         notificationId: row.notification_id || undefined,
-        providerChannel: row.provider_channel as NotificationChannel,
+        providerChannel: row.notifier_channel as NotificationChannel,
         status: row.status as 'sent' | 'failed' | 'pending',
         messageId: row.message_id || undefined,
         errorMessage: row.error_message || undefined,
@@ -342,7 +340,7 @@ export class NotificationProviderRepository extends BaseRepository<NotificationP
       return rows.map((row) => ({
         id: row.id,
         notificationId: row.notification_id || undefined,
-        providerChannel: row.provider_channel as NotificationChannel,
+        providerChannel: row.notifier_channel as NotificationChannel,
         status: row.status as 'sent' | 'failed' | 'pending',
         messageId: row.message_id || undefined,
         errorMessage: row.error_message || undefined,

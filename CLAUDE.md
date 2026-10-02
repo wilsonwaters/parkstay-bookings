@@ -72,22 +72,27 @@ Database → Repositories → NotificationDispatcher → QueueService → ParkSt
 
 All migrations must be added to the `runMigrations()` function in `connection.ts`. Do NOT create separate migration files or a Database.ts file.
 
-### Current migrations (version 6)
+`connection.ts` exports `openDatabase(filePath)` (enables foreign keys and WAL, then migrates), `closeDatabase(db)` and `runMigrations(db)`. It has no module singleton: repositories receive the `Database` through their constructor (`repositories/base.repository.ts`), and services receive their repositories.
+
+### Current migrations (version 7)
 
 1. **v1** — Initial schema (users, bookings, watches, skip_the_queue_entries, notifications, job_logs, settings)
 2. **v2** — Add `last_availability` JSON column to watches
 3. **v3** — Add `notification_providers` and `notification_delivery_logs` tables
 4. **v4** — Add `queue_session` table for DBCA queue persistence
-5. **v5** — Add `allow_partial_match` column to watches
+5. **v5** — Add `allow_partial_match` column to watches (the released v1.2.0 schema)
 6. **v6** — Add `site_snipes` table (Site Sniper) and widen `notifications` CHECK constraints (adds `snipe_held`/`snipe_booked` types and `snipe` related_type)
+7. **v7** — Integrity: rebuild `notifications` without CHECK constraints (types are validated in `NotificationRepository`), rebuild `notification_delivery_logs` with a real FK to `notifications` (repairs v6) and `provider_channel` → `notifier_channel`, rename `notification_providers` → `notifiers`, drop `skip_the_queue_entries`
 
 ### Adding a new migration
 
 1. Open `src/main/database/connection.ts`
-2. Find the `runMigrations()` function
-3. Check the current highest version number (currently 6)
+2. Bump `LATEST_SCHEMA_VERSION` to the new version N (currently 7)
+3. Find the `runMigrations()` function
 4. Add a new `if (currentVersion < N)` block at the bottom
-5. INSERT the new version into the migrations table
+5. Wrap its body in `applyMigration(db, N, [tables it creates or rebuilds], () => { ... })`. It runs the body, `PRAGMA foreign_key_check` and the `INSERT INTO migrations` in one transaction, and throws `MigrationError(N)` on failure. Do not insert the version yourself, and do not set `PRAGMA foreign_keys` inside the body (it is a no-op in a transaction; the runner turns it off around all steps)
+6. Rebuild a table as: create it under a temp name → copy → drop the old table → rename the new one → create its indexes. Never rename the old table aside: SQLite then rewrites other tables' foreign keys to the aside name
+7. Add an upgrade test that starts from the v5 and v6 fixtures in `tests/fixtures/db/` (see its README)
 
 ## Key Services
 
@@ -131,7 +136,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 - **Framework:** Jest 29 (unit/integration), Playwright (E2E)
 - **Config:** `jest.config.js` — coverage thresholds: branches 9%, functions 17%, lines 16%, statements 16%
 - **Test locations:** `tests/unit/`, `tests/integration/`, `tests/e2e/`, plus co-located `*.test.tsx` in `src/`
-- **Fixtures:** `tests/fixtures/` (users, bookings, watches, site-sniper)
+- **Fixtures:** `tests/fixtures/` (users, bookings, watches, site-sniper, and `db/` schema dumps for migration tests)
 - **Helpers:** `tests/utils/` (database-helper, mock-api, test-helpers)
 
 ## Release Process

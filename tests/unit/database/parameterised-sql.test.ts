@@ -1,5 +1,5 @@
 /**
- * The finders that used to take SQL fragments (findWhere/count/deleteWhere) now run explicit
+ * The finders that used to take raw SQL condition strings now run explicit
  * prepared statements with every value, enums included, bound as a `?` parameter.
  */
 
