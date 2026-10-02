@@ -43,6 +43,7 @@ describe('WatchService', () => {
   });
 
   afterEach(async () => {
+    jest.useRealTimers();
     await dbHelper.teardown();
   });
 
@@ -165,8 +166,6 @@ describe('WatchService', () => {
 
       const updatedWatch = await watchService.get(watch.id);
       expect(updatedWatch?.isActive).toBe(false);
-
-      jest.useRealTimers();
     });
   });
 

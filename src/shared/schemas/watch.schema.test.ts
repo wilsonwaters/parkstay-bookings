@@ -1,12 +1,28 @@
 import { watchSchema } from './watch.schema';
 
+// The schema compares arrival dates with local midnight "today", so the clock is pinned.
+// Mid-day UTC keeps the local calendar day the same from UTC-11 to UTC+11, and every date
+// below is built from the same pinned instant, so UTC+14 passes too.
+const NOW = new Date('2026-06-15T12:00:00.000Z');
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function daysFromNow(days: number): Date {
+  return new Date(NOW.getTime() + days * DAY_MS);
+}
+
+beforeEach(() => {
+  jest.useFakeTimers({ now: NOW });
+});
+
+afterEach(() => {
+  jest.useRealTimers();
+});
+
 describe('Watch Schema Validation', () => {
   describe('watchSchema', () => {
     it('validates a valid watch input', () => {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const nextWeek = new Date();
-      nextWeek.setDate(nextWeek.getDate() + 7);
+      const tomorrow = daysFromNow(1);
+      const nextWeek = daysFromNow(7);
 
       const validInput = {
         name: 'Summer Camping Watch',
@@ -41,10 +57,8 @@ describe('Watch Schema Validation', () => {
     });
 
     it('validates check interval is positive', () => {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const nextWeek = new Date();
-      nextWeek.setDate(nextWeek.getDate() + 7);
+      const tomorrow = daysFromNow(1);
+      const nextWeek = daysFromNow(7);
 
       const invalidInput = {
         name: 'Test Watch',
@@ -63,10 +77,8 @@ describe('Watch Schema Validation', () => {
     });
 
     it('accepts optional site type and auto-book', () => {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const nextWeek = new Date();
-      nextWeek.setDate(nextWeek.getDate() + 7);
+      const tomorrow = daysFromNow(1);
+      const nextWeek = daysFromNow(7);
 
       const validInput = {
         name: 'Test Watch',

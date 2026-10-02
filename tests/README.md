@@ -4,15 +4,19 @@
 
 ```bash
 # Install dependencies
-npm install
+npm ci
 
-# Rebuild native modules for tests
+# Build better-sqlite3 for Node (npm ci builds it for Electron; see "Native module ABI guard")
 npm rebuild better-sqlite3
 
-# Run all tests
+# Run all Jest tests (both projects)
 npm test
 
-# Run specific test suite
+# Run one project
+npx jest --selectProjects main
+npx jest --selectProjects renderer
+
+# Run specific test file (only the project that owns it runs)
 npm test -- tests/unit/services/auth.test.ts
 
 # Run with coverage report
@@ -21,47 +25,130 @@ npm run test:coverage
 # Run tests in watch mode
 npm run test:watch
 
-# Run E2E tests
+# Run E2E tests (Playwright)
 npm run test:e2e
-
-# Run E2E tests with UI
-npm run test:e2e:ui
 ```
+
+## Jest projects
+
+`jest.config.js` defines two [projects](https://jestjs.io/docs/configuration#projects-arraystring--projectconfig) built from one shared base (roots, transform, module aliases). Jest projects do not inherit root options, so anything both need goes in that base.
+
+| Project | `testEnvironment` | Test files | Setup file |
+| --- | --- | --- | --- |
+| `main` | `node` | `tests/unit/**`, `tests/integration/**`, `tests/scripts/**`, `src/main/**`, `src/shared/**` | `tests/setup/main.ts` (`setupFiles`) |
+| `renderer` | `jsdom` | `src/renderer/**`, `tests/renderer/**` | `tests/setup/renderer.ts` (`setupFilesAfterEnv`) |
+
+- Test files are named `*.test.ts` / `*.test.tsx`.
+- `npm test -- <path>` runs only the project whose files match the path.
+- Coverage (`collectCoverageFrom`, `coverageThreshold`, `coverageReporters`) is configured once at the root. It is aggregated across both projects and the threshold (branches 9, functions 17, lines 16, statements 16) is evaluated once, globally.
+
+### Writing tests for the `main` project
+
+- **There is no DOM.** `window`, `document` and other jsdom globals do not exist. A main-process or shared test that needs them is relying on something it should not; fix the test rather than moving it to `renderer`.
+- **`electron` is not mocked.** Outside Electron, `require('electron')` returns the path to the Electron binary (a string), not the API, so `app`, `BrowserWindow`, `Notification` and friends are `undefined`. A test that needs Electron APIs mocks the module itself:
+
+  ```typescript
+  jest.mock('electron', () => ({
+    app: { getPath: jest.fn(() => '/tmp/wa-stay-test'), isReady: jest.fn(() => true) },
+  }));
+  ```
+
+  There is deliberately no global `jest.mock('electron')`: it would hide accidental Electron coupling in code that is meant to be pure.
+
+## Setup files
+
+- **`tests/setup/main.ts`** (`setupFiles`, runs before any module loads) sets `process.env.LOG_LEVEL ??= 'warn'`, so the Winston logger skips info/debug output but still prints warnings and errors. An explicit level wins: `LOG_LEVEL=debug npm test`.
+- **`tests/setup/renderer.ts`** (`setupFilesAfterEnv`) loads the `@testing-library/jest-dom` matchers and installs a mock `window.api` (see below).
+
+Neither file silences the console. A test that expects an error to be logged spies on the console locally and restores it:
+
+```typescript
+beforeEach(() => {
+  jest.spyOn(console, 'error').mockImplementation(() => {});
+});
+
+afterEach(() => {
+  jest.restoreAllMocks();
+});
+```
+
+## Mocking `window.api` (renderer)
+
+The renderer setup installs `createMockWindowApi()` from `tests/utils/window-api.ts` on `window.api`: once when the test file loads and again, fresh, before every test. It is a `Proxy` typed as `Window['api']`, so it needs no list of namespaces and keeps working when the preload API changes shape.
+
+Every member, at any depth, is a `jest.fn()` that rejects with `window.api.<namespace>.<method> is not mocked in this test` until the test stubs it:
+
+```typescript
+jest.mocked(window.api.watch.list).mockResolvedValue({ success: true, data: [] });
+// or
+window.api.settings.get = jest.fn().mockResolvedValue({ success: true, data: null });
+
+expect(window.api.watch.list).toHaveBeenCalledWith(1);
+```
+
+- Stub in the test or in a `beforeEach`. Stubs made at module scope or in `beforeAll` are replaced before each test.
+- `jest.resetAllMocks()` / `mockReset()` clear the default rejection (the method then returns `undefined`); prefer `jest.clearAllMocks()`.
+- An un-stubbed call that nobody awaits becomes an unhandled rejection. Jest fails the test (or, if the file has finished, the run) in progress when Node reports it, and the error still names the method.
+
+## Clocks and dates
+
+Tests must not depend on the real date or the machine's time zone.
+
+- Pin the clock with `jest.useFakeTimers({ now: new Date('2026-06-15T12:00:00.000Z') })`. Every file that calls `jest.useFakeTimers` also calls `jest.useRealTimers()` in an `afterEach` (or `afterAll`), so a failing test cannot leak fake timers.
+- Use mid-day UTC for fixed dates, so the local calendar day is the same from UTC−11 to UTC+11. Build every date in a test from the same pinned instant, so UTC+14 passes too.
+- SQLite's `date('now')` (used by `BookingRepository.findUpcoming` / `findPast`) ignores Jest fake timers. Use fixed dates far in the future or past instead.
+- Fixtures do not read the clock either: `tests/fixtures/watches.ts` builds dates from a fixed reference date.
+
+Check the main project in several time zones:
+
+```bash
+TZ=UTC npx jest --selectProjects main
+TZ=Australia/Perth npx jest --selectProjects main
+TZ=Pacific/Kiritimati npx jest --selectProjects main   # UTC+14
+```
+
+## Native module ABI guard
+
+`better-sqlite3` is a native module and must be compiled for the runtime that loads it. `npm install` / `npm ci` run the `postinstall` script (`electron-builder install-app-deps`), which compiles it for **Electron** (NODE_MODULE_VERSION 119). Jest runs on plain **Node** (115 on Node 20, 127 on Node 22) and needs the Node build.
+
+`scripts/check-native-abi.js` runs as `pretest`, `pretest:coverage` and `pretest:watch`. It loads `better-sqlite3`, opens a `:memory:` database and exits silently if that works (it adds well under a second). Otherwise it stops the run with one message instead of a `dlopen` error in every database test:
+
+- **ABI mismatch:** prints both NODE_MODULE_VERSION numbers, explains that Electron's build is installed, and gives the fix, `npm rebuild better-sqlite3`.
+- **Not installed** (missing package, or `npm ci --ignore-scripts` left no binary): prints an install hint.
+- **Any other load error** (for example a missing libc symbol): prints the original error unchanged.
+
+Set `AUTO_REBUILD_NATIVE=1` to have the guard run `npm rebuild better-sqlite3` itself on a mismatch, re-check, and continue:
+
+```bash
+AUTO_REBUILD_NATIVE=1 npm test
+```
+
+To run the Electron app again afterwards, rebuild for Electron with `npm run rebuild`. Calling `npx jest` directly skips the guard. The diagnosis logic lives in `scripts/lib/native-abi.js` and is unit tested in `tests/scripts/native-abi.test.ts`.
 
 ## Directory Structure
 
 ```
 tests/
-├── unit/                    # Unit tests for services
+├── unit/                    # Unit tests (main project)
+│   ├── database/
 │   └── services/
-│       ├── auth.test.ts           ✅ AuthService (25 tests)
-│       ├── booking.test.ts        ⚠️ BookingService (22/24 passing)
-│       ├── watch.test.ts          ⚠️ WatchService (needs fixes)
-│       └── notification.test.ts   ⚠️ NotificationService (needs fixes)
-│
-├── integration/             # Integration tests
-│   ├── database.test.ts           ✅ Database operations (all passing)
-│   └── auth-flow.test.ts          ✅ Auth workflows (all passing)
-│
-├── e2e/                     # End-to-end tests (Playwright)
-│   ├── login.spec.ts              ⏳ Login flow
-│   └── bookings.spec.ts           ⏳ Bookings management
-│
-├── fixtures/                # Test data
-│   ├── users.ts                   # User fixtures
-│   ├── bookings.ts                # Booking fixtures
-│   ├── watches.ts                 # Watch fixtures
-│   └── stq.ts                     # STQ fixtures
-│
-├── utils/                   # Test utilities
-│   ├── database-helper.ts         # Database setup/teardown
-│   ├── mock-api.ts                # Mock API responses
-│   └── test-helpers.ts            # Common test utilities
-│
-├── setup.ts                 # Global test setup
-├── TEST_SUMMARY.md          # Detailed test documentation
+├── integration/             # Integration tests (main project)
+├── scripts/                 # Tests for Node scripts in scripts/ (main project)
+├── e2e/                     # End-to-end tests (Playwright, not Jest)
+├── manual/                  # Scripts run by hand against live services (not Jest)
+├── fixtures/                # Test data (users, bookings, watches, site-sniper)
+├── setup/
+│   ├── main.ts              # setupFiles for the main project
+│   └── renderer.ts          # setupFilesAfterEnv for the renderer project
+├── utils/
+│   ├── database-helper.ts   # Database setup/teardown
+│   ├── mock-api.ts          # Mock API responses
+│   ├── test-helpers.ts      # Common test utilities
+│   └── window-api.ts        # createMockWindowApi() for renderer tests
 └── README.md                # This file
 ```
+
+Renderer component tests are co-located with the components (`src/renderer/**/*.test.tsx`). `tests/renderer/` is also part of the renderer project, for renderer tests that do not belong next to one component.
 
 ## Test Types
 
@@ -350,12 +437,9 @@ npm run type-check
 # Update path mappings in jest.config.js
 ```
 
-## Coverage Goals
+## Coverage Thresholds
 
-- **Unit Tests**: 80%+ of service logic
-- **Integration Tests**: 90%+ of database operations
-- **E2E Tests**: All critical user flows
-- **Overall**: 70%+ code coverage
+`jest.config.js` enforces a global floor across both projects: branches 9%, functions 17%, lines 16%, statements 16%. Do not lower it to make a run pass.
 
 ## Contributing
 
@@ -371,4 +455,3 @@ When adding new features:
 - [Jest Documentation](https://jestjs.io/)
 - [Playwright Documentation](https://playwright.dev/)
 - [Testing Best Practices](https://testingjavascript.com/)
-- [TEST_SUMMARY.md](./TEST_SUMMARY.md) - Detailed test documentation

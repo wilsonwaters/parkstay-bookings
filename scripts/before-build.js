@@ -8,7 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 
-exports.default = async function(context) {
+exports.default = async function (context) {
   console.log('\n🔧 Running pre-build checks...\n');
 
   const { electronPlatformName, arch, targets } = context;
@@ -21,10 +21,7 @@ exports.default = async function(context) {
   console.log('');
 
   // Check for required files
-  const requiredFiles = [
-    'package.json',
-    'electron-builder.json',
-  ];
+  const requiredFiles = ['package.json', 'electron-builder.json'];
 
   console.log('📋 Checking required files...');
   for (const file of requiredFiles) {

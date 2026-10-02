@@ -5,6 +5,19 @@
 import { Watch, WatchInput } from '@shared/types';
 import { WatchResult } from '@shared/types/common.types';
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Fixed reference date for generated watch dates, instead of the real clock. It is far in
+ * the future because WatchService.create rejects arrival dates before the real "now".
+ * Mid-day UTC keeps the local calendar day the same from UTC-11 to UTC+11.
+ */
+const WATCH_FIXTURE_REFERENCE_DATE = new Date('2099-01-15T12:00:00.000Z');
+
+function daysAfterReference(days: number): Date {
+  return new Date(WATCH_FIXTURE_REFERENCE_DATE.getTime() + days * DAY_MS);
+}
+
 export const mockWatchInput: WatchInput = {
   name: 'Karijini Watch',
   parkId: 'PARK001',
@@ -85,7 +98,7 @@ export const mockDueWatch: Watch = {
 export const invalidWatchInputs = [
   {
     ...mockWatchInput,
-    arrivalDate: new Date(Date.now() - 24 * 60 * 60 * 1000), // Yesterday
+    arrivalDate: new Date('2000-01-15T12:00:00.000Z'), // In the past
     expectedError: 'Arrival date must be in the future',
   },
   {
@@ -104,25 +117,18 @@ export function createMockWatch(overrides: Partial<Watch> = {}): Watch {
 }
 
 export function createMockWatchInput(overrides: Partial<WatchInput> = {}): WatchInput {
-  const futureDate1 = new Date();
-  futureDate1.setDate(futureDate1.getDate() + 30);
-  const futureDate2 = new Date();
-  futureDate2.setDate(futureDate2.getDate() + 34);
-
   return {
     ...mockWatchInput,
-    arrivalDate: overrides.arrivalDate || futureDate1,
-    departureDate: overrides.departureDate || futureDate2,
+    arrivalDate: overrides.arrivalDate || daysAfterReference(30),
+    departureDate: overrides.departureDate || daysAfterReference(34),
     ...overrides,
   };
 }
 
 export function createMultipleMockWatches(count: number, userId: number = 1): Watch[] {
   return Array.from({ length: count }, (_, i) => {
-    const arrivalDate = new Date();
-    arrivalDate.setDate(arrivalDate.getDate() + (i + 1) * 7);
-    const departureDate = new Date(arrivalDate);
-    departureDate.setDate(departureDate.getDate() + 3);
+    const arrivalDate = daysAfterReference((i + 1) * 7);
+    const departureDate = daysAfterReference((i + 1) * 7 + 3);
 
     return createMockWatch({
       id: i + 1,

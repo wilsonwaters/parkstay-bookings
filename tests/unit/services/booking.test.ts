@@ -18,6 +18,16 @@ import { mockUserInput } from '@tests/fixtures/users';
 import { BookingStatus } from '@shared/types';
 import { expectAsyncThrow } from '@tests/utils/test-helpers';
 
+// Fixed dates far from today. BookingRepository.findUpcoming/findPast compare with SQLite
+// date('now'), which Jest fake timers cannot pin, so the dates sit decades either side of
+// any real "now". Mid-day UTC keeps the calendar day the same in every time zone tested.
+const UPCOMING_ARRIVAL = new Date('2099-06-15T12:00:00.000Z');
+const UPCOMING_DEPARTURE = new Date('2099-06-18T12:00:00.000Z');
+const CANCELLED_ARRIVAL = new Date('2099-06-29T12:00:00.000Z');
+const CANCELLED_DEPARTURE = new Date('2099-07-01T12:00:00.000Z');
+const PAST_ARRIVAL = new Date('2000-06-15T12:00:00.000Z');
+const PAST_DEPARTURE = new Date('2000-06-17T12:00:00.000Z');
+
 describe('BookingService', () => {
   let dbHelper: TestDatabaseHelper;
   let bookingService: BookingService;
@@ -165,69 +175,49 @@ describe('BookingService', () => {
 
   describe('getUpcomingBookings', () => {
     it('should return only upcoming bookings', async () => {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
-      const laterDate = new Date(futureDate);
-      laterDate.setDate(laterDate.getDate() + 3);
-
-      const pastDate = new Date();
-      pastDate.setDate(pastDate.getDate() - 7);
-      const pastDeparture = new Date(pastDate);
-      pastDeparture.setDate(pastDeparture.getDate() + 2);
-
       await bookingService.createBooking(
         testUserId,
         createMockBookingInput({
-          arrivalDate: futureDate,
-          departureDate: laterDate,
+          arrivalDate: UPCOMING_ARRIVAL,
+          departureDate: UPCOMING_DEPARTURE,
         })
       );
 
       await bookingService.createBooking(
         testUserId,
         createMockBookingInput({
-          arrivalDate: pastDate,
-          departureDate: pastDeparture,
+          arrivalDate: PAST_ARRIVAL,
+          departureDate: PAST_DEPARTURE,
         })
       );
 
       const upcoming = await bookingService.getUpcomingBookings(testUserId);
       expect(upcoming).toHaveLength(1);
-      expect(upcoming[0].arrivalDate).toEqual(futureDate);
+      expect(upcoming[0].arrivalDate).toEqual(UPCOMING_ARRIVAL);
     });
   });
 
   describe('getPastBookings', () => {
     it('should return only past bookings', async () => {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
-      const laterDate = new Date(futureDate);
-      laterDate.setDate(laterDate.getDate() + 3);
-
-      const pastDate = new Date();
-      pastDate.setDate(pastDate.getDate() - 7);
-      const pastDeparture = new Date(pastDate);
-      pastDeparture.setDate(pastDeparture.getDate() + 2);
-
       await bookingService.createBooking(
         testUserId,
         createMockBookingInput({
-          arrivalDate: futureDate,
-          departureDate: laterDate,
+          arrivalDate: UPCOMING_ARRIVAL,
+          departureDate: UPCOMING_DEPARTURE,
         })
       );
 
       await bookingService.createBooking(
         testUserId,
         createMockBookingInput({
-          arrivalDate: pastDate,
-          departureDate: pastDeparture,
+          arrivalDate: PAST_ARRIVAL,
+          departureDate: PAST_DEPARTURE,
         })
       );
 
       const past = await bookingService.getPastBookings(testUserId);
       expect(past).toHaveLength(1);
-      expect(past[0].arrivalDate).toEqual(pastDate);
+      expect(past[0].arrivalDate).toEqual(PAST_ARRIVAL);
     });
   });
 
@@ -304,22 +294,12 @@ describe('BookingService', () => {
 
   describe('getBookingStats', () => {
     it('should calculate booking statistics', async () => {
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 7);
-      const laterDate = new Date(futureDate);
-      laterDate.setDate(laterDate.getDate() + 3);
-
-      const pastDate = new Date();
-      pastDate.setDate(pastDate.getDate() - 7);
-      const pastDeparture = new Date(pastDate);
-      pastDeparture.setDate(pastDeparture.getDate() + 2);
-
       // Create upcoming booking
       await bookingService.createBooking(
         testUserId,
         createMockBookingInput({
-          arrivalDate: futureDate,
-          departureDate: laterDate,
+          arrivalDate: UPCOMING_ARRIVAL,
+          departureDate: UPCOMING_DEPARTURE,
         })
       );
 
@@ -327,21 +307,17 @@ describe('BookingService', () => {
       await bookingService.createBooking(
         testUserId,
         createMockBookingInput({
-          arrivalDate: pastDate,
-          departureDate: pastDeparture,
+          arrivalDate: PAST_ARRIVAL,
+          departureDate: PAST_DEPARTURE,
         })
       );
 
       // Create cancelled booking (with future dates so it's not counted as "past")
-      const cancelledFuture = new Date();
-      cancelledFuture.setDate(cancelledFuture.getDate() + 14);
-      const cancelledDeparture = new Date(cancelledFuture);
-      cancelledDeparture.setDate(cancelledDeparture.getDate() + 2);
       const cancelled = await bookingService.createBooking(
         testUserId,
         createMockBookingInput({
-          arrivalDate: cancelledFuture,
-          departureDate: cancelledDeparture,
+          arrivalDate: CANCELLED_ARRIVAL,
+          departureDate: CANCELLED_DEPARTURE,
         })
       );
       await bookingService.cancelBooking(cancelled.id);

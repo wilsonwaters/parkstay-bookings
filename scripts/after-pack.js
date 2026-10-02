@@ -8,7 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 
-exports.default = async function(context) {
+exports.default = async function (context) {
   console.log('\n📦 Running post-pack tasks...\n');
 
   const { electronPlatformName, appOutDir, packager } = context;
