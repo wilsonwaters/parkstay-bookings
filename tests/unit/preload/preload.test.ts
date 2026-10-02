@@ -96,7 +96,7 @@ describe('preload window.api', () => {
     await api.notifications.clearAll();
     await api.notifiers.test(NotifierChannel.EMAIL_SMTP);
     await api.settings.set('launchOnStartup', true);
-    await api.gmail.waitForEmail('noreply@example.com', 'Code', 5000);
+    await api.gmail.setCredentials({ clientId: 'client-id', clientSecret: 'client-secret' });
     await api.parkstay.checkAvailability('34', {
       arrivalDate: '2026/12/01',
       departureDate: '2026/12/03',
@@ -117,10 +117,7 @@ describe('preload window.api', () => {
       ['notifications:clear-all', undefined],
       ['notifiers:test', { channel: 'email_smtp' }],
       ['settings:set', { key: 'launchOnStartup', value: true }],
-      [
-        'gmail:wait-for-email',
-        { fromEmail: 'noreply@example.com', subject: 'Code', timeout: 5000 },
-      ],
+      ['gmail:set-credentials', { clientId: 'client-id', clientSecret: 'client-secret' }],
       [
         'parkstay:check-availability',
         {

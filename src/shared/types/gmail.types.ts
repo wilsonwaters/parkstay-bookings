@@ -4,12 +4,13 @@
  */
 
 /**
- * OAuth2 credentials structure
+ * OAuth2 client credentials (Client ID and secret from Google Cloud Console, "Desktop app"
+ * client). The redirect URI is not configurable: each sign-in uses its own loopback
+ * address, `http://127.0.0.1:<port>/oauth2callback`.
  */
 export interface OAuth2Credentials {
   clientId: string;
   clientSecret: string;
-  redirectUri: string;
 }
 
 /**

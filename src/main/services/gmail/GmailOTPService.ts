@@ -12,6 +12,7 @@ import {
   EmailPollOptions,
   OAuth2Credentials,
 } from '@shared/types/gmail.types';
+import type { GmailCredentialStatus } from '@shared/contracts/gmail';
 import { logger } from '../../utils/logger';
 
 export class GmailOTPService {
@@ -30,10 +31,10 @@ export class GmailOTPService {
   }
 
   /**
-   * Get OAuth2 credentials
+   * The stored client ID and whether a secret is stored (never the secret itself)
    */
-  getCredentials(): OAuth2Credentials | null {
-    return this.oauth2Handler.getCredentials();
+  getCredentialStatus(): GmailCredentialStatus | null {
+    return this.oauth2Handler.getCredentialStatus();
   }
 
   /**

@@ -1,28 +1,26 @@
 /**
- * `gmail`: Gmail OAuth for OTP extraction. Ported as it was; P4 removes the inbox reads
- * (`waitForEmail`, `getRecentEmails`, `testSearch`) and stops returning the client secret.
+ * `gmail`: Gmail OAuth for OTP extraction. Connect, disconnect and status only: the inbox is
+ * read by the main process alone (V6), never through IPC. The client secret is write-only:
+ * `getCredentials` returns `{ clientId, hasClientSecret }`.
  */
 
 import { z } from 'zod';
-import type {
-  GmailAuthStatus,
-  GmailMessage,
-  OAuth2Credentials,
-  OTPResult,
-} from '../types/gmail.types';
+import type { GmailAuthStatus, OAuth2Credentials } from '../types/gmail.types';
 import { CHANNELS } from './channels';
 import type { Namespace } from './define';
 
 const C = CHANNELS.gmail;
 
+/** What the renderer may know about the stored OAuth client: never the secret. */
+export interface GmailCredentialStatus {
+  clientId: string;
+  hasClientSecret: boolean;
+}
+
 export const gmail = {
   setCredentials: {
     channel: C.setCredentials,
-    request: z.object({
-      clientId: z.string(),
-      clientSecret: z.string(),
-      redirectUri: z.string().optional(),
-    }),
+    request: z.object({ clientId: z.string(), clientSecret: z.string() }),
     args: {} as [credentials: OAuth2Credentials],
     response: {} as boolean,
   },
@@ -30,7 +28,7 @@ export const gmail = {
     channel: C.getCredentials,
     request: z.void(),
     args: {} as [],
-    response: {} as OAuth2Credentials | null,
+    response: {} as GmailCredentialStatus | null,
   },
   authorize: { channel: C.authorize, request: z.void(), args: {} as [], response: {} as boolean },
   checkAuthStatus: {
@@ -40,26 +38,4 @@ export const gmail = {
     response: {} as GmailAuthStatus,
   },
   revokeAuth: { channel: C.revokeAuth, request: z.void(), args: {} as [], response: {} as boolean },
-  waitForEmail: {
-    channel: C.waitForEmail,
-    request: z.object({
-      fromEmail: z.string().min(1),
-      subject: z.string().min(1),
-      timeout: z.number().int().positive().optional(),
-    }),
-    args: {} as [fromEmail: string, subject: string, timeout?: number],
-    response: {} as OTPResult,
-  },
-  getRecentEmails: {
-    channel: C.getRecentEmails,
-    request: z.object({ maxResults: z.number().int().positive().optional() }),
-    args: {} as [maxResults?: number],
-    response: {} as GmailMessage[],
-  },
-  testSearch: {
-    channel: C.testSearch,
-    request: z.object({ fromEmail: z.string().min(1), subject: z.string().min(1) }),
-    args: {} as [fromEmail: string, subject: string],
-    response: {} as GmailMessage[],
-  },
 } satisfies Namespace;

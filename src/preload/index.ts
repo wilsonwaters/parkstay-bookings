@@ -98,9 +98,6 @@ const api: WindowApi = {
     authorize: none,
     checkAuthStatus: none,
     revokeAuth: none,
-    waitForEmail: (fromEmail, subject, timeout) => ({ fromEmail, subject, timeout }),
-    getRecentEmails: (maxResults) => ({ maxResults }),
-    testSearch: (fromEmail, subject) => ({ fromEmail, subject }),
   }),
 
   settings: bind('settings', {

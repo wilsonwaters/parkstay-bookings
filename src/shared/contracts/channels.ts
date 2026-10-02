@@ -65,9 +65,6 @@ export const CHANNELS = {
     authorize: 'gmail:authorize',
     checkAuthStatus: 'gmail:check-auth-status',
     revokeAuth: 'gmail:revoke-auth',
-    waitForEmail: 'gmail:wait-for-email',
-    getRecentEmails: 'gmail:get-recent-emails',
-    testSearch: 'gmail:test-search',
   },
   settings: {
     get: 'settings:get',

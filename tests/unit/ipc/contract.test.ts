@@ -4,6 +4,8 @@
  * and no request schema accepts a `userId`.
  */
 
+import fs from 'fs';
+import path from 'path';
 import { z } from 'zod';
 import { contract, CHANNELS, EVENT_NAMES } from '@shared/contracts';
 import type { MethodDef } from '@shared/contracts/define';
@@ -90,6 +92,24 @@ describe('IPC contract', () => {
       expect.arrayContaining(['id', 'updates', 'arrivalDate', 'campgroundId'])
     );
     expect(keysSeen).toBeGreaterThan(80);
+  });
+
+  it('exposes no Gmail inbox reads: not in the contract, the preload or the renderer', () => {
+    const src = path.resolve(__dirname, '../../../src');
+    const files = ['preload', 'shared/contracts', 'renderer'].flatMap((dir) =>
+      (fs.readdirSync(path.join(src, dir), { recursive: true }) as string[])
+        .map((name) => path.join(src, dir, name))
+        .filter((file) => /\.tsx?$/.test(file))
+    );
+    const offenders = files.filter((file) =>
+      /getRecentEmails|testSearch|waitForEmail/.test(fs.readFileSync(file, 'utf8'))
+    );
+
+    expect(files.length).toBeGreaterThan(20);
+    expect(offenders).toEqual([]);
+    expect(Object.keys(contract.gmail).sort()).toEqual(
+      ['authorize', 'checkAuthStatus', 'getCredentials', 'revokeAuth', 'setCredentials'].sort()
+    );
   });
 
   describe('registration', () => {

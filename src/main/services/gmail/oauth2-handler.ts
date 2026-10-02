@@ -8,43 +8,63 @@ import { OAuth2Client } from 'google-auth-library';
 import Store from 'electron-store';
 import { shell } from 'electron';
 import { OAuth2Credentials, OAuth2Tokens, OAuth2FlowResult } from '@shared/types/gmail.types';
+import type { GmailCredentialStatus } from '@shared/contracts/gmail';
 import { logger } from '../../utils/logger';
-import http from 'http';
-import { AddressInfo } from 'net';
-import url from 'url';
+import { DEFAULT_FLOW_TIMEOUT_MS, runLoopbackFlow } from './loopback-flow';
 
 const STORAGE_KEY = 'gmail_oauth_tokens';
 const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
 
 interface StoreSchema {
   gmail_oauth_tokens?: OAuth2Tokens;
+  /** Legacy (v1) entries also carry a `redirectUri`, which is ignored. */
   gmail_credentials?: OAuth2Credentials;
+}
+
+export interface OAuth2HandlerOptions {
+  /** Opens the consent page in the system browser. Defaults to `shell.openExternal`. */
+  openExternal?: (url: string) => Promise<void>;
+  /** Builds the OAuth client. Defaults to googleapis' `OAuth2Client`. */
+  createClient?: (credentials: OAuth2Credentials) => OAuth2Client;
+  /** How long a sign-in waits for the browser. Defaults to 5 minutes. */
+  flowTimeoutMs?: number;
+}
+
+/** The client ID and secret only: a legacy stored `redirectUri` is dropped, never used. */
+function clientCredentials({ clientId, clientSecret }: OAuth2Credentials): OAuth2Credentials {
+  return { clientId, clientSecret };
 }
 
 export class OAuth2Handler {
   private store: Store<StoreSchema>;
   private oauth2Client: OAuth2Client | null = null;
   private credentials: OAuth2Credentials | null = null;
+  private readonly openExternal: (url: string) => Promise<void>;
+  private readonly createClient: (credentials: OAuth2Credentials) => OAuth2Client;
+  private readonly flowTimeoutMs: number;
+  private authorizing = false;
 
-  constructor() {
+  constructor(options: OAuth2HandlerOptions = {}) {
     this.store = new Store<StoreSchema>({
       name: 'gmail-oauth',
       encryptionKey: 'parkstay-gmail-oauth-encryption-key',
     });
+    this.openExternal = options.openExternal ?? ((url) => shell.openExternal(url));
+    // No redirect URI: each sign-in passes its own loopback address
+    this.createClient =
+      options.createClient ??
+      ((credentials) => new google.auth.OAuth2(credentials.clientId, credentials.clientSecret));
+    this.flowTimeoutMs = options.flowTimeoutMs ?? DEFAULT_FLOW_TIMEOUT_MS;
   }
 
   /**
    * Set OAuth2 credentials (Client ID and Secret from Google Cloud Console)
    */
   setCredentials(credentials: OAuth2Credentials): void {
-    this.credentials = credentials;
-    this.store.set('gmail_credentials', credentials);
+    this.credentials = clientCredentials(credentials);
+    this.store.set('gmail_credentials', this.credentials);
 
-    this.oauth2Client = new google.auth.OAuth2(
-      credentials.clientId,
-      credentials.clientSecret,
-      credentials.redirectUri
-    );
+    this.oauth2Client = this.createClient(this.credentials);
 
     // Load existing tokens if available
     const tokens = this.getStoredTokens();
@@ -56,7 +76,7 @@ export class OAuth2Handler {
   }
 
   /**
-   * Get stored credentials
+   * Get stored credentials, secret included. Main process only: never return this over IPC.
    */
   getCredentials(): OAuth2Credentials | null {
     if (this.credentials) {
@@ -65,11 +85,20 @@ export class OAuth2Handler {
 
     const stored = this.store.get('gmail_credentials');
     if (stored) {
-      this.credentials = stored;
-      return stored;
+      this.credentials = clientCredentials(stored);
+      return this.credentials;
     }
 
     return null;
+  }
+
+  /**
+   * What the renderer may see: the client ID and whether a secret is stored.
+   */
+  getCredentialStatus(): GmailCredentialStatus | null {
+    const credentials = this.getCredentials();
+    if (!credentials) return null;
+    return { clientId: credentials.clientId, hasClientSecret: credentials.clientSecret !== '' };
   }
 
   /**
@@ -82,11 +111,7 @@ export class OAuth2Handler {
       return false;
     }
 
-    this.oauth2Client = new google.auth.OAuth2(
-      credentials.clientId,
-      credentials.clientSecret,
-      credentials.redirectUri
-    );
+    this.oauth2Client = this.createClient(credentials);
 
     const tokens = this.getStoredTokens();
     if (tokens) {
@@ -97,9 +122,22 @@ export class OAuth2Handler {
   }
 
   /**
-   * Start OAuth2 authorization flow
+   * Start OAuth2 authorization flow. Only one sign-in runs at a time: a second call while
+   * one is waiting for the browser is rejected.
    */
   async authorize(): Promise<OAuth2FlowResult> {
+    if (this.authorizing) {
+      return { success: false, error: 'Gmail authorization is already in progress' };
+    }
+    this.authorizing = true;
+    try {
+      return await this.runAuthorization();
+    } finally {
+      this.authorizing = false;
+    }
+  }
+
+  private async runAuthorization(): Promise<OAuth2FlowResult> {
     try {
       if (!this.oauth2Client) {
         if (!this.initializeClient()) {
@@ -130,8 +168,13 @@ export class OAuth2Handler {
 
       logger.info('Starting OAuth2 flow...');
 
-      // Start callback server first to get assigned port, then generate auth URL
-      const newTokens = await this.startCallbackServer();
+      // Loopback sign-in in the system browser (state + PKCE, 127.0.0.1 only)
+      const newTokens = (await runLoopbackFlow({
+        client: this.oauth2Client,
+        scopes: SCOPES,
+        openExternal: this.openExternal,
+        timeoutMs: this.flowTimeoutMs,
+      })) as OAuth2Tokens;
 
       // Store tokens
       this.storeTokens(newTokens);
@@ -150,108 +193,6 @@ export class OAuth2Handler {
         error: error.message || 'Authorization failed',
       };
     }
-  }
-
-  /**
-   * Start local HTTP server to receive OAuth2 callback.
-   * Uses port 0 to let the OS assign an available port, avoiding conflicts.
-   */
-  private startCallbackServer(): Promise<OAuth2Tokens> {
-    return new Promise((resolve, reject) => {
-      const server = http.createServer(async (req, res) => {
-        try {
-          if (!req.url) {
-            return;
-          }
-
-          const queryObject = url.parse(req.url, true).query;
-          const code = queryObject.code as string;
-
-          if (code) {
-            res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end(`
-              <html>
-                <head>
-                  <title>Authorization Successful</title>
-                  <style>
-                    body {
-                      font-family: Arial, sans-serif;
-                      display: flex;
-                      justify-content: center;
-                      align-items: center;
-                      height: 100vh;
-                      margin: 0;
-                      background-color: #f0f0f0;
-                    }
-                    .container {
-                      background: white;
-                      padding: 40px;
-                      border-radius: 8px;
-                      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                      text-align: center;
-                    }
-                    h1 { color: #4CAF50; }
-                    p { color: #666; }
-                  </style>
-                </head>
-                <body>
-                  <div class="container">
-                    <h1>Authorization Successful!</h1>
-                    <p>You can close this window and return to ParkStay Bookings.</p>
-                  </div>
-                </body>
-              </html>
-            `);
-
-            server.close();
-
-            // Exchange code for tokens
-            if (!this.oauth2Client) {
-              reject(new Error('OAuth2 client not initialized'));
-              return;
-            }
-
-            const { tokens } = await this.oauth2Client.getToken(code);
-            resolve(tokens as OAuth2Tokens);
-          } else {
-            res.writeHead(400, { 'Content-Type': 'text/plain' });
-            res.end('Authorization code not found');
-            server.close();
-            reject(new Error('Authorization code not found'));
-          }
-        } catch (error) {
-          logger.error('Error in callback server:', error);
-          res.writeHead(500, { 'Content-Type': 'text/plain' });
-          res.end('Internal server error');
-          server.close();
-          reject(error);
-        }
-      });
-
-      // Use port 0 to let the OS assign an available port
-      server.listen(0, async () => {
-        const port = (server.address() as AddressInfo).port;
-        logger.info(`OAuth2 callback server listening on port ${port}`);
-
-        // Generate auth URL with the dynamic port redirect URI
-        const redirectUri = `http://localhost:${port}`;
-        if (this.oauth2Client) {
-          const authUrl = this.oauth2Client.generateAuthUrl({
-            access_type: 'offline',
-            scope: SCOPES,
-            prompt: 'consent',
-            redirect_uri: redirectUri,
-          });
-          await shell.openExternal(authUrl);
-        }
-      });
-
-      // Timeout after 5 minutes
-      setTimeout(() => {
-        server.close();
-        reject(new Error('Authorization timeout'));
-      }, 300000);
-    });
   }
 
   /**
