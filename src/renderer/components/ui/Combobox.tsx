@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { Check, ChevronDown, CircleAlert } from 'lucide-react';
 import { Portal } from './Portal';
+import { SegmentMessages } from './SegmentMessages';
 import { CONTROL_CLASS } from './controlStyles';
 import { cx } from './cx';
 import { usePosition } from './usePosition';
@@ -37,7 +38,9 @@ export interface ComboboxProps {
   /** `false` shows `options` as given; the default matches the label, ignoring case. */
   filter?: false | ((option: ComboboxOption, query: string) => boolean);
   placeholder?: string;
+  /** Shown under the label; in a `segment`, read by screen readers only. */
   hint?: ReactNode;
+  /** Marks the input invalid; shown under the value and read with it. */
   error?: ReactNode;
   /** `field` (default) for forms; `segment` for a segment of the Explore search pill. */
   appearance?: 'field' | 'segment';
@@ -280,6 +283,7 @@ export function Combobox({
             {label}
           </label>
           {input}
+          <SegmentMessages hint={hint} hintId={hintId} error={error} errorId={errorId} />
         </div>
       ) : (
         <>

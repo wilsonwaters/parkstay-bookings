@@ -76,6 +76,9 @@ export class ToastStore {
   add(tone: ToastTone, message: string, options: ToastOptions = {}): string {
     const key = `${tone}|${message}`;
     const now = Date.now();
+    // Forget messages older than the dedupe window, so the map holds only the last second.
+    for (const [k, entry] of this.recent)
+      if (now - entry.at >= TOAST_DEDUPE_MS) this.recent.delete(k);
     const recent = this.recent.get(key);
     if (recent && now - recent.at < TOAST_DEDUPE_MS && this.has(recent.id)) return recent.id;
 
@@ -270,7 +273,12 @@ function ToastItem({ toast, store }: { toast: ToastRecord; store: ToastStore }) 
 
 /**
  * Renders the visible toasts (at most three, oldest first; the rest wait their turn) in a
- * "Notifications" region. It renders where it is placed: the app positions it.
+ * "Notifications" region. The list inside is a polite live region that is always rendered, so
+ * it exists before the first toast arrives and screen readers announce each one; errors are
+ * also `role="alert"`.
+ *
+ * It renders where it is placed, and the app positions it. Place it outside `#root` (in a
+ * `Portal`): a modal makes `#root` inert, which would silence the toasts and block clicks.
  */
 export function ToastViewport({ className }: { className?: string }) {
   const { store } = useToastContext();
@@ -279,11 +287,15 @@ export function ToastViewport({ className }: { className?: string }) {
     <div
       role="region"
       aria-label="Notifications"
-      className={cx('flex w-[22rem] max-w-[calc(100vw-2rem)] flex-col gap-2', className)}
+      className={cx('w-[22rem] max-w-[calc(100vw-2rem)]', className)}
     >
-      {toasts.slice(0, MAX_VISIBLE_TOASTS).map((toast) => (
-        <ToastItem key={toast.id} toast={toast} store={store} />
-      ))}
+      <ol aria-live="polite" aria-relevant="additions text" className="flex flex-col gap-2">
+        {toasts.slice(0, MAX_VISIBLE_TOASTS).map((toast) => (
+          <li key={toast.id}>
+            <ToastItem toast={toast} store={store} />
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }

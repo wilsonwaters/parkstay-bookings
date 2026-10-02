@@ -192,6 +192,29 @@ describe('DateRangeField', () => {
         onChange={jest.fn()}
       />
     );
-    expect(screen.getByRole('button', { name: 'Dates Wed 2 Oct – Fri 4 Oct' })).toBeInTheDocument();
+    const trigger = screen.getByRole('button', { name: 'Dates Wed 2 Oct – Fri 4 Oct' });
+    expect(trigger).not.toHaveAttribute('aria-describedby');
+    expect(trigger).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('in a segment, surfaces its hint and error: described by both, invalid, error shown', () => {
+    render(
+      <DateRangeField
+        appearance="segment"
+        value={{ arrival: '2030-10-02' }}
+        onChange={jest.fn()}
+        hint="Up to 14 nights"
+        error="Choose a check-out date"
+      />
+    );
+    const trigger = screen.getByRole('button', { name: /^Dates/ });
+    const ids = (trigger.getAttribute('aria-describedby') ?? '').split(' ');
+    expect(ids).toHaveLength(2);
+    for (const id of ids) expect(document.getElementById(id)).toBeInTheDocument();
+    expect(trigger).toHaveAccessibleDescription('Up to 14 nights Choose a check-out date');
+    expect(trigger).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('Choose a check-out date')).toBeVisible();
+    // The name stays label + value; the hint and error are the description.
+    expect(trigger).toHaveAccessibleName('Dates Wed 2 Oct – add check-out');
   });
 });

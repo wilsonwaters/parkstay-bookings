@@ -1,7 +1,17 @@
 import { useEffect, useState } from 'react';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MAX_VISIBLE_TOASTS, ToastProvider, ToastViewport, useToast, type ToastApi } from './Toast';
+import { ConfirmDialog } from './ConfirmDialog';
+import { Portal } from './Portal';
+import {
+  MAX_VISIBLE_TOASTS,
+  TOAST_DEDUPE_MS,
+  ToastProvider,
+  ToastStore,
+  ToastViewport,
+  useToast,
+  type ToastApi,
+} from './Toast';
 
 let api: ToastApi;
 
@@ -44,6 +54,8 @@ const advance = (ms: number) =>
   });
 
 const region = () => screen.getByRole('region', { name: 'Notifications' });
+/** The polite live region inside the viewport that toasts are inserted into. */
+const liveList = () => within(region()).getByRole('list');
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -67,6 +79,22 @@ describe('Toast', () => {
     advance(1100);
     expect(screen.getByText('Tick 5')).toBeInTheDocument();
     expect(screen.queryByText('Snipe armed')).not.toBeInTheDocument();
+  });
+
+  it('inserts toasts into a polite live region that exists before the first toast', () => {
+    renderToasts();
+    const list = liveList();
+    expect(list).toHaveAttribute('aria-live', 'polite');
+    expect(within(list).queryAllByRole('listitem')).toHaveLength(0);
+
+    act(() => {
+      api.success('Watch saved');
+      api.error('Hold failed');
+    });
+    // The same element: the live region was not re-created along with its content.
+    expect(liveList()).toBe(list);
+    expect(within(list).getByRole('status')).toHaveTextContent('Watch saved');
+    expect(within(list).getByRole('alert')).toHaveTextContent('Hold failed');
   });
 
   it('uses 5 s for info and 8 s for warnings', () => {
@@ -167,6 +195,17 @@ describe('Toast', () => {
     expect(screen.getAllByText('Watch saved')).toHaveLength(2);
   });
 
+  it('keeps only the last second of messages for deduplication', () => {
+    const store = new ToastStore();
+    // Private, read for this test only: the map must not grow with every message ever shown.
+    const recent = () => store['recent'];
+    for (let i = 0; i < 50; i++) store.add('info', `Message ${i}`);
+    expect(recent().size).toBe(50);
+    jest.advanceTimersByTime(TOAST_DEDUPE_MS);
+    store.add('info', 'One more');
+    expect(Array.from(recent().keys())).toEqual(['info|One more']);
+  });
+
   it('removes a queued toast silently when it is dismissed before it shows', () => {
     renderToasts();
     let first = '';
@@ -202,6 +241,56 @@ describe('Toast', () => {
     });
     advance(1100);
     expect(screen.queryByText('Quick one')).not.toBeInTheDocument();
+  });
+
+  it('stays audible and clickable while a modal is open, mounted outside #root as the app does', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const onUndo = jest.fn();
+    const root = document.createElement('div');
+    root.id = 'root';
+    document.body.appendChild(root);
+
+    function DeleteFlow() {
+      const toast = useToast();
+      return (
+        <ConfirmDialog
+          open
+          title="Delete this watch?"
+          message="This cannot be undone."
+          confirmLabel="Delete"
+          onCancel={() => undefined}
+          // The toast fires while the dialog is still open, as the Watches page does.
+          onConfirm={() => {
+            toast.info('Watch deleted', { action: { label: 'Undo', onClick: onUndo } });
+          }}
+        />
+      );
+    }
+
+    render(
+      <ToastProvider>
+        <DeleteFlow />
+        <Portal>
+          <ToastViewport />
+        </Portal>
+      </ToastProvider>,
+      { container: root }
+    );
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(root).toHaveAttribute('inert');
+    expect(screen.getByRole('alertdialog', { name: 'Delete this watch?' })).toBeInTheDocument();
+    const toast = within(liveList()).getByRole('status');
+    expect(toast).toHaveTextContent('Watch deleted');
+    expect(toast.closest('[inert]')).toBeNull();
+    expect(root).not.toContainElement(toast);
+
+    const undo = within(toast).getByRole('button', { name: 'Undo' });
+    expect(undo.closest('[inert]')).toBeNull();
+    await user.click(undo);
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Watch deleted')).not.toBeInTheDocument();
+    root.remove();
   });
 
   it('throws a clear error outside the provider', () => {

@@ -64,7 +64,7 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   pair('danger', 'surface', 'text', 'Field error text and danger outline button'),
   pair('danger', 'canvas', 'text', 'Field error text on the page'),
   pair('danger', 'danger-subtle', 'text', 'Danger outline button on hover'),
-  pair('fg-inverse', 'danger', 'text', 'Confirm button in a destructive dialog'),
+  pair('fg-inverse', 'danger-fg', 'text', 'Confirm button in a destructive dialog (solid fill)'),
   pair('focus', 'surface', 'ui', 'Focus ring on cards and dialogs'),
   pair('focus', 'canvas', 'ui', 'Focus ring on the page'),
   pair('focus', 'surface-subtle', 'ui', 'Focus ring on subtle fills'),

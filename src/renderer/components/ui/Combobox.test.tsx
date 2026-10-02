@@ -152,7 +152,28 @@ describe('Combobox', () => {
 
   it('renders the segment appearance with its small label', () => {
     render(<Combobox label="Where" options={PLACES} appearance="segment" />);
-    expect(screen.getByRole('combobox', { name: 'Where' })).toBeInTheDocument();
+    const box = screen.getByRole('combobox', { name: 'Where' });
+    expect(box).not.toHaveAttribute('aria-describedby');
+    expect(box).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('in a segment, describes the input with a hidden hint and a visible error, every id rendered', () => {
+    render(
+      <Combobox
+        label="Where"
+        options={PLACES}
+        appearance="segment"
+        hint="Start typing a place"
+        error="Choose a place from the list"
+      />
+    );
+    const box = screen.getByRole('combobox', { name: 'Where' });
+    const ids = (box.getAttribute('aria-describedby') ?? '').split(' ');
+    expect(ids).toHaveLength(2);
+    for (const id of ids) expect(document.getElementById(id)).toBeInTheDocument();
+    expect(box).toHaveAccessibleDescription('Start typing a place Choose a place from the list');
+    expect(box).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByText('Choose a place from the list')).toBeVisible();
   });
 
   it('describes the field with its hint and error', () => {

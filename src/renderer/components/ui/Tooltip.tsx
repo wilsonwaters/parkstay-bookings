@@ -19,6 +19,8 @@ import type { Side } from './position';
 
 /** Hover delay before a tooltip opens. Focus opens it at once. */
 export const TOOLTIP_DELAY_MS = 400;
+/** Grace period after the pointer leaves, so it can cross the gap onto the tooltip. */
+export const TOOLTIP_CLOSE_DELAY_MS = 100;
 
 export interface TooltipProps {
   /** Short plain text. Tooltips never hold interactive content. */
@@ -46,7 +48,8 @@ type TriggerProps = {
 
 /**
  * A short label for a control: `role="tooltip"`, opened by hover (after 400 ms) or focus
- * (at once), closed by Escape, blur or pointer leave.
+ * (at once), closed by Escape, blur or pointer leave. It is hoverable (WCAG 1.4.13): the
+ * pointer can move from the trigger onto the tooltip and it stays open.
  */
 export function Tooltip({ content, children, side = 'top', describe = true }: TooltipProps) {
   const id = useId();
@@ -66,6 +69,13 @@ export function Tooltip({ content, children, side = 'top', describe = true }: To
     clearTimeout(timer.current);
     setOpen(false);
   };
+  // Pointer leaving the trigger or the tooltip: close unless it arrives on the other one.
+  const hideSoon = (event: PointerEvent<HTMLElement>) => {
+    if (event.pointerType === 'touch') return hide();
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setOpen(false), TOOLTIP_CLOSE_DELAY_MS);
+  };
+  const keepOpen = () => clearTimeout(timer.current);
 
   const child = Children.only(children) as ReactElement<TriggerProps> & { ref?: Ref<HTMLElement> };
   const own = child.props;
@@ -76,9 +86,10 @@ export function Tooltip({ content, children, side = 'top', describe = true }: To
     onPointerEnter: composeHandlers(own.onPointerEnter, (event: PointerEvent<HTMLElement>) => {
       if (event.pointerType === 'touch') return;
       clearTimeout(timer.current);
+      if (open) return;
       timer.current = setTimeout(() => setOpen(true), TOOLTIP_DELAY_MS);
     }),
-    onPointerLeave: composeHandlers(own.onPointerLeave, hide),
+    onPointerLeave: composeHandlers(own.onPointerLeave, hideSoon),
     onFocus: composeHandlers(own.onFocus, show),
     onBlur: composeHandlers(own.onBlur, hide),
     onKeyDown: composeHandlers(own.onKeyDown, (event: KeyboardEvent<HTMLElement>) => {
@@ -103,7 +114,9 @@ export function Tooltip({ content, children, side = 'top', describe = true }: To
             hidden={!open}
             aria-hidden={describe ? undefined : true}
             style={style}
-            className="pointer-events-none z-tooltip max-w-xs rounded-md bg-surface-inverse px-2 py-1 text-xs font-medium text-fg-inverse shadow-pop"
+            onPointerEnter={keepOpen}
+            onPointerLeave={hideSoon}
+            className="z-tooltip max-w-xs rounded-md bg-surface-inverse px-2 py-1 text-xs font-medium text-fg-inverse shadow-pop"
           >
             {content}
           </div>

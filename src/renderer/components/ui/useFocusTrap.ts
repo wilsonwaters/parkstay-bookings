@@ -12,16 +12,42 @@ const FOCUSABLE = [
   '[contenteditable="true"]',
 ].join(',');
 
+/** True when the document has layout (a browser). jsdom has none: nothing there has boxes. */
+function hasLayout(doc: Document): boolean {
+  return doc.documentElement.getClientRects().length > 0;
+}
+
+/**
+ * Whether `el` can't take focus because it is not rendered: `hidden`/`inert`, `display: none`
+ * on it or an ancestor, `visibility: hidden`, or (with layout) zero-size with no boxes at all.
+ */
+function isNotRendered(el: HTMLElement, layout: boolean): boolean {
+  if (el.closest('[hidden], [inert]')) return true;
+  const view = el.ownerDocument.defaultView;
+  if (!view) return false;
+  const { visibility } = view.getComputedStyle(el);
+  if (visibility === 'hidden' || visibility === 'collapse') return true;
+  if (layout) return !el.offsetWidth && !el.offsetHeight && el.getClientRects().length === 0;
+  // No layout engine: look for display:none up the tree instead.
+  for (let node: Element | null = el; node; node = node.parentElement) {
+    if (view.getComputedStyle(node).display === 'none') return true;
+  }
+  return false;
+}
+
 /**
  * The elements Tab visits inside `container`, in DOM order: no negative tabindex, nothing
- * hidden or inert, and one radio per named group (the checked one, else the first), as the
- * browser does.
+ * disabled (including controls in a disabled `<fieldset>`), hidden, invisible or inert, and
+ * one radio per named group (the checked one, else the first), as the browser does.
  */
 export function getTabbables(container: HTMLElement): HTMLElement[] {
+  const layout = hasLayout(container.ownerDocument);
   const candidates = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => {
     const tabindex = el.getAttribute('tabindex');
     if (tabindex !== null && Number(tabindex) < 0) return false;
-    return !el.closest('[hidden], [inert]');
+    // `:disabled` also covers controls inside a disabled fieldset (outside its first legend).
+    if (el.matches(':disabled')) return false;
+    return !isNotRendered(el, layout);
   });
   return candidates.filter((el) => {
     if (!(el instanceof HTMLInputElement) || el.type !== 'radio' || !el.name) return true;
@@ -41,10 +67,14 @@ export interface FocusTrapOptions {
   restoreFocus?: boolean;
 }
 
+/** Active traps, innermost last. Only the innermost one handles Tab. */
+const activeTraps: object[] = [];
+
 /**
  * Keeps keyboard focus inside `containerRef` while active: focus moves in on activation,
- * Tab and Shift+Tab wrap at the ends, and focus returns to the opener on deactivation or
- * unmount (when the opener is still in the document).
+ * Tab and Shift+Tab wrap at the ends, Tab with focus lost to the body comes back in, and
+ * focus returns to the opener on deactivation or unmount (when the opener is still in the
+ * document). Focus in another layer outside the container (a Popover, a toast) is left alone.
  */
 export function useFocusTrap(
   containerRef: RefObject<HTMLElement>,
@@ -75,8 +105,17 @@ export function useFocusTrap(
       target.focus();
     }
 
+    const token = {};
+    activeTraps.push(token);
+
+    // On the document, so a Tab pressed after focus fell to the body still reaches the trap.
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Tab' || event.defaultPrevented) return;
+      if (activeTraps[activeTraps.length - 1] !== token) return;
+      const current = document.activeElement;
+      const lost = !current || current === document.body || current === document.documentElement;
+      if (!lost && !container.contains(current)) return;
+
       const tabbables = getTabbables(container);
       if (tabbables.length === 0) {
         event.preventDefault();
@@ -85,8 +124,7 @@ export function useFocusTrap(
       }
       const first = tabbables[0];
       const last = tabbables[tabbables.length - 1];
-      const current = document.activeElement;
-      const outside = !current || current === container || !container.contains(current);
+      const outside = lost || current === container;
       if (event.shiftKey && (current === first || outside)) {
         event.preventDefault();
         last.focus();
@@ -95,10 +133,11 @@ export function useFocusTrap(
         first.focus();
       }
     };
-    container.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keydown', onKeyDown);
 
     return () => {
-      container.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('keydown', onKeyDown);
+      activeTraps.splice(activeTraps.indexOf(token), 1);
       if (restoreFocus && returnTo && returnTo.isConnected) returnTo.focus();
     };
   }, [active, containerRef, initialFocusRef, restoreFocus]);

@@ -1,6 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Tooltip, TOOLTIP_DELAY_MS } from './Tooltip';
+import { Tooltip, TOOLTIP_CLOSE_DELAY_MS, TOOLTIP_DELAY_MS } from './Tooltip';
 
 function setup() {
   jest.useFakeTimers();
@@ -39,6 +39,35 @@ describe('Tooltip', () => {
     });
     expect(screen.getByRole('tooltip')).toHaveTextContent('Checks every 5 minutes');
     await user.unhover(trigger);
+    act(() => {
+      jest.advanceTimersByTime(TOOLTIP_CLOSE_DELAY_MS);
+    });
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('is hoverable: moving the pointer onto the tooltip keeps it open (WCAG 1.4.13)', async () => {
+    const { user, trigger } = setup();
+    await user.hover(trigger);
+    act(() => {
+      jest.advanceTimersByTime(TOOLTIP_DELAY_MS);
+    });
+    const tooltip = screen.getByRole('tooltip');
+    await user.hover(tooltip);
+    act(() => {
+      jest.advanceTimersByTime(TOOLTIP_CLOSE_DELAY_MS * 10);
+    });
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+
+    // Back onto the trigger, still open; then away from both, it closes.
+    await user.hover(trigger);
+    act(() => {
+      jest.advanceTimersByTime(TOOLTIP_CLOSE_DELAY_MS * 10);
+    });
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+    await user.hover(screen.getByRole('button', { name: 'Elsewhere' }));
+    act(() => {
+      jest.advanceTimersByTime(TOOLTIP_CLOSE_DELAY_MS);
+    });
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 

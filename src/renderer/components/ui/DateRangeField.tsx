@@ -12,6 +12,7 @@ import {
 } from './calendar';
 import { CONTROL_CLASS } from './controlStyles';
 import { cx } from './cx';
+import { SegmentMessages } from './SegmentMessages';
 import { SEGMENT_CLASS, SEGMENT_LABEL_CLASS } from './searchFieldStyles';
 import { useMinWidth } from './useMinWidth';
 
@@ -26,7 +27,9 @@ export interface DateRangeFieldProps {
   maxNights?: number;
   appearance?: 'field' | 'segment';
   placeholder?: string;
+  /** Shown under the label; in a `segment`, read by screen readers only. */
   hint?: ReactNode;
+  /** Marks the field invalid; shown under it (in a `segment`, under the value) and read with it. */
   error?: ReactNode;
   className?: string;
 }
@@ -65,9 +68,16 @@ export function DateRangeField({
   const shown = display(value, placeholder);
   const summary = rangeSummary(value);
 
+  const describedBy = cx(hintId, errorId) || undefined;
   const trigger =
     appearance === 'segment' ? (
-      <button type="button" aria-labelledby={`${labelId} ${valueId}`} className={SEGMENT_CLASS}>
+      <button
+        type="button"
+        aria-labelledby={`${labelId} ${valueId}`}
+        aria-describedby={describedBy}
+        aria-invalid={error ? true : undefined}
+        className={SEGMENT_CLASS}
+      >
         <span id={labelId} className={SEGMENT_LABEL_CLASS}>
           {label}
         </span>
@@ -77,12 +87,13 @@ export function DateRangeField({
         >
           {shown}
         </span>
+        <SegmentMessages hint={hint} hintId={hintId} error={error} errorId={errorId} />
       </button>
     ) : (
       <button
         type="button"
         aria-labelledby={`${labelId} ${valueId}`}
-        aria-describedby={cx(hintId, errorId) || undefined}
+        aria-describedby={describedBy}
         aria-invalid={error ? true : undefined}
         className={cx(CONTROL_CLASS, 'flex h-10 items-center justify-between gap-2 px-3 text-left')}
       >

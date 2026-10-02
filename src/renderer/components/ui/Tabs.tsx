@@ -2,6 +2,8 @@ import {
   createContext,
   useContext,
   useId,
+  useLayoutEffect,
+  useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
@@ -9,8 +11,11 @@ import {
 import { cx } from './cx';
 
 interface TabsContextValue {
-  value: string;
+  /** The selected tab, or undefined until the first enabled tab is known. */
+  value: string | undefined;
   select: (value: string) => void;
+  /** Called by TabList with its first enabled tab, used when nothing is selected. */
+  setFallback: (value: string | undefined) => void;
   baseId: string;
 }
 
@@ -36,18 +41,20 @@ export interface TabsProps {
 
 /**
  * Tabs with automatic activation: `tablist`/`tab`/`tabpanel`, a roving tabindex (only the
- * selected tab is in the tab order) and ←/→/Home/End.
+ * selected tab is in the tab order) and ←/→/Home/End. With no `value` or `defaultValue`, the
+ * first enabled tab is selected.
  */
-export function Tabs({ value, defaultValue = '', onValueChange, children, className }: TabsProps) {
+export function Tabs({ value, defaultValue, onValueChange, children, className }: TabsProps) {
   const baseId = useId();
   const [inner, setInner] = useState(defaultValue);
-  const current = value ?? inner;
+  const [fallback, setFallback] = useState<string>();
+  const current = value ?? inner ?? fallback;
   const select = (next: string) => {
     if (value === undefined) setInner(next);
     onValueChange?.(next);
   };
   return (
-    <TabsContext.Provider value={{ value: current, select, baseId }}>
+    <TabsContext.Provider value={{ value: current, select, setFallback, baseId }}>
       <div className={className}>{children}</div>
     </TabsContext.Provider>
   );
@@ -60,12 +67,19 @@ export interface TabListProps {
   className?: string;
 }
 
+const ENABLED_TABS = '[role="tab"]:not([disabled])';
+
 export function TabList({ 'aria-label': label, children, className }: TabListProps) {
-  const { select } = useTabs('TabList');
+  const { select, setFallback } = useTabs('TabList');
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Before paint, so nothing renders with no tab selected (and none in the tab order).
+  useLayoutEffect(() => {
+    setFallback(listRef.current?.querySelector<HTMLElement>(ENABLED_TABS)?.dataset.value);
+  });
+
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const tabs = Array.from(
-      event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([disabled])')
-    );
+    const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(ENABLED_TABS));
     const index = tabs.indexOf(document.activeElement as HTMLButtonElement);
     if (index === -1) return;
     const target =
@@ -85,6 +99,7 @@ export function TabList({ 'aria-label': label, children, className }: TabListPro
   };
   return (
     <div
+      ref={listRef}
       role="tablist"
       aria-label={label}
       onKeyDown={onKeyDown}

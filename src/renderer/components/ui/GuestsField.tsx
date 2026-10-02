@@ -5,6 +5,7 @@ import { Popover } from './Popover';
 import { Stepper } from './Stepper';
 import { CONTROL_CLASS } from './controlStyles';
 import { cx } from './cx';
+import { SegmentMessages } from './SegmentMessages';
 import { SEGMENT_CLASS, SEGMENT_LABEL_CLASS } from './searchFieldStyles';
 
 export interface Guests {
@@ -51,6 +52,7 @@ export interface GuestsFieldProps {
   limits?: Partial<GuestLimits>;
   hints?: Partial<Record<GuestKind, string>>;
   appearance?: 'field' | 'segment';
+  /** Marks the field invalid; shown under it (in a `segment`, under the value) and read with it. */
   error?: ReactNode;
   className?: string;
 }
@@ -84,13 +86,20 @@ export function GuestsField({
 
   const trigger =
     appearance === 'segment' ? (
-      <button type="button" aria-labelledby={`${labelId} ${valueId}`} className={SEGMENT_CLASS}>
+      <button
+        type="button"
+        aria-labelledby={`${labelId} ${valueId}`}
+        aria-describedby={errorId}
+        aria-invalid={error ? true : undefined}
+        className={SEGMENT_CLASS}
+      >
         <span id={labelId} className={SEGMENT_LABEL_CLASS}>
           {label}
         </span>
         <span id={valueId} className={cx('truncate text-sm', value ? 'text-fg' : 'text-fg-muted')}>
           {summary}
         </span>
+        <SegmentMessages error={error} errorId={errorId} />
       </button>
     ) : (
       <button

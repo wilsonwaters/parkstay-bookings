@@ -17,13 +17,14 @@ Run `npm run dev` and open `#/__design` to see every primitive with its variants
 - **Focus is always visible.** The D1 `:focus-visible` ring (2 px `focus`) shows on every interactive part. Controls that hide a native input (SegmentedControl, RadioCard) draw the ring on their visible box.
 - **Never colour alone.** Status, tone and errors always carry text or an icon as well.
 - **Overlays share one stack.** Dialog, Sheet and Popover register with `OverlayStack`: Escape closes only the top one, `#root` and lower overlays are `inert` while a modal is open, and page scroll is locked. Overlays are portalled to `document.body`, outside `#root`.
-- **App providers.** `ToastProvider` and `AnnouncerProvider` wrap the app (in `main.tsx` for now; D3 moves them into `app/AppProviders.tsx`). `ToastViewport` renders where it is placed (D3 puts it in the tray). D3 also fills `ProviderManifestsProvider` from `useProviders()`.
+- **Floating surfaces live outside `#root`.** Anything that must keep working while a modal is open (the toast viewport now, D3's tray next) is rendered in a `Portal`, as overlays and the announcer are. Inside `#root` it turns `inert` under a modal: toasts fired from a ConfirmDialog would be silent and unclickable. Toasts sit at `z-toast`, above the modal scrim (`z-overlay`); the tray's `z-tray` is below the scrim, so a toast viewport inside the tray must not be trapped in the tray's lower stacking context.
+- **App providers.** `ToastProvider` and `AnnouncerProvider` wrap the app (in `main.tsx` for now; D3 moves them into `app/AppProviders.tsx`). `ToastViewport` renders where it is placed, which must be outside `#root` (D3 puts it in the tray). D3 also fills `ProviderManifestsProvider` from `useProviders()`.
 
 ## Actions
 
 | Component | Use it for | Do | Don't |
 | --- | --- | --- | --- |
-| `Button` | Any action. `primary` (coral) is the one main action per view, `secondary` an ink outline, `ghost` a quiet action, `danger` a crimson outline. `as="a"` for a link that looks like a button. | Label it with a verb: "Create watch", "Hold site". Use `loading` while the action runs; the label stays. | Put two primary buttons in one view, or use `danger` for anything that is not destructive. |
+| `Button` | Any action. `primary` (coral) is the one main action per view, `secondary` an ink outline, `ghost` a quiet action, `danger` a crimson outline: the default destructive style. The only solid danger fill (deep crimson, `danger-fg`) is the final confirm of a destructive `ConfirmDialog`. `as="a"` for a link that looks like a button. | Label it with a verb: "Create watch", "Hold site". Use `loading` while the action runs: the label stays, and the button stays focusable (`aria-disabled`) but ignores presses. | Put two primary buttons in one view, use `danger` for anything that is not destructive, or build your own solid red button. |
 | `IconButton` | An action shown only as an icon: close, more actions, previous month. | Give a `label` that says what happens ("Delete watch"); it becomes the name and the tooltip. | Use it when there is room for a text Button; icon-only is for repeated or universally understood actions. |
 
 ## Form
@@ -58,7 +59,7 @@ Run `npm run dev` and open `#/__design` to see every primitive with its variants
 
 | Component | Use it for | Do | Don't |
 | --- | --- | --- | --- |
-| `Tabs`, `TabList`, `Tab`, `TabPanel` | Switching between sections of one thing (a location's overview, sites, rules). | Name the `TabList` and keep tab labels to one or two words. | Use tabs for steps in a flow or for navigation between pages. |
+| `Tabs`, `TabList`, `Tab`, `TabPanel` | Switching between sections of one thing (a location's overview, sites, rules). With no `value` or `defaultValue`, the first enabled tab is selected. | Name the `TabList` and keep tab labels to one or two words. | Use tabs for steps in a flow or for navigation between pages. |
 | `SegmentedControl` | Two to four views of the same content (Map / List). | Keep the options parallel and short. | Use it for settings or for more than four options. |
 | `RadioCard` + `RadioCardGroup` | A prominent choice with descriptions, such as the provider step of a create flow. | Put a `ProviderBadge` or "Soon" badge in `trailing`, and disable cards that cannot be chosen yet. | Put links or buttons inside a card; the whole card is the radio. |
 | `Disclosure` | Optional detail that most people skip: advanced options, an explanation. | Write the `summary` as what is hidden ("Advanced options"). | Hide required fields or errors in it. |
@@ -68,22 +69,23 @@ Run `npm run dev` and open `#/__design` to see every primitive with its variants
 | Component | Use it for | Do | Don't |
 | --- | --- | --- | --- |
 | `Dialog` | A focused task or decision that blocks the page: editing a watch, a sign-in prompt. | Give it a `title` (its name) and put actions in `footer`. Let Escape and the overlay close it unless data would be lost. | Open a dialog on page load, or for information a `Notice` could show. |
-| `ConfirmDialog` | Confirming a destructive or costly action. | Use `tone="danger"` for deletes (Cancel gets focus) and return the Promise from `onConfirm` so it shows loading. | Ask "Are you sure?" for actions that can be undone; offer Undo in a toast instead. |
+| `ConfirmDialog` | Confirming a destructive or costly action. | Use `tone="danger"` for deletes (Cancel gets focus) and return the Promise from `onConfirm` so it shows loading. If it rejects, the dialog stays open and shows the error's message as an alert. | Ask "Are you sure?" for actions that can be undone; offer Undo in a toast instead. |
 | `Sheet` | Long forms, filters or details beside the page, from the right. | Keep the primary action in the footer so it stays visible. | Use it for a quick yes/no; use `ConfirmDialog`. |
 | `Menu` + `MenuItem` | A short list of actions on one thing (rename, pause, delete). | Use `href` for items that navigate and `tone="danger"` for destructive ones; group with `MenuSeparator`. | Put form controls in a menu, or use it for site navigation. |
 | `Popover` | Small, non-blocking panels anchored to a button: filters, the date and guest pickers. | Return focus with the `close` render prop from a Done button. | Put a whole form or a second popover inside one. |
-| `Tooltip` | A short hint on hover or focus for a control that already has a name. | Keep it to a few words; it describes the control. | Put essential information or interactive content in a tooltip. |
+| `Tooltip` | A short hint on hover or focus for a control that already has a name. It stays open while the pointer is on it (WCAG 1.4.13). | Keep it to a few words; it describes the control. | Put essential information or interactive content in a tooltip. |
+| `Portal` | Rendering a floating surface at the end of `document.body`, outside `#root`: the toast viewport, the tray. | Wrap any app-level layer that must stay usable while a modal is open. | Portal page content, or overlays (Dialog, Popover and Menu already portal themselves). |
 
 ## Feedback
 
 | Component | Use it for | Do | Don't |
 | --- | --- | --- | --- |
-| `useToast` (`ToastProvider`, `ToastViewport`) | Brief confirmation of something the person just did ("Watch saved"), or an error from it. | Use `toast.error` for failures; it stays until dismissed. Add an `action` for Undo. | Use a toast for something the person must act on later; use a notification or a `Notice`. |
+| `useToast` (`ToastProvider`, `ToastViewport`) | Brief confirmation of something the person just did ("Watch saved"), or an error from it. Toasts are added to a polite live region that is always rendered; errors are `role="alert"`. | Use `toast.error` for failures; it stays until dismissed. Add an `action` for Undo. Mount `ToastViewport` in a `Portal`. | Use a toast for something the person must act on later; use a notification or a `Notice`. |
 | `useAnnounce` (`AnnouncerProvider`) | Telling screen-reader users about a change they cannot see: "24 results", "Map updated". | Announce once the change has happened, politely unless it is urgent. | Announce every keystroke, or repeat what a toast or live output already says. |
 
 ## Search fields
 
-All three take `appearance="field"` (forms) or `"segment"` (a segment of E1's search pill, with a small label above the value).
+All three take `appearance="field"` (forms) or `"segment"` (a segment of E1's search pill, with a small label above the value). In a segment there is no room for a hint line, so the `hint` is read by screen readers only; an `error` still marks the control invalid and shows under the value with its icon.
 
 | Component | Use it for | Do | Don't |
 | --- | --- | --- | --- |
@@ -96,7 +98,7 @@ All three take `appearance="field"` (forms) or `"segment"` (a segment of E1's se
 
 | Hook | Use it for |
 | --- | --- |
-| `useFocusTrap(ref, { active })` | Keeping Tab inside a custom modal surface and returning focus on close. Dialog and Sheet already use it. |
+| `useFocusTrap(ref, { active })` | Keeping Tab inside a custom modal surface and returning focus on close. It skips hidden, invisible and disabled controls (including a disabled `<fieldset>`), and a Tab after focus fell to the body comes back in. Dialog and Sheet already use it. |
 | `usePosition(anchorRef, floatingRef, { open })` | Placing a floating layer below or above its anchor, flipped and clamped to the window. Built on the pure `computePosition`. |
 | `useDisclosure()` | The state and ARIA props for a custom show/hide pattern. `Disclosure` uses it. |
 | `useOverlay()` / `OverlayStack` | Registering a new kind of overlay so Escape order and `inert` stay correct. |

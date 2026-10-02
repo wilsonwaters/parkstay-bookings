@@ -199,6 +199,13 @@ export function RangeCalendar({
                         const disabled = isDayDisabled(date, value, rules);
                         const end = date === value.arrival || date === value.departure;
                         const between = isInRange(date, value);
+                        // The stay is one band from arrival to departure, rounded where a
+                        // week row or the month breaks it; the endpoints sit on it as circles.
+                        const rowStart = col === 0 || !week[col - 1];
+                        const rowEnd = col === week.length - 1 || !week[col + 1];
+                        const bandFrom = date === value.departure && !rowStart;
+                        const bandTo =
+                          date === value.arrival && Boolean(value.departure) && !rowEnd;
                         const byMaxNights =
                           disabled &&
                           pickingDeparture &&
@@ -209,8 +216,21 @@ export function RangeCalendar({
                           <td
                             key={date}
                             aria-selected={end || between}
-                            className={cx('h-10 w-10 p-0', between && 'bg-surface-subtle')}
+                            className="relative h-10 w-10 p-0"
                           >
+                            {(between || bandFrom || bandTo) && (
+                              <span
+                                aria-hidden="true"
+                                className={cx(
+                                  'absolute inset-y-0 bg-surface-subtle',
+                                  between && 'inset-x-0',
+                                  between && rowStart && 'rounded-l-full',
+                                  between && rowEnd && 'rounded-r-full',
+                                  bandFrom && 'left-0 right-1/2',
+                                  bandTo && 'left-1/2 right-0'
+                                )}
+                              />
+                            )}
                             <button
                               type="button"
                               data-date={date}
@@ -230,7 +250,9 @@ export function RangeCalendar({
                                   ? 'bg-surface-inverse font-semibold text-fg-inverse'
                                   : disabled
                                     ? 'cursor-not-allowed text-fg-muted line-through'
-                                    : 'text-fg hover:bg-surface-subtle',
+                                    : between
+                                      ? 'text-fg hover:ring-1 hover:ring-inset hover:ring-fg'
+                                      : 'text-fg hover:bg-surface-subtle',
                                 date === today &&
                                   !end &&
                                   'font-semibold underline underline-offset-4'

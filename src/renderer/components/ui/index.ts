@@ -77,6 +77,7 @@ export { Sheet, type SheetProps } from './Sheet';
 export { Menu, MenuItem, MenuSeparator, type MenuProps, type MenuItemProps } from './Menu';
 export { Popover, type PopoverProps } from './Popover';
 export { Tooltip, type TooltipProps } from './Tooltip';
+export { Portal } from './Portal';
 export {
   OverlayStack,
   OverlayStackContext,

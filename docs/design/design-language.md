@@ -76,8 +76,8 @@ The raw palette. Components never use these names directly; they use the semanti
 | `eucalypt-600` | `#2D7356` | Available fill and glyph |
 | `eucalypt-700` | `#215742` | Available text on tints |
 | `danger-50` | `#FCEDEF` | Error tint |
-| `danger-600` | `#B3263E` | Error text, destructive outline, destructive confirm |
-| `danger-700` | `#8E1E31` | Error text on tints |
+| `danger-600` | `#B3263E` | Error text, destructive outline |
+| `danger-700` | `#8E1E31` | Error text on tints, destructive confirm fill |
 
 Semantic aliases, which is what components use (`bg-surface`, `text-fg-muted`, `border-border-strong`, `ring-focus`):
 
@@ -106,9 +106,9 @@ Semantic aliases, which is what components use (`bg-surface`, `text-fg-muted`, `
 | `available-fg` | `eucalypt-700` | `#215742` | Available text on `available-subtle` |
 | `warning-subtle` | `sun-50` | `#FEF7E1` | Warning notice, not-yet-released nights |
 | `warning-fg` | `sun-700` | `#855A00` | Warning and release text |
-| `danger` | `danger-600` | `#B3263E` | Error text, destructive outline and confirm |
+| `danger` | `danger-600` | `#B3263E` | Error text, destructive outline |
 | `danger-subtle` | `danger-50` | `#FCEDEF` | Error notice background |
-| `danger-fg` | `danger-700` | `#8E1E31` | Error text on `danger-subtle` |
+| `danger-fg` | `danger-700` | `#8E1E31` | Error text on `danger-subtle`; the destructive confirm fill, deep enough to never read as the coral primary |
 | `sun` | `sun-400` | `#E8B858` | Decorative sun only |
 | `sun-subtle` | `sun-100` | `#FCEBB6` | "Soon" pill, sun badge |
 
@@ -160,7 +160,7 @@ Every colour combination the app uses, one-to-one with `CONTRAST_PAIRS` in `src/
 | `danger` | `surface` | text | 6.43 | 4.5 | Field error text and danger outline button |
 | `danger` | `canvas` | text | 6.02 | 4.5 | Field error text on the page |
 | `danger` | `danger-subtle` | text | 5.67 | 4.5 | Danger outline button on hover |
-| `fg-inverse` | `danger` | text | 6.43 | 4.5 | Confirm button in a destructive dialog |
+| `fg-inverse` | `danger-fg` | text | 8.82 | 4.5 | Confirm button in a destructive dialog (solid fill) |
 | `focus` | `surface` | ui | 6.38 | 3 | Focus ring on cards and dialogs |
 | `focus` | `canvas` | ui | 5.97 | 3 | Focus ring on the page |
 | `focus` | `surface-subtle` | ui | 5.52 | 3 | Focus ring on subtle fills |

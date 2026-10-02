@@ -8,7 +8,7 @@ import { HashRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LucideProvider } from 'lucide-react';
 import App from './App';
-import { AnnouncerProvider, ToastProvider, ToastViewport } from './components/ui';
+import { AnnouncerProvider, Portal, ToastProvider, ToastViewport } from './components/ui';
 // Bundled fonts (no CDN): Figtree for UI, Fraunces (opsz + wght axes) for display.
 import '@fontsource-variable/figtree';
 import '@fontsource-variable/fraunces/opsz.css';
@@ -37,9 +37,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <ToastProvider>
             <AnnouncerProvider>
               <App />
-              <div className="pointer-events-none fixed bottom-4 left-1/2 z-toast -translate-x-1/2">
-                <ToastViewport />
-              </div>
+              {/* Floating surfaces live outside #root: a modal makes #root inert, and toasts
+                  must stay audible and clickable above its scrim (z-toast > z-overlay). */}
+              <Portal>
+                <div className="pointer-events-none fixed bottom-4 left-1/2 z-toast -translate-x-1/2">
+                  <ToastViewport />
+                </div>
+              </Portal>
             </AnnouncerProvider>
           </ToastProvider>
         </LucideProvider>

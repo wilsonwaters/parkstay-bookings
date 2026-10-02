@@ -72,6 +72,9 @@ import {
   useToast,
   type BadgeTone,
 } from '../../components/ui';
+// Internal: the solid danger fill exists only as ConfirmDialog's destructive confirm. The
+// gallery shows it beside the coral primary so the two can be compared.
+import { ButtonBase } from '../../components/ui/Button';
 import { Section } from './Section';
 
 /** Section titles, in page order. The preview test checks each one renders. */
@@ -135,7 +138,7 @@ function ButtonSection() {
   return (
     <Section
       title="Button"
-      intro="Primary is the coral call to action, one per view. Secondary is an ink outline, ghost is quiet, danger is a crimson outline. Loading keeps the label."
+      intro="Primary is the coral call to action, one per view. Secondary is an ink outline, ghost is quiet, danger is a crimson outline. Loading keeps the label and the focus."
     >
       <Grid>
         <Specimen label="Variants">
@@ -178,6 +181,11 @@ function ButtonSection() {
           <Button variant="secondary" disabled>
             Disabled
           </Button>
+        </Specimen>
+        <Specimen label="Primary beside destructive: outline by default, solid only to confirm">
+          <Button>Arm snipe</Button>
+          <Button variant="danger">Delete watch</Button>
+          <ButtonBase variant="danger-solid">Delete watch</ButtonBase>
         </Specimen>
       </Grid>
     </Section>
@@ -957,11 +965,12 @@ function DialogSection() {
 
 function ConfirmDialogSection() {
   const toast = useToast();
-  const [which, setWhich] = useState<'danger' | 'primary' | null>(null);
+  const [which, setWhich] = useState<'danger' | 'primary' | 'failing' | null>(null);
+  const [reported, setReported] = useState(0);
   return (
     <Section
       title="ConfirmDialog"
-      intro="An alertdialog. Danger focuses Cancel first and uses the only solid crimson button in the app. An async confirm shows loading until it settles."
+      intro="An alertdialog. Danger focuses Cancel first and uses the only solid (deep crimson) danger button in the app. An async confirm shows loading until it settles; if it fails, the dialog stays open with the error, and toasts fired meanwhile stay clickable."
     >
       <Specimen label="Tones">
         <Button variant="danger" onClick={() => setWhich('danger')}>
@@ -970,6 +979,12 @@ function ConfirmDialogSection() {
         <Button variant="secondary" onClick={() => setWhich('primary')}>
           Arm snipe
         </Button>
+        <Button variant="secondary" onClick={() => setWhich('failing')}>
+          Cancel booking (fails)
+        </Button>
+        {reported > 0 && (
+          <p className="text-sm text-fg-secondary">Toast action pressed {reported}×</p>
+        )}
       </Specimen>
       <ConfirmDialog
         open={which === 'danger'}
@@ -996,6 +1011,25 @@ function ConfirmDialogSection() {
         confirmLabel="Arm snipe"
         onCancel={() => setWhich(null)}
         onConfirm={() => setWhich(null)}
+      />
+      <ConfirmDialog
+        open={which === 'failing'}
+        tone="danger"
+        title="Cancel this booking?"
+        message="Your site at Lucky Bay is released for others to book."
+        confirmLabel="Cancel booking"
+        cancelLabel="Keep booking"
+        onCancel={() => setWhich(null)}
+        onConfirm={() =>
+          new Promise<void>((_, reject) =>
+            setTimeout(() => {
+              toast.error("Couldn't cancel the booking.", {
+                action: { label: 'Report', onClick: () => setReported((n) => n + 1) },
+              });
+              reject(new Error("ParkStay didn't respond. Try again in a minute."));
+            }, 800)
+          )
+        }
       />
     </Section>
   );
@@ -1257,6 +1291,25 @@ function GuestsSection() {
             </div>
           </Specimen>
         </Grid>
+        <Specimen label="Segments with a hint and errors (the hint is read, not shown)">
+          <div className="flex w-full flex-wrap items-start gap-1 rounded-full border border-border bg-surface p-1 shadow-pill">
+            <Combobox
+              label="Where"
+              appearance="segment"
+              options={PLACES}
+              hint="A place, park or town"
+              placeholder="Search places"
+              className="min-w-[12rem] flex-1"
+            />
+            <DateRangeField
+              appearance="segment"
+              value={{}}
+              onChange={() => undefined}
+              error="Add your dates"
+            />
+            <GuestsField appearance="segment" onChange={() => undefined} error="Add guests" />
+          </div>
+        </Specimen>
         <Specimen label="Segments in a pill">
           <div className="flex w-full flex-wrap items-center gap-1 rounded-full border border-border bg-surface p-1 shadow-pill">
             <Combobox

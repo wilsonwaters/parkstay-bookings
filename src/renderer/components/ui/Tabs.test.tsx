@@ -64,4 +64,32 @@ describe('Tabs', () => {
     // Tab leaves the tab list for the panel, skipping the unselected tabs.
     expect(screen.getByRole('tabpanel')).toHaveFocus();
   });
+
+  it('selects the first enabled tab when given no value or defaultValue', async () => {
+    const user = userEvent.setup();
+    render(
+      <Tabs>
+        <TabList aria-label="Location details">
+          <Tab value="reviews" disabled>
+            Reviews
+          </Tab>
+          <Tab value="overview">Overview</Tab>
+          <Tab value="sites">Sites</Tab>
+        </TabList>
+        <TabPanel value="reviews">No reviews yet.</TabPanel>
+        <TabPanel value="overview">Camp among the peppermint trees.</TabPanel>
+        <TabPanel value="sites">24 sites</TabPanel>
+      </Tabs>
+    );
+    expect(tab('Overview')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Overview')).toHaveAttribute('tabindex', '0');
+    expect(tab('Reviews')).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('tabpanel', { name: 'Overview' })).toHaveTextContent(
+      'Camp among the peppermint trees.'
+    );
+    await user.tab();
+    expect(tab('Overview')).toHaveFocus();
+    await user.keyboard('{ArrowRight}');
+    expect(tab('Sites')).toHaveAttribute('aria-selected', 'true');
+  });
 });

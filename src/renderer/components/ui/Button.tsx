@@ -13,13 +13,22 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type InternalVariant = ButtonVariant | 'danger-solid';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
+// Hover styles skip disabled and loading (aria-disabled) buttons.
 const VARIANT: Record<InternalVariant, string> = {
-  primary: 'bg-accent text-accent-fg [&:not(:disabled)]:hover:bg-accent-hover',
-  secondary: 'border border-fg bg-surface text-fg [&:not(:disabled)]:hover:bg-surface-subtle',
+  primary:
+    'bg-accent text-accent-fg [&:not(:disabled):not([aria-disabled=true])]:hover:bg-accent-hover',
+  secondary:
+    'border border-fg bg-surface text-fg [&:not(:disabled):not([aria-disabled=true])]:hover:bg-surface-subtle',
   // Ghost inherits its text colour, so it reads correctly on tints (notices, toasts).
-  ghost: 'bg-transparent text-inherit [&:not(:disabled)]:hover:bg-surface-inverse/[0.06]',
-  danger: 'border border-danger bg-surface text-danger [&:not(:disabled)]:hover:bg-danger-subtle',
-  'danger-solid': 'bg-danger text-fg-inverse [&:not(:disabled)]:hover:bg-danger-fg',
+  ghost:
+    'bg-transparent text-inherit [&:not(:disabled):not([aria-disabled=true])]:hover:bg-surface-inverse/[0.06]',
+  // The default destructive style: a crimson outline, never confused with the coral primary.
+  danger:
+    'border border-danger bg-surface text-danger [&:not(:disabled):not([aria-disabled=true])]:hover:bg-danger-subtle',
+  // The final confirm of a destructive ConfirmDialog only: a deep crimson (danger-fg) fill, far
+  // darker and cooler than the coral primary so the two never read as the same button.
+  'danger-solid':
+    'bg-danger-fg text-fg-inverse [&:not(:disabled):not([aria-disabled=true])]:hover:bg-danger-fg/90',
 };
 
 const SIZE: Record<ButtonSize, string> = {
@@ -49,7 +58,10 @@ interface CommonProps {
 export type ButtonAsButtonProps = CommonProps &
   Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & {
     as?: 'button';
-    /** Shows a spinner, sets `aria-busy` and disables the button. The label stays. */
+    /**
+     * Shows a spinner, sets `aria-busy` and `aria-disabled`, and ignores activation. The label
+     * stays, and the button stays focusable so focus is not lost while the action runs.
+     */
     loading?: boolean;
   };
 
@@ -121,6 +133,7 @@ const ButtonImpl = forwardRef<HTMLButtonElement | HTMLAnchorElement, InternalPro
     const {
       disabled,
       type = 'button',
+      onClick,
       ...button
     } = rest as ButtonHTMLAttributes<HTMLButtonElement>;
     return (
@@ -128,9 +141,19 @@ const ButtonImpl = forwardRef<HTMLButtonElement | HTMLAnchorElement, InternalPro
         ref={ref as ForwardedRef<HTMLButtonElement>}
         type={type}
         className={classes}
-        disabled={disabled || loading}
-        aria-busy={loading || undefined}
+        disabled={disabled}
         {...button}
+        // Loading is aria-disabled, not disabled: a disabled button drops focus to the body.
+        aria-busy={loading || undefined}
+        aria-disabled={loading || button['aria-disabled']}
+        onClick={(event) => {
+          if (loading) {
+            // Also stops a submit button from submitting its form again.
+            event.preventDefault();
+            return;
+          }
+          onClick?.(event);
+        }}
       >
         {loading ? (
           <LoaderCircle size={ICON[size]} className="animate-spin" aria-hidden="true" />

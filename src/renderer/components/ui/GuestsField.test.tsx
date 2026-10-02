@@ -49,6 +49,23 @@ describe('GuestsField', () => {
     expect(increase).toBeDisabled();
   });
 
+  it('in a segment, surfaces its error: described by it, invalid, error shown', () => {
+    const { rerender } = render(<GuestsField appearance="segment" onChange={jest.fn()} />);
+    const trigger = screen.getByRole('button', { name: 'Guests Add guests' });
+    expect(trigger).not.toHaveAttribute('aria-describedby');
+    expect(trigger).not.toHaveAttribute('aria-invalid');
+
+    rerender(
+      <GuestsField appearance="segment" onChange={jest.fn()} error="Add at least one adult" />
+    );
+    const id = trigger.getAttribute('aria-describedby') ?? '';
+    expect(document.getElementById(id)).toBeInTheDocument();
+    expect(trigger).toHaveAccessibleDescription('Add at least one adult');
+    expect(trigger).toHaveAttribute('aria-invalid', 'true');
+    expect(trigger).toHaveAccessibleName('Guests Add guests');
+    expect(screen.getByText('Add at least one adult')).toBeVisible();
+  });
+
   it('summarises guests with singular and plural words', () => {
     expect(guestsSummary(undefined)).toBeUndefined();
     expect(guestsSummary({ adults: 1, children: 0, infants: 0 })).toBe('1 adult');

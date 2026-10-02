@@ -11,8 +11,9 @@ export interface DisclosureProps extends UseDisclosureOptions {
 }
 
 /**
- * Show and hide a region with a button (`aria-expanded`, `aria-controls`). The chevron turns
- * when open, and stays still under reduced motion.
+ * Show and hide a region with a button (`aria-expanded`, `aria-controls`). The chevron points
+ * up when open; under reduced motion the global rule removes the turning animation, not the
+ * state.
  */
 export function Disclosure({ summary, children, className, ...options }: DisclosureProps) {
   const { open, buttonProps, panelProps } = useDisclosure(options);
@@ -28,7 +29,7 @@ export function Disclosure({ summary, children, className, ...options }: Disclos
           aria-hidden="true"
           className={cx(
             'shrink-0 transition-transform duration-base ease-standard',
-            open && 'motion-safe:rotate-180'
+            open && 'rotate-180'
           )}
         />
       </button>
