@@ -165,4 +165,4 @@ function diagnose(error, runtime) {
   };
 }
 
-module.exports = { diagnose, describeAbi, FIX_COMMAND, KNOWN_ABIS };
+module.exports = { diagnose, FIX_COMMAND };

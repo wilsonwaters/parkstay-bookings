@@ -33,7 +33,7 @@ const base = {
     '^@shared/(.*)$': '<rootDir>/src/shared/$1',
     '^@preload/(.*)$': '<rootDir>/src/preload/$1',
     '^@tests/(.*)$': '<rootDir>/tests/$1',
-    '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
+    '\\.(css|less|scss|sass)$': '<rootDir>/tests/utils/style-mock.js',
   },
 };
 

@@ -34,6 +34,11 @@ const PROBED_KEYS = new Set([
   '__esModule',
 ]);
 
+/** jest.fn's own API (mockResolvedValue, mock, …) lives on the function or its prototype chain. */
+function isMockApiKey(target: object, prop: PropertyKey): boolean {
+  return typeof prop === 'string' && prop.startsWith('mock') && prop in target;
+}
+
 function isProbedKey(prop: PropertyKey): boolean {
   return typeof prop !== 'string' || PROBED_KEYS.has(prop) || prop.startsWith('@@');
 }
@@ -46,7 +51,11 @@ function isProbedKey(prop: PropertyKey): boolean {
 function memberHandler<T extends object>(path: string | null): ProxyHandler<T> {
   return {
     get(target, prop, receiver) {
-      if (isProbedKey(prop) || prop in target) {
+      if (
+        isProbedKey(prop) ||
+        Object.prototype.hasOwnProperty.call(target, prop) ||
+        isMockApiKey(target, prop)
+      ) {
         return Reflect.get(target, prop, receiver);
       }
       const member = createMockMember(path === null ? String(prop) : `${path}.${String(prop)}`);

@@ -88,7 +88,7 @@ expect(window.api.watch.list).toHaveBeenCalledWith(1);
 
 - Stub in the test or in a `beforeEach`. Stubs made at module scope or in `beforeAll` are replaced before each test.
 - `jest.resetAllMocks()` / `mockReset()` clear the default rejection (the method then returns `undefined`); prefer `jest.clearAllMocks()`.
-- An un-stubbed call that nobody awaits becomes an unhandled rejection. Jest fails the test (or, if the file has finished, the run) in progress when Node reports it, and the error still names the method.
+- An un-stubbed call that nobody awaits becomes an unhandled rejection, and Node 22 crashes the Jest process for that file. In-band the run exits 1 with only Node's stack; with workers it is reported as "Jest worker encountered child process exceptions". stderr still names the method. Always `await` (or stub) every `window.api` call a component makes.
 
 ## Clocks and dates
 
