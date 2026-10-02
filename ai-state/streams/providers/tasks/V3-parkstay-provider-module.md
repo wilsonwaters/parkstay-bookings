@@ -261,3 +261,8 @@ L. It covers several ParkStay concerns (catalogue, availability, queue, release,
 - **`/api/campsites/{id}/` lookups.** These existed only to name sites from the bulk endpoint. `campsite_availablity_view` already returns `sites[].name`, so the lookups and their unbounded `Promise.allSettled` are removed rather than throttled.
 - **Hold session.** The hold is bound to the session cookies of `persist:provider-parkstay` (`ses.fetch`). V6's payment window on the same partition therefore sees `ps_booking`, which fixes tech-review #3.
 - **Commit.** `feat(providers): ParkStay provider module (#<issue>)`.
+
+## Orchestrator addendum (2026-10-02, from the P4 and V1 reviews)
+- [ ] The DBCA queue `sessionKey` never reaches the renderer. The transitional `queue.*` IPC namespace and the `queue:status` event are retired, replaced by `providers.accessStatus(id)` / `provider:access-status`, which expose position, ETA and state only.
+- [ ] The ParkStay client uses the SDK `HttpClient` (architecture-notes §12.30 transport parity). Redirect detection for the queue interstitial uses the real 3xx/final-URL semantics, verified live under Electron (`npm run test:electron` style) as well as with fixtures.
+- [ ] The queue error listener is added (tech-review #10), and nothing logs session keys or cookies.
