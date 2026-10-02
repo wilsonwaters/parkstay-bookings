@@ -30,10 +30,10 @@ export class WatchService {
   async create(userId: number, input: WatchInput): Promise<Watch> {
     // Validate dates
     if (input.arrivalDate < new Date()) {
-      throw new Error('Arrival date must be in the future');
+      throw new AppError('VALIDATION', 'Arrival date must be in the future');
     }
     if (input.departureDate <= input.arrivalDate) {
-      throw new Error('Departure date must be after arrival date');
+      throw new AppError('VALIDATION', 'Departure date must be after arrival date');
     }
 
     // Create watch

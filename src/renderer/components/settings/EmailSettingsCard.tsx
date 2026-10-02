@@ -40,7 +40,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
   const [isTesting, setIsTesting] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [providerStatus, setNotifierStatus] = useState<NotifierStatus>(
+  const [notifierStatus, setNotifierStatus] = useState<NotifierStatus>(
     NotifierStatus.NOT_CONFIGURED
   );
   const [lastTestedAt, setLastTestedAt] = useState<Date | null>(null);
@@ -211,7 +211,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
     setEnabled(newEnabled);
 
     // If already configured, update enabled state in database
-    if (providerStatus !== NotifierStatus.NOT_CONFIGURED) {
+    if (notifierStatus !== NotifierStatus.NOT_CONFIGURED) {
       try {
         if (newEnabled) {
           await window.api.notifiers.enable(NotifierChannel.EMAIL_SMTP);
@@ -225,7 +225,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
   };
 
   const getStatusBadge = () => {
-    switch (providerStatus) {
+    switch (notifierStatus) {
       case NotifierStatus.CONFIGURED:
         return (
           <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
@@ -470,7 +470,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
               </button>
             </div>
             <p className="mt-1 text-xs text-gray-500">
-              {providerStatus === NotifierStatus.CONFIGURED
+              {notifierStatus === NotifierStatus.CONFIGURED
                 ? 'Leave blank to keep existing password, or enter a new one to update'
                 : preset === SMTPPreset.CUSTOM
                   ? 'Your SMTP server password'
@@ -527,7 +527,7 @@ const EmailSettingsCard: React.FC<EmailSettingsCardProps> = ({ onSaveSuccess }) 
             <button
               type="button"
               onClick={handleTest}
-              disabled={isTesting || providerStatus === NotifierStatus.NOT_CONFIGURED}
+              disabled={isTesting || notifierStatus === NotifierStatus.NOT_CONFIGURED}
               className="btn-secondary"
             >
               {isTesting ? 'Sending...' : 'Send Test Email'}

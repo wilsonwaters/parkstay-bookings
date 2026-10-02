@@ -29,8 +29,6 @@ export default function WatchesPage() {
     try {
       setLoading(true);
       setError(null);
-      // Get current user ID - for now we'll use userId 1
-      // In a real app, this would come from auth context
       const result = await window.api.watches.list();
       if (result.success && result.data) {
         setWatches(result.data);
