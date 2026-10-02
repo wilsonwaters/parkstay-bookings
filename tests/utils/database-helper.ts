@@ -6,6 +6,8 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
+import type { FixtureName } from '@tests/fixtures/db/constants';
 import { runMigrations, setDatabase, SCHEMA_SQL } from '@main/database/connection';
 
 export class TestDatabaseHelper {
@@ -158,4 +160,27 @@ export async function withTestDb<T>(
   } finally {
     await dbHelper.teardown();
   }
+}
+
+const FIXTURE_DIR = path.join(__dirname, '../fixtures/db');
+
+/**
+ * Replays a schema-fixture SQL dump (`tests/fixtures/db/<name>.sql`) into a fresh database
+ * file in its own temp directory. Foreign keys are OFF, as for any freshly opened connection,
+ * so the dump replays exactly as written (including the v6 FK to "notifications_old").
+ * Release it with `disposeFixture`.
+ */
+export function loadFixture(name: FixtureName): Database.Database {
+  const sql = fs.readFileSync(path.join(FIXTURE_DIR, `${name}.sql`), 'utf8');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-stay-fixture-'));
+  const db = new Database(path.join(dir, `${name}.db`));
+  db.pragma('foreign_keys = OFF');
+  db.exec(sql);
+  return db;
+}
+
+/** Closes a database opened by `loadFixture` and deletes its temp directory. */
+export function disposeFixture(db: Database.Database): void {
+  if (db.open) db.close();
+  fs.rmSync(path.dirname(db.name), { recursive: true, force: true });
 }
