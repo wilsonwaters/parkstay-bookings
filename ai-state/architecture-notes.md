@@ -219,15 +219,18 @@ interface ProviderContext {
 
 - **Reference:** Airbnb's calm, photo-first layout, a centred search pill, and map plus list split. The WA mood comes from the stakeholder's tourism mark: **Indian Ocean blue** brushstroke, **sun gold**, **black-swan ink**, **coral** beak. Add warm **sand** neutrals and **eucalypt** green for "available".
 - **Not AI-looking:** no purple/indigo gradients, no glassmorphism, no emoji, no rainbow buttons, no generic three-feature-card heroes. Use one accent CTA colour, generous whitespace, real photography, restrained motion, and a distinctive but sparing hand-drawn brushstroke motif (e.g. under the active nav item and in the logo).
-- **Type:** a friendly geometric/humanist sans for UI, plus one characterful display face used sparingly. Fonts are bundled locally with `@fontsource` (the app works offline).
+- **Type:** **Figtree** for UI and **Fraunces** for display, used sparingly (page heroes, location names). Both are bundled locally with `@fontsource-variable` so the app works offline.
 - **Contrast:** AA minimum. Coral for text or small UI must use a darkened shade.
 - **Logo:** original. Never reproduce the WA Tourism Commission swan.
 
-## 10. Dependencies approved for this project
+## 10. Dependencies (installed on the feature branch in commit `chore(deps)`; don't re-add)
 
-- **Runtime (`dependencies`):** `playwright-core` (browser automation runtime, no bundled browsers).
-- **Renderer, bundled by Vite (`devDependencies`, following the existing `@tanstack/react-query` precedent):** `mapbox-gl` (+ types), `lucide-react`, `@fontsource-variable/*`, `dompurify` (if needed for sanitising in the renderer; prefer sanitising in main).
-- Anything else needs a reason recorded in the task's PR notes.
+- **Runtime (`dependencies`):**
+  - `playwright-core@1.56.1`: browser automation runtime, no bundled browsers. It is pinned because Electron 28 runs Node 18 and newer releases need Node 20 or later.
+  - `sanitize-html@^2.17`: the main process sanitises provider HTML before it crosses IPC. 2.18 and later need Node 22 or later.
+- **Renderer, bundled by Vite (`devDependencies`, following the `@tanstack/react-query` precedent):** `mapbox-gl@^3` (ships its own types), `lucide-react`, `@fontsource-variable/figtree` (UI sans, the closest free analogue to Airbnb Cereal) and `@fontsource-variable/fraunces` (display face, used sparingly).
+- **Native module ABI:** Electron 28 runs Node 18.18. Any new main-process dependency must support Node 18.
+- Anything else needs a reason recorded in the task notes.
 
 ## 11. Git conventions for this project
 
