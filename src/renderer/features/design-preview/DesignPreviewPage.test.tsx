@@ -15,6 +15,7 @@ const SECTIONS = [
   'Icons',
   'Brushstroke',
   'Photo placeholder',
+  'Brand',
   'Focus and legacy controls',
 ];
 
@@ -69,6 +70,12 @@ describe('DesignPreviewPage', () => {
     ).toBeInTheDocument();
     const brush = screen.getByRole('region', { name: 'Brushstroke' });
     expect(within(brush).queryAllByRole('img')).toHaveLength(0);
+  });
+
+  it('shows the WA Stay logo, named once per image', () => {
+    render(<DesignPreviewPage />);
+    const brand = screen.getByRole('region', { name: 'Brand' });
+    expect(within(brand).getAllByRole('img', { name: 'WA Stay' })).toHaveLength(4);
   });
 
   it('lets the motion demo be replayed and toggled from the keyboard', async () => {

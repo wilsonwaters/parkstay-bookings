@@ -1,0 +1,3 @@
+# Generated SVG artwork (brand, brushstrokes) is compared byte for byte by tests and copied
+# byte for byte into the renderer, so it keeps LF line endings on every OS.
+*.svg text eol=lf

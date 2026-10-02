@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="resources/banner.png" alt="WA ParkStay Bookings Banner" width="600">
+  <img src="resources/brand/readme-banner.png" alt="WA Stay" width="640">
 </p>
 
 <h1 align="center">
-  <img src="resources/icon-source.png" alt="WA ParkStay Bookings" width="32" valign="middle">
+  <img src="resources/brand/wa-stay-mark.svg" alt="" width="32" valign="middle">
   WA ParkStay Bookings
 </h1>
 

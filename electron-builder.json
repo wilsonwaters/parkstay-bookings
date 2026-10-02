@@ -31,7 +31,7 @@
         "arch": ["x64", "arm64"]
       }
     ],
-    "icon": "resources/icons/icon.icns",
+    "icon": "resources/icons/icon.png",
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
     "entitlements": "resources/entitlements.mac.plist",
@@ -60,7 +60,6 @@
       }
     ],
     "title": "${productName} ${version}",
-    "icon": "resources/icons/icon.icns",
     "iconSize": 128,
     "window": {
       "width": 540,
@@ -98,9 +97,9 @@
     "allowElevation": true,
     "installerIcon": "resources/icons/icon.ico",
     "uninstallerIcon": "resources/icons/icon.ico",
-    "installerHeader": "resources/icons/installer-header.png",
-    "installerSidebar": "resources/icons/installer-sidebar.png",
-    "uninstallerSidebar": "resources/icons/installer-sidebar.png",
+    "installerHeader": "resources/icons/installer-header.bmp",
+    "installerSidebar": "resources/icons/installer-sidebar.bmp",
+    "uninstallerSidebar": "resources/icons/installer-sidebar.bmp",
     "createDesktopShortcut": "always",
     "createStartMenuShortcut": true,
     "shortcutName": "${productName}",

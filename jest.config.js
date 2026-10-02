@@ -39,7 +39,7 @@ const base = {
     // `?raw` must map first so raw imports get the real file (via raw-file-transform.js).
     '^(.+\\.(svg|css))\\?raw$': '$1',
     // A plain asset import is a URL in Vite, so it gets a URL-shaped string.
-    '\\.svg$': '<rootDir>/tests/utils/file-url-stub.js',
+    '\\.(svg|png)$': '<rootDir>/tests/utils/file-url-stub.js',
     // Bundled fonts (`import '@fontsource-variable/figtree'`) are stylesheets too.
     '^@fontsource-variable/': '<rootDir>/tests/utils/style-mock.js',
     '\\.(css|less|scss|sass)$': '<rootDir>/tests/utils/style-mock.js',

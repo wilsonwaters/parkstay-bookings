@@ -2,7 +2,7 @@
  * @jest-environment node
  *
  * Token guard: new renderer code builds only on design tokens.
- * Scans components/ui, app, features, api and components/LocationCard* (legacy folders
+ * Scans components/ui, components/brand, app, features, api and components/LocationCard* (legacy folders
  * excluded) for raw Tailwind colour classes, hex literals, numeric colour functions and emoji.
  *
  * A line that legitimately needs one of these (a "Site #101" label, `querySelector('#add')`)
@@ -13,7 +13,7 @@ import fs from 'fs';
 import path from 'path';
 
 const RENDERER = path.resolve(__dirname, '../../../src/renderer');
-const SCAN_DIRS = ['components/ui', 'app', 'features', 'api'];
+const SCAN_DIRS = ['components/ui', 'components/brand', 'app', 'features', 'api'];
 const SCAN_FILE_PREFIXES = ['components/LocationCard'];
 const SOURCE = /\.(ts|tsx)$/;
 const IGNORE_MARKER = 'token-guard-ignore';

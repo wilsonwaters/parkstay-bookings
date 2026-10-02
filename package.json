@@ -45,6 +45,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css,md,json}\" \"tests/**/*.{ts,tsx}\" \"scripts/**/*.{js,mjs}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css,md,json}\" \"tests/**/*.{ts,tsx}\" \"scripts/**/*.{js,mjs}\"",
     "type-check": "tsc --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "icons": "node scripts/generate-icons.js",
     "clean": "rimraf dist release out coverage",
     "clean:all": "npm run clean && rimraf node_modules",
     "rebuild": "electron-rebuild -f -w better-sqlite3",
