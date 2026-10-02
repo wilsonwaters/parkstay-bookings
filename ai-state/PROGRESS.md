@@ -6,11 +6,12 @@ _Last updated: 2026-10-02 (orchestrator)_
 Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
 
 ## Currently in flight
-- Board: 30 `ai-planning` issues being filed (board-ops agent).
-- **P1** Test infrastructure: implementation agent dispatched, lane M (`/home/user/wt/lane-m`, branch `lane/m`).
-- **D1** Design language and tokens: implementation agent dispatched, lane R (`/home/user/wt/lane-r`, branch `lane/r`).
+- **P2** (#13) Database foundation: implementation agent dispatched, lane M.
+- **D1** (#29) Design language and tokens: implemented on lane R (commit "feat(design)… (#29)"), rebased onto P1; review agent running.
 
 ## Completed
+- **P1** (#12) Test infrastructure: reviewed (APPROVE, 1 minor + 3 nits fixed by the orchestrator, plus the CSS stub mock), merged.
+- Board: 30 `ai-planning` issues filed, #12–#41 (mapping in streams.md).
 - Kickoff: technical, UI and ParkStay API reviews (`ai-state/research/`).
 - Brief, streams, architecture notes (§1–§12 amendments), 7 master plans, 30 task specs.
 - Dependencies installed: playwright-core 1.56.1, sanitize-html 2.17, mapbox-gl, lucide-react, Figtree and Fraunces.
