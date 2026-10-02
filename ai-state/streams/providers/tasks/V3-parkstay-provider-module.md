@@ -133,12 +133,15 @@ L. It covers several ParkStay concerns (catalogue, availability, queue, release,
   - `WatchService` uses `availability.check`, which gives real prices and names. Partial matching uses the nights of **one** call instead of the per-night loop (`watch.service.ts:249-312`).
   - `SiteSniperService` uses `availability.check` + `holds.create` + `release.computeReleaseAt`, which fixes `toYmd` at `:385-387`. It stores `holdUnitId`.
   - `JobScheduler` warm-up uses `access.ensure` and `holdOpen()`.
-- **Legacy shims** (see the master plan table).
-  - `parkstay:search-campgrounds` and `parkstay:get-all-campgrounds` are served from `catalog.listLocations` with a 10-minute in-memory cache. They return **campgrounds only**, in the `CampgroundSearchResult` shape.
-  - `parkstay:check-availability` is deleted.
-  - `queue:*` and `queue:status-update` are served from the access gate.
+- **Legacy namespaces** (see the master plan table).
+  - `parkstay.searchCampgrounds` and `parkstay.getAllCampgrounds` stay as a shim served from `catalog.listLocations`, with a 10-minute in-memory cache. They return **campgrounds only**, in the `CampgroundSearchResult` shape. V5 retires them.
+  - `parkstay.checkAvailability` is deleted.
+  - P3's transitional `queue` namespace and `queue:status` event are **deleted**. They are replaced by V1's `providers.accessStatus('parkstay')` and `provider:access-status`.
+  - `src/renderer/components/QueueStatus.tsx` gets a minimal edit to read from the replacement API. U5 restyles it later.
 - **Delete:**
   - `services/parkstay/parkstay.service.ts`, `services/queue/queue.service.ts`, `services/sitesniper/release-timing.ts` and `utils/browser-headers.ts`;
+  - P2's `QueueSessionRepository`, which V2 repointed. The gate uses `ctx.state` instead;
+  - the `queue` contract file and its handlers;
   - the ParkStay and queue constants in `app-constants.ts`;
   - in `shared/types/api.types.ts`: `ParkStaySessionToken`, `SearchParams`, `CampsiteAvailability`, `DateAvailability`, `BookingParams`, `CustomerInfo`, `BookingResult`, `AvailabilityCheckResult`, `RebookParams`, `RebookResult` and `QueueSessionInfo`;
   - `site-sniper.types.ts:93-114`;
@@ -190,7 +193,8 @@ L. It covers several ParkStay concerns (catalogue, availability, queue, release,
 - [ ] `grep -rn "auth/login\|/account/\|accounts/logout\|queue/status\|campsite_availability/" src/main` → 0 results. `grep -rn "/bookings/" src/main/providers` → 0 results. The renderer route `/bookings/:id` in `notification.service.ts:192` is legitimate and stays.
 - [ ] `ls src/main/services/parkstay src/main/services/queue src/main/utils/browser-headers.ts` all fail (deleted).
 - [ ] No code path issues more than 4 concurrent ParkStay requests (limiter unit test). `grep -rn "/campsites/" src/main` → 0 results, because names now come from `sites[].name`.
-- [ ] `parkstay:get-all-campgrounds` returns only campgrounds (6 from the fixture; 169 live) and never parks or promo areas. `search_suggest` is no longer called.
+- [ ] `parkstay.getAllCampgrounds` returns only campgrounds (6 from the fixture; 169 live) and never parks or promo areas. `search_suggest` is no longer called.
+- [ ] `grep -rn "queue:status\|window.api.queue" src` → 0 results. The QueueStatus chip in the running app shows the gate state from `providers.accessStatus('parkstay')`, which is `idle` when no snipe uses the queue.
 - [ ] Runtime check against live ParkStay with the dev build:
   - a cancellation snipe on Bungarra for dates about 30 days out polls without HTTP 500 and logs per-unit night states;
   - running a watch shows non-zero prices;
@@ -239,7 +243,8 @@ L. It covers several ParkStay concerns (catalogue, availability, queue, release,
   - `:453-472` (unbounded lookups);
   - `:841-1033`.
 - `src/main/services/queue/queue.service.ts` (all). `src/main/services/sitesniper/{sitesniper.service,release-timing}.ts`.
-- `src/main/services/watch/watch.service.ts`, `src/main/scheduler/job-scheduler.ts:221-316`, `src/main/ipc/handlers/{parkstay,queue}.handlers.ts`.
+- `src/main/services/watch/watch.service.ts`, `src/main/scheduler/job-scheduler.ts:221-316`, `src/main/ipc/handlers/{parkstay,queue}.handlers.ts`, `src/renderer/components/QueueStatus.tsx`.
+- `ai-state/streams/platform/tasks/P3-composition-root-typed-ipc.md`: the transitional `parkstay`/`queue` namespaces and `queue:status`.
 - `src/shared/types/{api,queue,site-sniper}.types.ts`, `src/shared/constants/app-constants.ts`, `src/main/utils/browser-headers.ts`.
 - The DBCA backend (github.com/dbca-wa/parkstay_bs_v2):
   - `parkstay/urls.py:58-90`;

@@ -26,9 +26,7 @@ L. It is architectural: six provider tasks and lanes R and A depend on these int
 
 - **`src/shared/types/provider.types.ts`.** Shared types; no node or electron imports.
   - The §3 types: `ProviderId`, `ProviderManifest`, `ProviderCapabilities`, `LocationKind`, `BookingMode`, `StayQuery`, `NightState`, `NightStatus`, `UnitAvailability`, `LocationAvailability`, `BulkAvailabilityEntry`.
-  - Additions to `ProviderManifest`:
-    - `stayFields?: StayFieldSpec[]`, where `StayFieldSpec = { key, label, kind: 'select'|'number'|'text'|'boolean', options?, min?, max?, pattern?, help?, default?, usedBy: ('watches'|'snipes'|'holds')[] }`;
-    - `assetOrigins: string[]`.
+  - Addition to `ProviderManifest`: `stayFields?: StayFieldSpec[]`, where `StayFieldSpec = { key, label, kind: 'select'|'number'|'text'|'boolean', options?, min?, max?, pattern?, help?, default?, usedBy: ('watches'|'snipes'|'holds')[] }`.
   - Addition to `ProviderCapabilities`: `accessGate: boolean`.
   - Additions to `StayQuery`: `params?: Record<string, string | number | boolean>`.
   - Addition to `LocationAvailability`: `bookingUrl?`.
@@ -84,12 +82,19 @@ L. It is architectural: six provider tasks and lanes R and A depend on these int
     - Uses global `fetch` with `redirect: 'manual'` and follows up to 5 hops itself, capturing `Set-Cookie` on every hop.
     - Has an RFC 6265-style in-memory `CookieJar`: the value is everything after the **first** `=`; `Domain`/`Path`/`Expires`/`Max-Age`/`Secure` are honoured; a domain cookie for `dbca.wa.gov.au` matches its subdomains.
   - `kv-store.ts`: the async `KeyValueStore` (`get<T>`, `set`, `delete`, `list(prefix)`) and `InMemoryKeyValueStore`. V2 adds the SQLite store.
-  - `secrets.ts`: `ScopedSecretVault` (`get`/`set`/`delete`), `scopeSecretVault(vault, providerId)` (key `provider:<id>:<key>`) and `InMemorySecretVault`.
+  - `secrets.ts`: `ScopedSecretVault` (`get`/`set`/`delete`) and `createScopedSecretVault({ vault, store })`. This is a thin layer over P5's `SecretVault.encrypt`/`decrypt` (P5 scope note). It stores only ciphertext in the provider's `KeyValueStore` under `secret:<key>`, so values become persistent once V2 swaps in the SQLite store. Also `FakeSecretVault` for tests (a reversible fake cipher).
   - `browser.ts`: the `BrowserAutomation` interface (`isAvailable()`, `withPage(fn, opts)`, `close()`) and `UnavailableBrowserAutomation`, which throws `BrowserUnavailableError`. V7 replaces it.
   - `errors.ts`:
     - the base `ProviderError { providerId, code, retryable, cause? }`;
     - subclasses `ProviderCapabilityError { capability }`, `UnknownProviderError`, `ProviderRegistrationError`, `ProviderHttpError { status, url }`, `ProviderTimeoutError`, `ProviderParseError`, `ProviderAuthRequiredError`, `AccessGateError { state }`, `BrowserUnavailableError`;
-    - `toApiError(err)`, which maps any of these to `{ code, message }` for P3's `handle.ts`.
+    - `toApiError(err)`, which maps any of these to `{ code, message }` for P3's `handle.ts`. V1 extends P3's `ApiErrorCode` with:
+      - `CAPABILITY` (the platform master plan names it);
+      - `UNKNOWN_PROVIDER`;
+      - `PROVIDER_ERROR` (HTTP, timeout and parse failures, with `retryable` kept in the log);
+      - `ACCESS_GATE`;
+      - `AUTH_REQUIRED`.
+
+      V6 adds `ACCOUNT_BUSY` and `HOLD_EXPIRED`.
   - `concurrency.ts`: `createLimiter(n)` and `mapWithConcurrency(items, n, fn)`.
   - `index.ts`: the barrel.
 - **`src/main/providers/registry.ts`.** `ProviderRegistry` with:
@@ -98,7 +103,6 @@ L. It is architectural: six provider tasks and lanes R and A depend on these int
   - `list()`: manifests sorted by `name`;
   - `withCapability(cap)`;
   - `require(id, cap)`, which throws `ProviderCapabilityError`;
-  - `assetOrigins()`;
   - `disposeAll()`.
 
   It validates every manifest with zod and enforces these consistency rules:
@@ -114,7 +118,7 @@ L. It is architectural: six provider tasks and lanes R and A depend on these int
 - **`src/main/providers/parkstay/index.ts`.** Manifest only:
   - `id 'parkstay'`, `name 'ParkStay WA'`, `shortName 'ParkStay'`;
   - `website https://parkstay.dbca.wa.gov.au`, `integration 'api'`;
-  - `timezone 'Australia/Perth'`, `assetOrigins ['https://parkstay.dbca.wa.gov.au']`;
+  - `timezone 'Australia/Perth'`;
   - `locationKinds`: the V3 list;
   - `brand { color, monogram: 'PS' }`;
   - every capability `false` and `account: 'none'`. V3 and V6 turn them on as the modules land.
@@ -130,13 +134,12 @@ L. It is architectural: six provider tasks and lanes R and A depend on these int
 - **Container (P3 `app/container.ts`).** One registry. Each provider context gets:
   - `ElectronSessionHttpClient`;
   - `InMemoryKeyValueStore`, until V2 swaps in SQLite;
-  - `scopeSecretVault` over P5's vault;
+  - `createScopedSecretVault` over P5's vault and the provider's KV store;
   - a child logger `{ provider }`;
   - `clock`;
   - `UnavailableBrowserAutomation`.
 
   `registry.disposeAll()` runs on `before-quit`.
-- **CSP.** P4's CSP builder appends `registry.assetOrigins()` to `img-src`.
 - **`tests/utils/fake-provider.ts`.** `createFakeProvider({ id = 'fake', capabilities?, locations?, availability?, account? })`.
   - It implements every module in memory: a fake access gate with scripted states, a release policy and holds.
   - Knobs: `failNext(module, error)`, `delayMs`, AbortSignal handling, and a `calls` log.
@@ -184,7 +187,7 @@ L. It is architectural: six provider tasks and lanes R and A depend on these int
   - `parseLocationKey('nokey')` throws.
 - [ ] `providers.list()` over IPC (handler test with P3's harness) returns one manifest, `id: 'parkstay'`, which passes the manifest zod schema. `providers.accessStatus('parkstay')` returns `{ state: 'unsupported' }`. `providers.accessStatus('nope')` returns `success: false` with code `UNKNOWN_PROVIDER`.
 - [ ] `describeProviderContract` passes for FakeProvider and for a two-provider registry (`fake`, `fake2`).
-- [ ] The CSP builder test shows `img-src` containing `https://parkstay.dbca.wa.gov.au`.
+- [ ] Scoped-vault test: `secrets.set('token', 'abc')` on provider `fake` writes a `secret:token` entry to the KV store, and that entry is not the plaintext. `get` returns `'abc'`. Provider `fake2` cannot read it.
 - [ ] The app starts (`npm run build && xvfb-run -a npx electron . --no-sandbox`). DevTools `await window.api.providers.list()` returns the ParkStay manifest.
 - [ ] `npm run lint && npm run format:check && npm run type-check && npm test` passes.
 

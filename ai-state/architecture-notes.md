@@ -279,7 +279,7 @@ interface ProviderContext {
 13. **Released v1.2.0 is schema v5.** Migration tests start from both v5 (v1.2.0) and v6 (main) SQL-dump fixtures. `*.db` files are gitignored.
 14. **Test-only env hooks** (`WA_STAY_USER_DATA_DIR`, `WA_STAY_LEGACY_DATA_DIR`, `WA_STAY_E2E_FIXTURES_DIR`, `WA_STAY_E2E_ALLOW_HOSTS`) are honoured only when `!app.isPackaged`. Test-support code lives in `src/main/testing/`.
 15. **`CatalogQuery`**: `{ text?, providerIds?, kinds?, regions?, amenities?, bookingModes?, bbox?: [w,s,e,n], limit? (default 5000 = all), offset? }`. Map-area ("search as I move the map") filtering may be done in the renderer over the full result set while catalogues stay small.
-16. **`UnitSummary`**: `{ id, name, type?, maxPeople?, equipment?: string[], amenities?: string[] }`.
+16. **`UnitSummary`**: `{ unitId, unitName, unitType?, maxPeople?, equipment?: string[], amenities?: string[] }`. It matches `UnitAvailability` naming (V1 is canonical). `CatalogQuery` uses `text`, not `q`.
 17. **`LocationAvailability.bookingUrl?`**: a stay-specific deep link, owned by V3 and V5. E2 prefers it over the date-less `LocationDetail.bookingUrl`.
 18. **`StayFieldDescriptor.appliesTo` is canonical**. Any spec that says `usedBy` means `appliesTo`.
 19. **Watch create route is `/watches/new`** with the §12.10 prefill query (`provider` + `location` = externalId, not the composite key). U1/U2 specs that say `/watches/create` or `?location=<key>` are superseded. D3 keeps a redirect from `/watches/create` → `/watches/new` that preserves the query string.
@@ -298,3 +298,9 @@ interface ProviderContext {
     Never copy `Local State` from another profile.
 24. **Notifier vocabulary reaches the DB in v7**: `notification_providers` → `notifiers`, `provider_channel` → `notifier_channel`. Agreed.
 25. **Production CSP is a build-time meta tag** (Vite plugin using a pure builder in `src/main/app/csp.ts`); dev uses a header. `img-src https:` is allowed broadly.
+26. **Migration numbering:** v7 = P2 (integrity), v8 = V2 (provider-aware), v9 = V6 (retire legacy credentials), v10 = P7 (drop `job_logs`, if it is dropped).
+27. **ParkStay facts that change the design (V3):**
+    - When the DBCA queue is active, `/api/` returns a 200 HTML redirect instead of JSON. Detect it and treat it as the access gate.
+    - User agents containing axios, python, curl, java or httpclient are blocked, so always send a Chrome UA.
+    - The `sitequeuesession` cookie lives on `dbca.wa.gov.au` (session cookie store).
+    - Campsite names come in the availability response, so the per-site name lookups are removed.

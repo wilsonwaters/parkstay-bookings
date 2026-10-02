@@ -64,6 +64,11 @@ L. This is a cross-cutting schema change with table rebuilds, and its migration 
 - **`provider_accounts`** is created per §5 with `status` default `'unknown'`.
   - It gets one `'parkstay'` row from the first `users` row (`ORDER BY id LIMIT 1`): `email`, `display_name = NULLIF(trim(first_name||' '||last_name),'')` and `last_signed_in_at` NULL.
   - The `users` table stays as the local profile (name, phone). P5 owns its encrypted columns.
+- **`users` rebuild (credential-independent profile; platform open question 1).**
+  - `email`, `encrypted_password`, `encryption_key`, `encryption_iv` and `encryption_auth_tag` become nullable. Their values are kept for P5's `migrateLegacySecrets`. V6 drops the credential columns later.
+  - If the table is empty after v8, including on a fresh install, insert the single local profile row (`id 1`, every credential column NULL). After this, P3's `requireUserId()` never returns `NO_PROFILE`.
+  - Recreate `idx_users_email` and `update_users_timestamp`.
+  - `AuthService` and `UserRepository` must tolerate a NULL email (mechanical edit).
 - **`provider_state`** is created per §5.
   - The singleton `queue_session` row (`connection.ts:297-307`) becomes `('parkstay', 'queue.session', json_object('sessionKey', session_key, 'status', status, 'position', position, 'estimatedWaitSeconds', estimated_wait_seconds, 'expirySeconds', expiry_seconds, 'expiresAt', expires_at, 'createdAt', created_at))`.
   - Then `DROP TABLE queue_session`. V3 reads this exact shape.
@@ -82,7 +87,8 @@ L. This is a cross-cutting schema change with table rebuilds, and its migration 
   - `NotificationRepository`.
 
   These are new:
-  - `ProviderStateRepository` and `SqliteKeyValueStore`, which implements V1's `KeyValueStore`. The container swaps it into `ProviderContext.state`.
+  - `ProviderStateRepository` and `SqliteKeyValueStore`, which implements V1's `KeyValueStore`. The container swaps it into `ProviderContext.state`, which also makes V1's scoped secrets persistent.
+  - P2's `QueueSessionRepository` is repointed to `provider_state` `('parkstay', 'queue.session')`, using the agreed JSON shape, so the existing queue service keeps working until V3 deletes the repository.
   - `ProviderAccountRepository`: `get`, `list` and `upsert`.
   - `LocationRepository`. `upsertMany(providerId, summaries, fetchedAt)` runs in one transaction and deletes that provider's rows not in the set. It also has `get(providerId, externalId)`, `setDetail`/`getDetail` and `countByProvider`. Search is V5's job.
 - **Mechanical consumer edits:**
@@ -90,10 +96,14 @@ L. This is a cross-cutting schema change with table rebuilds, and its migration 
   - ParkStay calls are unchanged, mapping `location.externalId` to the campground id;
   - every new row is written with `providerId: 'parkstay'`;
   - there are no visual changes.
-- **Fixture and tests.** `tests/fixtures/db/v6-*.sql` is P2's v6 SQL dump; extend it, or create it if P2 has not. Remember `.gitignore` ignores `*.db`. Seed rows that look real:
+- **Fixtures and tests.** Use P2's two SQL-dump fixtures through `loadFixture(name)`: v5 (the released v1.2.0) and `v6-branch.sql`. `*.db` is gitignored. Real upgrades run v5 → v7 → v8.
+  - Do not edit P2's dumps.
+  - After `loadFixture`, and before migrating, the test inserts the extra rows below at the fixture's version, in the v5/v6 column layout.
+
+  Extra rows that look real:
   - a user with encrypted creds;
   - 3 watches: one at UTC midnight, one at AWST midnight (`T16:00:00.000Z`), one inactive with `preferred_sites` and `site_type`;
-  - 2 snipes: `daily_rollover`, and `scheduled` with `queue_enabled=1` and a held pk;
+  - 2 snipes, in the v6 fixture only (`site_snipes` arrives in v6): `daily_rollover`, and `scheduled` with `queue_enabled=1` and a held pk;
   - 2 bookings;
   - notifications with every `related_type`, including legacy `stq`;
   - a `queue_session` row;
@@ -105,12 +115,12 @@ L. This is a cross-cutting schema change with table rebuilds, and its migration 
 - Using provider modules or the registry in services (V3, V4). Moving services to `core/` (V4).
 - Catalogue search, FTS query building and sync (V5). Account sign-in (V6).
 - Re-encrypting `users` secrets or `notification_providers` config (P5).
-- The v5 (released v1.2.0) fixture and the legacy-folder copy (B3). V2 must not block it.
+- Creating or editing the fixtures (P2 owns the v5 and v6 dumps). The legacy-folder copy (B3).
 - Any renderer redesign (U1–U3).
 
 ## Completion Criteria
 
-- [ ] From the v6 fixture, `runMigrations` reaches version 8 and passes these checks:
+- [ ] From both the v5 and v6 fixtures, `runMigrations` reaches version 8 and passes these checks:
   - `PRAGMA foreign_key_check` returns 0 rows and `PRAGMA integrity_check` returns `ok`;
   - running it a second time is a no-op and the version stays 8.
 - [ ] Watch rows, after migration:
@@ -132,7 +142,9 @@ L. This is a cross-cutting schema change with table rebuilds, and its migration 
   - notifications with `related_type` `watch`/`snipe`/`booking` have `provider_id = 'parkstay'`, and `info` rows have NULL.
 - [ ] `locations` and FTS: `LocationRepository.upsertMany('fake', [3 items])` followed by `SELECT … FROM locations_fts WHERE locations_fts MATCH 'bung*'` finds the inserted row. Re-upserting 2 items deletes the third, and FTS no longer finds it.
 - [ ] A migration failure rolls back. A test injects a failing statement mid-v8; the DB stays at v7 and the original `watches` rows are intact.
-- [ ] A fresh install (an empty DB through v1–v8) produces the same `sqlite_master` table and column set as the migrated v6 fixture. This is a schema-snapshot comparison test.
+- [ ] A fresh install (an empty DB through v1–v8) produces the same normalised `sqlite_master` as the migrated v5 and v6 fixtures. This is a schema-snapshot comparison test, matching P2's pattern.
+- [ ] Profile row: a fresh DB at v8 has exactly one `users` row (`id 1`, `email` NULL), so `requireUserId()` returns 1. The fixture's existing user keeps its id, email and encrypted columns byte-identical, and no second row is added.
+- [ ] P2's `QueueSessionRepository` reads back the fixture `queue_session` values from `provider_state` after migration.
 - [ ] `grep -rn "\${SnipeStatus\|\${SnipeReleaseMode" src/main/database` → 0 results.
 - [ ] The repositories round-trip the new domain types, with dates as `'YYYY-MM-DD'` strings, `stayParams` as an object and `unitIds` as an array. The contract zod schemas reject `arrival: '2026-07-19T00:00:00.000Z'`.
 - [ ] The existing app still works on the migrated DB:
@@ -147,7 +159,7 @@ L. This is a cross-cutting schema change with table rebuilds, and its migration 
   - An empty or NULL date stays as is (NOT NULL columns cannot be NULL in v6, but defend anyway).
   - A non-date string (`'garbage'`) is copied unchanged and counted in a migration warning log line. Repositories surface such rows with `stay.arrival` invalid, and the services mark them in error rather than crashing.
 - **`users` table:**
-  - 0 users: no `provider_accounts` row is created;
+  - 0 users: no `provider_accounts` row is created; the empty local profile row is inserted only after `provider_accounts` has been populated;
   - 2+ users: only the first is migrated and a warning is logged;
   - a user with an empty name gets `display_name` NULL.
 - **`queue_session` table:**
@@ -170,7 +182,7 @@ L. This is a cross-cutting schema change with table rebuilds, and its migration 
   - repository mapping for each table (~8);
   - `SqliteKeyValueStore` (~3).
 - **Component:** none.
-- **Integration (~10):** `tests/integration/migration-v8.test.ts` materialises the v6 SQL fixture into a temp file DB in WAL mode, then runs:
+- **Integration (~12):** `tests/integration/migration-v8.test.ts` loads the v5 and v6 fixtures with P2's `loadFixture` into temp file DBs in WAL mode, seeds the extra rows, then runs:
   - full upgrade assertions per table;
   - the idempotency rerun;
   - the rollback-on-failure test;
@@ -182,7 +194,7 @@ L. This is a cross-cutting schema change with table rebuilds, and its migration 
 
 - `ai-state/architecture-notes.md` §2, §5 (binding). `ai-state/research/tech-review.md` findings #1, #12, #14 and the Entities table.
 - `ai-state/streams/providers/master-plan.md`: the v8 rows of "Contract additions".
-- `ai-state/streams/brand-migration/tasks/B3-legacy-install-migration.md`: the v5/v6 fixture expectations.
+- `ai-state/streams/platform/tasks/P2-database-foundation.md`: `applyMigration`, `loadFixture`, fixture rows, `QueueSessionRepository`. Also `ai-state/streams/platform/master-plan.md` (open question 1, the V2 notes) and `ai-state/streams/brand-migration/tasks/B3-legacy-install-migration.md` (v5/v6 expectations).
 - `src/main/database/connection.ts:21-202` (v1 schema), `:210-423` (migrations v2–v6) and P2's v7 and transaction runner.
 - `src/main/database/repositories/{watch,site-sniper,BookingRepository,notification,base.repository,BaseRepository}.ts`, as left by P2.
 - `src/shared/types/{watch,site-sniper,booking,notification,common}.types.ts` and P3's `shared/contracts/{watches,snipes,bookings}`.

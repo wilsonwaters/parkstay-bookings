@@ -1,6 +1,6 @@
 # V6 — Provider accounts, in-app sign-in and payment hand-off
 
-**Stream:** providers · **Depends on:** V1, V3, V4, P5
+**Stream:** providers · **Depends on:** V1, V3, V4, P5 (soft: D3, which removes the login gate)
 
 ## Description
 
@@ -89,12 +89,15 @@ L. It covers security-sensitive windows, session handling, a new core service, I
     If the window is closed without reaching that page, nothing changes.
 - **`src/main/ipc/handlers/accounts.handlers.ts`.** Implements `accounts.list`, `status`, `signIn`, `signOut` and `openSignInLink` with V1's zod schemas. The preload exposes `accounts`, and `account:updated` is forwarded.
 - **Partition user agent.** The sign-in window inherits the partition user agent that V1 set, which is the Chrome UA. ParkStay rejects library user agents (`queue_middleware.py:16-28`).
+- **Retire the legacy ParkStay "credentials".** They were an email plus a password that ParkStay never uses (tech-review #9). The platform master plan has V6 replace the transitional `auth` namespace, and P5 lists dropping the password columns under "V2/V6".
+  - **Migration v9** (the next free version in `connection.ts`) rebuilds `users`. It drops `encrypted_password`, `encryption_key`, `encryption_iv` and `encryption_auth_tag`, and keeps `id`, `email`, the names, `phone` and the timestamps. It uses P2's `applyMigration` with foreign keys off outside the transaction. P7's planned `job_logs` drop moves to the version after this one.
+  - **Delete** `AuthService`, the credential methods of `UserRepository`, the `auth` contract file and its handlers, and the `users` step in P5's `migrateLegacySecrets`, with its tests.
+  - **Minimal renderer edits.** In `pages/Settings.tsx`, the credentials form is replaced by a "Connect ParkStay" button that calls `accounts.signIn('parkstay')` and shows the status. U4 restyles it later. Delete `pages/Login.tsx` once D3 has removed the gate. Because logout called `auth.deleteCredentials`, which cascade-deleted every row (platform master plan "Data loss on logout"), that path disappears with it.
 
 ## Non-goals
 
 - The Settings → Accounts UI, the connect prompt and the paste-link field (U4 and U2).
 - Gmail OTP or magic-link auto-retrieval. `GmailOTPService` stays unwired (master plan, Out of scope).
-- Deleting `AuthService` and the `auth:*` handlers. They are superseded but still used by the legacy UI. U4 removes their consumers, and U4 or P7 deletes them.
 - Automating any payment step. Importing existing ParkStay bookings.
 - Browser-automation sign-in for non-API providers (V7 notes cover the pattern).
 
@@ -125,6 +128,10 @@ L. It covers security-sensitive windows, session handling, a new core service, I
   - on an expired hold it returns `HOLD_EXPIRED`;
   - simulated navigation to `/success/` sets the snipe to `BOOKED` with `bookedReference 'PB' + holdReference`, creates one booking with `provider_id 'parkstay'`, and emits `snipe:updated` and `booking:updated`.
 - [ ] `grep -rn "preload" src/main/app/provider-windows.ts` → 0 matches, apart from comments.
+- [ ] Legacy credentials are gone:
+  - from the v5 and v6 fixtures, migration v9 leaves `users` with no `encrypt*` columns, the same `id`, `email` and names, and `PRAGMA foreign_key_check` empty;
+  - `grep -rn "AuthService\|window.api.auth\|auth:store" src` → 0 results;
+  - Settings shows "Connect ParkStay", and clicking it calls `accounts.signIn('parkstay')`.
 - [ ] Runtime check with the dev build. Ask the stakeholder to do the real sign-in:
   - `await window.api.accounts.signIn('parkstay')` opens the ParkStay sign-in page in a child window;
   - after signing in it resolves as signed-in, and `accounts.status('parkstay')` stays signed-in after an app restart;
@@ -143,6 +150,7 @@ L. It covers security-sensitive windows, session handling, a new core service, I
   - the payment window is opened twice: focus the existing one;
   - the hold expires while the window is open: the ParkStay page shows its own message, and the snipe expires through V4's timers;
   - a blocked third-party top-level host during payment (PQ5) is logged with its host, so the allow-list can be extended.
+- **Profile row.** No code path deletes the `users` profile row any more. Sign-out clears only the partition, so watches, snipes and bookings survive (they `ON DELETE CASCADE` from `users`).
 - **Account data:**
   - the account email changes between sessions: the row is updated from `/api/profile`;
   - the `users` row email is only a hint and is never treated as signed-in.
@@ -169,12 +177,13 @@ L. It covers security-sensitive windows, session handling, a new core service, I
 - `ai-state/streams/providers/master-plan.md` (PQ1, PQ2, PQ5). `ai-state/streams/provider-ux/tasks/U2-site-sniper-provider-first.md` (the connect prompt and `openPayment` usage).
 - `docs/parkstay-api/AUTHENTICATION_FLOW.md:60-130` (hosts and B2C policy; the flow details are unverified).
 - `src/main/providers/sdk/{provider,http-electron}.ts` (V1). `src/main/providers/parkstay/{index,holds}.ts` (V3). `src/main/core/snipes/*` and `src/main/core/bookings/*` (V4).
-- `src/main/app/main-window.ts` (P4 guards). The SecretVault from P5 (no secrets are stored here, but its provider namespace is set up).
+- `src/main/app/main-window.ts` (P4 guards). `src/main/security/legacy-migration.ts` (P5, the `users` step to delete). `ai-state/streams/platform/master-plan.md` ("Data loss on logout", open question 6) and `ai-state/streams/platform/tasks/P5-secret-vault.md` (Non-goals).
+- `src/main/services/auth/AuthService.ts`, `src/main/ipc/handlers/auth.handlers.ts`, `src/renderer/pages/{Settings,Login}.tsx`.
 - `src/main/database/repositories/provider-account.repository.ts` (V2).
 - The DBCA backend: `parkstay/urls.py:58,107,134,137`, `parkstay/api.py:4720-4731`, `parkstay/serialisers.py:794-807`, `parkstay/views.py:877-917` (success view) and `parkstay/models.py:1643-1645`.
 
 ## Notes
 
-- **Why no stored secret.** The session lives in the partition's cookie store. Electron persists it under `userData/Partitions/provider-parkstay`. Nothing ParkStay-specific needs the SecretVault. The legacy `users.encrypted_password` is a ParkStay "password" that never worked, and P5 decides whether to purge it.
+- **Why no stored secret.** The session lives in the partition's cookie store. Electron persists it under `userData/Partitions/provider-parkstay`. Nothing ParkStay-specific needs the SecretVault. The legacy `users.encrypted_password` is a ParkStay "password" that never worked, so v9 drops it instead of migrating it.
 - **Why the payment hand-off is now correct.** `create_booking` stores `ps_booking` in the Django session (`api.py:3373-3376`), and `/booking/` reads it. Placing the hold through `ses.fetch` on the same partition means the payment window sees the hold.
 - **Commit.** `feat(accounts): in-app provider sign-in and payment hand-off (#<issue>)`.

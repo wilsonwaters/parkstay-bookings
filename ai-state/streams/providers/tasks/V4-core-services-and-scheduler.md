@@ -80,7 +80,7 @@ L. It spans three services, the scheduler and the contracts, and the timing-corr
 - [ ] `ls src/main/services/{watch,sitesniper,booking}` fails (moved). `grep -rn "providers/parkstay" src/main/core src/main/scheduler` → 0 results.
 - [ ] With a registry holding only FakeProvider (`fake`) and FakeProvider without `watches`:
   - `watches.create({ providerId: 'fake', … })` succeeds;
-  - `watches.create` for a provider without the capability returns `success: false` with code `PROVIDER_CAPABILITY`;
+  - `watches.create` for a provider without the capability returns `success: false` with code `CAPABILITY`;
   - `snipes.create({ releaseMode: 'daily_rollover' })` on a provider whose `release.supports` returns false is rejected.
 - [ ] Watch execution on FakeProvider:
   - a unit with 2 available nights at $30 and `maxPrice: 25` is filtered out;
@@ -98,7 +98,7 @@ L. It spans three services, the scheduler and the contracts, and the timing-corr
 - [ ] Auto-hold:
   - FakeProvider with `holds`, signed in: a full match places exactly one hold and deactivates the watch;
   - `autoHold: true` on a provider without holds is rejected at create.
-- [ ] `bookings.import('parkstay', 'PB123')` returns code `PROVIDER_CAPABILITY`. Booking DTOs include `manageUrl`.
+- [ ] `bookings.import('parkstay', 'PB123')` returns code `CAPABILITY`. Booking DTOs include `manageUrl`.
 - [ ] `grep -rn "setInterval" src/main/scheduler` → 0 results.
 - [ ] Runtime check: run the app with one ParkStay watch (15 min) and one cancellation snipe for about 10 minutes. The log shows no overlapping `snipe tick` entries, and the watch's `next_check_at` advances.
 - [ ] `npm run lint && npm run format:check && npm run type-check && npm test` passes.

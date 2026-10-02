@@ -63,7 +63,9 @@ M. One service, its handlers and the repository search: a single concern across 
   - Errors map through `toApiError`.
   - The preload exposes the `catalog` namespace.
   - `catalog:updated` is forwarded through the events bus.
-- **Legacy shim.** `parkstay:search-campgrounds` and `parkstay:get-all-campgrounds` move from V3's in-memory cache to `catalogService.search({ providerIds: ['parkstay'], text, limit: 5000 })`. They keep the `CampgroundSearchResult` shape (`id`, `name`, `parkName`, `region`, `coordinates [lng, lat]`), so they work offline.
+- **Retire the transitional `parkstay` namespace** (V3 left it as a shim).
+  - `WatchForm.tsx:103` and `SiteSniperForm.tsx:155` get a minimal edit: they call `window.api.catalog.search({ providerIds: ['parkstay'], text, limit: 5000 })` and map `items` to the fields they already render. There is no redesign; U1 and U2 rebuild these forms.
+  - Then delete the `parkstay` contract file, `parkstay.handlers.ts` and the `CampgroundSearchResult` type.
 - **Container wiring.** The container builds the service and calls `start()` after the window is created. `stop()` runs on `before-quit` and aborts in-flight syncs.
 
 ## Non-goals
@@ -102,6 +104,7 @@ M. One service, its handlers and the repository search: a single concern across 
   - a second identical call within 5 min makes 0 provider calls.
 - [ ] Performance: `search({ text: 'bay' })` over 5,000 synthetic rows completes in under 200 ms in the Jest node environment.
 - [ ] IPC: all 6 `catalog.*` handlers reject invalid payloads, such as `limit: 0` or an invalid stay, with code `VALIDATION`. They return `APIResponse` shapes that match the contract types.
+- [ ] `grep -rn "api.parkstay\|parkstay:search\|CampgroundSearchResult" src` → 0 results. The existing Create Watch and Create Snipe forms still list ParkStay campgrounds, now from `catalog.search`.
 - [ ] Runtime, dev build with live ParkStay:
   - first launch syncs 169 locations;
   - `await window.api.catalog.search({ limit: 5000 })` returns `total: 169`;
@@ -139,14 +142,14 @@ M. One service, its handlers and the repository search: a single concern across 
   - detail cache and stale fallback;
   - availability fan-out;
   - the IPC handlers through P3's harness;
-  - the legacy shim.
+  - the retired `parkstay` namespace (`grep -rn "api.parkstay" src` → 0).
 
 ## Context Files to Read First
 
 - `ai-state/architecture-notes.md` §3–§5. `ai-state/streams/explore/master-plan.md` (Integration points; EQ1, EQ2, EQ3, EQ7). `ai-state/streams/providers/master-plan.md`.
 - `src/shared/types/catalog.types.ts` and `src/shared/contracts/catalog.ts` (V1). `src/main/database/repositories/location.repository.ts` (V2).
 - `src/main/providers/parkstay/{catalog,availability}.ts`, `src/main/providers/sdk/html.ts` and `tests/fixtures/parkstay/*` (V3).
-- `src/main/ipc/handlers/parkstay.handlers.ts` (the shim, as left by V3). `src/main/app/container.ts` (P3).
+- `src/main/ipc/handlers/parkstay.handlers.ts` (the shim, as left by V3), `src/renderer/components/forms/{WatchForm,SiteSniperForm}.tsx` and `src/main/app/container.ts` (P3).
 - `ai-state/research/parkstay-api-review.md`: the "Map data" and "Risks" sections.
 
 ## Notes

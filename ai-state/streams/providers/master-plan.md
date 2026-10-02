@@ -23,16 +23,16 @@ The stream delivers brief scope items 2 and 3, part of 8, success criteria 6 and
 | ID | Task | Size | Depends on | Status |
 |---|---|---|---|---|
 | V1 | [Provider SDK and contract](tasks/V1-provider-sdk-and-contract.md): shared provider/catalog types, `providers/sdk/*` (provider, context, HttpClient with Electron and Node implementations, KV store, scoped vault, errors, limiter), registry, built-ins index with a manifest-only ParkStay, `providers`/`catalog`/`accounts` contracts, `providers.*` handlers, FakeProvider, contract test suite | L | P3 | ⬜ |
-| V2 | [Provider-aware data model](tasks/V2-provider-aware-data-model.md): migration v8 (rebuilds of watches, site_snipes and bookings, `provider_accounts`, `provider_state`, `locations` + FTS5, `YYYY-MM-DD` calendar dates), provider-aware domain types and contracts, repositories, SQLite KV store, migration tests from the v6 fixture | L | P2, V1 | ⬜ |
+| V2 | [Provider-aware data model](tasks/V2-provider-aware-data-model.md): migration v8 (rebuilds of watches, site_snipes and bookings, `provider_accounts`, `provider_state`, `locations` + FTS5, `YYYY-MM-DD` calendar dates), provider-aware domain types and contracts, repositories, SQLite KV store, a seeded local profile row, migration tests from the v5 and v6 fixtures | L | P2, V1 | ⬜ |
 | V3 | [ParkStay provider module](tasks/V3-parkstay-provider-module.md): client, catalogue, detail, availability, access gate (queue), release policy, holds and links in `providers/parkstay/`; existing services rewired onto it; fabricated code deleted; Site Sniper date/tuple fixes; real prices; trimmed live fixtures | L | V1, V2 | ⬜ |
 | V4 | [Provider-agnostic core services and scheduler correctness](tasks/V4-core-services-and-scheduler.md): `core/watches`, `core/snipes`, `core/bookings` through the registry; release and access-gate semantics from the provider; `providerId` on notifications; auto-hold; scheduler fixes (in-flight guard, chained timers, abort, intervals, `next_check_at`, resume re-arm) | L | V2, V3 | ⬜ |
 | V5 | [Location catalogue service](tasks/V5-location-catalogue-service.md): `core/catalog/LocationCatalogService` (24 h sync, offline cache, per-provider isolation), FTS search and facets, cached detail, cross-provider bulk availability, `catalog.*` IPC and `catalog:updated` | M | V2, V3 | ⬜ |
-| V6 | [Provider accounts, in-app sign-in and payment hand-off](tasks/V6-provider-accounts-and-sign-in.md): `core/accounts/ProviderAccountService`, ParkStay `auth.ts` (`/ssologin`, `/api/profile`), sign-in and payment windows on the provider partition, sign-out, `accounts.*` IPC, `snipes.openPayment`, payment success marks the snipe booked | L | V1, V3, V4, P5 | ⬜ |
+| V6 | [Provider accounts, in-app sign-in and payment hand-off](tasks/V6-provider-accounts-and-sign-in.md): `core/accounts/ProviderAccountService`, ParkStay `auth.ts` (`/ssologin`, `/api/profile`), sign-in and payment windows on the provider partition, sign-out, `accounts.*` IPC, `snipes.openPayment`, payment success marks the snipe booked, legacy credentials retired (`auth` namespace, migration v9) | L | V1, V3, V4, P5 (soft D3) | ⬜ |
 | V7 | [Browser automation runtime](tasks/V7-browser-automation-runtime.md): `providers/sdk/browser-automation.ts` on `playwright-core` (lazy, Edge/Chrome channel detection, persistent profile, headless/headed, timeouts, shutdown), `ProviderContext.browser`, a browser-driven FakeProvider, developer notes | M | V1 | ⬜ |
 
 **Recommended Lane M order:** V1 → V2 → V3 → V7 → V4 → V5 → V6. V7 can go anywhere after V1. streams.md runs `{V2, V3, V7}` in parallel. This plan runs V3 after V2 because V3 rewires the existing services onto V2's types, so parallel work would mean doing those edits twice.
 
-**Changes to streams.md dependencies.** V3 adds V2. V6 adds V4, because `snipes.openPayment` and marking a snipe booked live in V4's `core/snipes`. Lane order already satisfies both, so the critical path does not change.
+**Changes to streams.md dependencies.** V3 adds V2. V6 adds V4, because `snipes.openPayment` and marking a snipe booked live in V4's `core/snipes`. V6 also soft-depends on D3, because it deletes `Login.tsx` only after D3 removes the login gate. Lane order already satisfies all three, so the critical path does not change.
 
 ## Contract additions beyond architecture-notes §3–§5
 
@@ -44,7 +44,6 @@ Every addition is additive and is listed here so reviewers can see each one.
 | `UnitSummary = { unitId, unitName, unitType?, maxPeople?, maxVehicles?, equipment: string[], description? }` | V1 | Same naming as §3 `UnitAvailability`. Answers explore EQ4. E2 should read `unitId`/`unitName`/`unitType`. |
 | `ProviderManifest.stayFields?: StayFieldSpec[]`, plus `StayQuery.params?` to carry their values | V1 | provider-ux OQ1. Gear type, vehicles and postcode get no hard-coding in core or renderer. |
 | `ProviderCapabilities.accessGate: boolean`. `providers.accessStatus` returns `{ state: 'unsupported' }` when a provider has no gate. | V1 | provider-ux OQ2 |
-| `ProviderManifest.assetOrigins: string[]` | V1 | P4's CSP `img-src` comes from the registry, so adding a provider needs no CSP edit |
 | `links.manageBooking?(reference)` and the booking DTO `manageUrl` | V1, V4 | provider-ux OQ4 |
 | `LocationAvailability.bookingUrl?`, filled from `links.booking(externalId, stay)` | V1, V3 | explore EQ1 |
 | `catalog.search` result `facets?`. `catalog.availability` returns `{ entries, errors }` with per-provider errors. | V1, V5 | E1 filter chips; E3 per-provider error isolation (explore EQ7) |
@@ -71,21 +70,24 @@ Every addition is additive and is listed here so reviewers can see each one.
    - **P1:** main-process tests run in the Jest `node` project.
    - **P2:**
      - the single `BaseRepository` style (injected `Database`, parameterised SQL);
-     - the transactional migration runner, which must let v8 run with `foreign_keys=OFF` set *outside* the transaction;
-     - the v6 SQL fixture under `tests/fixtures/db/` (`.gitignore` ignores `*.db`).
+     - `applyMigration`, which sets `foreign_keys=OFF` *outside* the transaction (v8 and V6's v9 rebuild tables);
+     - the v5 (released v1.2.0) and v6 SQL-dump fixtures through `loadFixture` (`.gitignore` ignores `*.db`);
+     - `QueueSessionRepository`, which V2 repoints to `provider_state` and V3 deletes.
    - **P3:**
      - `app/container.ts` builds the registry and core services;
      - `ipc/handle.ts` and the `shared/contracts/` pattern;
      - the events bus with unsubscribe;
-     - the typed preload.
+     - the typed preload;
+     - `requireUserId()`: V2's v8 seeds the local profile row, so `NO_PROFILE` stops happening (platform open question 1);
+     - `ApiErrorCode`: V1 adds `CAPABILITY`, `UNKNOWN_PROVIDER`, `PROVIDER_ERROR`, `ACCESS_GATE` and `AUTH_REQUIRED`; V6 adds `ACCOUNT_BUSY` and `HOLD_EXPIRED`.
    - **P4:**
-     - the CSP builder takes `registry.assetOrigins()`;
+     - its CSP already allows `img-src https:` (platform open question 5), so provider images need no CSP change;
      - main-window navigation guards must not apply to provider windows;
      - child loggers;
      - a crash policy that does not kill snipes.
-   - **P5:** `SecretVault` backs `ScopedSecretVault`.
+   - **P5:** V1's `ScopedSecretVault` is a namespaced layer over `SecretVault.encrypt`/`decrypt`, stored as ciphertext in `provider_state`. V6's v9 drops the `users` password columns and removes the `users` step from `migrateLegacySecrets`, since the ParkStay "password" was never used.
    - **P6:** provider windows never get the preload.
-   - **P7:** removes any legacy shim left over (table below).
+   - **P7:** none of the transitional namespaces are left for it (table below). V6 takes migration v9, so P7's `job_logs` drop uses the next free version.
 2. **Design system.** D3's `ProviderManifestsProvider` needs `providers.list()` and `manifest.brand` from V1. V1 ships a manifest-only ParkStay entry for exactly this.
 3. **Explore.**
    - E1: `catalog.search` / `status` / `refresh` and `catalog:updated`.
@@ -103,14 +105,16 @@ Every addition is additive and is listed here so reviewers can see each one.
    - B3: copies the legacy DB before `initializeDatabase`, then v8 runs on the copy. v1 had no session partitions, so there is no partition data to migrate. The released v1.2.0 is schema v5, and B3 adds the v5 fixture.
 6. **Docs (Q2).** Q2 consumes V7's developer notes and the corrected endpoint facts from V3. `docs/parkstay-api/ENDPOINTS.md` is largely guesswork and is rewritten by Q2.
 
-### Legacy IPC shims (temporary, keep old screens working)
+### Transitional namespaces (P3) and who retires them
 
-| Channel(s) | Re-pointed by | Consumers | Deleted by |
+All of them are retired inside this stream. Each retiring task makes a minimal edit to the old screen, with no redesign, so that screen keeps working until the U task rebuilds it.
+
+| Namespace | Interim | Old-screen consumer | Retired by |
 |---|---|---|---|
-| `parkstay:search-campgrounds`, `parkstay:get-all-campgrounds` | V3 (provider catalogue, campgrounds only), then V5 (catalogue DB) | `WatchForm.tsx:103` (U1), `SiteSniperForm.tsx:155` (U2) | U2, which runs after U1. P7 removes it if it is still there. |
-| `parkstay:check-availability` | Deleted in V3 (no renderer consumer, per ui-review) | none | V3 |
-| `queue:*` and `queue:status-update` | V3 (ParkStay access gate) | `QueueStatus.tsx:25` (U5) | U5, else P7 |
-| `auth:*` (legacy email+password) | Unchanged. Superseded by `accounts.*` (V6). | Login, Settings (D3, U4) | U4, else P7 |
+| `parkstay.searchCampgrounds` / `getAllCampgrounds` | V3 serves them from the provider catalogue (campgrounds only) | `WatchForm.tsx:103`, `SiteSniperForm.tsx:155` | V5, which switches both forms to `catalog.search` |
+| `parkstay.checkAvailability` | none (no renderer consumer, per ui-review) | none | V3 |
+| `queue.*` and the `queue:status` event | none | `QueueStatus.tsx:25` | V3, which switches it to `providers.accessStatus` and `provider:access-status` |
+| `auth.*` (legacy email+password) | unchanged until V6 | `Settings.tsx`, `Login.tsx` | V6, which adds "Connect ParkStay" through `accounts.signIn`, deletes `Login.tsx` after D3, and runs migration v9 |
 
 ## Out of scope
 
@@ -119,7 +123,7 @@ Every addition is additive and is listed here so reviewers can see each one.
 - Importing bookings from ParkStay. Its manifest says `bookingImport: false`, and there is no `/mybookings` scraping.
 - Gmail OTP or magic-link auto-completion. `GmailOTPService` stays unwired (provider-ux OQ7).
 - Automated payment. Payment stays a human step (brief constraints).
-- Renderer screens (D, E and U streams). V2 and V3 make only compile-level edits to existing pages so they keep working.
+- Renderer screens (D, E and U streams). V2, V3, V5 and V6 make only minimal edits to existing pages so they keep working.
 - README and user docs (Q2). V7 writes developer notes only.
 - Upgrading Electron, and macOS/Linux packaging. V7's channel detection must not assume Windows, though.
 
@@ -136,4 +140,11 @@ Every addition is additive and is listed here so reviewers can see each one.
 
 ## Changelog
 
-- **2026-10-02:** Created with V1–V7 specs. Dependencies are refined as described above (V3 adds V2, V6 adds V4). Contract additions are listed in their own section. Open questions PQ1–PQ6 are recorded for OPEN-QUESTIONS.md.
+- **2026-10-02:**
+  - Created with V1–V7 specs. Dependencies are refined as described above (V3 adds V2, V6 adds V4 and a soft D3). Contract additions are listed in their own section. Open questions PQ1–PQ6 are recorded for OPEN-QUESTIONS.md.
+  - Aligned with the platform specs:
+    - dropped a proposed `assetOrigins` manifest field (P4 allows `img-src https:`);
+    - error codes follow P3's `ApiErrorCode`;
+    - `ScopedSecretVault` follows P5;
+    - V2 uses P2's v5 and v6 fixtures and seeds the profile row;
+    - the transitional `parkstay`/`queue`/`auth` namespaces are retired by V5/V3/V6 instead of U-stream shims.
