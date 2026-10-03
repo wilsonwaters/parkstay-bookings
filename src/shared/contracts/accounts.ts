@@ -8,12 +8,36 @@
 
 import { z } from 'zod';
 import { ProviderIdSchema, type ProviderAccount, type ProviderId } from '../types/provider.types';
+import { assertTypeEquals } from '../utils/type-equality';
 import { CHANNELS } from './channels';
 import type { Namespace } from './define';
 
 const C = CHANNELS.accounts;
 
+/** The payload of `status`, `signIn` and `signOut`. */
+export interface AccountRequest {
+  providerId: ProviderId;
+}
+
+/** The `accounts.openSignInLink` payload. */
+export interface OpenSignInLinkRequest {
+  providerId: ProviderId;
+  /** An https link the person pasted. */
+  url: string;
+}
+
 const providerPayload = z.object({ providerId: ProviderIdSchema });
+const openSignInLinkRequest = z.object({
+  providerId: ProviderIdSchema,
+  url: z
+    .string()
+    .url()
+    .refine((url) => url.startsWith('https://'), 'Sign-in links must be https'),
+});
+assertTypeEquals<z.input<typeof providerPayload>, AccountRequest>(true);
+assertTypeEquals<z.output<typeof providerPayload>, AccountRequest>(true);
+assertTypeEquals<z.input<typeof openSignInLinkRequest>, OpenSignInLinkRequest>(true);
+assertTypeEquals<z.output<typeof openSignInLinkRequest>, OpenSignInLinkRequest>(true);
 
 export const accounts = {
   /** An account for every provider that has sign-in. */
@@ -44,13 +68,7 @@ export const accounts = {
    */
   openSignInLink: {
     channel: C.openSignInLink,
-    request: z.object({
-      providerId: ProviderIdSchema,
-      url: z
-        .string()
-        .url()
-        .refine((url) => url.startsWith('https://'), 'Sign-in links must be https'),
-    }),
+    request: openSignInLinkRequest,
     args: {} as [providerId: ProviderId, url: string],
     response: undefined as void,
   },

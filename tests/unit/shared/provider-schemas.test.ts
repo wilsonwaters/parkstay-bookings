@@ -4,14 +4,18 @@
  */
 
 import {
+  AccountFieldsSchema,
   CalendarDateSchema,
+  DEFAULT_PROVIDER_LIMITS,
   isCalendarDate,
   ProviderIdSchema,
+  providerLimits,
   ProviderManifestSchema,
   StayQuerySchema,
   type ProviderManifest,
 } from '@shared/types/provider.types';
 import { CATALOG_MAX_LIMIT, CatalogQuerySchema } from '@shared/types/catalog.types';
+import { testManifest } from '@tests/utils/fake-provider';
 
 const issuesAt = (result: { success: boolean; error?: { issues: { path: unknown[] }[] } }) =>
   result.success ? [] : (result.error?.issues ?? []).map((i) => i.path.join('.'));
@@ -146,8 +150,10 @@ describe('ProviderManifestSchema', () => {
     brand: { color: '#2F5D50', monogram: 'PS' },
     locationKinds: ['campground'],
     timezone: 'Australia/Perth',
+    currency: 'AUD',
     capabilities: {
       catalog: true,
+      catalogMode: 'full',
       availability: true,
       bulkAvailability: true,
       watches: true,
@@ -157,6 +163,7 @@ describe('ProviderManifestSchema', () => {
       accessGate: true,
       account: 'required-for-holds',
     },
+    limits: { minWatchIntervalMinutes: 15, maxConcurrentRequests: 4, catalogTtlHours: 24 },
     stayFields: [
       {
         key: 'gearType',
@@ -205,6 +212,25 @@ describe('ProviderManifestSchema', () => {
     ['a long monogram', (m) => (m.brand.monogram = 'PARK'), 'brand.monogram'],
     ['no location kinds', (m) => (m.locationKinds = []), 'locationKinds'],
     ['an unknown time zone', (m) => (m.timezone = 'Mars/Olympus'), 'timezone'],
+    ['no currency', (m) => delete (m as Partial<ProviderManifest>).currency, 'currency'],
+    ['a lower-case currency', (m) => (m.currency = 'aud'), 'currency'],
+    ['a currency symbol', (m) => (m.currency = '$'), 'currency'],
+    [
+      'an unknown catalogue mode',
+      (m) => ((m.capabilities as { catalogMode: string }).catalogMode = 'scrape'),
+      'capabilities.catalogMode',
+    ],
+    [
+      'a zero watch interval',
+      (m) => (m.limits!.minWatchIntervalMinutes = 0),
+      'limits.minWatchIntervalMinutes',
+    ],
+    [
+      'fractional concurrency',
+      (m) => (m.limits!.maxConcurrentRequests = 1.5),
+      'limits.maxConcurrentRequests',
+    ],
+    ['a negative catalogue TTL', (m) => (m.limits!.catalogTtlHours = -1), 'limits.catalogTtlHours'],
     [
       'an unknown account requirement',
       (m) => ((m.capabilities as { account: string }).account = 'maybe'),
@@ -237,5 +263,50 @@ describe('ProviderManifestSchema', () => {
     ],
   ])('rejects %s', (_label, change, path) => {
     expect(issuesAt(ProviderManifestSchema.safeParse(withChange(change)))).toContain(path);
+  });
+});
+
+describe('provider limits', () => {
+  it('defaults every limit when the manifest sets none, and keeps the ones it sets', () => {
+    expect(providerLimits({})).toEqual(DEFAULT_PROVIDER_LIMITS);
+    expect(
+      providerLimits({
+        limits: { minWatchIntervalMinutes: 30, maxConcurrentRequests: 1, catalogTtlHours: 6 },
+      })
+    ).toEqual({ minWatchIntervalMinutes: 30, maxConcurrentRequests: 1, catalogTtlHours: 6 });
+    expect(Object.isFrozen(DEFAULT_PROVIDER_LIMITS)).toBe(true);
+  });
+
+  it('a manifest without limits is valid', () => {
+    const manifest = testManifest('nolimits');
+    expect(manifest.limits).toBeUndefined();
+    expect(ProviderManifestSchema.safeParse(manifest).success).toBe(true);
+  });
+});
+
+describe('AccountFieldsSchema (credentials sign-in fields)', () => {
+  it('accepts fields with a key, a label and whether each is secret', () => {
+    expect(
+      AccountFieldsSchema.safeParse([
+        { key: 'email', label: 'Email', secret: false },
+        { key: 'password', label: 'Password', secret: true, help: 'As on the website' },
+      ]).success
+    ).toBe(true);
+  });
+
+  it.each<[string, unknown]>([
+    ['no fields', []],
+    ['a missing secret flag', [{ key: 'email', label: 'Email' }]],
+    ['an empty label', [{ key: 'email', label: ' ', secret: false }]],
+    ['a key with a dot', [{ key: 'user.email', label: 'Email', secret: false }]],
+    [
+      'duplicate keys',
+      [
+        { key: 'email', label: 'Email', secret: false },
+        { key: 'email', label: 'Again', secret: false },
+      ],
+    ],
+  ])('rejects %s', (_label, fields) => {
+    expect(AccountFieldsSchema.safeParse(fields).success).toBe(false);
   });
 });

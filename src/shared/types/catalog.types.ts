@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { assertTypeEquals, type Simplify } from '../utils/type-equality';
 import {
   BookingModeSchema,
   LocationKindSchema,
@@ -143,6 +144,8 @@ const latitude = finite.min(-90).max(90);
 export const BoundingBoxSchema = z
   .tuple([longitude, latitude, longitude, latitude])
   .refine(([, south, , north]) => south <= north, 'South must not be north of north');
+assertTypeEquals<z.input<typeof BoundingBoxSchema>, BoundingBox>(true);
+assertTypeEquals<z.output<typeof BoundingBoxSchema>, BoundingBox>(true);
 
 export const CatalogQuerySchema = z.object({
   text: z.string().max(200).optional(),
@@ -155,4 +158,8 @@ export const CatalogQuerySchema = z.object({
   limit: z.number().int().min(1).max(CATALOG_MAX_LIMIT).default(CATALOG_MAX_LIMIT),
   offset: z.number().int().nonnegative().optional(),
   sort: z.enum(['relevance', 'name']).optional(),
-}) satisfies z.ZodType<CatalogQuery, z.ZodTypeDef, CatalogQuery>;
+});
+/** A `CatalogQuery` after parsing: `limit` has its default. */
+export type ParsedCatalogQuery = Simplify<Omit<CatalogQuery, 'limit'> & { limit: number }>;
+assertTypeEquals<z.input<typeof CatalogQuerySchema>, CatalogQuery>(true);
+assertTypeEquals<z.output<typeof CatalogQuerySchema>, ParsedCatalogQuery>(true);

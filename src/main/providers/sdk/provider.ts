@@ -7,28 +7,61 @@
  * module; the registry rejects a manifest that claims a capability without its module.
  *
  * Adding a provider: create `src/main/providers/<id>/`, export a `ProviderFactory` made with
- * `defineProvider`, and add it to `BUILT_IN_PROVIDERS` in `providers/index.ts`.
+ * `defineProvider(manifest, create)`, and add it to `BUILT_IN_PROVIDERS` in
+ * `providers/index.ts`. The manifest comes first so the registry can validate it and build
+ * the provider's context (time zone, limits) before `create` runs.
  */
 
 import type {
   AccessStatus,
+  AccountFieldDescriptor,
   AccountStatus,
   BulkAvailabilityEntry,
   LocationAvailability,
+  ProviderAuthKind,
   ProviderId,
   ProviderManifest,
   StayParams,
   StayQuery,
 } from '@shared/types/provider.types';
-import type { LocationDetail, LocationSummary } from '@shared/types/catalog.types';
+import type { BoundingBox, LocationDetail, LocationSummary } from '@shared/types/catalog.types';
 import type { SnipeReleaseMode } from '@shared/types/common.types';
+import type { BrowserAutomation } from './browser';
 import type { ProviderContext } from './context';
 import type { HttpClient } from './http';
 
+/** A `catalog.searchArea` request: one page of the locations in a map area. */
+export interface CatalogAreaQuery {
+  bbox: BoundingBox;
+  /** Narrows to locations bookable for the stay, when the provider can. */
+  stay?: StayQuery;
+  /** `nextCursor` from the previous page; omit for the first page. */
+  cursor?: string;
+}
+
+export interface CatalogAreaPage {
+  items: LocationSummary[];
+  /** Present when there are more pages. */
+  nextCursor?: string;
+}
+
+/**
+ * The provider's locations. Which listing method it has follows
+ * `manifest.capabilities.catalogMode` (the registry checks it).
+ */
 export interface CatalogModule {
-  listLocations(signal?: AbortSignal): Promise<LocationSummary[]>;
+  /** Every location (`catalogMode: 'full'`). */
+  listLocations?(signal?: AbortSignal): Promise<LocationSummary[]>;
+  /** The locations in a map area, a page at a time (`catalogMode: 'search'`). */
+  searchArea?(query: CatalogAreaQuery, signal?: AbortSignal): Promise<CatalogAreaPage>;
   getLocation(externalId: string, signal?: AbortSignal): Promise<LocationDetail>;
 }
+
+/** A catalogue a `full` provider has: `listLocations` is there. */
+export type FullCatalogModule = CatalogModule & Required<Pick<CatalogModule, 'listLocations'>>;
+
+/** A catalogue a `search` provider has: `searchArea` is there. */
+export type SearchCatalogModule = CatalogModule & Required<Pick<CatalogModule, 'searchArea'>>;
 
 export interface AvailabilityCheckOptions {
   /** Only these units. */
@@ -154,17 +187,45 @@ export interface BookingsModule {
   get?(reference: string, signal?: AbortSignal): Promise<ExternalBooking>;
 }
 
+interface AuthBase {
+  kind: ProviderAuthKind;
+  /** Asks the provider, with the partition's cookies, whether the session is signed in. */
+  isSignedIn(http: HttpClient, signal?: AbortSignal): Promise<AccountStatus>;
+}
+
 /** Sign-in on the provider's own pages, in an app window on the provider's partition (D5). */
-export interface ProviderAuth {
+export interface BrowserSessionAuth extends AuthBase {
   kind: 'browser-session';
   signInUrl: string;
   /** Top-level https origins the sign-in window may visit. */
   allowedOrigins: readonly string[];
   /** URL patterns (`*` wildcard) that mean sign-in finished. */
   completionUrlPatterns?: readonly string[];
-  /** Asks the provider, with the partition's cookies, whether the session is signed in. */
-  isSignedIn(http: HttpClient, signal?: AbortSignal): Promise<AccountStatus>;
 }
+
+/**
+ * Sign-in with values the app asks for (§12.30). Declared and validated; the account
+ * service does not implement it yet. Secret values are kept in the provider's scoped
+ * secret vault, never in plain state.
+ */
+export interface CredentialsAuth extends AuthBase {
+  kind: 'credentials';
+  /** At least one, with unique keys. */
+  fields: readonly AccountFieldDescriptor[];
+  signIn(
+    values: Readonly<Record<string, string>>,
+    http: HttpClient,
+    signal?: AbortSignal
+  ): Promise<AccountStatus>;
+}
+
+/** Sign-in that browser automation performs (§12.30). Declared and validated only. */
+export interface AutomationAuth extends AuthBase {
+  kind: 'automation';
+  signIn(browser: BrowserAutomation, signal?: AbortSignal): Promise<AccountStatus>;
+}
+
+export type ProviderAuth = BrowserSessionAuth | CredentialsAuth | AutomationAuth;
 
 export interface ProviderLinks {
   /** The location's page on the provider's site. */
@@ -188,15 +249,50 @@ export interface AccommodationProvider {
   dispose?(): Promise<void>;
 }
 
-/** Builds a provider for its context. Carries the provider id so the context can be made first. */
+/** What a provider's `create` returns: its modules. The manifest comes from the factory. */
+export type ProviderModules = Omit<AccommodationProvider, 'manifest'>;
+
+/**
+ * Builds a provider for its context. Carries the provider's manifest, so the registry can
+ * validate it and build the context from it (time zone, limits) before the provider exists.
+ */
 export interface ProviderFactory {
   (ctx: ProviderContext): AccommodationProvider;
   readonly id: ProviderId;
+  readonly manifest: ProviderManifest;
 }
 
+/**
+ * A plain provider object: `manifest` plus the modules `impl` has. Modules are kept by
+ * reference and `dispose` stays bound to `impl`, so a class-based implementation works too.
+ */
+export function assembleProvider(
+  manifest: ProviderManifest,
+  impl: ProviderModules
+): AccommodationProvider {
+  const provider: AccommodationProvider = { manifest, links: impl.links };
+  if (impl.catalog) provider.catalog = impl.catalog;
+  if (impl.availability) provider.availability = impl.availability;
+  if (impl.access) provider.access = impl.access;
+  if (impl.release) provider.release = impl.release;
+  if (impl.holds) provider.holds = impl.holds;
+  if (impl.bookings) provider.bookings = impl.bookings;
+  if (impl.auth) provider.auth = impl.auth;
+  if (typeof impl.dispose === 'function') provider.dispose = impl.dispose.bind(impl);
+  return provider;
+}
+
+/**
+ *   export const parkstayFactory = defineProvider(parkstayManifest, (ctx) => ({
+ *     links, catalog: createCatalog(ctx), ...
+ *   }));
+ */
 export function defineProvider(
-  id: ProviderId,
-  create: (ctx: ProviderContext) => AccommodationProvider
+  manifest: ProviderManifest,
+  create: (ctx: ProviderContext) => ProviderModules
 ): ProviderFactory {
-  return Object.assign((ctx: ProviderContext) => create(ctx), { id });
+  return Object.assign((ctx: ProviderContext) => assembleProvider(manifest, create(ctx)), {
+    id: manifest.id,
+    manifest,
+  });
 }

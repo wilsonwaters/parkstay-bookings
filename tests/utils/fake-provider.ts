@@ -4,7 +4,10 @@
  *
  *   const fake = createFakeProvider();                       // id 'fake', every capability
  *   const fake2 = createFakeProvider({ id: 'fake2' });       // a second provider
- *   registry.register(fake.factory, createTestProviderContext('fake'));
+ *   registry.register(fake.factory, createTestProviderContext(fake.manifest));
+ *
+ * `capabilities: { catalogMode: 'search' }` gives it `catalog.searchArea` (pages of two)
+ * instead of `catalog.listLocations`.
  *
  * Knobs:
  * - `failNext(module, error)`: the next call into that module rejects with `error`;
@@ -27,6 +30,7 @@ import {
   createProviderContext,
   type AccessGate,
   type AccommodationProvider,
+  type CatalogModule,
   type ExternalBooking,
   type HoldResult,
   type HoldSuccess,
@@ -114,6 +118,7 @@ const DEFAULT_LOCATIONS: FakeLocationSeed[] = [
 
 const ALL_ON: ProviderCapabilities = {
   catalog: true,
+  catalogMode: 'full',
   availability: true,
   bulkAvailability: true,
   watches: true,
@@ -172,7 +177,9 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
     brand: { color: '#2F5D50', monogram: 'FK' },
     locationKinds: ['campground', 'cabin'],
     timezone: 'Australia/Perth',
+    currency: 'AUD',
     capabilities,
+    limits: { minWatchIntervalMinutes: 5, maxConcurrentRequests: 2, catalogTtlHours: 1 },
     stayFields: [
       {
         key: 'gearType',
@@ -192,13 +199,13 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
             id: SnipeReleaseMode.DAILY_ROLLOVER,
             label: 'Daily rollover',
             description: 'Opens 180 days ahead.',
-            usesAccessGate: true,
+            usesAccessGate: capabilities.accessGate,
           },
           {
             id: SnipeReleaseMode.SCHEDULED,
             label: 'Scheduled',
             description: 'Opens at a time you set.',
-            usesAccessGate: true,
+            usesAccessGate: capabilities.accessGate,
           },
           {
             id: SnipeReleaseMode.CANCELLATION,
@@ -342,12 +349,51 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
     },
   };
 
+  function catalogModule(): CatalogModule {
+    const catalog: CatalogModule = {
+      async getLocation(externalId, signal) {
+        await enter('catalog', 'getLocation', [externalId], signal);
+        const seed = seedFor(externalId);
+        const detail: LocationDetail = {
+          ...summary(seed, seeds.indexOf(seed)),
+          descriptionHtml: `<p>${seed.name}</p>`,
+          units: Object.keys(unitStates(externalId)).map((unitId) => ({
+            unitId,
+            unitName: `Site ${unitId}`,
+            unitType: 'Tent site',
+            maxPeople: 6,
+            equipment: ['tent'],
+          })),
+          releaseInfo: 'Bookings open 180 days ahead.',
+          fetchedAt: clock().toISOString(),
+        };
+        return detail;
+      },
+    };
+    if (capabilities.catalogMode === 'search') {
+      // Pages of two; the cursor is the index of the next location.
+      catalog.searchArea = async (query, signal) => {
+        await enter('catalog', 'searchArea', [query], signal);
+        const start = Number(query.cursor ?? 0);
+        const items = seeds.map(summary).slice(start, start + 2);
+        const next = start + items.length;
+        return next < seeds.length ? { items, nextCursor: String(next) } : { items };
+      };
+    } else {
+      catalog.listLocations = async (signal) => {
+        await enter('catalog', 'listLocations', [], signal);
+        return seeds.map(summary);
+      };
+    }
+    return catalog;
+  }
+
   const fake: FakeProvider = {
     manifest,
     links,
     calls,
     delayMs: options.delayMs ?? 0,
-    factory: defineProvider(id, (ctx) => {
+    factory: defineProvider(manifest, (ctx) => {
       fake.ctx = ctx;
       return fake;
     }),
@@ -361,32 +407,7 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
       return disposed;
     },
 
-    catalog: capabilities.catalog
-      ? {
-          async listLocations(signal) {
-            await enter('catalog', 'listLocations', [], signal);
-            return seeds.map(summary);
-          },
-          async getLocation(externalId, signal) {
-            await enter('catalog', 'getLocation', [externalId], signal);
-            const seed = seedFor(externalId);
-            const detail: LocationDetail = {
-              ...summary(seed, seeds.indexOf(seed)),
-              descriptionHtml: `<p>${seed.name}</p>`,
-              units: Object.keys(unitStates(externalId)).map((unitId) => ({
-                unitId,
-                unitName: `Site ${unitId}`,
-                unitType: 'Tent site',
-                maxPeople: 6,
-                equipment: ['tent'],
-              })),
-              releaseInfo: 'Bookings open 180 days ahead.',
-              fetchedAt: clock().toISOString(),
-            };
-            return detail;
-          },
-        }
-      : undefined,
+    catalog: capabilities.catalog ? catalogModule() : undefined,
 
     availability:
       capabilities.availability || capabilities.watches || capabilities.snipes
@@ -550,12 +571,48 @@ export function createMemoryLogger(
 
 export const FIXED_NOW = new Date('2026-10-02T02:00:00.000Z');
 
-/** A provider context built from in-memory parts: Node HTTP, KV store, fake vault, fixed clock. */
-export function createTestProviderContext(
+/** A minimal valid manifest for `id`, with every capability off. */
+export function testManifest(
   id: string,
+  overrides: Partial<ProviderManifest> = {}
+): ProviderManifest {
+  return {
+    id,
+    name: `Test ${id}`,
+    shortName: id,
+    description: 'A provider for tests.',
+    website: `https://${id}.example`,
+    integration: 'api',
+    brand: { color: '#2F5D50', monogram: 'T' },
+    locationKinds: ['campground'],
+    timezone: 'Australia/Perth',
+    currency: 'AUD',
+    capabilities: {
+      catalog: false,
+      catalogMode: 'full',
+      availability: false,
+      bulkAvailability: false,
+      watches: false,
+      snipes: false,
+      holds: false,
+      bookingImport: false,
+      accessGate: false,
+      account: 'none',
+    },
+    ...overrides,
+  };
+}
+
+/**
+ * A provider context built from in-memory parts: Node HTTP, KV store, fake vault, fixed
+ * clock. Pass the provider's manifest, or an id for a context built from `testManifest(id)`.
+ */
+export function createTestProviderContext(
+  manifestOrId: ProviderManifest | string,
   overrides: Partial<Omit<ProviderContext, 'id'>> = {}
 ): ProviderContext {
-  const context = createProviderContext(id, {
+  const manifest = typeof manifestOrId === 'string' ? testManifest(manifestOrId) : manifestOrId;
+  const context = createProviderContext(manifest, {
     createHttp: (providerId) => new NodeHttpClient({ providerId }),
     createState: () => new InMemoryKeyValueStore(),
     vault: new FakeSecretVault(),

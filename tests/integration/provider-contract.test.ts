@@ -27,6 +27,10 @@ describeProviderContract('FakeProvider with only catalogue and availability', ()
   }),
 }));
 
+describeProviderContract('FakeProvider with a search-mode catalogue', () => ({
+  provider: createFakeProvider({ capabilities: { catalogMode: 'search' } }),
+}));
+
 describe('a two-provider registry (fake, fake2)', () => {
   const registry = new ProviderRegistry();
   const fake = createFakeProvider({ id: 'fake', name: 'Fake One' });
@@ -35,8 +39,8 @@ describe('a two-provider registry (fake, fake2)', () => {
     name: 'Fake Two',
     locations: [{ externalId: '1', name: 'Same id, other provider' }],
   });
-  registry.register(fake.factory, createTestProviderContext('fake'));
-  registry.register(fake2.factory, createTestProviderContext('fake2'));
+  registry.register(fake.factory, createTestProviderContext);
+  registry.register(fake2.factory, createTestProviderContext);
 
   describeProviderContract('fake in the registry', () => ({ provider: registry.get('fake') }));
   describeProviderContract('fake2 in the registry', () => ({ provider: registry.get('fake2') }));
@@ -44,16 +48,31 @@ describe('a two-provider registry (fake, fake2)', () => {
   it('lists both and keeps their locations apart by key', async () => {
     expect(registry.list().map((m) => m.id)).toEqual(['fake', 'fake2']);
     const keys = [
-      ...(await registry.require('fake', 'catalog').catalog.listLocations()),
-      ...(await registry.require('fake2', 'catalog').catalog.listLocations()),
+      ...(await registry.require('fake', 'catalog').catalog.listLocations!()),
+      ...(await registry.require('fake2', 'catalog').catalog.listLocations!()),
     ].map((l) => l.key);
     expect(keys).toEqual(['fake:1', 'fake:2', 'fake:area:3', 'fake2:1']);
   });
 
-  it('gives each provider its own context', () => {
+  it('gives each provider its own context, built from its manifest', () => {
     expect(fake.ctx?.id).toBe('fake');
     expect(fake2.ctx?.id).toBe('fake2');
     expect(fake.ctx?.state).not.toBe(fake2.ctx?.state);
+    expect(fake.ctx?.manifest).toEqual(fake.manifest);
+    expect(fake.ctx).toMatchObject({
+      timezone: 'Australia/Perth',
+      limits: { minWatchIntervalMinutes: 5, maxConcurrentRequests: 2, catalogTtlHours: 1 },
+    });
+  });
+
+  it('a search-mode catalogue pages through searchArea', async () => {
+    const search = createFakeProvider({ id: 'search', capabilities: { catalogMode: 'search' } });
+    expect(search.catalog?.listLocations).toBeUndefined();
+    const first = await search.catalog!.searchArea!({ bbox: [110, -40, 130, -10] });
+    expect(first).toEqual({ items: [expect.anything(), expect.anything()], nextCursor: '2' });
+    const last = await search.catalog!.searchArea!({ bbox: [110, -40, 130, -10], cursor: '2' });
+    expect(last.items.map((l) => l.key)).toEqual(['search:area:3']);
+    expect(last.nextCursor).toBeUndefined();
   });
 });
 
@@ -85,7 +104,7 @@ describe('FakeProvider knobs', () => {
   it('delayMs is abortable mid-wait', async () => {
     const fake = createFakeProvider({ delayMs: 10_000 });
     const controller = new AbortController();
-    const pending = fake.catalog!.listLocations(controller.signal);
+    const pending = fake.catalog!.listLocations!(controller.signal);
     controller.abort();
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
   });

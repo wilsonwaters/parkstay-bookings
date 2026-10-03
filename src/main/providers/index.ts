@@ -3,8 +3,8 @@
  */
 
 import { parkstayFactory } from './parkstay';
-import type { ProviderRegistry } from './registry';
-import type { ProviderContext, ProviderLogger } from './sdk/context';
+import type { ProviderContextFactory, ProviderRegistry } from './registry';
+import type { ProviderLogger } from './sdk/context';
 import { ProviderRegistrationError } from './sdk/errors';
 import type { ProviderFactory } from './sdk/provider';
 import type { ProviderId } from '@shared/types/provider.types';
@@ -17,12 +17,13 @@ export interface BuiltInRegistration {
 }
 
 /**
- * Registers each factory with a context from `makeContext`. A provider that fails to
- * register is logged and skipped, so the app still starts with the others.
+ * Registers each factory with a context `makeContext` builds from its validated manifest. A
+ * provider that fails to register is logged and skipped, so the app still starts with the
+ * others.
  */
 export function registerBuiltInProviders(
   registry: ProviderRegistry,
-  makeContext: (id: ProviderId) => ProviderContext,
+  makeContext: ProviderContextFactory,
   options: { factories?: readonly ProviderFactory[]; logger?: ProviderLogger } = {}
 ): BuiltInRegistration {
   const { factories = BUILT_IN_PROVIDERS, logger } = options;
@@ -30,7 +31,7 @@ export function registerBuiltInProviders(
 
   for (const factory of factories) {
     try {
-      registry.register(factory, makeContext(factory.id));
+      registry.register(factory, makeContext);
       result.registered.push(factory.id);
     } catch (error) {
       const failure =

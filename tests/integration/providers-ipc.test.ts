@@ -84,6 +84,12 @@ describe('providers / catalog / accounts over IPC', () => {
       const [manifest] = response.data!;
       expect(manifest.id).toBe('parkstay');
       expect(ProviderManifestSchema.safeParse(manifest).success).toBe(true);
+      // The extensibility fields reach the renderer (§12.30).
+      expect(manifest).toMatchObject({
+        currency: 'AUD',
+        limits: { minWatchIntervalMinutes: 15, maxConcurrentRequests: 4, catalogTtlHours: 24 },
+        capabilities: { catalogMode: 'full' },
+      });
       // It survives structured cloning to the renderer: plain data, no functions.
       expect(structuredClone(manifest)).toEqual(manifest);
     });
@@ -195,8 +201,8 @@ describe('providers / catalog / accounts over IPC', () => {
         capabilities: { accessGate: false },
       });
       start((c) => {
-        c.providers.register(fake.factory, createTestProviderContext('fake'));
-        c.providers.register(fake2.factory, createTestProviderContext('fake2'));
+        c.providers.register(fake.factory, createTestProviderContext);
+        c.providers.register(fake2.factory, createTestProviderContext);
       });
     });
 

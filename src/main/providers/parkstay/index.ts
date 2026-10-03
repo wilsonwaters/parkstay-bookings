@@ -33,8 +33,11 @@ export const parkstayManifest: ProviderManifest = {
     'other',
   ],
   timezone: 'Australia/Perth',
+  currency: 'AUD',
   capabilities: {
     catalog: false,
+    // ParkStay lists every campground in one call (`/api/campground_map/`).
+    catalogMode: 'full',
     availability: false,
     bulkAvailability: false,
     watches: false,
@@ -43,6 +46,13 @@ export const parkstayManifest: ProviderManifest = {
     bookingImport: false,
     accessGate: false,
     account: 'none',
+  },
+  limits: {
+    // Polite polling: availability changes rarely between quarter hours outside a release.
+    minWatchIntervalMinutes: 15,
+    maxConcurrentRequests: 4,
+    // The campground list changes a few times a year.
+    catalogTtlHours: 24,
   },
 };
 
@@ -53,7 +63,6 @@ export const parkstayLinks: ProviderLinks = {
   booking: () => null,
 };
 
-export const parkstayFactory = defineProvider(PARKSTAY_PROVIDER_ID, () => ({
-  manifest: parkstayManifest,
+export const parkstayFactory = defineProvider(parkstayManifest, () => ({
   links: parkstayLinks,
 }));

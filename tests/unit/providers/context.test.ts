@@ -13,7 +13,8 @@ import {
   UnavailableSecretVault,
   type ProviderContextDeps,
 } from '@main/providers/sdk';
-import { createMemoryLogger } from '@tests/utils/fake-provider';
+import { DEFAULT_PROVIDER_LIMITS } from '@shared/types/provider.types';
+import { createMemoryLogger, testManifest } from '@tests/utils/fake-provider';
 
 function deps(overrides: Partial<ProviderContextDeps> = {}): ProviderContextDeps {
   return {
@@ -54,8 +55,8 @@ describe('InMemoryKeyValueStore', () => {
 describe('ScopedSecretVault', () => {
   it("secrets.set('token', 'abc') on fake writes ciphertext under secret:token; get returns abc; fake2 cannot read it", async () => {
     const vault = new FakeSecretVault();
-    const fakeContext = createProviderContext('fake', deps({ vault }));
-    const fake2Context = createProviderContext('fake2', deps({ vault }));
+    const fakeContext = createProviderContext(testManifest('fake'), deps({ vault }));
+    const fake2Context = createProviderContext(testManifest('fake2'), deps({ vault }));
 
     await fakeContext.secrets.set('token', 'abc');
 
@@ -114,7 +115,7 @@ describe('createProviderContext', () => {
     const logger = createMemoryLogger();
     const createHttp = jest.fn((providerId: string) => new NodeHttpClient({ providerId }));
     const ctx = createProviderContext(
-      'fake',
+      testManifest('fake'),
       deps({ logger, createHttp, clock: () => new Date(0) })
     );
 
@@ -137,13 +138,40 @@ describe('createProviderContext', () => {
 
   it('gives each provider its own state store', async () => {
     const shared = deps();
-    const a = createProviderContext('fake', shared);
-    const b = createProviderContext('fake2', shared);
+    const a = createProviderContext(testManifest('fake'), shared);
+    const b = createProviderContext(testManifest('fake2'), shared);
     await a.state.set('k', 1);
     expect(await b.state.get('k')).toBeUndefined();
   });
 
-  it('rejects an invalid provider id', () => {
-    expect(() => createProviderContext('ParkStay', deps())).toThrow();
+  it('rejects an invalid provider id or manifest', () => {
+    expect(() => createProviderContext(testManifest('ParkStay'), deps())).toThrow();
+    expect(() =>
+      createProviderContext(testManifest('fake', { timezone: 'Mars/Olympus' }), deps())
+    ).toThrow();
+  });
+
+  it('is built from the manifest: a frozen copy, its time zone and its limits', () => {
+    const manifest = testManifest('fake', {
+      timezone: 'Australia/Sydney',
+      limits: { minWatchIntervalMinutes: 30, maxConcurrentRequests: 1, catalogTtlHours: 12 },
+    });
+    const ctx = createProviderContext(manifest, deps());
+
+    expect(ctx.manifest).toEqual(manifest);
+    expect(ctx.manifest).not.toBe(manifest);
+    expect(Object.isFrozen(ctx.manifest.capabilities)).toBe(true);
+    expect(ctx.timezone).toBe('Australia/Sydney');
+    expect(ctx.limits).toEqual({
+      minWatchIntervalMinutes: 30,
+      maxConcurrentRequests: 1,
+      catalogTtlHours: 12,
+    });
+  });
+
+  it('falls back to the default limits when the manifest sets none', () => {
+    const ctx = createProviderContext(testManifest('fake'), deps());
+    expect(ctx.limits).toEqual(DEFAULT_PROVIDER_LIMITS);
+    expect(Object.isFrozen(ctx.limits)).toBe(true);
   });
 });

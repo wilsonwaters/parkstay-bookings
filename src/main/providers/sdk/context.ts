@@ -2,12 +2,21 @@
  * `ProviderContext`: everything a provider gets from the app, scoped to that provider
  * (architecture-notes §3). Providers never reach for globals: no `electron`, no app logger,
  * no database.
+ *
+ * The context is built from the provider's manifest (§12.30), so its time zone and limits
+ * are at hand before the provider is created.
  */
 
-import { ProviderIdSchema, type ProviderId } from '@shared/types/provider.types';
+import {
+  providerLimits,
+  type ProviderId,
+  type ProviderLimits,
+  type ProviderManifest,
+} from '@shared/types/provider.types';
 import { UnavailableBrowserAutomation, type BrowserAutomation } from './browser';
 import type { HttpClient } from './http';
 import type { KeyValueStore } from './kv-store';
+import { freezeProviderManifest } from './manifest';
 import { createScopedSecretVault, type ScopedSecretVault, type SecretVaultLike } from './secrets';
 
 /** The logging surface providers use (Winston's logger satisfies it). */
@@ -21,6 +30,12 @@ export interface ProviderLogger {
 
 export interface ProviderContext {
   readonly id: ProviderId;
+  /** The provider's manifest, parsed and frozen. */
+  readonly manifest: Readonly<ProviderManifest>;
+  /** IANA zone the provider's dates and release times are in (`manifest.timezone`). */
+  readonly timezone: string;
+  /** `manifest.limits`, or `DEFAULT_PROVIDER_LIMITS`. */
+  readonly limits: Readonly<ProviderLimits>;
   /** Bound to the provider's session partition, whose cookies its sign-in and payment windows share. */
   readonly http: HttpClient;
   readonly browser: BrowserAutomation;
@@ -46,11 +61,19 @@ export interface ProviderContextDeps {
   clock?: () => Date;
 }
 
-export function createProviderContext(id: ProviderId, deps: ProviderContextDeps): ProviderContext {
-  ProviderIdSchema.parse(id);
+/** Builds the context for the provider `manifest` describes. Throws for an invalid manifest. */
+export function createProviderContext(
+  manifest: ProviderManifest,
+  deps: ProviderContextDeps
+): ProviderContext {
+  const frozen = freezeProviderManifest(manifest);
+  const id = frozen.id;
   const state = deps.createState(id);
   return Object.freeze({
     id,
+    manifest: frozen,
+    timezone: frozen.timezone,
+    limits: Object.freeze(providerLimits(frozen)),
     http: deps.createHttp(id),
     browser: deps.createBrowser?.(id) ?? new UnavailableBrowserAutomation(id),
     state,

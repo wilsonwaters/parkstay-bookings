@@ -122,7 +122,9 @@ export function createContainer({ db, logsDir }: ContainerOptions): AppContainer
     logger,
   };
   const providers = new ProviderRegistry({ logger });
-  registerBuiltInProviders(providers, (id) => createProviderContext(id, providerDeps), { logger });
+  registerBuiltInProviders(providers, (manifest) => createProviderContext(manifest, providerDeps), {
+    logger,
+  });
 
   const notifierDispatcher = new NotificationDispatcher(repositories.notifiers, [
     new SmtpEmailNotifier(),

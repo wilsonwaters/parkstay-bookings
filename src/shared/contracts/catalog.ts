@@ -25,6 +25,7 @@ import {
   type StayQuery,
 } from '../types/provider.types';
 import { LocationKeySchema } from '../utils/location-key';
+import { assertTypeEquals } from '../utils/type-equality';
 import { CHANNELS } from './channels';
 import type { Namespace } from './define';
 
@@ -33,6 +34,46 @@ export interface CatalogAvailabilityOptions {
   providerIds?: ProviderId[];
   bbox?: BoundingBox;
 }
+
+/** The `catalog.get` payload. */
+export interface CatalogGetRequest {
+  /** Location key `${providerId}:${externalId}`. */
+  key: string;
+}
+
+/** The `catalog.availability` payload: the stay plus the options, flattened. */
+export interface CatalogAvailabilityRequest extends CatalogAvailabilityOptions {
+  stay: StayQuery;
+}
+
+/** The `catalog.checkLocation` payload. */
+export interface CatalogCheckLocationRequest {
+  key: string;
+  stay: StayQuery;
+}
+
+/** The `catalog.refresh` payload: one provider, or every catalogue provider. */
+export interface CatalogRefreshRequest {
+  providerId?: ProviderId;
+}
+
+const getRequest = z.object({ key: LocationKeySchema });
+const availabilityRequest = z.object({
+  stay: StayQuerySchema,
+  providerIds: z.array(ProviderIdSchema).optional(),
+  bbox: BoundingBoxSchema.optional(),
+});
+const checkLocationRequest = z.object({ key: LocationKeySchema, stay: StayQuerySchema });
+const refreshRequest = z.object({ providerId: ProviderIdSchema.optional() });
+
+assertTypeEquals<z.input<typeof getRequest>, CatalogGetRequest>(true);
+assertTypeEquals<z.output<typeof getRequest>, CatalogGetRequest>(true);
+assertTypeEquals<z.input<typeof availabilityRequest>, CatalogAvailabilityRequest>(true);
+assertTypeEquals<z.output<typeof availabilityRequest>, CatalogAvailabilityRequest>(true);
+assertTypeEquals<z.input<typeof checkLocationRequest>, CatalogCheckLocationRequest>(true);
+assertTypeEquals<z.output<typeof checkLocationRequest>, CatalogCheckLocationRequest>(true);
+assertTypeEquals<z.input<typeof refreshRequest>, CatalogRefreshRequest>(true);
+assertTypeEquals<z.output<typeof refreshRequest>, CatalogRefreshRequest>(true);
 
 const C = CHANNELS.catalog;
 
@@ -45,31 +86,27 @@ export const catalog = {
   },
   get: {
     channel: C.get,
-    request: z.object({ key: LocationKeySchema }),
+    request: getRequest,
     args: {} as [key: string],
     response: {} as LocationDetail,
   },
   /** Bulk availability across providers; failing providers are listed in `errors`. */
   availability: {
     channel: C.availability,
-    request: z.object({
-      stay: StayQuerySchema,
-      providerIds: z.array(ProviderIdSchema).optional(),
-      bbox: BoundingBoxSchema.optional(),
-    }),
+    request: availabilityRequest,
     args: {} as [stay: StayQuery, options?: CatalogAvailabilityOptions],
     response: {} as CatalogAvailabilityResult,
   },
   checkLocation: {
     channel: C.checkLocation,
-    request: z.object({ key: LocationKeySchema, stay: StayQuerySchema }),
+    request: checkLocationRequest,
     args: {} as [key: string, stay: StayQuery],
     response: {} as LocationAvailability,
   },
   /** Re-syncs one provider's catalogue (or all), then returns the status. */
   refresh: {
     channel: C.refresh,
-    request: z.object({ providerId: ProviderIdSchema.optional() }),
+    request: refreshRequest,
     args: {} as [providerId?: ProviderId],
     response: {} as CatalogStatus,
   },

@@ -15,10 +15,16 @@ import {
   isAbortError,
   ProviderError,
   type AccommodationProvider,
+  type CatalogModule,
   type ProviderContext,
 } from '@main/providers/sdk';
-import { capabilityViolations, ProviderRegistry } from '@main/providers/registry';
-import { ProviderManifestSchema, type StayQuery } from '@shared/types/provider.types';
+import { providerViolations, ProviderRegistry } from '@main/providers/registry';
+import type { BoundingBox, LocationSummary } from '@shared/types/catalog.types';
+import {
+  ProviderManifestSchema,
+  type ProviderManifest,
+  type StayQuery,
+} from '@shared/types/provider.types';
 import { makeLocationKey, parseLocationKey } from '@shared/utils/location-key';
 import { createTestProviderContext } from './fake-provider';
 
@@ -32,13 +38,31 @@ export interface ProviderContractSubject {
   /** An external id the provider does not know. Default `does-not-exist-0`. */
   unknownExternalId?: string;
   /** Builds the context used for the registration check. Defaults to `createTestProviderContext`. */
-  makeContext?: (id: string) => ProviderContext;
+  makeContext?: (manifest: ProviderManifest) => ProviderContext;
+  /** The map area a `search` catalogue is listed with. Default: the whole world. */
+  searchBbox?: BoundingBox;
   /** Called after the suite (e.g. to stop a fixture server). */
   cleanup?: () => Promise<void> | void;
 }
 
 const day = (offset: number): string =>
   new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+
+const WORLD: BoundingBox = [-180, -90, 180, 90];
+
+/** Every location: `listLocations`, or every page of `searchArea` over `bbox`. */
+async function listAll(catalog: CatalogModule, bbox: BoundingBox): Promise<LocationSummary[]> {
+  if (catalog.listLocations) return catalog.listLocations();
+  const items: LocationSummary[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < 100; page++) {
+    const result = await catalog.searchArea!({ bbox, cursor });
+    items.push(...result.items);
+    cursor = result.nextCursor;
+    if (!cursor) break;
+  }
+  return items;
+}
 
 /** A promise that rejects with an AbortError (the caller aborted). */
 async function expectAbort(run: (signal: AbortSignal) => Promise<unknown>): Promise<void> {
@@ -76,7 +100,7 @@ export function describeProviderContract(
       stay = subject.sample?.stay ?? { arrival: day(30), departure: day(32), adults: 2 };
       externalId =
         subject.sample?.externalId ??
-        (provider.catalog ? (await provider.catalog.listLocations())[0]?.externalId : '1') ??
+        (provider.catalog ? (await listAll(provider.catalog, bbox()))[0]?.externalId : '1') ??
         '1';
     });
 
@@ -85,14 +109,25 @@ export function describeProviderContract(
     });
 
     const unknownId = (): string => subject.unknownExternalId ?? 'does-not-exist-0';
+    const bbox = (): BoundingBox => subject.searchBbox ?? WORLD;
 
     it('has a manifest that passes ProviderManifestSchema', () => {
       const parsed = ProviderManifestSchema.safeParse(provider.manifest);
       expect(parsed.success ? [] : parsed.error.issues).toEqual([]);
     });
 
-    it('has a module behind every capability it claims', () => {
-      expect(capabilityViolations(provider)).toEqual([]);
+    it('has a module behind every capability it claims, and consistent flags', () => {
+      expect(providerViolations(provider)).toEqual([]);
+    });
+
+    it('declares a currency and, if any, sensible limits', () => {
+      expect(provider.manifest.currency).toMatch(/^[A-Z]{3}$/);
+      const limits = provider.manifest.limits;
+      if (limits) {
+        expect(limits.minWatchIntervalMinutes).toBeGreaterThanOrEqual(1);
+        expect(limits.maxConcurrentRequests).toBeGreaterThanOrEqual(1);
+        expect(limits.catalogTtlHours).toBeGreaterThan(0);
+      }
     });
 
     it('supports every release mode it describes, and describes some when it snipes', () => {
@@ -102,12 +137,19 @@ export function describeProviderContract(
         expect([mode.id, provider.release?.supports(mode.id)]).toEqual([mode.id, true]);
     });
 
-    it('registers in a ProviderRegistry under its manifest id', () => {
-      const id = provider.manifest.id;
+    it('registers in a ProviderRegistry under its manifest id, modules unchanged', () => {
+      const { id } = provider.manifest;
       const registry = new ProviderRegistry();
-      const factory = Object.assign(() => provider, { id });
-      const ctx = subject.makeContext?.(id) ?? createTestProviderContext(id);
-      expect(registry.register(factory, ctx)).toBe(provider);
+      const factory = Object.assign(() => provider, { id, manifest: provider.manifest });
+      const registered = registry.register(
+        factory,
+        (manifest) => subject.makeContext?.(manifest) ?? createTestProviderContext(manifest)
+      );
+      expect(registered.manifest).toEqual(provider.manifest);
+      expect(Object.isFrozen(registered.manifest)).toBe(true);
+      for (const module of ['catalog', 'availability', 'access', 'release', 'holds'] as const) {
+        expect([module, registered[module]]).toEqual([module, provider[module]]);
+      }
       expect(registry.list()).toEqual([provider.manifest]);
     });
 
@@ -126,7 +168,7 @@ export function describeProviderContract(
     describe('catalog', () => {
       it('lists locations whose keys round-trip and name this provider', async () => {
         if (!provider.catalog) return;
-        const locations = await provider.catalog.listLocations();
+        const locations = await listAll(provider.catalog, bbox());
         expect(locations.length).toBeGreaterThan(0);
         for (const location of locations) {
           expect(location.providerId).toBe(provider.manifest.id);
@@ -150,7 +192,14 @@ export function describeProviderContract(
       it('honours AbortSignal', async () => {
         const catalog = provider.catalog;
         if (!catalog) return;
-        await expectAbort((signal) => catalog.listLocations(signal));
+        if (catalog.listLocations) {
+          const listLocations = catalog.listLocations.bind(catalog);
+          await expectAbort((signal) => listLocations(signal));
+        }
+        if (catalog.searchArea) {
+          const searchArea = catalog.searchArea.bind(catalog);
+          await expectAbort((signal) => searchArea({ bbox: bbox() }, signal));
+        }
         await expectAbort((signal) => catalog.getLocation(externalId, signal));
       });
 
@@ -256,12 +305,13 @@ export function describeProviderContract(
     });
 
     describe('auth', () => {
-      it('has https sign-in origins and a signed-in check', async () => {
+      it('has a signed-in check, and https sign-in origins for a browser session', async () => {
         const auth = provider.auth;
         if (!auth) return;
+        expect(typeof auth.isSignedIn).toBe('function');
+        if (auth.kind !== 'browser-session') return;
         expect(auth.signInUrl).toMatch(/^https:\/\//);
         for (const origin of auth.allowedOrigins) expect(origin).toMatch(/^https:\/\/[^/]+$/);
-        expect(typeof auth.isSignedIn).toBe('function');
       });
     });
   });

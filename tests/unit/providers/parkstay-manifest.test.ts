@@ -19,6 +19,8 @@ describe('ParkStay provider (manifest only)', () => {
       website: 'https://parkstay.dbca.wa.gov.au',
       integration: 'api',
       timezone: 'Australia/Perth',
+      currency: 'AUD',
+      limits: { minWatchIntervalMinutes: 15, maxConcurrentRequests: 4, catalogTtlHours: 24 },
       brand: { monogram: 'PS' },
       locationKinds: [
         'campground',
@@ -33,9 +35,10 @@ describe('ParkStay provider (manifest only)', () => {
     });
   });
 
-  it('turns every capability off and needs no account', () => {
-    const { account, ...flags } = parkstayManifest.capabilities;
+  it('turns every capability off, needs no account, and has a full catalogue mode', () => {
+    const { account, catalogMode, ...flags } = parkstayManifest.capabilities;
     expect(account).toBe('none');
+    expect(catalogMode).toBe('full');
     expect(Object.values(flags)).toHaveLength(8);
     expect(Object.values(flags).every((on) => on === false)).toBe(true);
   });
@@ -46,7 +49,7 @@ describe('ParkStay provider (manifest only)', () => {
 
   it('registers with only links and links each campground to its search page', () => {
     const registry = new ProviderRegistry();
-    const provider = registry.register(parkstayFactory, createTestProviderContext('parkstay'));
+    const provider = registry.register(parkstayFactory, createTestProviderContext);
 
     expect(provider.links.location('20')).toBe(
       'https://parkstay.dbca.wa.gov.au/search-availability/campground/?site_id=20'
@@ -56,5 +59,7 @@ describe('ParkStay provider (manifest only)', () => {
     );
     expect(provider.links.booking('20')).toBeNull();
     expect(Object.keys(provider).sort()).toEqual(['links', 'manifest']);
+    expect(provider.manifest).toEqual(parkstayManifest);
+    expect(Object.isFrozen(provider.manifest.capabilities)).toBe(true);
   });
 });

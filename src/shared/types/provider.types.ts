@@ -10,6 +10,7 @@
  */
 
 import { z } from 'zod';
+import { assertTypeEquals } from '../utils/type-equality';
 
 /** A provider id such as `parkstay`. Validated against the registry, never a hard-coded union. */
 export type ProviderId = string;
@@ -59,9 +60,20 @@ export const BookingModeSchema = z.enum(BOOKING_MODES);
 
 export type AccountRequirement = 'none' | 'optional' | 'required-for-holds' | 'required';
 
+/**
+ * How a catalogue provider's locations are found (§12.30):
+ * - `full`: the provider can list every location (`catalog.listLocations`), which the app
+ *   syncs and searches offline (ParkStay);
+ * - `search`: the provider can only search a map area, a page at a time
+ *   (`catalog.searchArea`), as large marketplaces do.
+ */
+export type CatalogMode = 'full' | 'search';
+
 export interface ProviderCapabilities {
-  /** `catalog.listLocations`: the provider's locations show on the Explore map. */
+  /** `catalog`: the provider's locations show on the Explore map. */
   catalog: boolean;
+  /** How the catalogue is read; see `CatalogMode`. Ignored when `catalog` is off. */
+  catalogMode: CatalogMode;
   /** `availability.check` for one location and stay. */
   availability: boolean;
   /** `availability.search`: availability for many locations in one call (map pins). */
@@ -78,7 +90,52 @@ export interface ProviderCapabilities {
 }
 
 /** The capability flags that are booleans: what `registry.require` and `withCapability` take. */
-export type BooleanCapability = Exclude<keyof ProviderCapabilities, 'account'>;
+export type BooleanCapability = Exclude<keyof ProviderCapabilities, 'account' | 'catalogMode'>;
+
+/**
+ * How hard the app may use a provider (§12.30). Core services read them from the provider
+ * context or the manifest; a manifest without `limits` gets `DEFAULT_PROVIDER_LIMITS`.
+ */
+export interface ProviderLimits {
+  /** The shortest interval a watch on this provider may be checked at. */
+  minWatchIntervalMinutes: number;
+  /** The most requests the app has in flight to this provider at once. */
+  maxConcurrentRequests: number;
+  /** How long a synced catalogue stays fresh. */
+  catalogTtlHours: number;
+}
+
+export const DEFAULT_PROVIDER_LIMITS: Readonly<ProviderLimits> = Object.freeze({
+  minWatchIntervalMinutes: 15,
+  maxConcurrentRequests: 4,
+  catalogTtlHours: 24,
+});
+
+/** The provider's limits, or the defaults when its manifest sets none. */
+export function providerLimits(manifest: Pick<ProviderManifest, 'limits'>): ProviderLimits {
+  return { ...DEFAULT_PROVIDER_LIMITS, ...manifest.limits };
+}
+
+/**
+ * How a person signs in to a provider (§12.30):
+ * - `browser-session`: on the provider's own pages, in an app window on its partition;
+ * - `credentials`: the app asks for the fields in `AccountFieldDescriptor`s and keeps the
+ *   secret ones in the provider's scoped secret vault;
+ * - `automation`: browser automation signs in for the person.
+ *
+ * Only `browser-session` is implemented (V6); the others are declared and validated.
+ */
+export type ProviderAuthKind = 'browser-session' | 'credentials' | 'automation';
+
+/** One input of a `credentials` sign-in, rendered generically by the renderer. */
+export interface AccountFieldDescriptor {
+  /** e.g. `email`, `password`. */
+  key: string;
+  label: string;
+  help?: string;
+  /** Stored only in the scoped secret vault and never sent back to the renderer. */
+  secret: boolean;
+}
 
 /** Where a stay field is used. §12.1, §12.18 (`appliesTo` is canonical). */
 export type StayFieldUse = 'availability' | 'watch' | 'snipe' | 'hold';
@@ -137,7 +194,11 @@ export interface ProviderManifest {
   locationKinds: LocationKind[];
   /** IANA zone, e.g. `Australia/Perth`. */
   timezone: string;
+  /** ISO 4217 code the provider's prices are in, e.g. `AUD`. */
+  currency: string;
   capabilities: ProviderCapabilities;
+  /** Usage limits; `DEFAULT_PROVIDER_LIMITS` when absent. */
+  limits?: ProviderLimits;
   /** §12.1 */
   stayFields?: StayFieldDescriptor[];
   /** §12.3, present when `capabilities.snipes`. */
@@ -277,7 +338,9 @@ export const StayQuerySchema = z
   .refine((stay) => stay.departure > stay.arrival, {
     message: 'Departure must be after arrival',
     path: ['departure'],
-  }) satisfies z.ZodType<StayQuery>;
+  });
+assertTypeEquals<z.input<typeof StayQuerySchema>, StayQuery>(true);
+assertTypeEquals<z.output<typeof StayQuerySchema>, StayQuery>(true);
 
 const nonEmpty = z.string().trim().min(1);
 
@@ -330,7 +393,9 @@ export const StayFieldDescriptorSchema = z
     if (field.default !== undefined && typeof field.default !== DEFAULT_TYPE[field.type]) {
       ctx.addIssue({ code: 'custom', path: ['default'], message: `Not a ${field.type} value` });
     }
-  }) satisfies z.ZodType<StayFieldDescriptor>;
+  });
+assertTypeEquals<z.input<typeof StayFieldDescriptorSchema>, StayFieldDescriptor>(true);
+assertTypeEquals<z.output<typeof StayFieldDescriptorSchema>, StayFieldDescriptor>(true);
 
 const uniqueBy =
   <T>(key: (item: T) => string) =>
@@ -343,10 +408,42 @@ export const ReleaseModeDescriptorSchema = z.object({
   description: nonEmpty,
   usesAccessGate: z.boolean(),
   fields: z.array(StayFieldDescriptorSchema).optional(),
-}) satisfies z.ZodType<ReleaseModeDescriptor>;
+});
+assertTypeEquals<z.input<typeof ReleaseModeDescriptorSchema>, ReleaseModeDescriptor>(true);
+assertTypeEquals<z.output<typeof ReleaseModeDescriptorSchema>, ReleaseModeDescriptor>(true);
+
+export const AccountFieldDescriptorSchema = z.object({
+  key: z.string().regex(/^[A-Za-z][A-Za-z0-9]*$/, 'Account field keys are alphanumeric'),
+  label: nonEmpty,
+  help: z.string().optional(),
+  secret: z.boolean(),
+});
+assertTypeEquals<z.input<typeof AccountFieldDescriptorSchema>, AccountFieldDescriptor>(true);
+assertTypeEquals<z.output<typeof AccountFieldDescriptorSchema>, AccountFieldDescriptor>(true);
+
+/** A `credentials` sign-in's fields: at least one, with unique keys. */
+export const AccountFieldsSchema = z
+  .array(AccountFieldDescriptorSchema)
+  .min(1)
+  .refine(
+    uniqueBy((f) => f.key),
+    'Account field keys must be unique'
+  );
+
+export const ProviderLimitsSchema = z.object({
+  minWatchIntervalMinutes: z.number().int().min(1).max(1440),
+  maxConcurrentRequests: z.number().int().min(1).max(32),
+  catalogTtlHours: z
+    .number()
+    .positive()
+    .max(24 * 30),
+});
+assertTypeEquals<z.input<typeof ProviderLimitsSchema>, ProviderLimits>(true);
+assertTypeEquals<z.output<typeof ProviderLimitsSchema>, ProviderLimits>(true);
 
 export const ProviderCapabilitiesSchema = z.object({
   catalog: z.boolean(),
+  catalogMode: z.enum(['full', 'search']),
   availability: z.boolean(),
   bulkAvailability: z.boolean(),
   watches: z.boolean(),
@@ -355,7 +452,9 @@ export const ProviderCapabilitiesSchema = z.object({
   bookingImport: z.boolean(),
   accessGate: z.boolean(),
   account: z.enum(['none', 'optional', 'required-for-holds', 'required']),
-}) satisfies z.ZodType<ProviderCapabilities>;
+});
+assertTypeEquals<z.input<typeof ProviderCapabilitiesSchema>, ProviderCapabilities>(true);
+assertTypeEquals<z.output<typeof ProviderCapabilitiesSchema>, ProviderCapabilities>(true);
 
 export const ProviderManifestSchema = z.object({
   id: ProviderIdSchema,
@@ -373,7 +472,9 @@ export const ProviderManifestSchema = z.object({
   }),
   locationKinds: z.array(LocationKindSchema).min(1),
   timezone: z.string().refine(isTimeZone, 'Not an IANA time zone'),
+  currency: z.string().regex(/^[A-Z]{3}$/, 'Currency is an ISO 4217 code such as AUD'),
   capabilities: ProviderCapabilitiesSchema,
+  limits: ProviderLimitsSchema.optional(),
   stayFields: z
     .array(StayFieldDescriptorSchema)
     .refine(
@@ -388,4 +489,6 @@ export const ProviderManifestSchema = z.object({
       'Release mode ids must be unique'
     )
     .optional(),
-}) satisfies z.ZodType<ProviderManifest>;
+});
+assertTypeEquals<z.input<typeof ProviderManifestSchema>, ProviderManifest>(true);
+assertTypeEquals<z.output<typeof ProviderManifestSchema>, ProviderManifest>(true);

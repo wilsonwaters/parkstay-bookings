@@ -1,14 +1,24 @@
 /**
- * `ProviderRegistry`: the one place core services find providers (architecture-notes §3).
+ * `ProviderRegistry`: the one place core services find providers (architecture-notes §3,
+ * §12.30).
  *
- * `register` validates the manifest with zod and checks that every capability the manifest
- * claims has the module behind it, so a core service that checked a capability (or used
- * `require`) can rely on the module being there.
+ * `register(factory, context)` checks, in order:
+ * 1. the provider id, and that it is not taken;
+ * 2. the factory's manifest: `ProviderManifestSchema`, then the manifest-flag rules
+ *    (`MANIFEST_RULES`), e.g. `snipes` needs `holds`, `availability` and release modes;
+ * 3. the context, built from the parsed manifest when `context` is a function;
+ * 4. the provider the factory builds: links, a valid `auth` definition, and a module behind
+ *    every capability (`CONSISTENCY_RULES`).
+ *
+ * A core service that checked a capability (or used `require`) can therefore rely on the
+ * module being there. The registry hands out a frozen plain provider object carrying the
+ * frozen parsed manifest, so neither the manifest nor the modules can change after the
+ * checks. It keeps each provider's context, so `disposeAll` can close what the context holds.
  */
 
 import {
+  AccountFieldsSchema,
   ProviderIdSchema,
-  ProviderManifestSchema,
   type BooleanCapability,
   type ProviderId,
   type ProviderManifest,
@@ -19,15 +29,19 @@ import {
   ProviderRegistrationError,
   UnknownProviderError,
 } from './sdk/errors';
-import type {
-  AccessGate,
-  AccommodationProvider,
-  AvailabilityModule,
-  BookingsModule,
-  CatalogModule,
-  HoldsModule,
-  ProviderFactory,
-  ReleasePolicy,
+import { parseProviderManifest } from './sdk/manifest';
+import {
+  assembleProvider,
+  type AccessGate,
+  type AccommodationProvider,
+  type AvailabilityModule,
+  type BookingsModule,
+  type CatalogModule,
+  type HoldsModule,
+  type ProviderAuth,
+  type ProviderFactory,
+  type ProviderModules,
+  type ReleasePolicy,
 } from './sdk/provider';
 
 /** The modules each capability guarantees once a provider is registered. */
@@ -47,205 +61,351 @@ interface CapabilityModules {
 export type ProviderWith<C extends BooleanCapability> = AccommodationProvider &
   CapabilityModules[C];
 
-interface ConsistencyRule {
-  /** Short name, used in tests and messages. */
+/** Builds a provider's context from its parsed, frozen manifest. */
+export type ProviderContextFactory = (manifest: Readonly<ProviderManifest>) => ProviderContext;
+
+/** A rule on the manifest alone. Returns what is wrong, or `undefined`. */
+export interface ManifestRule {
   rule: string;
-  applies(manifest: ProviderManifest): boolean;
-  satisfied(provider: AccommodationProvider): boolean;
-  needs: string;
+  violation(manifest: Readonly<ProviderManifest>): string | undefined;
 }
 
-const hasCheck = (p: AccommodationProvider): boolean => typeof p.availability?.check === 'function';
+/** A rule on the built provider (its manifest is the parsed one). Returns what is wrong, or `undefined`. */
+export interface ConsistencyRule {
+  rule: string;
+  violation(provider: AccommodationProvider): string | undefined;
+}
 
-/** Capability → module rules. Exported so the contract suite can name them. */
-export const CONSISTENCY_RULES: readonly ConsistencyRule[] = [
+const fn = (value: unknown): boolean => typeof value === 'function';
+const hasCheck = (p: AccommodationProvider): boolean => fn(p.availability?.check);
+
+/** Manifest-flag rules (§12.30). Exported so tests and the contract suite can name them. */
+export const MANIFEST_RULES: readonly ManifestRule[] = [
   {
-    rule: 'catalog',
-    applies: (m) => m.capabilities.catalog,
-    satisfied: (p) => p.catalog !== undefined,
-    needs: 'catalog',
+    rule: 'snipes needs holds and availability',
+    violation: ({ capabilities: c }) =>
+      c.snipes && !(c.holds && c.availability)
+        ? 'capability snipes needs capabilities holds and availability'
+        : undefined,
   },
   {
-    rule: 'availability/watches',
-    applies: (m) => m.capabilities.availability || m.capabilities.watches,
-    satisfied: hasCheck,
-    needs: 'availability.check',
+    rule: 'snipes needs release modes',
+    violation: (m) =>
+      m.capabilities.snipes && !m.releaseModes?.length
+        ? 'capability snipes needs at least one release mode'
+        : undefined,
   },
   {
-    rule: 'bulkAvailability',
-    applies: (m) => m.capabilities.bulkAvailability,
-    satisfied: (p) => typeof p.availability?.search === 'function',
-    needs: 'availability.search',
-  },
-  {
-    rule: 'holds',
-    applies: (m) => m.capabilities.holds,
-    satisfied: (p) => p.holds !== undefined,
-    needs: 'holds',
-  },
-  {
-    rule: 'snipes',
-    applies: (m) => m.capabilities.snipes,
-    satisfied: (p) => hasCheck(p) && p.holds !== undefined && p.release !== undefined,
-    needs: 'availability, holds and release',
-  },
-  {
-    rule: 'accessGate',
-    applies: (m) => m.capabilities.accessGate,
-    satisfied: (p) => p.access !== undefined,
-    needs: 'access',
-  },
-  {
-    rule: 'account',
-    applies: (m) => m.capabilities.account !== 'none',
-    satisfied: (p) => p.auth !== undefined,
-    needs: 'auth',
-  },
-  {
-    rule: 'bookingImport',
-    applies: (m) => m.capabilities.bookingImport,
-    satisfied: (p) => typeof p.bookings?.get === 'function',
-    needs: 'bookings.get',
+    rule: 'usesAccessGate needs accessGate',
+    violation: (m) => {
+      const gated = (m.releaseModes ?? []).filter((mode) => mode.usesAccessGate);
+      return gated.length && !m.capabilities.accessGate
+        ? `release mode ${gated.map((mode) => mode.id).join(', ')} uses the access gate but capability accessGate is off`
+        : undefined;
+    },
   },
 ];
 
-/** Every consistency rule the provider breaks, as messages; empty when it is consistent. */
-export function capabilityViolations(provider: AccommodationProvider): string[] {
-  return CONSISTENCY_RULES.filter(
-    (r) => r.applies(provider.manifest) && !r.satisfied(provider)
-  ).map((r) => `capability ${r.rule} needs ${r.needs}`);
+function isHttpsUrl(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
-function capabilityOn(manifest: ProviderManifest, capability: BooleanCapability): boolean {
-  return manifest.capabilities[capability] === true;
+function isHttpsOrigin(value: unknown): boolean {
+  return isHttpsUrl(value) && new URL(value as string).origin === value;
+}
+
+/** What is wrong with an `auth` definition for its kind, or `undefined`. */
+export function authViolation(auth: ProviderAuth): string | undefined {
+  if (!fn(auth.isSignedIn)) return 'auth needs isSignedIn';
+  const kind: unknown = auth.kind;
+  switch (auth.kind) {
+    case 'browser-session':
+      if (!isHttpsUrl(auth.signInUrl)) return 'browser-session auth needs an https signInUrl';
+      if (!auth.allowedOrigins?.length || !auth.allowedOrigins.every(isHttpsOrigin)) {
+        return 'browser-session auth needs https allowedOrigins';
+      }
+      return undefined;
+    case 'credentials':
+      if (!AccountFieldsSchema.safeParse(auth.fields).success) {
+        return 'credentials auth needs fields (at least one, unique alphanumeric keys)';
+      }
+      return fn(auth.signIn) ? undefined : 'credentials auth needs signIn';
+    case 'automation':
+      return fn(auth.signIn) ? undefined : 'automation auth needs signIn';
+    default:
+      return `auth kind "${String(kind)}" is not browser-session, credentials or automation`;
+  }
+}
+
+/** Capability → module rules (plus the auth shape). Exported so tests can name them. */
+export const CONSISTENCY_RULES: readonly ConsistencyRule[] = [
+  {
+    rule: 'catalog',
+    violation: (p) =>
+      p.manifest.capabilities.catalog && !fn(p.catalog?.getLocation)
+        ? 'capability catalog needs catalog.getLocation'
+        : undefined,
+  },
+  {
+    rule: 'catalogMode full',
+    violation: ({ manifest: { capabilities: c }, catalog }) =>
+      c.catalog && c.catalogMode === 'full' && !fn(catalog?.listLocations)
+        ? 'catalogMode full needs catalog.listLocations'
+        : undefined,
+  },
+  {
+    rule: 'catalogMode search',
+    violation: ({ manifest: { capabilities: c }, catalog }) =>
+      c.catalog && c.catalogMode === 'search' && !fn(catalog?.searchArea)
+        ? 'catalogMode search needs catalog.searchArea'
+        : undefined,
+  },
+  {
+    rule: 'availability/watches',
+    violation: (p) =>
+      (p.manifest.capabilities.availability || p.manifest.capabilities.watches) && !hasCheck(p)
+        ? 'capability availability/watches needs availability.check'
+        : undefined,
+  },
+  {
+    rule: 'bulkAvailability',
+    violation: (p) =>
+      p.manifest.capabilities.bulkAvailability && !fn(p.availability?.search)
+        ? 'capability bulkAvailability needs availability.search'
+        : undefined,
+  },
+  {
+    rule: 'holds',
+    violation: (p) =>
+      p.manifest.capabilities.holds && !(fn(p.holds?.create) && fn(p.holds?.paymentUrl))
+        ? 'capability holds needs holds.create and holds.paymentUrl'
+        : undefined,
+  },
+  {
+    rule: 'snipes',
+    violation: (p) =>
+      p.manifest.capabilities.snipes &&
+      !(hasCheck(p) && p.holds !== undefined && fn(p.release?.computeReleaseAt))
+        ? 'capability snipes needs availability, holds and release'
+        : undefined,
+  },
+  {
+    rule: 'release modes supported',
+    violation: (p) => {
+      if (!p.manifest.capabilities.snipes || !p.release) return undefined;
+      const release = p.release;
+      const unsupported = (p.manifest.releaseModes ?? []).filter((mode) => {
+        try {
+          return release.supports(mode.id) !== true;
+        } catch {
+          return true;
+        }
+      });
+      return unsupported.length
+        ? `release.supports() rejects release mode ${unsupported.map((m) => m.id).join(', ')}`
+        : undefined;
+    },
+  },
+  {
+    rule: 'accessGate',
+    violation: (p) =>
+      p.manifest.capabilities.accessGate && !p.access
+        ? 'capability accessGate needs access'
+        : undefined,
+  },
+  {
+    rule: 'account',
+    violation: (p) =>
+      p.manifest.capabilities.account !== 'none' && !p.auth
+        ? 'capability account needs auth'
+        : undefined,
+  },
+  {
+    rule: 'auth',
+    violation: (p) => (p.auth ? authViolation(p.auth) : undefined),
+  },
+  {
+    rule: 'bookingImport',
+    violation: (p) =>
+      p.manifest.capabilities.bookingImport && !fn(p.bookings?.get)
+        ? 'capability bookingImport needs bookings.get'
+        : undefined,
+  },
+];
+
+/** Every manifest-flag rule the manifest breaks, as messages. */
+export function manifestViolations(manifest: Readonly<ProviderManifest>): string[] {
+  return MANIFEST_RULES.map((r) => r.violation(manifest)).filter((v): v is string => !!v);
+}
+
+/** Every manifest and module rule the provider breaks, as messages; empty when it is consistent. */
+export function providerViolations(provider: AccommodationProvider): string[] {
+  return [
+    ...manifestViolations(provider.manifest),
+    ...CONSISTENCY_RULES.map((r) => r.violation(provider)).filter((v): v is string => !!v),
+  ];
 }
 
 const byName = (a: ProviderManifest, b: ProviderManifest): number =>
   a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }) || a.id.localeCompare(b.id);
+
+/** Starts `run` now and turns a synchronous throw into a rejection. */
+function attempt(run: () => unknown): Promise<unknown> {
+  try {
+    return Promise.resolve(run());
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+interface Entry {
+  readonly provider: AccommodationProvider;
+  readonly manifest: Readonly<ProviderManifest>;
+  readonly ctx: ProviderContext;
+}
 
 export interface ProviderRegistryOptions {
   logger?: ProviderLogger;
 }
 
 export class ProviderRegistry {
-  private readonly providers = new Map<ProviderId, AccommodationProvider>();
+  private readonly entries = new Map<ProviderId, Entry>();
   private readonly logger?: ProviderLogger;
 
   constructor(options: ProviderRegistryOptions = {}) {
     this.logger = options.logger;
   }
 
-  /** Builds the provider with `ctx` and adds it. Throws `ProviderRegistrationError`. */
-  register(factory: ProviderFactory, ctx: ProviderContext): AccommodationProvider {
-    const id = factory.id;
-    if (!ProviderIdSchema.safeParse(id).success) {
-      throw new ProviderRegistrationError(String(id), 'invalid provider id');
-    }
-    if (this.providers.has(id)) {
-      throw new ProviderRegistrationError(id, 'a provider with this id is already registered');
-    }
-    if (ctx.id !== id) {
-      throw new ProviderRegistrationError(id, `its context belongs to "${ctx.id}"`);
-    }
+  /**
+   * Validates the factory's manifest, builds the context (when `context` is a function) and
+   * the provider, checks it and adds it. Returns the registered provider. Throws
+   * `ProviderRegistrationError` naming the provider.
+   */
+  register(
+    factory: ProviderFactory,
+    context: ProviderContext | ProviderContextFactory
+  ): AccommodationProvider {
+    const id = factory?.id;
+    const fail = (reason: string, cause?: unknown): never => {
+      throw new ProviderRegistrationError(String(id), reason, cause);
+    };
+    const reasonOf = (error: unknown): string =>
+      error instanceof Error ? error.message : String(error);
 
-    let provider: AccommodationProvider;
+    if (!ProviderIdSchema.safeParse(id).success) fail('invalid provider id');
+    if (this.entries.has(id)) fail('a provider with this id is already registered');
+
+    const parsed = parseProviderManifest(factory.manifest);
+    if (!parsed.ok) return fail(`invalid manifest (${parsed.issues.join('; ')})`);
+    const manifest = parsed.manifest;
+    if (manifest.id !== id) fail(`its manifest id "${manifest.id}" does not match`);
+    const flagProblems = manifestViolations(manifest);
+    if (flagProblems.length) fail(flagProblems.join('; '));
+
+    let ctx: ProviderContext;
     try {
-      provider = factory(ctx);
+      ctx = typeof context === 'function' ? context(manifest) : context;
     } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      throw new ProviderRegistrationError(id, `its factory threw: ${reason}`, error);
+      return fail(`its context could not be built: ${reasonOf(error)}`, error);
+    }
+    if (ctx.id !== id) fail(`its context belongs to "${ctx.id}"`);
+
+    let impl: ProviderModules;
+    try {
+      impl = factory(ctx);
+    } catch (error) {
+      this.closeQuietly(id, { ctx });
+      return fail(`its factory threw: ${reasonOf(error)}`, error);
+    }
+    if (typeof impl !== 'object' || impl === null) {
+      this.closeQuietly(id, { ctx });
+      return fail('its factory returned no provider');
     }
 
-    const problem = this.problemWith(id, provider);
+    // The registry's copy: the parsed manifest, the modules as built, nothing replaceable.
+    const provider = Object.freeze(assembleProvider(manifest, impl));
+    const problem =
+      !fn(provider.links?.location) || !fn(provider.links?.booking)
+        ? 'it has no links'
+        : providerViolations(provider).join('; ');
     if (problem) {
       // Release anything the half-built provider started.
-      this.disposeQuietly(provider);
-      throw new ProviderRegistrationError(id, problem);
+      this.closeQuietly(id, { provider, ctx });
+      fail(problem);
     }
 
-    this.providers.set(id, provider);
+    this.entries.set(id, { provider, manifest, ctx });
     return provider;
   }
 
   get(id: ProviderId): AccommodationProvider {
-    const provider = this.providers.get(id);
-    if (!provider) throw new UnknownProviderError(id);
-    return provider;
+    const entry = this.entries.get(id);
+    if (!entry) throw new UnknownProviderError(id);
+    return entry.provider;
   }
 
   tryGet(id: ProviderId): AccommodationProvider | undefined {
-    return this.providers.get(id);
+    return this.entries.get(id)?.provider;
   }
 
-  /** Every manifest, sorted by name. */
-  list(): ProviderManifest[] {
-    return [...this.providers.values()].map((p) => p.manifest).sort(byName);
+  /** Every manifest (parsed and frozen), sorted by name. */
+  list(): Readonly<ProviderManifest>[] {
+    return [...this.entries.values()].map((e) => e.manifest).sort(byName);
   }
 
   /** The providers with `capability` turned on, sorted by name. */
   withCapability<C extends BooleanCapability>(capability: C): ProviderWith<C>[] {
-    return [...this.providers.values()]
-      .filter((p) => capabilityOn(p.manifest, capability))
-      .sort((a, b) => byName(a.manifest, b.manifest)) as ProviderWith<C>[];
+    return [...this.entries.values()]
+      .filter((e) => e.manifest.capabilities[capability] === true)
+      .sort((a, b) => byName(a.manifest, b.manifest))
+      .map((e) => e.provider) as ProviderWith<C>[];
   }
 
   /** The provider, which must have `capability`. Throws `UnknownProviderError` or `ProviderCapabilityError`. */
   require<C extends BooleanCapability>(id: ProviderId, capability: C): ProviderWith<C> {
     const provider = this.get(id);
-    if (!capabilityOn(provider.manifest, capability)) {
+    if (provider.manifest.capabilities[capability] !== true) {
       throw new ProviderCapabilityError(id, capability);
     }
     return provider as ProviderWith<C>;
   }
 
   /**
-   * Disposes every provider, even when some fail, and empties the registry. Each `dispose`
-   * starts synchronously, before this returns its promise. Failures are logged; this never
-   * rejects, so it is safe on quit.
+   * Disposes every provider, even when some fail, and empties the registry. For each one it
+   * disposes the access gate, calls the provider's `dispose`, and closes the context's
+   * browser. Each starts synchronously, before this returns its promise. Failures are
+   * logged; this never rejects, so it is safe on quit.
    */
   async disposeAll(): Promise<void> {
-    const providers = [...this.providers.values()];
-    this.providers.clear();
-    const results = await Promise.allSettled(providers.map((p) => this.startDispose(p)));
-    results.forEach((result, i) => {
-      if (result.status === 'rejected') {
-        this.logger?.error(`Provider ${providers[i].manifest.id} failed to dispose`, result.reason);
-      }
-    });
+    const entries = [...this.entries.entries()];
+    this.entries.clear();
+    await Promise.all(entries.map(([id, entry]) => this.close(id, entry, 'error')));
   }
 
-  private problemWith(id: ProviderId, provider: AccommodationProvider): string | undefined {
-    const parsed = ProviderManifestSchema.safeParse(provider?.manifest);
-    if (!parsed.success) {
-      const paths = parsed.error.issues.map(
-        (i) => `${i.path.length ? i.path.join('.') : 'manifest'}: ${i.message}`
+  private closeQuietly(id: ProviderId, parts: Partial<Pick<Entry, 'provider' | 'ctx'>>): void {
+    void this.close(id, parts, 'warn');
+  }
+
+  private async close(
+    id: ProviderId,
+    { provider, ctx }: Partial<Pick<Entry, 'provider' | 'ctx'>>,
+    level: 'warn' | 'error'
+  ): Promise<void> {
+    const steps: Array<[failure: string, run: () => unknown]> = [
+      ['access gate failed to dispose', () => provider?.access?.dispose?.()],
+      ['failed to dispose', () => provider?.dispose?.()],
+      ['browser failed to close', () => ctx?.browser?.close?.()],
+    ];
+    const started = steps.map(([failure, run]) => [failure, attempt(run)] as const);
+    for (const [failure, pending] of started) {
+      await pending.catch((error: unknown) =>
+        this.logger?.[level](`Provider ${id} ${failure}`, error)
       );
-      return `invalid manifest (${paths.join('; ')})`;
     }
-    if (provider.manifest.id !== id) {
-      return `its manifest id "${provider.manifest.id}" does not match`;
-    }
-    if (
-      typeof provider.links?.location !== 'function' ||
-      typeof provider.links?.booking !== 'function'
-    ) {
-      return 'it has no links';
-    }
-    const violations = capabilityViolations(provider);
-    return violations.length ? violations.join('; ') : undefined;
-  }
-
-  private startDispose(provider: AccommodationProvider): Promise<void> {
-    try {
-      return Promise.resolve(provider.dispose?.());
-    } catch (error) {
-      return Promise.reject(error);
-    }
-  }
-
-  private disposeQuietly(provider: AccommodationProvider): void {
-    this.startDispose(provider).catch((error) =>
-      this.logger?.warn(`Provider ${provider.manifest?.id} failed to dispose`, error)
-    );
   }
 }
