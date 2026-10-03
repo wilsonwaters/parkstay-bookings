@@ -6,12 +6,14 @@ _Last updated: 2026-10-02 (orchestrator)_
 Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
 
 ## Currently in flight
-- **V2** (#20) Provider-aware data model (v8): lane V.
-- **V7** (#25) Browser automation runtime: lane W (`/home/user/wt/lane-w`).
-- **P5** (#16) SecretVault: lane M.
-- **P6** (#17) Sandboxed preload: implemented; review running, lane P.
-- **B2** (#27) App identity rename: lane A.
-- Sandbox runtime verification uses per-HOME NSS trust of the agent proxy CA (`scratchpad/sandbox-nss.sh`) plus `--proxy-server`. TLS verification is never disabled.
+**PAUSED 2026-10-03 at the stakeholder's request (usage quota).** All sub-agents stopped. In-progress work is saved as local `wip:` checkpoint commits on the lane branches (not pushed):
+- **V2** (#20) data model v8: lane V (`/home/user/wt/lane-v`), partial (repositories in progress).
+- **V7** (#25) browser automation: lane W, nearly done (was running the final gate).
+- **P5** (#16) SecretVault: lane M, nearly done (was running the final test suite; V1 vault wiring status unknown).
+- **P6** (#17) sandboxed preload: lane P, implemented with clean commits; its review was interrupted, so re-run it.
+- **B2** (#27) app identity rename: lane A, just started.
+
+To resume: dispatch a fresh agent per lane with the "resume interrupted work" prompt (inspect the `wip:` commits, finish, squash). Then review, then merge in this order: P6, P5, V7, V2, B2.
 
 ## Completed
 - **V1** (#19) Provider SDK and contract: review REQUEST_CHANGES (Electron transport couldn't see redirects in production). Fixed on `net.request` with 21/21 live Electron tests (`npm run test:electron`). Registry flag rules, two-way schema/type assertions and extensibility hooks (§12.30). Merged.
