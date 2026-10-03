@@ -161,6 +161,28 @@ parkstay-bookings/
 
 ## Building the Application
 
+### Build Pipeline
+
+`npm run build` runs three builds into `dist/`:
+
+| Build | Tool | Script | Output |
+| --- | --- | --- | --- |
+| Main process (`src/main`, `src/shared`) | `tsc` + `tsc-alias` (`tsconfig.main.json`) | `build:main` | `dist/main/` |
+| Preload (`src/preload`) | esbuild (`scripts/build-preload.js`) | `build:preload` | `dist/preload/index.js` |
+| Renderer (`src/renderer`) | Vite (`vite.config.ts`) | `build:renderer` | `dist/renderer/` |
+
+The main window runs with `sandbox: true`. A sandboxed preload can `require` only `electron`
+(plus a few polyfilled modules), so esbuild bundles the preload and everything it imports into
+one file and leaves `electron` external. The build fails, and writes nothing, if the bundle
+imports anything else, such as `fs`, `path` or a Node-only package. The preload imports only
+the zod-free `shared/contracts/channels` module at runtime; the rest of the contract is types.
+`tsc` no longer emits a preload, but `npm run type-check` still covers `src/preload` through
+`tsconfig.json`.
+
+`npm run dev` runs `dev:main` (`tsc --watch`), `dev:preload` (esbuild `--watch`) and
+`dev:renderer` (Vite). If the app starts before the first preload build has finished, the
+window shows a "preload script is missing" page; restart it once the build has finished.
+
 ### Development Build
 
 ```bash
@@ -173,6 +195,9 @@ npm run dev:renderer
 # Start main process compilation only
 npm run dev:main
 
+# Rebuild the preload bundle on every change
+npm run dev:preload
+
 # Start built application
 npm start
 ```
@@ -180,11 +205,14 @@ npm start
 ### Production Build
 
 ```bash
-# Build all (main + renderer)
+# Build all (main + preload + renderer)
 npm run build
 
 # Build main process
 npm run build:main
+
+# Build the preload bundle
+npm run build:preload
 
 # Build renderer process
 npm run build:renderer

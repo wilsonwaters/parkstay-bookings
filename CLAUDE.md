@@ -30,7 +30,7 @@ WA ParkStay Bookings is an Electron + React + TypeScript desktop application tha
 ## Build & Run Commands
 
 ```bash
-npm run dev          # Start dev (main + renderer concurrently)
+npm run dev          # Start dev (main + preload + renderer concurrently)
 npm run build        # Production build
 npm run test         # Run Jest unit/integration tests
 npm run test:coverage # Test with coverage report
@@ -53,7 +53,7 @@ src/
 │   ├── scheduler/  # node-cron job scheduler
 │   ├── ipc/        # handle.ts, sender guard, renderer events, handlers/ (one per namespace)
 │   └── utils/      # Logger, browser headers
-├── preload/        # Secure context bridge (window.api)
+├── preload/        # Secure context bridge (window.api), bundled by esbuild, sandboxed
 ├── renderer/       # React UI
 │   ├── components/ # Reusable components (forms/, settings/, layouts/)
 │   ├── pages/      # Dashboard, Login, Settings, Bookings/, Watches/, SiteSniper/
@@ -132,7 +132,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 - Handlers in `src/main/ipc/handlers/`, one file per namespace (`watches.handlers.ts`, …), each `registerXHandlers(handle, container)`; `registerIpcHandlers(container, { isTrustedSender })` in `ipc/index.ts` registers them all
 - Events: main emits through `container.rendererEvents.emit(name, payload)` (`ipc/events.ts`), which reaches only trusted webContents. The renderer subscribes with `window.api.events.on(name, cb)`, which returns an unsubscribe function for that subscription only
 - Settings keys are typed in `contracts/settings.ts` (`SETTING_KEYS`): main owns each key's `valueType` and `category`; add new keys there
-- Exposed to renderer via `src/preload/index.ts`, which implements `WindowApi`; `src/preload/window.d.ts` types `window.api`
+- Exposed to renderer via `src/preload/index.ts`, which implements `WindowApi`; `src/preload/window.d.ts` types `window.api`. `scripts/build-preload.js` bundles it into `dist/preload/index.js` for the `sandbox: true` window and fails the build if it imports anything but `electron`
 - Adding a method: add the channel to `channels.ts`, the definition to the namespace file, a handler with `handle()`, and the payload mapper in the preload. The parity tests fail until all four agree
 
 ## UI Status
