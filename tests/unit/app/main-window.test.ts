@@ -3,11 +3,13 @@
  * - new windows are always denied; http(s) and mailto go to `shell.openExternal`;
  * - navigations and redirects off the app origin are cancelled, hash routes are not;
  * - `<webview>` attaches are denied for every webContents;
- * - the window is isolated, registered as the trusted IPC sender, and in development gets
- *   the dev CSP as a response header.
+ * - the window is sandboxed and isolated, registered as the trusted IPC sender, and in
+ *   development gets the dev CSP as a response header;
+ * - without its preload file the window shows a "preload missing" page instead of the app.
  */
 
 import { EventEmitter } from 'events';
+import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { pathToFileURL } from 'url';
@@ -18,6 +20,7 @@ import {
   denyWebviews,
   guardNavigation,
   installDevCsp,
+  preloadMissingPage,
 } from '@main/app/main-window';
 import { createAppUrlMatcher } from '@main/app/renderer-entry';
 import { TrustedWebContents } from '@main/ipc/trusted-web-contents';
@@ -94,7 +97,16 @@ interface FakeContents extends EventEmitter {
 
 const INDEX = path.join(os.tmpdir(), 'WA Stay', 'resources', 'dist', 'renderer', 'index.html');
 const APP_URL = pathToFileURL(INDEX).href;
-const PRELOAD = path.join(os.tmpdir(), 'preload', 'index.js');
+const PRELOAD_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-stay-preload-'));
+const PRELOAD = path.join(PRELOAD_DIR, 'index.js');
+
+beforeAll(() => {
+  fs.writeFileSync(PRELOAD, '// the bundled preload\n');
+});
+
+afterAll(() => {
+  fs.rmSync(PRELOAD_DIR, { recursive: true, force: true });
+});
 
 /** Emits a navigation-type event the way Electron 28 does: an event object plus the URL. */
 function navigate(
@@ -212,6 +224,58 @@ describe('denyWebviews', () => {
 });
 
 describe('createMainWindow', () => {
+  it('runs the renderer sandboxed and isolated, with the bundled preload', () => {
+    const window = createMainWindow({
+      entry: { kind: 'file', path: INDEX },
+      preloadPath: PRELOAD,
+      trustedWebContents: new TrustedWebContents(),
+      startHidden: false,
+    }) as unknown as FakeWindow;
+
+    expect(window.options.webPreferences).toEqual(
+      expect.objectContaining({ sandbox: true, contextIsolation: true, nodeIntegration: false })
+    );
+    expect(window.options.webPreferences.preload).toBe(PRELOAD);
+  });
+
+  it('a missing preload shows an error page naming it, not a blank app', () => {
+    jest.spyOn(logger, 'error').mockImplementation(() => logger);
+    const missing = path.join(PRELOAD_DIR, 'not-built-yet', 'index.js');
+
+    const window = createMainWindow({
+      entry: { kind: 'file', path: INDEX },
+      preloadPath: missing,
+      trustedWebContents: new TrustedWebContents(),
+      startHidden: false,
+    }) as unknown as FakeWindow;
+
+    expect(logger.error).toHaveBeenCalledWith(`The preload script is missing: ${missing}`);
+    expect(window.loadFile).not.toHaveBeenCalled();
+    expect(window.loadURL).toHaveBeenCalledWith(preloadMissingPage(missing));
+    // Still sandboxed, and no preload for Electron to fail on
+    expect(window.options.webPreferences).toEqual(
+      expect.objectContaining({ sandbox: true, contextIsolation: true, nodeIntegration: false })
+    );
+    expect(window.options.webPreferences).not.toHaveProperty('preload');
+
+    // The window still appears, with the error
+    window.emit('ready-to-show');
+    expect(window.show).toHaveBeenCalledTimes(1);
+  });
+
+  it('the dev server is not loaded either while the preload is missing', () => {
+    jest.spyOn(logger, 'error').mockImplementation(() => logger);
+    const window = createMainWindow({
+      entry: { kind: 'dev-server', url: 'http://localhost:3000' },
+      preloadPath: path.join(PRELOAD_DIR, 'missing.js'),
+      trustedWebContents: new TrustedWebContents(),
+      startHidden: false,
+    }) as unknown as FakeWindow;
+
+    expect(window.loadURL).toHaveBeenCalledTimes(1);
+    expect(window.loadURL.mock.calls[0][0]).toMatch(/^data:text\/html;charset=utf-8,/);
+  });
+
   it('is isolated, trusted, guarded and loads the built index.html without a CSP header', () => {
     const trusted = new TrustedWebContents();
     const window = createMainWindow({
@@ -308,6 +372,23 @@ describe('createMainWindow', () => {
 
     expect(window.webContents.reload).toHaveBeenCalledTimes(1);
     expect(logger.error).toHaveBeenCalledWith('Renderer process gone: crashed (exit code 133)');
+  });
+});
+
+describe('preloadMissingPage', () => {
+  it('is a static page that names the missing file, HTML-escaped', () => {
+    const url = preloadMissingPage(
+      'C:\\Apps\\<WA Stay>\\resources\\app.asar\\dist\\preload\\index.js'
+    );
+    const html = decodeURIComponent(url.slice('data:text/html;charset=utf-8,'.length));
+
+    expect(html).toContain('preload script is missing');
+    expect(html).toContain(
+      'C:\\Apps\\&lt;WA Stay&gt;\\resources\\app.asar\\dist\\preload\\index.js'
+    );
+    expect(html).not.toContain('<WA Stay>');
+    expect(html).not.toMatch(/<script/i);
+    expect(html).toContain(`default-src 'none'`);
   });
 });
 

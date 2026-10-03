@@ -1,8 +1,10 @@
 /**
  * The main window and the guards around it (architecture-notes §1, §7; ui-review item 10).
  *
- * - `contextIsolation: true`, `nodeIntegration: false`, `webviewTag: false`. (`sandbox` stays
- *   off until P6 bundles the preload.)
+ * - `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`, `webviewTag: false`.
+ *   The preload is one bundled file (`scripts/build-preload.js`) that loads only `electron`.
+ *   If it is missing (say `npm start` ran before the first preload build), the window shows
+ *   an error page that says so instead of a blank app.
  * - The window's webContents is the trusted IPC sender and event target.
  * - New windows are always denied: http(s) and mailto links go to the system browser or mail
  *   app through `shell.openExternal`; anything else (`javascript:`, `file:`, …) is logged.
@@ -16,6 +18,7 @@
  */
 
 import { App, BrowserWindow, Session, shell, WebContents } from 'electron';
+import fs from 'fs';
 import type { TrustedWebContents } from '../ipc/trusted-web-contents';
 import { logger } from '../utils/logger';
 import { reloadOnceOnRenderCrash } from './crash-policy';
@@ -41,6 +44,7 @@ export function createMainWindow({
   trustedWebContents,
   startHidden,
 }: MainWindowOptions): BrowserWindow {
+  const hasPreload = fs.existsSync(preloadPath);
   const window = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -49,10 +53,9 @@ export function createMainWindow({
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,
       webviewTag: false,
-      // P6 bundles the preload and turns the sandbox on
-      sandbox: false,
-      preload: preloadPath,
+      ...(hasPreload ? { preload: preloadPath } : {}),
     },
     title: 'ParkStay Bookings',
     show: false, // Don't show until ready
@@ -67,7 +70,10 @@ export function createMainWindow({
   });
   reloadOnceOnRenderCrash(contents, log);
 
-  if (entry.kind === 'dev-server') {
+  if (!hasPreload) {
+    log.error(`The preload script is missing: ${preloadPath}`);
+    logLoadFailure(window.loadURL(preloadMissingPage(preloadPath)));
+  } else if (entry.kind === 'dev-server') {
     installDevCsp(contents.session, entry.url);
     logLoadFailure(window.loadURL(entry.url));
     contents.openDevTools();
@@ -86,6 +92,35 @@ export function createMainWindow({
   });
 
   return window;
+}
+
+/**
+ * A self-contained error page (no scripts, nothing fetched) for a window whose preload
+ * script is missing, as a `data:` URL.
+ */
+export function preloadMissingPage(preloadPath: string): string {
+  const html = [
+    '<!doctype html><html lang="en"><head><meta charset="utf-8">',
+    `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">`,
+    '<title>The app could not start</title>',
+    '<style>body{font:15px/1.5 system-ui,sans-serif;margin:48px;max-width:640px}',
+    'code{font-family:ui-monospace,monospace;word-break:break-all}</style></head><body>',
+    '<h1>The app could not start</h1>',
+    `<p>Its preload script is missing:</p><p><code>${escapeHtml(preloadPath)}</code></p>`,
+    '<p>Running from source? Run <code>npm run build:preload</code> (or wait for',
+    ' <code>npm run dev</code> to finish its first build), then restart the app.',
+    ' Otherwise, reinstall the app.</p>',
+    '</body></html>',
+  ].join('');
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(
+    /[&<>"']/g,
+    (char) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] ?? char
+  );
 }
 
 export interface NavigationGuardOptions {

@@ -62,7 +62,8 @@ function createWindow(startHidden: boolean): void {
 
   const window = createMainWindow({
     entry: rendererEntry,
-    preloadPath: path.resolve(__dirname, '../preload/index.js'),
+    // The bundled preload (`npm run build:preload`): dist/preload/, next to dist/main/
+    preloadPath: path.join(__dirname, '../../preload/index.js'),
     trustedWebContents: container.trustedWebContents,
     startHidden,
   });

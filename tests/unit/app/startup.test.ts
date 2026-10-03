@@ -11,6 +11,7 @@ import path from 'path';
 const mockOrder: string[] = [];
 const mockState = { hasLock: true, openDatabaseError: null as Error | null };
 const mockCrashPolicy = { markReady: jest.fn(), failStartup: jest.fn() };
+const mockWindowOptions: Array<{ preloadPath: string }> = [];
 
 jest.mock('electron', () => {
   const { EventEmitter: Emitter } = jest.requireActual('events');
@@ -79,8 +80,9 @@ jest.mock('@main/ipc', () => ({
 jest.mock('@main/app/main-window', () => {
   const { EventEmitter: Emitter } = jest.requireActual('events');
   return {
-    createMainWindow: jest.fn(() => {
+    createMainWindow: jest.fn((options: { preloadPath: string }) => {
       mockOrder.push('createMainWindow');
+      mockWindowOptions.push(options);
       return Object.assign(new Emitter(), {
         isDestroyed: () => false,
         isMinimized: () => false,
@@ -105,6 +107,7 @@ async function launch(): Promise<void> {
 
 beforeEach(() => {
   mockOrder.length = 0;
+  mockWindowOptions.length = 0;
   mockState.hasLock = true;
   mockState.openDatabaseError = null;
   mockCrashPolicy.markReady.mockClear();
@@ -131,6 +134,16 @@ describe('main process startup', () => {
     expect(mockCrashPolicy.markReady).toHaveBeenCalledTimes(1);
     expect(mockCrashPolicy.failStartup).not.toHaveBeenCalled();
     expect(app.listenerCount('second-instance')).toBe(1);
+  });
+
+  it('points the window at the bundled preload, relative to the main bundle (never the cwd)', async () => {
+    await launch();
+
+    // From dist/main/main/ this is dist/preload/index.js, inside app.asar when packaged
+    const mainDir = path.dirname(require.resolve('@main/index'));
+    expect(mockWindowOptions.map((options) => options.preloadPath)).toEqual([
+      path.join(mainDir, '../../preload/index.js'),
+    ]);
   });
 
   it('a second instance quits without opening the database or waiting for ready', async () => {
