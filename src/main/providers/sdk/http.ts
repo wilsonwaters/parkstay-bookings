@@ -9,11 +9,23 @@
  *
  * Provider code never imports `electron` or an HTTP library; it only sees this interface.
  *
- * Every request has a timeout (default 30 s) and honours the caller's `AbortSignal`;
- * whichever fires first wins, and the timer is always cleared. A timeout rejects with
- * `ProviderTimeoutError`, a caller abort with an `AbortError`, and a failure to get any
- * response with `ProviderHttpError` (status 0). The response body is read before the
- * request settles, so the timeout covers it too.
+ * Both transports only send single hops; `BaseHttpClient` owns everything else, so the two
+ * behave the same (architecture-notes §12.30):
+ * - **Cookies** come only from `cookies`, the client's cookie store, and are stored and sent
+ *   on every hop. A `Cookie` header the caller sets is ignored, as Chromium ignores it.
+ * - **Redirects.** `follow` (the default) follows at most `MAX_REDIRECTS` hops and reports
+ *   the final URL; a 303, or a 301/302 after a POST, becomes a GET without a body; an
+ *   `Authorization` header the caller set is dropped once a hop changes origin. `manual`
+ *   returns the 3xx itself, with an empty body. `error` rejects on any redirect.
+ * - **URLs.** Only `https:` is allowed, plus `http:` to a loopback host (`127.0.0.1`,
+ *   `localhost`, `::1`) for tests. Anything else, on the first hop or a redirect, is a
+ *   non-retryable `ProviderHttpError` (`reason: 'blocked'`) and is never sent.
+ * - **Timeouts and aborts.** Every request has a timeout (default 30 s) and honours the
+ *   caller's `AbortSignal`; whichever fires first wins, and the timer is always cleared. A
+ *   timeout rejects with `ProviderTimeoutError`, a caller abort with an `AbortError`. The
+ *   body is read before the request settles, so the timeout covers it too.
+ * - **Failures.** No response at all is a `ProviderHttpError` with status 0, classified by
+ *   the transport's error code (`net-errors.ts`): only genuine network failures retry.
  */
 
 import type { ProviderId } from '@shared/types/provider.types';
@@ -24,6 +36,7 @@ import {
   ProviderParseError,
   ProviderTimeoutError,
 } from './errors';
+import { classifyTransportError } from './net-errors';
 
 export type HttpMethod = 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -32,19 +45,20 @@ export type QueryValue = string | number | boolean | null | undefined;
 export interface HttpRequestOptions {
   /** Appended to the URL's search params; `null`/`undefined` values are skipped. */
   query?: Record<string, QueryValue>;
+  /** A `Cookie` header is ignored: set cookies through `HttpClient.cookies`. */
   headers?: Record<string, string>;
   body?: string | URLSearchParams;
   /** Default 30 000. */
   timeoutMs?: number;
   signal?: AbortSignal;
-  /** Default `follow`. `manual` returns a 3xx response as is. */
+  /** Default `follow` (at most `MAX_REDIRECTS` hops). `manual` returns a 3xx with an empty body. */
   redirect?: 'follow' | 'manual' | 'error';
 }
 
 export interface HttpResponse {
   status: number;
   ok: boolean;
-  /** The final URL after redirects (the request URL when the transport cannot tell). */
+  /** The final URL, after any redirects. */
   url: string;
   headers: Headers;
   text(): Promise<string>;
@@ -112,8 +126,42 @@ export interface HttpClient {
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
 
-/** What a transport receives: absolute URL with the query applied, merged headers, a live signal. */
-export interface TransportRequest {
+/** The most redirects a request follows; one more is a `ProviderHttpError` (`redirect-limit`). */
+export const MAX_REDIRECTS = 5;
+
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+/** `https:` anywhere, or `http:` to a loopback host (tests). */
+export function isAllowedRequestUrl(url: URL): boolean {
+  if (url.protocol === 'https:') return true;
+  return url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname);
+}
+
+/** One hop as a transport sends it. Transports never follow redirects themselves. */
+export interface HopRequest {
+  method: HttpMethod;
+  /** Absolute, and allowed by `isAllowedRequestUrl`. */
+  url: string;
+  headers: Headers;
+  body?: string;
+  /** Fires on the caller's abort or the timeout; the transport must stop and reject. */
+  signal: AbortSignal;
+}
+
+/** One hop's response, as soon as its headers arrive. */
+export interface HopResponse {
+  status: number;
+  headers: Headers;
+  /** Reads the rest of the body as text. Rejects if the signal fires first. */
+  text(): Promise<string>;
+  /** Drops the body unread (a redirect's). */
+  discard(): void;
+}
+
+/** What `request` hands the redirect loop: the URL with the query applied, merged headers. */
+interface TransportRequest {
   method: HttpMethod;
   url: string;
   headers: Headers;
@@ -190,10 +238,11 @@ export abstract class BaseHttpClient implements HttpClient {
   abstract readonly cookies: CookieStore;
 
   /**
-   * Sends one request and reads its body. Called with a signal that fires on the caller's
-   * abort or the timeout; the base class turns the resulting rejection into the right error.
+   * Sends one hop and resolves when its headers arrive, applying and storing cookies. It
+   * never follows a redirect. A failure to get a response rejects with the transport's own
+   * error; the base class classifies it.
    */
-  protected abstract transport(request: TransportRequest): Promise<HttpResponse>;
+  protected abstract send(hop: HopRequest): Promise<HopResponse>;
 
   /** Headers every request from this client carries (see `withDefaults`). */
   protected defaultHeaders: Record<string, string> = {};
@@ -204,8 +253,8 @@ export abstract class BaseHttpClient implements HttpClient {
     options: HttpRequestOptions = {}
   ): Promise<HttpResponse> {
     const { signal, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
-    const target = buildUrl(url, options.query);
     if (signal?.aborted) throw createAbortError(signal);
+    const target = this.checkedUrl(url, options.query);
 
     const controller = new AbortController();
     let timedOut = false;
@@ -216,11 +265,15 @@ export abstract class BaseHttpClient implements HttpClient {
     const onAbort = (): void => controller.abort();
     signal?.addEventListener('abort', onAbort, { once: true });
 
+    const headers = mergeHeaders(this.defaultHeaders, options.headers);
+    // Cookies come from the cookie store only, in both transports.
+    headers.delete('cookie');
+
     try {
       return await this.transport({
         method,
         url: target,
-        headers: mergeHeaders(this.defaultHeaders, options.headers),
+        headers,
         body: options.body === undefined ? undefined : String(options.body),
         signal: controller.signal,
         redirect: options.redirect ?? 'follow',
@@ -236,16 +289,104 @@ export abstract class BaseHttpClient implements HttpClient {
         });
       }
       if (error instanceof ProviderError) throw error;
+      const failure = classifyTransportError(error);
       throw new ProviderHttpError({
         providerId: this.providerId,
         status: 0,
         url: target,
+        ...failure,
         cause: error,
       });
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
     }
+  }
+
+  /** Sends the request, following redirects as `request.redirect` says. */
+  private async transport(request: TransportRequest): Promise<HttpResponse> {
+    let { method, url, body } = request;
+    const headers = new Headers(request.headers);
+
+    for (let hop = 0; ; hop++) {
+      const response = await this.send({ method, url, headers, body, signal: request.signal });
+      const location = response.headers.get('location');
+
+      if (!REDIRECT_STATUSES.has(response.status) || location === null) {
+        return bufferedResponse({
+          providerId: this.providerId,
+          status: response.status,
+          url,
+          headers: response.headers,
+          body: await response.text(),
+        });
+      }
+
+      response.discard();
+      if (request.redirect === 'manual') {
+        return bufferedResponse({
+          providerId: this.providerId,
+          status: response.status,
+          url,
+          headers: response.headers,
+          body: '',
+        });
+      }
+      if (request.redirect === 'error' || hop >= MAX_REDIRECTS) {
+        const unexpected = request.redirect === 'error';
+        throw new ProviderHttpError({
+          providerId: this.providerId,
+          status: response.status,
+          url,
+          reason: unexpected ? 'redirect' : 'redirect-limit',
+          message: unexpected
+            ? `${this.providerId}: unexpected redirect (HTTP ${response.status})`
+            : `${this.providerId}: more than ${MAX_REDIRECTS} redirects`,
+        });
+      }
+
+      const next = this.checkedUrl(location, undefined, url);
+      if (new URL(next).origin !== new URL(url).origin) {
+        // Credentials the caller set were meant for the first origin only.
+        headers.delete('authorization');
+      }
+      if (
+        (response.status === 303 && method !== 'HEAD') ||
+        (response.status <= 302 && method === 'POST')
+      ) {
+        method = 'GET';
+        body = undefined;
+        headers.delete('content-type');
+      }
+      url = next;
+    }
+  }
+
+  /** The absolute URL to send to, or a non-retryable `ProviderHttpError` (`blocked`). */
+  private checkedUrl(url: string, query?: Record<string, QueryValue>, base?: string): string {
+    let target: URL;
+    try {
+      target = new URL(buildUrl(new URL(url, base).href, query));
+    } catch (error) {
+      throw new ProviderHttpError({
+        providerId: this.providerId,
+        status: 0,
+        url,
+        reason: 'blocked',
+        message: `${this.providerId}: not a valid URL`,
+        cause: error,
+      });
+    }
+    if (!isAllowedRequestUrl(target)) {
+      throw new ProviderHttpError({
+        providerId: this.providerId,
+        status: 0,
+        url: target.href,
+        reason: 'blocked',
+        message: `${this.providerId}: only https URLs are allowed, not ${target.protocol}//${target.host}`,
+      });
+    }
+    return target.href;
   }
 
   getJson<T = unknown>(url: string, options: Omit<HttpRequestOptions, 'body'> = {}): Promise<T> {
@@ -279,9 +420,7 @@ export abstract class BaseHttpClient implements HttpClient {
     const headers = Object.fromEntries(
       mergeHeaders(this.defaultHeaders, defaults.headers).entries()
     );
-    return new DefaultsHttpClient(this.providerId, this.cookies, headers, (request) =>
-      this.transport(request)
-    );
+    return new DefaultsHttpClient(this.providerId, this.cookies, headers, (hop) => this.send(hop));
   }
 
   private async expectJson<T>(pending: Promise<HttpResponse>): Promise<T> {
@@ -304,13 +443,13 @@ class DefaultsHttpClient extends BaseHttpClient {
     readonly providerId: ProviderId,
     readonly cookies: CookieStore,
     headers: Record<string, string>,
-    private readonly send: (request: TransportRequest) => Promise<HttpResponse>
+    private readonly sendHop: (hop: HopRequest) => Promise<HopResponse>
   ) {
     super();
     this.defaultHeaders = headers;
   }
 
-  protected transport(request: TransportRequest): Promise<HttpResponse> {
-    return this.send(request);
+  protected send(hop: HopRequest): Promise<HopResponse> {
+    return this.sendHop(hop);
   }
 }

@@ -27,6 +27,9 @@ npm run test:watch
 
 # Run E2E tests (Playwright)
 npm run test:e2e
+
+# Run live Electron tests (real Chromium networking; not part of npm test)
+npm run test:electron
 ```
 
 ## Jest projects
@@ -135,6 +138,7 @@ tests/
 ├── integration/             # Integration tests (main project)
 ├── scripts/                 # Tests for Node scripts in scripts/ (main project)
 ├── e2e/                     # End-to-end tests (Playwright, not Jest)
+├── electron/                # Live tests that run inside Electron (npm run test:electron, not Jest)
 ├── manual/                  # Scripts run by hand against live services (not Jest)
 ├── fixtures/                # Test data (users, bookings, watches, site-sniper)
 ├── setup/
@@ -144,6 +148,7 @@ tests/
 │   ├── database-helper.ts   # Database setup/teardown
 │   ├── mock-api.ts          # Mock API responses
 │   ├── test-helpers.ts      # Common test utilities
+│   ├── http-transport-cases.ts # HttpClient cases shared by Jest (Node) and Electron runs
 │   └── window-api.ts        # createMockWindowApi() for renderer tests
 └── README.md                # This file
 ```
@@ -217,6 +222,31 @@ test('should create a booking', async ({ page }) => {
   await expect(page.locator('.toast-success')).toContainText('Booking created');
 });
 ```
+
+### Live Electron Tests (`tests/electron/`)
+Some behaviour only exists in Electron's real network stack, so mocks cannot prove it: the
+production `ElectronSessionHttpClient` sends requests through Chromium on a session
+partition (redirect handling, session cookies on every hop, Referer policy, `net::ERR_*`
+failures). These tests run inside Electron, not Jest:
+
+```bash
+npm run test:electron                  # every tests/electron/*.electron.ts
+npm run test:electron -- http-transport
+```
+
+- `tests/electron/run.js` bundles each `*.electron.ts` with esbuild (`electron` stays
+  external) and launches it as Electron's main script with `--no-sandbox`. The test prints
+  TAP and exits non-zero on any failure.
+- **Linux needs a display:** without `DISPLAY` the runner wraps Electron in `xvfb-run -a`
+  (`apt-get install xvfb`). Windows and macOS need nothing extra.
+- Everything is local: the HTTP transport test starts two loopback servers on 127.0.0.1 (two
+  origins) and uses a throwaway `userData` folder, so no network or proxy is needed.
+- `http-transport.electron.ts` runs the same cases as
+  `tests/unit/providers/http-transport-parity.test.ts`, which Jest runs against
+  `NodeHttpClient` (from `tests/utils/http-transport-cases.ts`), plus Electron-only checks.
+  A behaviour change in either client must keep both runs green.
+- Not part of `npm test`: it needs the Electron binary and a display. Run it when you change
+  `src/main/providers/sdk/http*.ts`.
 
 ## Test Utilities
 

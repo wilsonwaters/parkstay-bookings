@@ -36,6 +36,7 @@
     "test:watch": "jest --watch",
     "pretest:coverage": "node scripts/check-native-abi.js",
     "test:coverage": "jest --coverage",
+    "test:electron": "node tests/electron/run.js",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",

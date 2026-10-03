@@ -35,6 +35,7 @@ npm run build        # Production build
 npm run test         # Run Jest unit/integration tests
 npm run test:coverage # Test with coverage report
 npm run test:e2e     # Playwright E2E tests
+npm run test:electron # Live Electron tests (tests/electron/; xvfb on Linux; not in npm test)
 npm run lint         # ESLint
 npm run type-check   # TypeScript type checking
 npm run dist:win     # Package Windows installer

@@ -88,6 +88,30 @@ describe('provider errors', () => {
     expect([400, 401, 404].map((s) => http(s).retryable)).toEqual([false, false, false]);
   });
 
+  it('derives the reason from the status, and retryable from the reason', () => {
+    const http = (options: Partial<ConstructorParameters<typeof ProviderHttpError>[0]>) =>
+      new ProviderHttpError({
+        providerId: 'fake',
+        status: 0,
+        url: 'https://x.example/a?q=1',
+        ...options,
+      });
+
+    expect(http({ status: 503 })).toMatchObject({ reason: 'status', retryable: true });
+    expect(http({ status: 0 })).toMatchObject({ reason: 'network', retryable: true });
+    expect(http({ status: 302, reason: 'redirect' })).toMatchObject({ retryable: false });
+    expect(http({ status: 302, reason: 'redirect-limit' })).toMatchObject({ retryable: false });
+    expect(http({ reason: 'network', retryable: false }).retryable).toBe(false);
+    const blocked = http({ reason: 'blocked', netError: 'ERR_BLOCKED_BY_CLIENT' });
+    expect(blocked).toMatchObject({ retryable: false, netError: 'ERR_BLOCKED_BY_CLIENT' });
+    expect(blocked.message).toBe(
+      'fake: the request to https://x.example/a was blocked (ERR_BLOCKED_BY_CLIENT)'
+    );
+    expect(http({ netError: 'ECONNRESET' }).message).toBe(
+      'fake: no response from https://x.example/a (ECONNRESET)'
+    );
+  });
+
   it('keeps the query string (personal details) out of HTTP messages', () => {
     const error = new ProviderHttpError({
       providerId: 'parkstay',

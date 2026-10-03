@@ -13,5 +13,6 @@ export * from './kv-store';
 export * from './secrets';
 export * from './browser';
 export * from './errors';
+export * from './net-errors';
 export * from './concurrency';
 export * from './user-agent';

@@ -23,17 +23,19 @@ export function electron(): Record<string, unknown> {
     shell: { openExternal: jest.fn(), openPath: jest.fn() },
     ipcMain: { handle: jest.fn() },
     session: { fromPartition: jest.fn(() => fakeSession()) },
+    // Providers' HTTP clients send through `net.request`; it fails unless a test stubs it.
+    net: {
+      request: jest.fn(() => {
+        throw new Error('net.request is not mocked in this test');
+      }),
+    },
   };
 }
 
-/**
- * A session partition (`session.fromPartition`) whose network calls fail unless a test
- * stubs them: providers' HTTP clients are built on it.
- */
+/** A session partition (`session.fromPartition`): providers' HTTP clients are built on it. */
 export function fakeSession(): Record<string, unknown> {
   return {
     setUserAgent: jest.fn(),
-    fetch: jest.fn(() => Promise.reject(new Error('session.fetch is not mocked in this test'))),
     cookies: {
       get: jest.fn(() => Promise.resolve([])),
       set: jest.fn(() => Promise.resolve()),

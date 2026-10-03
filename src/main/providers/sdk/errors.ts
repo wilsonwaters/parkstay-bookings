@@ -92,35 +92,67 @@ function withoutQuery(url: string): string {
 }
 
 /**
- * A non-2xx response, too many redirects, or no response at all. `status` is 0 when no
- * response was received (network failure).
+ * Why an HTTP request failed:
+ * - `status`: a non-2xx response (from `getJson`/`postForm`); retryable for 408, 429 and 5xx;
+ * - `redirect`: a redirect under `redirect: 'error'`;
+ * - `redirect-limit`: more than `MAX_REDIRECTS` redirects (a loop);
+ * - `network`: no response for a reason that can pass (connection refused or reset, DNS,
+ *   offline, proxy); retryable;
+ * - `blocked`: the request was refused before or instead of a response, and trying again
+ *   will not help (a URL that is not https, a blocked or unsafe request, a bad certificate).
+ */
+export type HttpErrorReason = 'status' | 'redirect' | 'redirect-limit' | 'network' | 'blocked';
+
+const RETRYABLE_STATUS = (status: number): boolean =>
+  status === 408 || status === 429 || status >= 500;
+
+/**
+ * An HTTP failure: a non-2xx response, a redirect the request does not allow, or no response
+ * at all. `status` is the response status, or 0 when there was no response; `reason` says
+ * which, and `netError` names the transport's error code (`ERR_CONNECTION_REFUSED`,
+ * `ECONNRESET`) when there is one.
  */
 export class ProviderHttpError extends ProviderError {
   readonly status: number;
   readonly url: string;
+  readonly reason: HttpErrorReason;
+  readonly netError?: string;
 
   constructor(options: {
     providerId: ProviderId;
     status: number;
     url: string;
+    /** Defaults to `network` for status 0, otherwise `status`. */
+    reason?: HttpErrorReason;
+    netError?: string;
     message?: string;
+    /** Defaults from `reason` (and the status): only `network` and 408/429/5xx retry. */
+    retryable?: boolean;
     cause?: unknown;
   }) {
-    const { providerId, status, url, cause } = options;
+    const { providerId, status, url, netError, cause } = options;
+    const reason = options.reason ?? (status === 0 ? 'network' : 'status');
+    const detail = netError ? ` (${netError})` : '';
+    const defaultMessage =
+      reason === 'blocked'
+        ? `${providerId}: the request to ${withoutQuery(url)} was blocked${detail}`
+        : status === 0
+          ? `${providerId}: no response from ${withoutQuery(url)}${detail}`
+          : `${providerId}: HTTP ${status} from ${withoutQuery(url)}`;
     super({
       providerId,
       code: 'http',
-      message:
-        options.message ??
-        (status === 0
-          ? `${providerId}: no response from ${withoutQuery(url)}`
-          : `${providerId}: HTTP ${status} from ${withoutQuery(url)}`),
-      retryable: status === 0 || status === 408 || status === 429 || status >= 500,
+      message: options.message ?? defaultMessage,
+      retryable:
+        options.retryable ??
+        (reason === 'network' || (reason === 'status' && RETRYABLE_STATUS(status))),
       cause,
     });
     this.name = 'ProviderHttpError';
     this.status = status;
     this.url = url;
+    this.reason = reason;
+    this.netError = netError;
   }
 }
 

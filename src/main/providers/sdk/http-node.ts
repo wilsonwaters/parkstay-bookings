@@ -1,7 +1,8 @@
 /**
- * `NodeHttpClient`: the test transport. Node's global `fetch` with `redirect: 'manual'`, so
- * this client follows redirects itself (at most 5 hops) and captures `Set-Cookie` on every
- * hop into an in-memory `CookieJar`.
+ * `NodeHttpClient`: the test transport. Node's global `fetch`, one hop at a time with
+ * `redirect: 'manual'`: `BaseHttpClient` follows redirects, and this client applies and
+ * captures cookies on every hop with an in-memory `CookieJar`. Like the production client it
+ * sends the desktop Chrome user agent unless a request sets its own.
  *
  * `CookieJar` follows RFC 6265 closely enough for provider tests: the value is everything
  * after the **first** `=`; `Domain`, `Path`, `Expires`, `Max-Age` and `Secure` are honoured;
@@ -14,16 +15,13 @@ import { isIP } from 'net';
 import type { ProviderId } from '@shared/types/provider.types';
 import {
   BaseHttpClient,
-  bufferedResponse,
   type CookieInit,
   type CookieStore,
+  type HopRequest,
+  type HopResponse,
   type HttpCookie,
-  type HttpResponse,
-  type TransportRequest,
 } from './http';
-import { ProviderHttpError } from './errors';
-
-export const MAX_REDIRECTS = 5;
+import { CHROME_USER_AGENT } from './user-agent';
 
 function hostOf(url: URL): string {
   return url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
@@ -195,13 +193,13 @@ export class CookieJar implements CookieStore {
   }
 }
 
-const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
-
 export interface NodeHttpClientOptions {
   providerId: ProviderId;
   jar?: CookieJar;
   /** Defaults to the global `fetch`. */
   fetch?: typeof fetch;
+  /** Defaults to the desktop Chrome user agent, as in production. */
+  userAgent?: string;
 }
 
 export class NodeHttpClient extends BaseHttpClient {
@@ -209,63 +207,41 @@ export class NodeHttpClient extends BaseHttpClient {
   readonly cookies: CookieJar;
   private readonly fetchImpl: typeof fetch;
 
-  constructor({ providerId, jar = new CookieJar(), fetch: fetchImpl }: NodeHttpClientOptions) {
+  constructor({
+    providerId,
+    jar = new CookieJar(),
+    fetch: fetchImpl,
+    userAgent = CHROME_USER_AGENT,
+  }: NodeHttpClientOptions) {
     super();
     this.providerId = providerId;
     this.cookies = jar;
     this.fetchImpl = fetchImpl ?? ((input, init) => fetch(input, init));
+    this.defaultHeaders = { 'User-Agent': userAgent };
   }
 
-  protected async transport(request: TransportRequest): Promise<HttpResponse> {
-    let { method, url, body } = request;
-    const headers = new Headers(request.headers);
-    const explicitCookie = headers.get('cookie');
+  protected async send(hop: HopRequest): Promise<HopResponse> {
+    const headers = new Headers(hop.headers);
+    const cookie = this.cookies.cookieHeader(hop.url);
+    if (cookie) headers.set('cookie', cookie);
+    else headers.delete('cookie');
 
-    for (let hop = 0; ; hop++) {
-      const jarCookie = this.cookies.cookieHeader(url);
-      const cookie = [jarCookie, explicitCookie].filter(Boolean).join('; ');
-      if (cookie) headers.set('cookie', cookie);
-      else headers.delete('cookie');
+    const response = await this.fetchImpl(hop.url, {
+      method: hop.method,
+      headers,
+      body: hop.body,
+      redirect: 'manual',
+      signal: hop.signal,
+    });
+    for (const header of response.headers.getSetCookie()) this.cookies.setCookie(header, hop.url);
 
-      const response = await this.fetchImpl(url, {
-        method,
-        headers,
-        body,
-        redirect: 'manual',
-        signal: request.signal,
-      });
-      for (const header of response.headers.getSetCookie()) this.cookies.setCookie(header, url);
-
-      const location = response.headers.get('location');
-      if (REDIRECT_STATUSES.has(response.status) && location && request.redirect !== 'manual') {
-        await response.body?.cancel();
-        if (request.redirect === 'error' || hop >= MAX_REDIRECTS) {
-          throw new ProviderHttpError({
-            providerId: this.providerId,
-            status: response.status,
-            url,
-            message:
-              request.redirect === 'error'
-                ? `${this.providerId}: unexpected redirect (HTTP ${response.status})`
-                : `${this.providerId}: more than ${MAX_REDIRECTS} redirects`,
-          });
-        }
-        url = new URL(location, url).href;
-        if (response.status === 303 || (response.status <= 302 && method === 'POST')) {
-          method = 'GET';
-          body = undefined;
-          headers.delete('content-type');
-        }
-        continue;
-      }
-
-      return bufferedResponse({
-        providerId: this.providerId,
-        status: response.status,
-        url,
-        headers: response.headers,
-        body: await response.text(),
-      });
-    }
+    return {
+      status: response.status,
+      headers: response.headers,
+      text: () => response.text(),
+      discard: () => {
+        response.body?.cancel().catch(() => undefined);
+      },
+    };
   }
 }
