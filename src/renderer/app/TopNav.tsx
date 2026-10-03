@@ -35,13 +35,23 @@ function NavLinkItem({ item, active }: { item: NavItem; active: boolean }) {
       {/* The bold copy reserves the active width, so the nav never shifts as the page changes.
           A Soon item's name comes whole from its hidden text, so it reads "Site Sniper, coming
           soon" exactly, with no separator between the label and the rest. */}
-      <span className="inline-grid" aria-hidden={item.soon ? true : undefined}>
+      <span className="relative inline-grid" aria-hidden={item.soon ? true : undefined}>
         <span className={`col-start-1 row-start-1 ${active ? 'font-semibold' : 'font-medium'}`}>
           {item.label}
         </span>
         <span aria-hidden="true" className="invisible col-start-1 row-start-1 font-semibold">
           {item.label}
         </span>
+        {/* Under the label only (not the Soon pill), stretched to its width. An absolutely
+            positioned SVG takes no width from left/right (it is a replaced element), so it gets
+            w-full; the stroke has preserveAspectRatio="none", so it follows the label. */}
+        {active && (
+          <Brushstroke
+            variant="underline"
+            tone="ocean"
+            className="pointer-events-none absolute left-0 top-full mt-1.5 h-2 w-full"
+          />
+        )}
       </span>
       {item.soon && (
         <>
@@ -51,13 +61,6 @@ function NavLinkItem({ item, active }: { item: NavItem; active: boolean }) {
             <Badge tone="sun">Soon</Badge>
           </span>
         </>
-      )}
-      {active && (
-        <Brushstroke
-          variant="underline"
-          tone="ocean"
-          className="pointer-events-none absolute -bottom-1 left-2 right-2 h-2"
-        />
       )}
     </Link>
   );

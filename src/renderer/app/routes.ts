@@ -1,6 +1,6 @@
 /**
  * Every in-app address, built in one place. Link with `ROUTES.*`, never by joining strings:
- * `ROUTES.placeDetail('parkstay', '123')`. The route table is `routes.tsx`; the list of routes
+ * `ROUTES.placeDetail('parkstay', '123')`. The route table is `AppRoutes.tsx`; the list of routes
  * and their stable names is in docs/design/shell.md.
  */
 import { matchPath } from 'react-router-dom';

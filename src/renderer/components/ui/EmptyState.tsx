@@ -12,8 +12,19 @@ export interface EmptyStateProps {
   /** The sparing brushstroke accent above the title (at most one per region). */
   accent?: 'sun' | 'ocean';
   headingLevel?: 2 | 3;
+  /**
+   * `lg` (default): a Fraunces display title, for an empty state that is the whole view.
+   * `md`: a Figtree section title (`text-xl`), for one under the page's `h1`, so it never
+   * outranks the page title.
+   */
+  size?: 'lg' | 'md';
   className?: string;
 }
+
+const TITLE_CLASS = {
+  lg: 'font-display text-display-sm font-medium',
+  md: 'text-xl font-semibold',
+} as const;
 
 /** What to show when there is nothing yet, and what to do about it. */
 export function EmptyState({
@@ -23,6 +34,7 @@ export function EmptyState({
   actions,
   accent,
   headingLevel = 2,
+  size = 'lg',
   className,
 }: EmptyStateProps) {
   const Heading = `h${headingLevel}` as const;
@@ -42,7 +54,7 @@ export function EmptyState({
         </span>
       )}
       {accent && <Brushstroke variant="swash" tone={accent} className="mb-3 h-5 w-32" />}
-      <Heading className="font-display text-display-sm font-medium text-fg">{title}</Heading>
+      <Heading className={cx(TITLE_CLASS[size], 'text-fg')}>{title}</Heading>
       {description && <p className="mt-2 text-base text-fg-secondary">{description}</p>}
       {actions && <div className="mt-6 flex flex-wrap justify-center gap-3">{actions}</div>}
     </div>

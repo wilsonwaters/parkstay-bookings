@@ -45,7 +45,7 @@ export function Tray({ showLegacySlots = true }: TrayProps) {
       <div
         data-testid="tray"
         data-modal-open={modalOpen || undefined}
-        className={`pointer-events-none fixed bottom-4 right-4 flex w-[23.75rem] max-w-[calc(100vw-2rem)] flex-col items-end gap-2 ${
+        className={`pointer-events-none fixed bottom-4 right-4 flex w-[23.75rem] max-w-[calc(100vw-2rem)] flex-col items-stretch gap-2 ${
           modalOpen ? 'z-toast' : 'z-tray'
         }`}
       >

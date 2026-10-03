@@ -15,6 +15,12 @@
     outline-offset: 2px;
   }
 
+  /* A heading takes focus only from code (useRouteFocus on a page change, tabindex -1), never
+   * from Tab, so it gets no ring. Anything a person can Tab to keeps the ring above. */
+  :where(h1, h2, h3)[tabindex='-1']:focus {
+    outline: none;
+  }
+
   ::selection {
     background-color: rgb(var(--ws-ocean-100));
     color: rgb(var(--ws-fg));

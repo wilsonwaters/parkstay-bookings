@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { activeQueue, createMockApi, fail, ok } from '@tests/utils/renderer/createMockApi';
 import { currentRoute, getBanners, renderWithApp } from '@tests/utils/renderer/renderWithApp';
+import { NotificationType } from '../../shared/types';
 
 const nav = () => screen.getByRole('navigation', { name: 'Primary' });
 const navLink = (name: string) => within(nav()).getByRole('link', { name });
@@ -10,7 +11,11 @@ describe('App shell', () => {
     it('opens on Explore with no login screen and no session check', async () => {
       const { mock } = renderWithApp();
       expect(await screen.findByRole('heading', { level: 1, name: 'Explore' })).toBeInTheDocument();
-      expect(screen.getByRole('heading', { name: 'Explore is coming together' })).toBeVisible();
+      // The placeholder is a section under the page title: an h2 at section size, not display.
+      const placeholder = screen.getByRole('heading', { level: 2, name: 'The map is on its way' });
+      expect(placeholder).toBeVisible();
+      expect(placeholder).toHaveClass('text-xl');
+      expect(placeholder).not.toHaveClass('text-display-sm');
       expect(currentRoute()).toBe('/');
       expect(screen.queryByRole('button', { name: /log ?in|sign in|log ?out/i })).toBeNull();
       expect(screen.queryByLabelText(/password/i)).toBeNull();
@@ -74,6 +79,69 @@ describe('App shell', () => {
       expect(stroke).toHaveAttribute('aria-hidden', 'true');
       expect(navLink('Explore').querySelector('svg')).toBeNull();
       await screen.findByRole('heading', { level: 1, name: 'Watches' });
+    });
+
+    it('sizes the active brushstroke to the label, not the link or its Soon pill', async () => {
+      renderWithApp({ route: '/site-sniper' });
+      await screen.findByRole('heading', { level: 1, name: 'Site Sniper' });
+      const stroke = navLink('Site Sniper, coming soon').querySelector('svg');
+      expect(stroke).toHaveClass('w-full');
+      expect(stroke).toHaveAttribute('preserveAspectRatio', 'none');
+      // Its box is the label's own wrapper, which holds the label and nothing else.
+      const box = stroke?.parentElement;
+      expect(box).toHaveClass('relative');
+      expect(box?.textContent).toBe('Site SniperSite Sniper');
+    });
+
+    describe('notification bell', () => {
+      const notification = (id: number, isRead: boolean) => ({
+        id,
+        userId: 1,
+        type: NotificationType.WATCH_FOUND,
+        title: `Notification ${id}`,
+        message: 'Sites are available',
+        isRead,
+        createdAt: new Date('2026-10-02T10:00:00Z'),
+      });
+
+      it('is an icon button named "Notifications" with no badge when all are read', async () => {
+        renderWithApp({ api: { notifications: { list: jest.fn().mockResolvedValue(ok([])) } } });
+        const [banner] = getBanners();
+        const bell = within(banner).getByRole('button', { name: 'Notifications' });
+        expect(bell).toHaveAttribute('aria-expanded', 'false');
+        // The lucide Bell, not an emoji.
+        expect(bell.querySelector('svg.lucide-bell')).not.toBeNull();
+        expect(bell.textContent).toBe('');
+        expect(within(bell).queryByTestId('notification-badge')).toBeNull();
+        await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      });
+
+      it('puts the unread count in its name and shows it in a decorative badge', async () => {
+        const list = [1, 2, 3, 4].map((id) => notification(id, id === 2));
+        const mock = createMockApi({
+          notifications: { list: jest.fn().mockResolvedValue(ok(list)) },
+        });
+        const { user } = renderWithApp({ api: mock });
+        const bell = await screen.findByRole('button', { name: 'Notifications, 3 unread' });
+        const badge = within(bell).getByTestId('notification-badge');
+        expect(badge).toHaveTextContent('3');
+        expect(badge).toHaveAttribute('aria-hidden', 'true');
+        expect(badge).toHaveClass('bg-accent', 'text-accent-fg');
+
+        mock.emit('notification:created', notification(5, false));
+        expect(screen.getByRole('button', { name: 'Notifications, 4 unread' })).toBe(bell);
+
+        await user.click(bell);
+        expect(bell).toHaveAttribute('aria-expanded', 'true');
+        expect(screen.getByText('Notification 5')).toBeInTheDocument();
+      });
+
+      it('caps the badge at 9+ but names the full count', async () => {
+        const many = Array.from({ length: 12 }, (_, i) => notification(i + 1, false));
+        renderWithApp({ api: { notifications: { list: jest.fn().mockResolvedValue(ok(many)) } } });
+        const bell = await screen.findByRole('button', { name: 'Notifications, 12 unread' });
+        expect(within(bell).getByTestId('notification-badge')).toHaveTextContent('9+');
+      });
     });
 
     it.each([
@@ -290,6 +358,9 @@ describe('App shell', () => {
         Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
       expect(follows(toast, update)).toBe(true);
       expect(follows(update, queue)).toBe(true);
+      // One width for every card: the column stretches them, and the toast region fills it.
+      expect(tray).toHaveClass('flex-col', 'items-stretch');
+      expect(screen.getByRole('region', { name: 'Notifications' })).toHaveClass('w-full');
     });
 
     it('collapses to nothing but the toast region when idle', async () => {

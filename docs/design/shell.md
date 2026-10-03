@@ -18,7 +18,7 @@ The accessible names in [Stable names](#stable-names) are a contract with the El
 | `app/Tray.tsx` | The bottom-right stack of floating messages. |
 | `app/ErrorBoundary.tsx` | `AppErrorBoundary` and `RouteErrorBoundary`. |
 | `app/useRouteFocus.ts` | Focus and announcements on page changes. |
-| `app/NotFoundPage.tsx`, `app/LegacyPageFrame.tsx` | The 404 page, and the padding and width the legacy pages used to get from the old sidebar layout. |
+| `app/NotFoundPage.tsx`, `app/LegacyPageFrame.tsx` | The 404 page, and the gutter and width the legacy pages used to get from the old sidebar layout (the same as the new pages'). |
 | `features/explore/ExplorePage.tsx` | The Explore placeholder. E1 replaces it. |
 | `features/<domain>/legacy/` | The pre-redesign pages, moved unchanged. The U tasks rebuild them and delete these folders. |
 
@@ -35,10 +35,10 @@ The accessible names in [Stable names](#stable-names) are a contract with the El
 - **Skip link** first: "Skip to content", visually hidden until focused, then shown over the logo. It is the first Tab stop and moves focus to `<main id="main">` (by script, since a plain `#main` link would change the HashRouter route).
 - **Logo:** the B1 lockup (`components/brand/Logo.tsx`, architecture-notes §12.28), decorative, inside a link to `/` named "WA Stay, Explore".
 - **Primary nav:** Explore, Watches, Site Sniper, Bookings.
-  - The current item has `aria-current="page"`, ink text at weight 600 and the D1 `underline` brushstroke in ocean, which is `aria-hidden`. Other items are `fg-secondary` at weight 500. A hidden bold copy of each label reserves its width, so the nav does not shift between pages.
+  - The current item has `aria-current="page"`, ink text at weight 600 and the D1 `underline` brushstroke in ocean, which is `aria-hidden`. The stroke sits in the label's own box at full width, so it is as wide as the label (not the Soon pill) at any zoom. Other items are `fg-secondary` at weight 500. A hidden bold copy of each label reserves its width, so the nav does not shift between pages.
   - Explore is current on `/` and on `/places/*`. Watches is current on `/watches` and everything under it, and the same for Site Sniper and Bookings. On Settings, nothing in the nav is current.
   - Site Sniper and Bookings carry a sun `Badge` reading "Soon", which is `aria-hidden`. Their name comes whole from `VisuallyHidden` text ("Site Sniper, coming soon"), with the visible label hidden from assistive technology, so the name has no stray separator in any engine. Below 900 px wide (a narrow window or 200% zoom) the pills collapse and only the hidden text remains.
-- **Right:** the legacy `NotificationBell` (U5 rebuilds it), then the account menu: an `IconButton` with `CircleUser`, named "Account and settings". Its items are "Settings" (a link to `/settings`) and "About WA Stay", which opens a `Dialog` named "About WA Stay". Focus returns to the menu button when the dialog closes. There is no Logout and no sign-in (§12.21–22); provider accounts arrive with V6 and U4.
+- **Right:** the `NotificationBell`, then the account menu. The bell's trigger is an `IconButton` with the lucide `Bell`, named "Notifications", or "Notifications, 3 unread" when there are unread notifications; the count also shows in a decorative `accent` badge (9+ at most). Its dropdown list is still legacy (U5 rebuilds it). The account menu is an `IconButton` with `CircleUser`, named "Account and settings". Its items are "Settings" (a link to `/settings`) and "About WA Stay", which opens a `Dialog` named "About WA Stay". Focus returns to the menu button when the dialog closes. There is no Logout and no sign-in (§12.21–22); provider accounts arrive with V6 and U4.
 - The header never wraps. Down to the 960 × 640 minimum window (`minWidth`/`minHeight` on the `BrowserWindow`) there is no horizontal scrolling.
 - Zoomed in, the viewport can be narrower than 960 CSS px. Below 900 px the Soon pills collapse; below 640 px the lockup gives way to the square mark and the gutters tighten. If the nav still does not fit (about 200% zoom), the nav strip scrolls sideways on its own, with its scrollbar hidden (Tab scrolls a focused link into view), and the page itself never scrolls sideways.
 
@@ -64,7 +64,7 @@ Build every address with `ROUTES` (or `buildPath` with a pattern), never by join
 | `/watches/create`, `/site-sniper/create` |  | redirect | To `/new`, keeping the query string (§12.19). |
 | anything else |  | `NotFoundPage` | "Page not found" and "Back to Explore". |
 
-Legacy pages render inside `LegacyPageFrame` until the provider-ux stream rebuilds them.
+Legacy pages render inside `LegacyPageFrame` until the provider-ux stream rebuilds them. It gives them the new pages' gutter (`px-6 py-8 lg:px-8`, `max-w-7xl`), so their `h1`s line up with the new pages', and cancels the `p-6` root that the legacy Watches and Site Sniper lists still carry.
 
 **Prefill query** for create flows (§12.10): `?provider=<id>&location=<externalId>&arrival=YYYY-MM-DD&departure=YYYY-MM-DD&adults=N&children=N`. `ROUTES.watchNew(prefill)` and `ROUTES.snipeNew(prefill)` build it and leave out empty values. `location` is the provider's external id, not the composite location key.
 
@@ -73,11 +73,12 @@ Legacy pages render inside `LegacyPageFrame` until the provider-ux stream rebuil
 - After every change of page (pathname, not the query string), `useRouteFocus` moves focus to the page's `h1` (given `tabIndex={-1}` if it has none), or to `<main>` when there is no `h1` yet, and announces the title through the polite live region. The announcement is the `h1` text, or the route's title from `pageTitleFor()`.
 - A page that loads before showing its heading gets two seconds' grace: if its `h1` appears while focus is still on `<main>` (or was lost to the body), focus moves to it.
 - The first page after launch is left alone, so the first Tab still reaches the skip link. In a quick run of navigations, only the last page takes focus.
+- A heading focused this way (`h1`–`h3` with `tabindex="-1"`) draws no focus ring (a base rule in `styles/index.css`): it is a reading position, not a control. Everything a person can Tab to keeps the 2 px ring.
 - Landmarks: one `banner` (the header), one `navigation` named "Primary", one `main`. Each page has exactly one `h1`, normally from `PageHeader`.
 
 ## Tray
 
-One column, `fixed bottom-4 right-4`, 380 px wide at most, with an 8 px gap, portalled outside `#root`. Top to bottom, in DOM and visual order:
+One column, `fixed bottom-4 right-4`, 380 px wide at most, with an 8 px gap, portalled outside `#root`. The column stretches its cards (`items-stretch`) and the toast region fills it, so the stacked cards share one width; the minimized queue pill keeps its own width at the right. Top to bottom, in DOM and visual order:
 
 1. `ToastViewport` (the "Notifications" region)
 2. `UpdateNotification` (legacy; U5 restyles it)
@@ -121,7 +122,7 @@ With no `window.api` (the renderer opened in a plain browser with `npm run dev:r
 | Logo | link | WA Stay, Explore |
 | Primary navigation | navigation | Primary |
 | Nav items | link | Explore · Watches · Site Sniper, coming soon · Bookings, coming soon |
-| Notifications bell (legacy) | button | Notifications |
+| Notifications bell | button | Notifications, or "Notifications, N unread" |
 | Account menu button | button | Account and settings |
 | Account menu items | menuitem | Settings · About WA Stay |
 | About | dialog | About WA Stay |

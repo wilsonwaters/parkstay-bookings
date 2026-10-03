@@ -277,18 +277,15 @@ function ToastItem({ toast, store }: { toast: ToastRecord; store: ToastStore }) 
  * it exists before the first toast arrives and screen readers announce each one; errors are
  * also `role="alert"`.
  *
- * It renders where it is placed, and the app positions it. Place it outside `#root` (in a
- * `Portal`): a modal makes `#root` inert, which would silence the toasts and block clicks.
+ * It renders where it is placed and takes its container's width: the app positions and sizes
+ * it (the tray's column). Place it outside `#root` (in a `Portal`): a modal makes `#root` inert,
+ * which would silence the toasts and block clicks.
  */
 export function ToastViewport({ className }: { className?: string }) {
   const { store } = useToastContext();
   const toasts = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   return (
-    <div
-      role="region"
-      aria-label="Notifications"
-      className={cx('w-[22rem] max-w-[calc(100vw-2rem)]', className)}
-    >
+    <div role="region" aria-label="Notifications" className={cx('w-full', className)}>
       <ol aria-live="polite" aria-relevant="additions text" className="flex flex-col gap-2">
         {toasts.slice(0, MAX_VISIBLE_TOASTS).map((toast) => (
           <li key={toast.id}>

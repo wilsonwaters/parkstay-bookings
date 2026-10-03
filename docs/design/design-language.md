@@ -189,9 +189,9 @@ Two families, both bundled with `@fontsource-variable` so the app works offline 
 | --- | --- | --- | --- |
 | `text-display-lg` | 48 / 52 | Fraunces 500 | Page hero, location name on the detail page |
 | `text-display-md` | 36 / 42 | Fraunces 500 | Location name in a sheet or dialog |
-| `text-display-sm` | 28 / 34 | Fraunces 500 | EmptyState title, wordmark |
+| `text-display-sm` | 28 / 34 | Fraunces 500 | EmptyState title (an empty state that is the whole view), wordmark |
 | `text-2xl` | 24 / 32 | Figtree 600 | Page title (`h1`) in app screens |
-| `text-xl` | 20 / 28 | Figtree 600 | Section title (`h2`) |
+| `text-xl` | 20 / 28 | Figtree 600 | Section title (`h2`), EmptyState title under a page `h1` (`size="md"`) |
 | `text-lg` | 18 / 28 | Figtree 600 | Card title, dialog title |
 | `text-base` | 16 / 24 | Figtree 400 | Body, form controls |
 | `text-sm` | 14 / 20 | Figtree 400 or 600 | Dense lists, labels, buttons |

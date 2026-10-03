@@ -18,7 +18,7 @@ Run `npm run dev` and open `#/__design` to see every primitive with its variants
 - **Never colour alone.** Status, tone and errors always carry text or an icon as well.
 - **Overlays share one stack.** Dialog, Sheet and Popover register with `OverlayStack`: Escape closes only the top one, `#root` and lower overlays are `inert` while a modal is open, and page scroll is locked. Overlays are portalled to `document.body`, outside `#root`.
 - **Floating surfaces live outside `#root`.** Anything that must keep working while a modal is open (the tray, which holds the toast viewport) is rendered in a `Portal`, as overlays and the announcer are. Inside `#root` it turns `inert` under a modal: toasts fired from a ConfirmDialog would be silent and unclickable. Toasts must stay above the modal scrim (`z-overlay`) while the tray's `z-tray` is below it, so the tray rises to `z-toast` while a modal is open and sets its other cards aside ([shell.md](shell.md#tray)).
-- **App providers.** `ToastProvider`, `AnnouncerProvider` and `ProviderManifestsProvider` (filled from `useProviders()`) wrap the app in `app/AppProviders.tsx`. `ToastViewport` renders where it is placed, which must be outside `#root`: it is the first slot of the tray.
+- **App providers.** `ToastProvider`, `AnnouncerProvider` and `ProviderManifestsProvider` (filled from `useProviders()`) wrap the app in `app/AppProviders.tsx`. `ToastViewport` renders where it is placed, at its container's width, which must be outside `#root`: it is the first slot of the tray.
 
 ## Actions
 
@@ -49,7 +49,7 @@ Run `npm run dev` and open `#/__design` to see every primitive with its variants
 | `ProviderBadge` | Showing whose system something belongs to, on every watch, snipe, booking, notification and location. | Pass only `providerId` inside `ProviderManifestsProvider`; use `compact` in dense rows. | Draw a provider's logo, or hard-code its colour. |
 | `Spinner` | A wait longer than about 300 ms with no known shape. | Give a `label` that says what is loading ("Loading watches"). | Show it for quick actions, or full screen; lay it out with the parent. |
 | `Skeleton` | Loading content whose shape you know (cards, rows). | Match the size of the real content so nothing jumps. | Use it without a status or `aria-busy` on the region: it is hidden from assistive technology. |
-| `EmptyState` | Nothing to show yet, and the next step. | Offer one action ("Create watch") and say plainly what will happen. | Use more than one brushstroke accent in a region, or jokes. |
+| `EmptyState` | Nothing to show yet, and the next step. | Offer one action ("Create watch") and say plainly what will happen. Under a page `h1`, use `size="md"` (a Figtree section title) so it never outranks the page title; the default display title is for an empty state that is the whole view. | Use more than one brushstroke accent in a region, or jokes. |
 | `PageHeader` | The top of every page: its one `h1`, a line of description, actions. | Put the page's primary action in `actions`. | Add a second `h1` anywhere on the page. |
 | `Notice` | An inline message about the page or section: info, success, warning, danger. | Say what happened and what to do next, with an action if there is one. | Use it for a passing confirmation; use a toast. |
 | `VisuallyHidden` | Text only screen readers need, such as ", coming soon" after a nav label. | Use it to complete a name that the visual design shortens. | Hide information sighted people also need. |

@@ -89,7 +89,10 @@ const QueueStatus: React.FC = () => {
 
   if (isMinimized) {
     return (
-      <div className="pointer-events-auto cursor-pointer" onClick={() => setIsMinimized(false)}>
+      <div
+        className="pointer-events-auto cursor-pointer self-end"
+        onClick={() => setIsMinimized(false)}
+      >
         <div
           className={`${getStatusColor()} text-white px-3 py-2 rounded-full shadow-lg flex items-center gap-2`}
         >

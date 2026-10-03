@@ -1,11 +1,14 @@
 /**
  * Notification Bell Component
- * Displays a bell icon with unread notification count
+ * Displays a bell icon with unread notification count.
+ * The trigger is the D2 IconButton; the dropdown list stays legacy until U5 rebuilds it.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { Bell } from 'lucide-react';
 import { Notification } from '../../shared/types';
 import NotificationList from './NotificationList';
+import { IconButton } from './ui';
 
 const NotificationBell: React.FC = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -92,18 +95,27 @@ const NotificationBell: React.FC = () => {
 
   return (
     <div className="relative" ref={dropdownRef}>
-      <button
+      {/* The count is in the name ("Notifications, 3 unread"), so the badge is decorative. */}
+      <IconButton
+        label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+        aria-expanded={isOpen}
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
-        aria-label="Notifications"
-      >
-        <span className="text-2xl">🔔</span>
-        {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full">
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
-        )}
-      </button>
+        className="relative"
+        icon={
+          <>
+            <Bell />
+            {unreadCount > 0 && (
+              <span
+                aria-hidden="true"
+                data-testid="notification-badge"
+                className="pointer-events-none absolute right-0.5 top-0.5 flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-accent px-1 text-[0.6875rem] font-semibold leading-none tabular-nums text-accent-fg ring-2 ring-surface"
+              >
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </>
+        }
+      />
 
       {isOpen && (
         <div className="absolute right-0 mt-2 w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
