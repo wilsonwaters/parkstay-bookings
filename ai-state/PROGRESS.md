@@ -6,13 +6,16 @@ _Last updated: 2026-10-02 (orchestrator)_
 Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
 
 ## Currently in flight
-- **V1** (#19) Provider SDK: review REQUEST_CHANGES (the Electron transport can't see redirects in production; registry flag rules; extensibility hooks, §12.30). Fix agent running, lane V.
-- **D3** (#31) App shell: review REQUEST_CHANGES (emoji bell, heading focus ring, brushstroke width). Fix agent running, lane R. Merges after V1, swapping its TODO(V1) shim for the real types; window minimum 960×640 goes into main-window.ts.
-- **P5** (#16) SecretVault: lane M (vault wiring into the provider SDK once V1 merges).
-- **P6** (#17) Sandboxed preload: lane P (`/home/user/wt/lane-p`).
+- **V2** (#20) Provider-aware data model (v8): lane V.
+- **V7** (#25) Browser automation runtime: lane W (`/home/user/wt/lane-w`).
+- **P5** (#16) SecretVault: lane M.
+- **P6** (#17) Sandboxed preload: implemented; review running, lane P.
+- **B2** (#27) App identity rename: lane A.
 - Sandbox runtime verification uses per-HOME NSS trust of the agent proxy CA (`scratchpad/sandbox-nss.sh`) plus `--proxy-server`. TLS verification is never disabled.
 
 ## Completed
+- **V1** (#19) Provider SDK and contract: review REQUEST_CHANGES (Electron transport couldn't see redirects in production). Fixed on `net.request` with 21/21 live Electron tests (`npm run test:electron`). Registry flag rules, two-way schema/type assertions and extensibility hooks (§12.30). Merged.
+- **D3** (#31) App shell: review REQUEST_CHANGES (emoji bell, heading ring, brushstroke width), fixed. TODO(V1) shim swapped for the real types; window minimum 960×640 moved into main-window.ts. Merged.
 - **P4** (#15) Main-process hardening: reviewed (APPROVE; the reviewer independently re-ran 27/27 runtime checks). Fixed: SMTP password not reused across host/user changes, queue key masked in logs, recursive log redaction, flaky OAuth test. Merged.
 - **D2** (#30) UI component library: review REQUEST_CHANGES (toasts inert under modals, plus minors), fixed (toasts portalled outside `#root`, persistent live region, focus-trap robustness, calendar band), merged.
 - **P3** (#14) Composition root and typed IPC: reviewed (APPROVE; verified with a real untrusted window), small follow-ups fixed by the orchestrator, merged. Logout no longer deletes the profile (§12.22).
