@@ -88,7 +88,14 @@ const READS: Array<[string, unknown]> = [
   ['snipes:list', undefined],
   ['snipes:get', { id: 1 }],
   ['notifications:list', { limit: 50 }],
+  ['providers:list', undefined],
 ];
+
+/**
+ * Read channels whose handlers are still typed NOT_IMPLEMENTED stubs (V1). V5 (catalog) and
+ * V6 (accounts) move them into READS when they implement them.
+ */
+const PENDING_READS = new Set(['catalog:get', 'accounts:list']);
 
 describe('secrets never reach the renderer', () => {
   let container: AppContainer;
@@ -190,7 +197,9 @@ describe('secrets never reach the renderer', () => {
       .filter(([method]) => /^(get|list|validate)/.test(method) || method === 'checkAuthStatus')
       .map(([, def]) => def.channel);
 
-    expect(reads.filter((channel) => !swept.has(channel))).toEqual([]);
+    expect(reads.filter((channel) => !swept.has(channel) && !PENDING_READS.has(channel))).toEqual(
+      []
+    );
   });
 
   it('notifiers.configure without a password keeps the stored one for the same server and account, in the database and the dispatcher', async () => {
