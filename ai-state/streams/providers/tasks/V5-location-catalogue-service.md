@@ -157,3 +157,7 @@ M. One service, its handlers and the repository search: a single concern across 
 - **TTL choices.** The catalogue is 24 h, matching DBCA's pre-generated, daily-cacheable map. Detail is 6 h, because `releaseInfo` and periods change. Bulk availability is 5 min, short enough for map panning without hammering DBCA. `checkLocation` is 60 s.
 - **Amenities.** Raw provider strings, per explore EQ3. The renderer maps them to icons.
 - **Commit.** `feat(catalog): location catalogue service and catalog IPC (#<issue>)`.
+
+## Orchestrator addendum (2026-10-03, from the V1 merge)
+- [ ] Move `catalog:get` (and any other implemented read channel in this namespace) from `PENDING_READS` into `READS` in `tests/integration/secret-sweep.test.ts`. The sweep must pass with real data seeded.
+- [ ] Use V1's merged SDK as-is: `HttpClient` with real redirect semantics, the frozen registry manifests, and `ProviderContext.manifest` / `limits` (architecture-notes §12.30).

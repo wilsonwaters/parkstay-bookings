@@ -187,3 +187,7 @@ L. It covers security-sensitive windows, session handling, a new core service, I
 - **Why no stored secret.** The session lives in the partition's cookie store. Electron persists it under `userData/Partitions/provider-parkstay`. Nothing ParkStay-specific needs the SecretVault. The legacy `users.encrypted_password` is a ParkStay "password" that never worked, so v9 drops it instead of migrating it.
 - **Why the payment hand-off is now correct.** `create_booking` stores `ps_booking` in the Django session (`api.py:3373-3376`), and `/booking/` reads it. Placing the hold through `ses.fetch` on the same partition means the payment window sees the hold.
 - **Commit.** `feat(accounts): in-app provider sign-in and payment hand-off (#<issue>)`.
+
+## Orchestrator addendum (2026-10-03, from the V1 merge)
+- [ ] Move `accounts:list` (and any other implemented read channel in this namespace) from `PENDING_READS` into `READS` in `tests/integration/secret-sweep.test.ts`. The sweep must pass with real data seeded.
+- [ ] Use V1's merged SDK as-is: `HttpClient` with real redirect semantics, the frozen registry manifests, and `ProviderContext.manifest` / `limits` (architecture-notes §12.30).
