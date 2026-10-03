@@ -133,7 +133,10 @@ describe('runLoopbackFlow', () => {
     });
     await expect(f.callback({ code: 'stolen-code' })).resolves.toMatchObject({ status: 400 });
     await expect(
-      f.callback({ state: `${f.state.slice(0, -1)}A`, error: 'access_denied' })
+      f.callback({
+        state: `${f.state.slice(0, -1)}${f.state.endsWith('A') ? 'B' : 'A'}`,
+        error: 'access_denied',
+      })
     ).resolves.toMatchObject({ status: 400 });
     expect(f.getToken).not.toHaveBeenCalled();
 
