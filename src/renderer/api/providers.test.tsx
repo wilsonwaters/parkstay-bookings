@@ -62,13 +62,4 @@ describe('provider hooks', () => {
     expect(result.current.error).toBeInstanceOf(ApiError);
     expect(result.current.error?.message).toBe('The provider registry is not ready');
   });
-
-  // TODO(V1): drop once `providers` is part of WindowApi and the preload.
-  it('resolves to no manifests while the preload has no providers namespace', async () => {
-    const api = createMockApi().api as unknown as Record<string, unknown>;
-    window.api = { ...api, providers: undefined } as unknown as Window['api'];
-    const { result } = renderHook(() => useProviders(), { wrapper: wrapper() });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual([]);
-  });
 });
