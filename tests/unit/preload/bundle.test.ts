@@ -37,7 +37,7 @@ async function bundleSnippet(contents: string, external: string[]): Promise<Buil
 /** The real preload, bundled in memory with exactly the build options. */
 async function bundlePreload(): Promise<{ result: BuildResult; js: OutputFile }> {
   const result = await build({ ...preloadBuildOptions, write: false, logLevel: 'silent' });
-  const js = result.outputFiles?.find((file) => file.path.endsWith(`${path.sep}index.js`));
+  const js = result.outputFiles?.find((file) => path.basename(file.path) === 'index.js');
   if (!js) throw new Error('The preload build produced no index.js');
   return { result, js };
 }
