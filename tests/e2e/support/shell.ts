@@ -7,7 +7,7 @@ import { expect, type Locator, type Page } from '@playwright/test';
 
 /** The primary nav pages: link name → route → page heading. */
 export const NAV_PAGES = {
-  explore: { link: 'Explore', route: '/', heading: 'Explore' },
+  explore: { link: 'Explore', route: '/', heading: 'Explore places to stay' },
   watches: { link: 'Watches', route: '/watches', heading: 'Watches' },
   snipes: { link: 'Site Sniper, coming soon', route: '/site-sniper', heading: 'Site Sniper' },
   bookings: { link: 'Bookings, coming soon', route: '/bookings', heading: 'Bookings' },

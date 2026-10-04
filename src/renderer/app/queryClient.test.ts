@@ -2,7 +2,7 @@ import { ApiError } from '../api';
 import { createQueryClient, shouldRetryQuery } from './queryClient';
 
 describe('shouldRetryQuery', () => {
-  it.each(['VALIDATION', 'CAPABILITY', 'NOT_FOUND', 'API_UNAVAILABLE'])(
+  it.each(['VALIDATION', 'CAPABILITY', 'NOT_FOUND', 'NOT_IMPLEMENTED', 'API_UNAVAILABLE'])(
     'never retries %s: a retry cannot fix it',
     (code) => {
       expect(shouldRetryQuery(0, new ApiError('no', code))).toBe(false);

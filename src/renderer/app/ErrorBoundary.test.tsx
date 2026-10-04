@@ -35,7 +35,7 @@ describe('RouteErrorBoundary', () => {
   it('shows the route error panel while the header stays usable, and Explore clears it', async () => {
     failures.page = true;
     const { user } = renderWithApp();
-    await screen.findByRole('heading', { level: 1, name: 'Explore' });
+    await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' });
 
     await user.click(screen.getByRole('link', { name: 'Bookings, coming soon' }));
     expect(
@@ -50,7 +50,9 @@ describe('RouteErrorBoundary', () => {
     );
 
     await user.click(screen.getByRole('link', { name: 'Explore' }));
-    expect(await screen.findByRole('heading', { level: 1, name: 'Explore' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' })
+    ).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'This page hit a problem' })).toBeNull();
     expect(screen.queryByText('Bookings list exploded')).toBeNull();
     expect(currentRoute()).toBe('/');

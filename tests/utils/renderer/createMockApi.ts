@@ -2,7 +2,7 @@
 /**
  * A `window.api` for renderer tests that renders the whole app: built on the strict mock from
  * tests/utils/window-api.ts (an un-stubbed method rejects with an error naming it), with the
- * calls the shell and the legacy list pages make on load answered by default, and a working
+ * calls the shell, Explore and the legacy list pages make on load answered by default, and a working
  * `events.on` you can drive:
  *
  *   const mock = createMockApi({ providers: { list: jest.fn().mockResolvedValue(fail('x')) } });
@@ -89,6 +89,14 @@ function defaultStubs(): ApiStubs {
     providers: {
       list: resolve(ok([PARKSTAY_MANIFEST])),
       accessStatus: resolve(ok(IDLE_ACCESS)),
+    },
+    // Explore, the home page: an empty catalogue that is still syncing. Explore tests answer
+    // with the ParkStay fixture instead (tests/utils/renderer/catalog.ts).
+    catalog: {
+      search: resolve(ok({ items: [], total: 0 })),
+      status: resolve(
+        ok({ providers: [{ providerId: 'parkstay', count: 0, stale: true, syncing: true }] })
+      ),
     },
     app: {
       getInfo: resolve(ok(APP_INFO)),

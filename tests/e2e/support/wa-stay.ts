@@ -85,6 +85,16 @@ export function withoutGuardedRequests(
   );
 }
 
+/**
+ * Without the provider photos the network guard cancelled. Explore hot-links provider images
+ * (brief O8), which fixture mode never loads; anything else the guard stopped still counts.
+ */
+export function withoutRemoteImages(requests: readonly UnexpectedRequest[]): UnexpectedRequest[] {
+  return requests.filter(
+    (request) => !(request.source === 'network-guard' && request.resourceType === 'image')
+  );
+}
+
 function launchEnv(
   userDataDir: string,
   extra: Record<string, string> = {}
