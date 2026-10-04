@@ -189,7 +189,7 @@ export class BookingService {
    */
   async importBooking(_userId: number, bookingReference: string): Promise<Booking> {
     try {
-      // Check if already imported (only ParkStay bookings can be imported for now)
+      // Check if already imported (only bookings from the ParkStay provider can be imported for now)
       const existing = this.bookingRepository.findByReference(
         PARKSTAY_PROVIDER_ID,
         bookingReference

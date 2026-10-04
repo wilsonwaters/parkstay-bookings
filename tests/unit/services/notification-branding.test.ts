@@ -66,9 +66,9 @@ describe('NotificationService branding', () => {
     await service.notifySnipeBooked(snipe);
 
     expect(dispatch.mock.calls.map(([message]) => message)).toEqual([
-      expect.objectContaining({ providerId: 'parkstay', locationName: watch.campgroundName }),
-      expect.objectContaining({ providerId: 'parkstay', locationName: snipe.campgroundName }),
-      expect.objectContaining({ providerId: 'parkstay', locationName: snipe.campgroundName }),
+      expect.objectContaining({ providerId: 'parkstay', locationName: watch.location.name }),
+      expect.objectContaining({ providerId: 'parkstay', locationName: snipe.location.name }),
+      expect.objectContaining({ providerId: 'parkstay', locationName: snipe.location.name }),
     ]);
   });
 
