@@ -17,7 +17,9 @@ function focusHeading(heading: HTMLElement) {
  * page is left alone, so the first Tab still reaches "Skip to content".
  *
  * Pages that load before they show their heading get a short grace period: if the `h1` turns up
- * while focus is still on `<main>` (or was lost to the body), focus moves to it.
+ * while focus is still on `<main>` (or was lost to the body), focus moves to it. The same holds
+ * when a page replaces the `h1` it showed first (a page that shows its heading, then a spinner,
+ * then the heading again): focus lost with the old one follows the new one.
  */
 export function useRouteFocus(mainRef: RefObject<HTMLElement>): void {
   const { pathname } = useLocation();
@@ -41,13 +43,11 @@ export function useRouteFocus(mainRef: RefObject<HTMLElement>): void {
       if (heading) focusHeading(heading);
       else main.focus();
       announce(heading?.textContent?.trim() || pageTitleFor(pathname));
-      if (heading) return;
 
       observer = new MutationObserver(() => {
         const late = main.querySelector('h1');
-        if (!late) return;
-        observer?.disconnect();
         const active = document.activeElement;
+        if (!late || late === active) return;
         if (active === main || active === document.body || active === null) focusHeading(late);
       });
       observer.observe(main, { childList: true, subtree: true });

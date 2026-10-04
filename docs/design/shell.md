@@ -71,7 +71,7 @@ Legacy pages render inside `LegacyPageFrame` until the provider-ux stream rebuil
 ## Focus and announcements
 
 - After every change of page (pathname, not the query string), `useRouteFocus` moves focus to the page's `h1` (given `tabIndex={-1}` if it has none), or to `<main>` when there is no `h1` yet, and announces the title through the polite live region. The announcement is the `h1` text, or the route's title from `pageTitleFor()`.
-- A page that loads before showing its heading gets two seconds' grace: if its `h1` appears while focus is still on `<main>` (or was lost to the body), focus moves to it.
+- A page that loads before showing its heading gets two seconds' grace: if its `h1` appears while focus is still on `<main>` (or was lost to the body), focus moves to it. The same applies when a page replaces the `h1` it showed first (heading, spinner, heading again): focus lost with the old heading moves to the new one.
 - The first page after launch is left alone, so the first Tab still reaches the skip link. In a quick run of navigations, only the last page takes focus.
 - A heading focused this way (`h1`–`h3` with `tabindex="-1"`) draws no focus ring (a base rule in `styles/index.css`): it is a reading position, not a control. Everything a person can Tab to keeps the 2 px ring.
 - Landmarks: one `banner` (the header), one `navigation` named "Primary", one `main`. Each page has exactly one `h1`, normally from `PageHeader`.
