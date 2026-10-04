@@ -4,13 +4,13 @@
  * The rename to WA Stay must not touch the identifiers DBCA's ParkStay and queue systems use
  * (B2 non-goals): they name the provider's systems, not this app.
  */
+import { APP_NAME } from '@shared/constants';
 import {
-  APP_NAME,
   PARKSTAY_API_BASE_URL,
   PARKSTAY_BASE_URL,
   QUEUE_API_BASE_URL,
   QUEUE_GROUP,
-} from '@shared/constants';
+} from '@main/providers/parkstay/constants';
 
 describe('DBCA identifiers', () => {
   it('keeps the DBCA queue group and the ParkStay URLs', () => {
