@@ -6,13 +6,14 @@ _Last updated: 2026-10-04 (orchestrator)_
 Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
 
 ## Currently in flight
-- **V5** (#23) Location catalogue service: implemented (live sync 169 locations, FTS5 search + facets, offline relaunch serves the cache, `parkstay` IPC namespace retired); rebased onto the feature branch (gate green, 2188 tests); review running, lane Y. Flagged: ParkStay `getLocation` downloads the 1.2 MB campground map on a cold detail request.
+- **V5 follow-up** (#23): wider secret sweep (`catalog:availability`, `catalog:check-location`), 60 s negative cache for access-gate/timeout availability errors, faster retry while a catalogue is empty, future `syncedAt` counts as stale. Lane Y.
 - **E1** (#32) Explore screen: lane R.
 - **V4** (#22) Core services and scheduler: design approved (decisions in architecture-notes §12.31; V6 addendum for watch-hold columns and payment); implementing, lane W.
 - **V6** (#24) Provider accounts and sign-in: design phase (L task; designs against the approved V4 design), lane A.
-- Next: P7, U1, U3, U5 after V4; E2/E3 after E1 (E3 also after V5); U2/U4 after V6; Q2 last.
+- Next: P7, U1, U3, U5 after V4; E2/E3 after E1; U2/U4 after V6; Q2 last.
 
 ## Completed
+- **V5** (#23) Location catalogue service: review APPROVE (all 13 criteria met; ~70-input FTS5 fuzz with no throws; FTS integrity checked; perf 34–53 ms; quit mid-sync leaves no write). Merged (`9010679`). Accepted risk: the first cold detail per session re-fetches ParkStay's campground_map (~64 KB gzip), tracked for E2.
 - **V3** (#21) ParkStay provider module: review APPROVE; merged. Follow-up merged (`c649534`): the gate reports `idle` when unheld, a negative cache for a missing release time, a warning on an empty bulk response. Known, deliberately left: `toofar` labelling of nights past the horizon; the unit id for class-listed campgrounds is one free site id (watches filter locally by id or name since V4). Migrated daily-rollover `releaseAt` recompute is in V4.
 - **B3** (#28) Legacy install migration: review REQUEST_CHANGES (a stale `in-progress` marker could delete a live `wa-stay.db`). Fixed: stale markers cleared on fresh-install/declined, the redo moves `wa-stay.db` aside and never deletes it, target-folder errors name the WA Stay folder, the welcome notice and login-item replacement are retried until done, the staging folder is swept. Orchestrator added a guard so the final rename never replaces a `wa-stay.db` that appears mid-copy (+ test). 12/12 adversarial scenarios, 31 kill points; gate green after rebase on V3 (2099 tests). Merged. Manual Windows checklist (BQ3/BQ4) stays with the stakeholder.
 - **Q1** (#40) phase 1: Electron smoke E2E harness, test env hooks (gated `!isPackaged`), network-free fixture mode, 10 journeys, CI e2e job. Also fixed a D3 route-focus race. Merged after an orchestrator rebase and checks (gating reviewed; e2e 10/10 locally). Phase 2 (Explore and create-watch journeys) is handed to E1/U1; the full independent review happens then.
