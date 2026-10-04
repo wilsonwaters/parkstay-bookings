@@ -6,11 +6,12 @@ _Last updated: 2026-10-02 (orchestrator)_
 Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
 
 ## Currently in flight
-- **V3** (#21) ParkStay provider module: implemented (live ParkStay verified: 169 campgrounds, prices, the sniper poll returns 200, the queue gate works). The orchestrator rebased it onto the feature branch; review running, lane X.
+- **V3** (#21) ParkStay provider module: MERGED (review APPROVE; 177 suites / 2009 tests, test:electron 26/26). Follow-up fix in lane X: gate reports `idle` when unheld (chip stuck on "Expired"), negative cache for missing release time, warn on empty bulk response. Known, deliberately left: `toofar` labelling of nights past the horizon; unit id for class-listed campgrounds is one free site id (may drift between polls; revisit after V5). Migrated daily-rollover `releaseAt` recompute moved to V4.
 - **V5** (#23) Location catalogue service: lane Y (`/home/user/wt/lane-y`, branched from lane/x).
 - **B3** (#28) Legacy install migration: review REQUEST_CHANGES (stale `in-progress` marker could delete a live `wa-stay.db`; target-vs-source permission errors; welcome/login-item follow-ups lost on crash; staging sweep). Fix agent running, lane A.
 - **E1** (#32) Explore screen: lane R.
-- Next: V4 (after V3 merges), then V6, P7, E2/E3, U1–U5, Q2.
+- **V4** (#22) Core services and scheduler: design phase (L task), lane W.
+- Next: V6, P7, E2/E3, U1–U5, Q2.
 
 ## Completed
 - **Q1** (#40) phase 1: Electron smoke E2E harness, test env hooks (gated `!isPackaged`), network-free fixture mode, 10 journeys, CI e2e job. Also fixed a D3 route-focus race. Merged after an orchestrator rebase and checks (gating reviewed; e2e 10/10 locally). Phase 2 (Explore and create-watch journeys) is handed to E1/U1; the full independent review happens then.
