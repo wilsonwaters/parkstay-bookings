@@ -24,14 +24,21 @@ import { createContainer } from '@main/app/container';
 import { openDatabase } from '@main/database/connection';
 import { createTestProviderContext } from '@tests/utils/fake-provider';
 import { TEST_LOGS_DIR } from '@tests/utils/ipc-harness';
+import { containerSecrets, FakeSafeStorage, removeUserData } from '@tests/utils/fake-safe-storage';
 
 describe('loading playwright-core', () => {
   it('is not imported when the app builds its providers, nor when they close', async () => {
-    const container = createContainer({ db: openDatabase(':memory:'), logsDir: TEST_LOGS_DIR });
+    const secrets = containerSecrets(new FakeSafeStorage());
+    const container = createContainer({
+      db: openDatabase(':memory:'),
+      logsDir: TEST_LOGS_DIR,
+      ...secrets,
+    });
     expect(container.providers.list().map((m) => m.id)).toContain('parkstay');
     const ctx = createTestProviderContext('fake');
     await ctx.browser.close();
     await container.dispose();
+    removeUserData(secrets.userDataDir);
 
     expect(mockPlaywright.imports).toBe(0);
   });
