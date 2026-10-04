@@ -219,16 +219,36 @@ export class AccessGateError extends ProviderError {
   }
 }
 
-export type BrowserUnavailableReason = 'not-configured' | 'runtime-missing' | 'no-browser';
+/**
+ * Why browser automation cannot run:
+ * - `runtime-missing`: `playwright-core` could not be loaded;
+ * - `no-browser`: neither Microsoft Edge nor Google Chrome is installed;
+ * - `profile-locked`: another browser process holds the provider's profile;
+ * - `launch-failed`: the browser was found but did not start; retryable;
+ * - `closing`: the app is quitting, so no browser is launched.
+ */
+export type BrowserUnavailableReason =
+  | 'runtime-missing'
+  | 'no-browser'
+  | 'profile-locked'
+  | 'launch-failed'
+  | 'closing';
 
 export class BrowserUnavailableError extends ProviderError {
   readonly reason: BrowserUnavailableReason;
 
-  constructor(providerId: ProviderId, reason: BrowserUnavailableReason, message?: string) {
+  constructor(
+    providerId: ProviderId,
+    reason: BrowserUnavailableReason,
+    message?: string,
+    cause?: unknown
+  ) {
     super({
       providerId,
       code: 'browser-unavailable',
       message: message ?? `${providerId}: browser automation is not available (${reason})`,
+      retryable: reason === 'launch-failed' || reason === 'profile-locked',
+      cause,
     });
     this.name = 'BrowserUnavailableError';
     this.reason = reason;

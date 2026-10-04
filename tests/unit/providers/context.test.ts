@@ -1,20 +1,21 @@
 /**
  * The per-provider context: KV store, scoped secrets (ciphertext only, per provider),
- * child logger, default browser automation, id validation.
+ * child logger, browser automation with a per-provider profile, id validation.
  */
 
+import path from 'path';
 import {
-  BrowserUnavailableError,
   createProviderContext,
   createScopedSecretVault,
   FakeSecretVault,
   InMemoryKeyValueStore,
   NodeHttpClient,
+  PlaywrightBrowserAutomation,
   type ProviderContextDeps,
   type ScopedSecretVault,
 } from '@main/providers/sdk';
 import { DEFAULT_PROVIDER_LIMITS } from '@shared/types/provider.types';
-import { createMemoryLogger, testManifest } from '@tests/utils/fake-provider';
+import { createMemoryLogger, TEST_PROVIDERS_DIR, testManifest } from '@tests/utils/fake-provider';
 import { removeUserData, testVault, type TestVault } from '@tests/utils/fake-safe-storage';
 
 function deps(overrides: Partial<ProviderContextDeps> = {}): ProviderContextDeps {
@@ -23,6 +24,7 @@ function deps(overrides: Partial<ProviderContextDeps> = {}): ProviderContextDeps
     createState: () => new InMemoryKeyValueStore(),
     vault: new FakeSecretVault(),
     logger: createMemoryLogger(),
+    providersDir: TEST_PROVIDERS_DIR,
     ...overrides,
   };
 }
@@ -220,7 +222,7 @@ describe('ScopedSecretVault', () => {
 });
 
 describe('createProviderContext', () => {
-  it('builds per-provider parts: http, state, child logger, clock, unavailable browser', async () => {
+  it('builds per-provider parts: http, state, child logger, clock, browser automation', async () => {
     const logger = createMemoryLogger();
     const createHttp = jest.fn((providerId: string) => new NodeHttpClient({ providerId }));
     const ctx = createProviderContext(
@@ -238,11 +240,16 @@ describe('createProviderContext', () => {
       { level: 'warn', message: 'queue slow', meta: [], context: { provider: 'fake' } },
     ]);
 
-    expect(await ctx.browser.isAvailable()).toEqual({ available: false, reason: 'not-configured' });
-    await expect(ctx.browser.withPage(async () => 1)).rejects.toBeInstanceOf(
-      BrowserUnavailableError
+    // Built but not started: playwright-core is loaded on first use only.
+    expect(ctx.browser).toBeInstanceOf(PlaywrightBrowserAutomation);
+    expect((ctx.browser as PlaywrightBrowserAutomation).userDataDir).toBe(
+      path.join(TEST_PROVIDERS_DIR, 'fake', 'browser')
     );
     await expect(ctx.browser.close()).resolves.toBeUndefined();
+    await expect(ctx.browser.withPage(async () => 1)).rejects.toMatchObject({
+      name: 'BrowserUnavailableError',
+      reason: 'closing',
+    });
   });
 
   it('gives each provider its own state store', async () => {

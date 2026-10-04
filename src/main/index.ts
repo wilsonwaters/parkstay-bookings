@@ -42,6 +42,9 @@ const rendererEntry = resolveRendererEntry(
   app.isPackaged
 );
 
+/** The longest a quit waits for providers to close their browsers (each takes at most 5 s). */
+const QUIT_GRACE_MS = 6_000;
+
 // Global references
 let container: AppContainer | null = null;
 let mainWindow: BrowserWindow | null = null;
@@ -155,15 +158,23 @@ if (instance.isPrimary) {
   });
 
   /**
-   * Before quit event
+   * Before quit event. The first one disposes the container and holds the quit until the
+   * providers have closed their browsers (bounded), so a browser profile is flushed rather
+   * than killed with the app; then it quits again, and the second one lets the quit through.
    */
-  app.on('before-quit', () => {
+  app.on('before-quit', (event) => {
+    if (!container) return;
     logger.info('Application shutting down...');
 
-    // Stops the scheduler, destroys the queue service and closes the database
-    container?.dispose();
+    // Stops the scheduler, disposes the providers, destroys the queue service and closes the database
+    const disposed = container.dispose();
     container = null;
 
-    logger.info('Application shut down successfully');
+    event.preventDefault();
+    const grace = new Promise<void>((resolve) => setTimeout(resolve, QUIT_GRACE_MS));
+    void Promise.race([disposed, grace]).then(() => {
+      logger.info('Application shut down successfully');
+      app.quit();
+    });
   });
 }

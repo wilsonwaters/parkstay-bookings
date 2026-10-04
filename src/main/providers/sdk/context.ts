@@ -7,13 +7,15 @@
  * are at hand before the provider is created.
  */
 
+import path from 'path';
 import {
   providerLimits,
   type ProviderId,
   type ProviderLimits,
   type ProviderManifest,
 } from '@shared/types/provider.types';
-import { UnavailableBrowserAutomation, type BrowserAutomation } from './browser';
+import type { BrowserAutomation } from './browser';
+import { PlaywrightBrowserAutomation } from './browser-automation';
 import type { HttpClient } from './http';
 import type { KeyValueStore } from './kv-store';
 import { freezeProviderManifest } from './manifest';
@@ -38,6 +40,10 @@ export interface ProviderContext {
   readonly limits: Readonly<ProviderLimits>;
   /** Bound to the provider's session partition, whose cookies its sign-in and payment windows share. */
   readonly http: HttpClient;
+  /**
+   * Drives the installed Edge or Chrome (`PlaywrightBrowserAutomation`), with the provider's
+   * own profile at `<providersDir>/<id>/browser`. Costs nothing until first used.
+   */
   readonly browser: BrowserAutomation;
   /** The provider's own key-value state. */
   readonly state: KeyValueStore;
@@ -56,8 +62,13 @@ export interface ProviderContextDeps {
   vault: SecretVaultLike;
   /** The app logger; each provider gets a child of it. */
   logger: ProviderLogger;
-  /** Defaults to `UnavailableBrowserAutomation`. */
-  createBrowser?(providerId: ProviderId): BrowserAutomation;
+  /**
+   * Absolute; holds each provider's browser profile at `<providersDir>/<id>/browser`. The
+   * container passes `<userData>/providers`; tests pass a temporary folder.
+   */
+  providersDir: string;
+  /** Development only: the browser executable to automate instead of detecting Edge or Chrome. */
+  browserExecutablePath?: string;
   clock?: () => Date;
 }
 
@@ -76,7 +87,15 @@ export function createProviderContext(
     timezone: frozen.timezone,
     limits: Object.freeze(providerLimits(frozen)),
     http: deps.createHttp(id),
-    browser: deps.createBrowser?.(id) ?? new UnavailableBrowserAutomation(id),
+    browser: new PlaywrightBrowserAutomation({
+      providerId: id,
+      providerName: frozen.name,
+      userDataDir: path.join(deps.providersDir, id, 'browser'),
+      timezoneId: frozen.timezone,
+      executablePath: deps.browserExecutablePath,
+      state,
+      logger,
+    }),
     state,
     secrets: createScopedSecretVault({ providerId: id, vault: deps.vault, store: state, logger }),
     logger,

@@ -3,6 +3,9 @@
   "productName": "WA ParkStay Bookings",
   "copyright": "Copyright © 2025-2026",
   "asar": true,
+  "asarUnpack": [
+    "node_modules/playwright-core/**"
+  ],
   "directories": {
     "output": "release",
     "buildResources": "resources"

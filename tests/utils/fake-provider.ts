@@ -18,6 +18,8 @@
  * Every async method honours its `AbortSignal` and rejects with an `AbortError`.
  */
 
+import os from 'os';
+import path from 'path';
 import {
   AccessGateError,
   createAbortError,
@@ -571,6 +573,12 @@ export function createMemoryLogger(
 
 export const FIXED_NOW = new Date('2026-10-02T02:00:00.000Z');
 
+/**
+ * Where test contexts keep provider browser profiles. Nothing is created there unless a test
+ * really launches a browser (the opt-in smoke test uses its own temporary folder).
+ */
+export const TEST_PROVIDERS_DIR = path.join(os.tmpdir(), 'wa-stay-test', 'providers');
+
 /** A minimal valid manifest for `id`, with every capability off. */
 export function testManifest(
   id: string,
@@ -605,7 +613,9 @@ export function testManifest(
 
 /**
  * A provider context built from in-memory parts: Node HTTP, KV store, fake vault, fixed
- * clock. Pass the provider's manifest, or an id for a context built from `testManifest(id)`.
+ * clock, and browser automation with its profile under `TEST_PROVIDERS_DIR` (tests mock
+ * `playwright-core` before using it). Pass the provider's manifest, or an id for a context
+ * built from `testManifest(id)`.
  */
 export function createTestProviderContext(
   manifestOrId: ProviderManifest | string,
@@ -617,6 +627,7 @@ export function createTestProviderContext(
     createState: () => new InMemoryKeyValueStore(),
     vault: new FakeSecretVault(),
     logger: createMemoryLogger(),
+    providersDir: TEST_PROVIDERS_DIR,
     clock: () => FIXED_NOW,
   });
   return { ...context, ...overrides };

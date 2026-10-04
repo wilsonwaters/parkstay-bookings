@@ -8,7 +8,8 @@
  *
  * It checks that the manifest is valid, the capabilities match the modules, location keys
  * round-trip, every module honours `AbortSignal`, failures are `ProviderError`s, and links
- * are absolute https URLs. Modules the provider does not have are skipped.
+ * are absolute https URLs. Modules the provider does not have are skipped. For a
+ * browser-driven provider, `openPages` lets it check that no call leaves a page open.
  */
 
 import {
@@ -43,6 +44,17 @@ export interface ProviderContractSubject {
   searchBbox?: BoundingBox;
   /** Called after the suite (e.g. to stop a fixture server). */
   cleanup?: () => Promise<void> | void;
+  /**
+   * For a browser-driven provider: how many pages its browser has open
+   * (`context.pages().length`). After each test it must be back to 0.
+   */
+  openPages?: () => number;
+}
+
+/** Waits up to `ms` for `done()`; an aborted call closes its page as it unwinds. */
+async function settle(done: () => boolean, ms = 2_000): Promise<void> {
+  const until = Date.now() + ms;
+  while (!done() && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 10));
 }
 
 const day = (offset: number): string =>
@@ -102,6 +114,13 @@ export function describeProviderContract(
         subject.sample?.externalId ??
         (provider.catalog ? (await listAll(provider.catalog, bbox()))[0]?.externalId : '1') ??
         '1';
+    });
+
+    afterEach(async () => {
+      const openPages = subject?.openPages;
+      if (!openPages) return;
+      await settle(() => openPages() === 0);
+      expect(openPages()).toBe(0);
     });
 
     afterAll(async () => {

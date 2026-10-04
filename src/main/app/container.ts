@@ -16,6 +16,8 @@
 
 import path from 'path';
 import type Database from 'better-sqlite3';
+import { app } from 'electron';
+import path from 'path';
 import { closeDatabase } from '../database/connection';
 import {
   BookingRepository,
@@ -93,10 +95,12 @@ export interface AppContainer {
   readonly autoUpdater: AutoUpdaterService;
   readonly scheduler: JobScheduler;
   /**
-   * Stops the scheduler, disposes the providers, destroys the queue service and closes the
-   * database. Safe to call twice.
+   * Stops the scheduler, starts disposing the providers, destroys the queue service and
+   * closes the database, all before it returns. The promise resolves once every provider is
+   * disposed and its browser closed (each browser gets at most 5 s, then is killed); it never
+   * rejects. Safe to call twice.
    */
-  dispose(): void;
+  dispose(): Promise<void>;
 }
 
 export interface ContainerOptions {
@@ -160,6 +164,10 @@ export function createContainer({
     // Each provider's ScopedSecretVault: envelopes from this vault, in the provider's own state
     vault,
     logger,
+    // Each provider's browser profile is <userData>/providers/<id>/browser.
+    providersDir: path.join(app.getPath('userData'), 'providers'),
+    // Development only (§12.14): a packaged build always detects Edge or Chrome itself.
+    browserExecutablePath: app.isPackaged ? undefined : process.env.WA_STAY_BROWSER_PATH,
   };
   const providers = new ProviderRegistry({ logger });
   registerBuiltInProviders(providers, (manifest) => createProviderContext(manifest, providerDeps), {
@@ -192,16 +200,16 @@ export function createContainer({
   const autoUpdater = new AutoUpdaterService(rendererEvents);
   const scheduler = new JobScheduler(watchService, siteSniperService);
 
-  let disposed = false;
-  const dispose = (): void => {
-    if (disposed) return;
-    disposed = true;
+  let disposed: Promise<void> | null = null;
+  const dispose = (): Promise<void> => {
+    if (disposed) return disposed;
     scheduler.stop();
-    // Never rejects; each provider's dispose starts before the database closes.
-    void providers.disposeAll();
+    // Never rejects; each provider's dispose (and browser close) starts before the database closes.
+    disposed = providers.disposeAll();
     queueService.off('status', forwardQueueStatus);
     queueService.destroy();
     closeDatabase(db);
+    return disposed;
   };
 
   return {
