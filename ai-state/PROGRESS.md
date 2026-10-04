@@ -8,7 +8,7 @@ Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task spe
 ## Currently in flight
 - **V3** (#21) ParkStay provider module: implemented (live ParkStay verified: 169 campgrounds, prices, the sniper poll returns 200, the queue gate works). The orchestrator rebased it onto the feature branch; review running, lane X.
 - **V5** (#23) Location catalogue service: lane Y (`/home/user/wt/lane-y`, branched from lane/x).
-- **B3** (#28) Legacy install migration: implemented; adversarial review running, lane A.
+- **B3** (#28) Legacy install migration: review REQUEST_CHANGES (stale `in-progress` marker could delete a live `wa-stay.db`; target-vs-source permission errors; welcome/login-item follow-ups lost on crash; staging sweep). Fix agent running, lane A.
 - **E1** (#32) Explore screen: lane R.
 - Next: V4 (after V3 merges), then V6, P7, E2/E3, U1–U5, Q2.
 
