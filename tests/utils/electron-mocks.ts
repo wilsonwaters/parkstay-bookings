@@ -4,7 +4,6 @@
  *
  *   jest.mock('electron', () => jest.requireActual('@tests/utils/electron-mocks').electron());
  *   jest.mock('electron-updater', () => jest.requireActual('@tests/utils/electron-mocks').electronUpdater());
- *   jest.mock('electron-store', () => jest.requireActual('@tests/utils/electron-mocks').electronStore());
  */
 
 import { EventEmitter } from 'events';
@@ -52,10 +51,4 @@ export function electronUpdater(): Record<string, unknown> {
     quitAndInstall: jest.fn(),
   });
   return { autoUpdater };
-}
-
-export function electronStore(): unknown {
-  return jest
-    .fn()
-    .mockImplementation(() => ({ get: jest.fn(), set: jest.fn(), delete: jest.fn() }));
 }

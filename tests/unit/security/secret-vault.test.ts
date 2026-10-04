@@ -8,6 +8,7 @@ import fs from 'fs';
 import {
   SecretUnreadableError,
   SecretVaultNotReadyError,
+  SecretVerificationError,
   FileLocalKeyStore,
 } from '@main/security/secret-vault';
 import {
@@ -19,6 +20,23 @@ import {
 } from '@tests/utils/fake-safe-storage';
 
 const SECRET = 'Sëcret-pässword-✓';
+
+/** Faulty `safeStorage.encryptString`s: the envelope decrypts to another value, or not at all. */
+const faultyEncryptions: [string, (safeStorage: FakeSafeStorage) => void][] = [
+  [
+    'decrypts to another value',
+    (safeStorage) => {
+      const real = safeStorage.encryptString.bind(safeStorage);
+      jest.spyOn(safeStorage, 'encryptString').mockImplementation((text) => real(`${text}!`));
+    },
+  ],
+  [
+    'does not decrypt',
+    (safeStorage) => {
+      jest.spyOn(safeStorage, 'encryptString').mockReturnValue(Buffer.from('not-a-ciphertext'));
+    },
+  ],
+];
 
 /** Flips one character inside the base64 payload of an envelope. */
 function tamper(envelope: string): string {
@@ -176,6 +194,52 @@ describe('SecretVault', () => {
       expect(read).toEqual({ state: 'ok', value: SECRET });
       expect(logger.lines.join('\n')).toMatch(/could not re-encrypt a local secret/);
     });
+
+    it.each(faultyEncryptions)(
+      'a reseal that does not read back (%s) is never stored: the local envelope is kept',
+      (_fault, fault) => {
+        const safeStorage = new FakeSafeStorage();
+        safeStorage.available = false;
+        const { vault, logger } = vaultWith({ safeStorage });
+        const local = vault.encrypt(SECRET);
+        safeStorage.available = true;
+        fault(safeStorage);
+
+        const reseal = jest.fn();
+        expect(vault.read(local, reseal)).toEqual({ state: 'ok', value: SECRET });
+
+        expect(reseal).not.toHaveBeenCalled();
+        const logs = logger.lines.join('\n');
+        expect(logs).toMatch(/could not re-encrypt a local secret .*SecretVerificationError/);
+        expect(logs).not.toContain(SECRET);
+      }
+    );
+  });
+
+  describe('encryptVerified (read-back before replacing the only copy)', () => {
+    it('returns an envelope that decrypts back to the plaintext', () => {
+      const { vault } = vaultWith();
+      const envelope = vault.encryptVerified(SECRET);
+      expect(envelope.startsWith('vault:v1:os:')).toBe(true);
+      expect(vault.decrypt(envelope)).toBe(SECRET);
+    });
+
+    it.each(faultyEncryptions)(
+      'throws SecretVerificationError, without the secret, when encrypt is faulty (%s)',
+      (_fault, fault) => {
+        const { vault, safeStorage } = vaultWith();
+        fault(safeStorage);
+
+        let error: unknown;
+        try {
+          vault.encryptVerified(SECRET);
+        } catch (caught) {
+          error = caught;
+        }
+        expect(error).toBeInstanceOf(SecretVerificationError);
+        expect((error as Error).message).not.toContain(SECRET);
+      }
+    );
   });
 
   describe('unreadable, never empty', () => {

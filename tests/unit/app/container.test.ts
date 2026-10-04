@@ -3,12 +3,13 @@
  * singleton (two containers share nothing); dispose stops the scheduler, then destroys the
  * queue service, then closes the database. The SecretVault is shared by every consumer,
  * including each provider's ScopedSecretVault, and building the container on a fresh
- * install does not touch `safeStorage`.
+ * install does not touch `safeStorage` or read the machine id.
  */
 
 import fs from 'fs';
 import path from 'path';
 import type Database from 'better-sqlite3';
+import { machineIdSync } from 'node-machine-id';
 import { openDatabase } from '@main/database/connection';
 import { createContainer, AppContainer } from '@main/app/container';
 import * as repositories from '@main/database/repositories';
@@ -46,7 +47,7 @@ jest.mock('electron-updater', () => {
   const { EventEmitter } = jest.requireActual('events');
   return { autoUpdater: new EventEmitter() };
 });
-jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }));
+jest.mock('node-machine-id', () => ({ machineIdSync: jest.fn(() => 'test-machine-id') }));
 
 /**
  * Replaces each exported class of a module with a jest.fn that constructs the real class,
@@ -215,11 +216,12 @@ describe('createContainer', () => {
     expect(jest.mocked(createProviderContext).mock.calls[0][1].vault).toBe(vault);
   });
 
-  it('builds the vault lazily: a fresh install touches neither safeStorage nor the key file', () => {
+  it('builds the vault lazily: a fresh install touches neither safeStorage nor the key file, nor reads the machine id', () => {
     const safeStorage = new FakeSafeStorage();
     const { container, userDataDir } = build(safeStorage);
 
     expect(safeStorage.calls).toEqual([]);
+    expect(machineIdSync).not.toHaveBeenCalled(); // only needed for a legacy value
     expect(fs.existsSync(path.join(userDataDir, 'secret-vault.key'))).toBe(false);
     expect(container.vault.status()).toEqual({ backend: 'os' }); // first use
   });

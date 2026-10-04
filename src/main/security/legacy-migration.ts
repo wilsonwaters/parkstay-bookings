@@ -9,6 +9,10 @@
  * decrypted is left exactly as it is: its consumer reports it as `unreadable`, and the next
  * start tries again. Values are never logged.
  *
+ * The legacy value is the only copy, so each new envelope is decrypted and compared with
+ * the plaintext (`vault.encryptVerified`) before it replaces it. One that does not read back
+ * leaves the item unchanged and counts it as `failed`.
+ *
  * - `users`: the envelope goes in `encrypted_password`; `encryption_iv`,
  *   `encryption_auth_tag` and `encryption_key` become `''` (the columns are NOT NULL).
  * - `notifiers.config`: replaced by the envelope.
@@ -34,8 +38,11 @@ import { SecretVaultNotReadyError, type SecretVault } from './secret-vault';
 export interface MigrateLegacySecretsOptions {
   db: Database.Database;
   vault: SecretVault;
-  /** The machine id the v1.x keys were derived from (`legacyMachineId()`). */
-  machineId: string;
+  /**
+   * Reads the machine id the v1.x keys were derived from (`legacyMachineId`). Called only
+   * when a machine-bound legacy value is found, at most once per run.
+   */
+  machineId: () => string;
   /** `<userData>/gmail-oauth.json`. */
   gmailStorePath: string;
 }
@@ -75,6 +82,8 @@ export function migrateLegacySecrets({
   const count = (outcome: Outcome | null): void => {
     if (outcome) result[outcome] += 1;
   };
+  let cachedMachineId: string | undefined;
+  const getMachineId = (): string => (cachedMachineId ??= machineId());
 
   const users = db
     .prepare(
@@ -110,9 +119,9 @@ export function migrateLegacySecrets({
           iv: row.encryption_iv,
           authTag: row.encryption_auth_tag,
         },
-        machineId
+        getMachineId()
       );
-      envelope = password === '' ? '' : vault.encrypt(password);
+      envelope = password === '' ? '' : vault.encryptVerified(password);
     }
 
     db.transaction(() => {
@@ -128,8 +137,8 @@ export function migrateLegacySecrets({
   function migrateNotifier(row: NotifierRow): Outcome {
     if (row.config === '' || vault.isEnvelope(row.config)) return 'current';
 
-    const config = decryptLegacyNotifierConfig(row.config, machineId);
-    const envelope = isEmptyConfig(config) ? '' : vault.encrypt(config);
+    const config = decryptLegacyNotifierConfig(row.config, getMachineId());
+    const envelope = isEmptyConfig(config) ? '' : vault.encryptVerified(config);
     db.transaction(() => {
       db.prepare('UPDATE notifiers SET config = ? WHERE id = ? AND config = ?').run(
         envelope,
@@ -158,10 +167,10 @@ export function migrateLegacySecrets({
 
     const file: GmailSecretFileV2 = { format: 2 };
     if (legacy.gmail_credentials) {
-      file.credentials = vault.encrypt(JSON.stringify(legacy.gmail_credentials));
+      file.credentials = vault.encryptVerified(JSON.stringify(legacy.gmail_credentials));
     }
     if (legacy.gmail_oauth_tokens) {
-      file.tokens = vault.encrypt(JSON.stringify(legacy.gmail_oauth_tokens));
+      file.tokens = vault.encryptVerified(JSON.stringify(legacy.gmail_oauth_tokens));
     }
     writeGmailSecretFile(gmailStorePath, file);
     return 'migrated';

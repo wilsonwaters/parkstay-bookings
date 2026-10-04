@@ -16,8 +16,8 @@
  *    hard-coded `encryptionKey` below: `IV (16 bytes) + ':' + AES-256-CBC`, key
  *    `PBKDF2(encryptionKey, iv.toString(), 10000, 32, sha512)` (conf `_encryptData`/`_write`).
  *
- * `node-machine-id` is imported only here: the machine id is read once at startup by the
- * composition root (`legacyMachineId()`) and passed in.
+ * `node-machine-id` is imported only here. The composition root passes `legacyMachineId` to
+ * `migrateLegacySecrets`, which calls it only when it finds a machine-bound legacy value.
  */
 
 import crypto from 'crypto';

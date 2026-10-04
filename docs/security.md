@@ -13,7 +13,11 @@ The app keeps these secrets on disk:
 | ParkStay password | `users.encrypted_password` in `<userData>/parkstay.db` |
 | Email (SMTP) notifier settings, including the app password | `notifiers.config` in the database |
 | Gmail OAuth client ID, client secret and tokens | `<userData>/gmail-oauth.json` |
-| Provider secrets (`ProviderContext.secrets`) | the provider's own state, under `secret:<key>` |
+| Provider secrets (`ProviderContext.secrets`) | the provider's own state, under `secret:<key>` (\*) |
+
+(\*) Provider state is held in memory for now, so provider secrets last only until the app
+quits. They are written to disk, still as vault envelopes, once V2 stores provider state in
+the `provider_state` table.
 
 Every one of them is encrypted by the **SecretVault** (`src/main/security/secret-vault.ts`)
 and stored as a versioned envelope:
@@ -39,6 +43,11 @@ the key:
 | Windows | DPAPI, bound to the Windows user account | Wrapped with DPAPI in Chromium's `Local State` file inside userData (`os_crypt.encrypted_key`) |
 | macOS | Keychain | A Keychain item for the app |
 | Linux | Secret Service (GNOME Keyring, KWallet) | An item in the user's keyring. Nothing is written to userData. |
+
+On Windows, `safeStorage` encrypts with AES-256-GCM, which detects any change to a
+ciphertext. On macOS and Linux it is Chromium's OSCrypt, which uses AES-128-CBC with no
+MAC, so a changed envelope is not always detected: it usually fails to decrypt, but it can
+decrypt to different bytes.
 
 **`local`: the fallback.** This is AES-256-GCM with a random 32-byte key in
 `<userData>/secret-vault.key`. The key file is created with mode `0600` only when the
@@ -72,7 +81,8 @@ To use OS encryption on Linux:
    `--password-store=gnome-libsecret` (or `kwallet5` or `kwallet6`).
 
 Once `os` is available, each `local` secret is re-encrypted to `os` the next time it is
-read, and stored. The key file is then no longer needed for those secrets. It is kept, and
+read, and stored once the new envelope decrypts back to the same value (otherwise the
+`local` envelope is kept and a warning is logged). The key file is then no longer needed for those secrets. It is kept, and
 never deleted automatically.
 
 ### Ordering at startup
@@ -105,10 +115,14 @@ obfuscation, not protection:
 after the database migrations and before anything reads a secret. It:
 
 - decrypts each legacy value once with an exact copy of its v1.x algorithm
-  (`src/main/security/legacy-decryptors.ts`, the only code that reads the machine id), and
-  re-encrypts it with the vault;
+  (`src/main/security/legacy-decryptors.ts`, the only code that reads the machine id, and
+  only when a machine-bound legacy value is found), and re-encrypts it with the vault;
+- decrypts each new envelope and compares it with the plaintext before it replaces the
+  legacy value, which is the only copy. If they differ, the item is left as it is and
+  counted as `failed`;
 - clears the legacy `users` key, IV and auth-tag columns to `''`;
-- rewrites `gmail-oauth.json` atomically (a temp file, then a rename) as
+- rewrites `gmail-oauth.json` atomically and durably (a temp file, fsynced, then a rename,
+  then an fsync of the folder where the platform supports it) as
   `{ "format": 2, "credentials": "<envelope>", "tokens": "<envelope>" }`, with mode `0600`;
 - handles each item on its own, in one transaction per database row, so a crash leaves
   each item either old or new, and the next start finishes the job;
@@ -137,6 +151,10 @@ A secret becomes `unreadable` when:
 - `secret-vault.key` was deleted or replaced;
 - it was saved by a newer version of the app (an unknown envelope version or backend);
 - it was tampered with, or is a legacy value that could not be migrated.
+
+Tampering is always detected for `local` envelopes and for `os` envelopes on Windows (both
+AES-256-GCM). On macOS and Linux an `os` envelope has no MAC (see [Backends](#backends)), so
+a tampered one may decrypt to wrong data instead of reading as `unreadable`.
 
 An unreadable secret is never treated as empty, and it is never overwritten except by the
 user saving a new one. What the user sees:

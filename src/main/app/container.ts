@@ -143,8 +143,9 @@ export function createContainer({
     queueSessions: new QueueSessionRepository(db),
   };
 
-  // v1.x ciphertexts become vault envelopes before any secret is read (first vault use)
-  migrateLegacySecrets({ db, vault, machineId: legacyMachineId(), gmailStorePath });
+  // v1.x ciphertexts become vault envelopes before any secret is read (first vault use).
+  // The machine id is read only if a machine-bound legacy value is found.
+  migrateLegacySecrets({ db, vault, machineId: legacyMachineId, gmailStorePath });
 
   const profile = createLocalProfile(repositories.users);
 

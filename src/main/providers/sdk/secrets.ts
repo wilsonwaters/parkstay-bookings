@@ -7,7 +7,9 @@
  * `secret:<key>`, so secrets persist once that store is SQLite-backed (V2). The ciphertext
  * also names the provider and key it was written for, so a value copied to another provider
  * or key does not decrypt as theirs. A secret the vault reports as needing an upgrade (a
- * `local` envelope once OS encryption is available) is re-encrypted when it is read.
+ * `local` envelope once OS encryption is available) is re-encrypted when it is read, once
+ * the new ciphertext reads back; a failed re-encryption is logged and the secret still reads
+ * (as `SecretVault.read` does).
  */
 
 import type { ProviderId } from '@shared/types/provider.types';
@@ -40,10 +42,13 @@ export function createScopedSecretVault({
   providerId,
   vault,
   store,
+  logger,
 }: {
   providerId: ProviderId;
   vault: SecretVaultLike;
   store: KeyValueStore;
+  /** Where a failed re-encryption is logged (by key and error name, never a value). */
+  logger: { warn(message: string): void };
 }): ScopedSecretVault {
   const storeKey = (key: string): string => `${SECRET_KEY_PREFIX}${key}`;
 
@@ -61,7 +66,21 @@ export function createScopedSecretVault({
         throw new Error(`Secret "${key}" was not written by ${providerId}`);
       }
       if (vault.needsUpgrade?.(ciphertext)) {
-        await store.set(storeKey(key), vault.encrypt(plaintext));
+        try {
+          const upgraded = vault.encrypt(plaintext);
+          // It replaces the only stored copy: store it only once it reads back
+          if (vault.decrypt(upgraded) === plaintext) {
+            await store.set(storeKey(key), upgraded);
+          } else {
+            logger.warn(
+              `Secret "${key}" was not re-encrypted: the new ciphertext did not read back`
+            );
+          }
+        } catch (error) {
+          logger.warn(
+            `Secret "${key}" could not be re-encrypted with OS encryption (${errorName(error)})`
+          );
+        }
       }
       return sealed.value;
     },
@@ -73,6 +92,10 @@ export function createScopedSecretVault({
       await store.delete(storeKey(key));
     },
   };
+}
+
+function errorName(error: unknown): string {
+  return error instanceof Error ? error.name : 'unknown error';
 }
 
 /** The sealed record, or null when `plaintext` is not one. */

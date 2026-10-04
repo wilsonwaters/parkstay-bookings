@@ -11,10 +11,11 @@ import {
   InMemoryKeyValueStore,
   NodeHttpClient,
   type ProviderContextDeps,
+  type ScopedSecretVault,
 } from '@main/providers/sdk';
 import { DEFAULT_PROVIDER_LIMITS } from '@shared/types/provider.types';
 import { createMemoryLogger, testManifest } from '@tests/utils/fake-provider';
-import { removeUserData, testVault } from '@tests/utils/fake-safe-storage';
+import { removeUserData, testVault, type TestVault } from '@tests/utils/fake-safe-storage';
 
 function deps(overrides: Partial<ProviderContextDeps> = {}): ProviderContextDeps {
   return {
@@ -81,6 +82,7 @@ describe('ScopedSecretVault', () => {
       providerId: 'fake',
       vault: new FakeSecretVault(),
       store,
+      logger: createMemoryLogger(),
     });
     await secrets.set('token', 'abc');
     await store.set('secret:other', await store.get('secret:token'));
@@ -93,7 +95,12 @@ describe('ScopedSecretVault', () => {
   it('a ciphertext that decrypts to something other than a sealed secret is refused without quoting it', async () => {
     const vault = new FakeSecretVault();
     const store = new InMemoryKeyValueStore();
-    const secrets = createScopedSecretVault({ providerId: 'fake', vault, store });
+    const secrets = createScopedSecretVault({
+      providerId: 'fake',
+      vault,
+      store,
+      logger: createMemoryLogger(),
+    });
 
     for (const plaintext of ['raw-secret-token-91f', '{"provider":"fake","key":"token"}']) {
       await store.set('secret:token', vault.encrypt(plaintext));
@@ -111,7 +118,12 @@ describe('ScopedSecretVault', () => {
     try {
       t.safeStorage.available = false;
       const store = new InMemoryKeyValueStore();
-      const secrets = createScopedSecretVault({ providerId: 'fake', vault: t.vault, store });
+      const secrets = createScopedSecretVault({
+        providerId: 'fake',
+        vault: t.vault,
+        store,
+        logger: createMemoryLogger(),
+      });
       await secrets.set('token', 'abc');
       expect(await store.get('secret:token')).toMatch(/^vault:v1:local:/);
 
@@ -124,6 +136,78 @@ describe('ScopedSecretVault', () => {
     } finally {
       removeUserData(t.userDataDir);
     }
+  });
+
+  describe('a failed re-encryption to OS encryption never fails get(): it is logged and the local secret kept', () => {
+    async function localSecret(): Promise<{
+      t: TestVault;
+      store: InMemoryKeyValueStore;
+      logger: ReturnType<typeof createMemoryLogger>;
+      secrets: ScopedSecretVault;
+      local: string;
+    }> {
+      const t = testVault();
+      made.push(t);
+      t.safeStorage.available = false;
+      const store = new InMemoryKeyValueStore();
+      const logger = createMemoryLogger();
+      const secrets = createScopedSecretVault({
+        providerId: 'fake',
+        vault: t.vault,
+        store,
+        logger,
+      });
+      await secrets.set('token', 'abc');
+      const local = (await store.get<string>('secret:token')) as string;
+      t.safeStorage.available = true;
+      return { t, store, logger, secrets, local };
+    }
+
+    const made: TestVault[] = [];
+    afterEach(() => made.splice(0).forEach((t) => removeUserData(t.userDataDir)));
+
+    it('the store write fails', async () => {
+      const { store, logger, secrets, local } = await localSecret();
+      jest.spyOn(store, 'set').mockRejectedValueOnce(new Error('database is locked'));
+
+      await expect(secrets.get('token')).resolves.toBe('abc');
+      expect(await store.get('secret:token')).toBe(local);
+      expect(logger.lines).toEqual([
+        expect.objectContaining({
+          level: 'warn',
+          message: 'Secret "token" could not be re-encrypted with OS encryption (Error)',
+        }),
+      ]);
+    });
+
+    it('encrypt fails', async () => {
+      const { t, store, logger, secrets, local } = await localSecret();
+      jest.spyOn(t.safeStorage, 'encryptString').mockImplementation(() => {
+        throw new Error('keyring went away');
+      });
+
+      await expect(secrets.get('token')).resolves.toBe('abc');
+      expect(await store.get('secret:token')).toBe(local);
+      expect(logger.lines.map((l) => l.level)).toEqual(['warn']);
+    });
+
+    it('the new ciphertext does not read back (faulty encrypt): it is never stored', async () => {
+      const { t, store, logger, secrets, local } = await localSecret();
+      const real = t.safeStorage.encryptString.bind(t.safeStorage);
+      jest
+        .spyOn(t.safeStorage, 'encryptString')
+        .mockImplementation((text) => real(text.replace('abc', 'xyz')));
+
+      await expect(secrets.get('token')).resolves.toBe('abc');
+      expect(await store.get('secret:token')).toBe(local);
+      expect(logger.lines).toEqual([
+        expect.objectContaining({
+          level: 'warn',
+          message: 'Secret "token" was not re-encrypted: the new ciphertext did not read back',
+        }),
+      ]);
+      expect(JSON.stringify(logger.lines)).not.toContain('abc');
+    });
   });
 
   it('FakeSecretVault round-trips and rejects foreign ciphertext', () => {

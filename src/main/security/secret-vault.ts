@@ -12,7 +12,9 @@
  *   the key file can decrypt) and `status()` reports it so the UI can warn.
  *
  * A `local` envelope read while `os` is available reads fine and `needsUpgrade` says so; the
- * consumer then re-encrypts it to `os` and stores it (`read(stored, reseal)` does both).
+ * consumer then re-encrypts it to `os` and stores it (`read(stored, reseal)` does both). An
+ * envelope that replaces the only other copy of a secret is read back first
+ * (`encryptVerified`).
  *
  * Anything that cannot be decrypted (tampered, another machine or account, a locked keyring,
  * a missing key file, an envelope from a newer version) throws `SecretUnreadableError`. It
@@ -94,6 +96,17 @@ export class SecretVaultNotReadyError extends Error {
   }
 }
 
+/**
+ * A new envelope did not decrypt back to the secret it was made from (`encryptVerified`).
+ * The caller keeps the value it was about to replace. The message never contains the secret.
+ */
+export class SecretVerificationError extends Error {
+  constructor() {
+    super('The new envelope did not decrypt to the original secret');
+    this.name = 'SecretVerificationError';
+  }
+}
+
 /** The result of reading a stored secret. */
 export type SecretRead =
   | { state: 'ok'; value: string }
@@ -146,6 +159,24 @@ export class SecretVault {
     return `${PREFIX}${VERSION}:${backend}:${payload.toString('base64')}`;
   }
 
+  /**
+   * `encrypt`, then decrypts the new envelope and checks that it reads back as `plaintext`.
+   * Use it before the envelope replaces the only other copy of a secret (the legacy
+   * migration, a reseal). Throws `SecretVerificationError` when it does not read back.
+   */
+  encryptVerified(plaintext: string): string {
+    const envelope = this.encrypt(plaintext);
+    let readBack: string;
+    try {
+      readBack = this.decrypt(envelope);
+    } catch (error) {
+      if (error instanceof SecretUnreadableError) throw new SecretVerificationError();
+      throw error;
+    }
+    if (readBack !== plaintext) throw new SecretVerificationError();
+    return envelope;
+  }
+
   /** Throws `SecretUnreadableError` when the envelope cannot be decrypted. */
   decrypt(envelope: string): string {
     this.assertReady();
@@ -188,7 +219,8 @@ export class SecretVault {
    * Reads a stored secret: `missing` for nothing stored (or an empty secret), `unreadable`
    * when it cannot be decrypted, otherwise `ok`. When the secret was read from a `local`
    * envelope and `os` is now available, `reseal` gets the `os` envelope to store in its
-   * place. A failed reseal is logged; the secret still reads.
+   * place, once it has been read back (`encryptVerified`). A failed reseal is logged and the
+   * stored envelope is kept; the secret still reads.
    */
   read(stored: string | null | undefined, reseal?: (envelope: string) => void): SecretRead {
     if (!stored) return { state: 'missing' };
@@ -205,7 +237,7 @@ export class SecretVault {
 
     if (reseal && this.needsUpgrade(stored)) {
       try {
-        reseal(this.encrypt(value));
+        reseal(this.encryptVerified(value));
         this.logger.info('Secret vault: re-encrypted a local secret with OS encryption');
       } catch (error) {
         this.logger.warn(

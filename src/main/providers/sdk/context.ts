@@ -69,6 +69,7 @@ export function createProviderContext(
   const frozen = freezeProviderManifest(manifest);
   const id = frozen.id;
   const state = deps.createState(id);
+  const logger = deps.logger.child({ provider: id });
   return Object.freeze({
     id,
     manifest: frozen,
@@ -77,8 +78,8 @@ export function createProviderContext(
     http: deps.createHttp(id),
     browser: deps.createBrowser?.(id) ?? new UnavailableBrowserAutomation(id),
     state,
-    secrets: createScopedSecretVault({ providerId: id, vault: deps.vault, store: state }),
-    logger: deps.logger.child({ provider: id }),
+    secrets: createScopedSecretVault({ providerId: id, vault: deps.vault, store: state, logger }),
+    logger,
     clock: deps.clock ?? (() => new Date()),
   });
 }

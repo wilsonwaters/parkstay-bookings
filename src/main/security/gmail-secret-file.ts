@@ -6,7 +6,7 @@
  *
  * Either field may be absent (nothing stored). The v1.x file was an electron-store file
  * encrypted with a hard-coded key; `migrateLegacySecrets` rewrites it in this format.
- * Writes are atomic: a temp file in the same folder, then a rename.
+ * Writes are atomic and durable: a temp file in the same folder, fsynced, then a rename.
  */
 
 import crypto from 'crypto';
@@ -57,7 +57,11 @@ export function readGmailSecretFile(filePath: string): GmailSecretFileRead {
   return file ? { kind: 'v2', file } : { kind: 'other', data };
 }
 
-/** Writes the file atomically (temp file + rename), mode 0600. */
+/**
+ * Writes the file atomically and durably, mode 0600: a temp file is written and fsynced, then
+ * renamed over the file, then the folder is fsynced so the rename survives a power loss
+ * (where the platform supports it). A crash leaves either the old file or the new one.
+ */
 export function writeGmailSecretFile(filePath: string, file: GmailSecretFileV2): void {
   const dir = path.dirname(filePath);
   fs.mkdirSync(dir, { recursive: true });
@@ -66,11 +70,36 @@ export function writeGmailSecretFile(filePath: string, file: GmailSecretFileV2):
     `.${path.basename(filePath)}.${crypto.randomBytes(6).toString('hex')}.tmp`
   );
   try {
-    fs.writeFileSync(temp, `${JSON.stringify(file, null, '\t')}\n`, { mode: 0o600 });
+    const fd = fs.openSync(temp, 'w', 0o600);
+    try {
+      fs.writeFileSync(fd, `${JSON.stringify(file, null, '\t')}\n`);
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
     fs.renameSync(temp, filePath);
   } catch (error) {
     fs.rmSync(temp, { force: true });
     throw error;
+  }
+  fsyncDirectory(dir);
+}
+
+/**
+ * Flushes a folder's entries (a rename) to disk. Best effort: Windows cannot open a folder
+ * for this, and some file systems refuse it; the file itself is already synced.
+ */
+function fsyncDirectory(dir: string): void {
+  if (process.platform === 'win32') return;
+  try {
+    const fd = fs.openSync(dir, 'r');
+    try {
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    // Not supported on this file system
   }
 }
 

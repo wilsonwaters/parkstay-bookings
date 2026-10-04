@@ -6,6 +6,8 @@
  *   with no legacy layout left; a second run reports `migrated: 0`;
  * - with the wrong machine id the rows stay byte-identical, the notifier reads as
  *   `unreadable`/`error`, the dispatcher never calls `send`, and no secret is logged;
+ * - a faulty encrypt (a new envelope that does not read back) replaces nothing and counts
+ *   each item as failed; the machine id is read only when a machine-bound value is found;
  * - the Gmail file edge cases (missing, already format 2, damaged) and a crash part-way;
  * - after saving secrets, a byte scan of the database (and its WAL) and of gmail-oauth.json
  *   finds none of the plaintexts.
@@ -139,7 +141,7 @@ describe.each(FIXTURES)('migrateLegacySecrets on the %s fixture', (fixture) => {
   let gmailStorePath: string;
 
   const migrate = (machineId: string = FIXTURE_MACHINE_ID) =>
-    migrateLegacySecrets({ db, vault: t.vault, machineId, gmailStorePath });
+    migrateLegacySecrets({ db, vault: t.vault, machineId: () => machineId, gmailStorePath });
 
   beforeEach(() => {
     mockMachineId = FIXTURE_MACHINE_ID;
@@ -254,6 +256,53 @@ describe.each(FIXTURES)('migrateLegacySecrets on the %s fixture', (fixture) => {
     expect(migrate()).toEqual({ migrated: 2, current: 1, failed: 0 });
   });
 
+  it.each<[string, (real: (text: string) => Buffer, text: string) => Buffer]>([
+    ['decrypts to another value', (real, text) => real(`${text}!`)],
+    ['does not decrypt', () => Buffer.from('not-a-ciphertext')],
+  ])(
+    'a new envelope that does not read back (%s) never replaces the legacy value: the item is failed and kept',
+    async (_fault, faulty) => {
+      const users = rows(db, 'users');
+      const notifiers = rows(db, 'notifiers');
+      const gmail = fs.readFileSync(gmailStorePath);
+      const real = t.safeStorage.encryptString.bind(t.safeStorage);
+      const encryptString = jest
+        .spyOn(t.safeStorage, 'encryptString')
+        .mockImplementation((text) => faulty(real, text));
+
+      const { result, logs } = await captureLogs(() => migrate());
+
+      expect(result).toEqual({ migrated: 0, current: 0, failed: 3 });
+      expect(rows(db, 'users')).toEqual(users);
+      expect(rows(db, 'notifiers')).toEqual(notifiers);
+      expect(fs.readFileSync(gmailStorePath).equals(gmail)).toBe(true);
+      expect(fs.readdirSync(t.userDataDir).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+      expect(logs).toMatch(
+        /users row 1 could not be migrated and was left unchanged \(The new envelope did not decrypt to the original secret\)/
+      );
+      for (const value of LEGACY_PLAINTEXTS) expect(logs).not.toContain(value);
+
+      // With a working encrypt the next start finishes the job
+      encryptString.mockRestore();
+      expect(migrate()).toEqual({ migrated: 3, current: 0, failed: 0 });
+      expect(t.vault.decrypt(rows(db, 'users')[0].encrypted_password as string)).toBe(
+        FIXTURE_USER_PASSWORD
+      );
+    }
+  );
+
+  it('reads the machine id only when a machine-bound legacy value is found, once per run', () => {
+    const machineId = jest.fn(() => FIXTURE_MACHINE_ID);
+    const run = () => migrateLegacySecrets({ db, vault: t.vault, machineId, gmailStorePath });
+
+    expect(run()).toEqual({ migrated: 3, current: 0, failed: 0 });
+    expect(machineId).toHaveBeenCalledTimes(1); // the users row and the notifier share it
+
+    machineId.mockClear();
+    expect(run()).toEqual({ migrated: 0, current: 3, failed: 0 });
+    expect(machineId).not.toHaveBeenCalled(); // nothing legacy left
+  });
+
   it('a crash part-way leaves each item old or new; the next run finishes', () => {
     const realEncrypt = t.vault.encrypt.bind(t.vault);
     const encrypt = jest.spyOn(t.vault, 'encrypt');
@@ -279,7 +328,12 @@ describe('migrateLegacySecrets edge cases', () => {
   let gmailStorePath: string;
 
   const migrate = () =>
-    migrateLegacySecrets({ db, vault: t.vault, machineId: FIXTURE_MACHINE_ID, gmailStorePath });
+    migrateLegacySecrets({
+      db,
+      vault: t.vault,
+      machineId: () => FIXTURE_MACHINE_ID,
+      gmailStorePath,
+    });
 
   beforeEach(() => {
     db = loadUpgraded('v5-release-1.2.0');
