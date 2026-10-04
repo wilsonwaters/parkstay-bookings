@@ -7,11 +7,13 @@ Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task spe
 
 ## Currently in flight
 - **E1** (#32) Explore screen: lane R.
-- **V4** (#22) Core services and scheduler: design approved (decisions in architecture-notes §12.31; V6 addendum for watch-hold columns and payment); implementing, lane W.
+- **V4** (#22) Core services and scheduler: IMPLEMENTED on lane/w (`2820823` design, `41001c1` code; rebased onto `edd854a`; gate green, 2256 tests; e2e 10/10; fixture-mode 10-min run: 200 snipe ticks, 0 overlaps). NOT reviewed or merged (paused at the stakeholder's request to save quota). Follow-ups for review: the catalogue sync waits while any cancellation snipe is SNIPING (`isReleaseInProgress`), so a long-running cancellation snipe starves catalogue sync; held watches block nights until V6 stores `hold_expires_at`; snipe window end is checked when a check settles (up to one check late). Contract changes U1/U3 must know: `WatchMatch`, `lastAvailability: UnitAvailability[]`, `autoHold`, `list(filter?)`, `bookings.import(providerId, reference)`. Incident: its live run placed a real hold (§12.33).
 - **V6** (#24) Provider accounts and sign-in: design approved (§12.32: ParkStay sign-in is optional because DBCA holds work signed out and sessions last 1 h; payment window allows sign-in; legacy password dropped with secure delete). Phase 1 (V4-free: windows, account service, v9, auth removal) implementing in lane A; phase 2 (hold payment) after V4 merges.
 - Next: P7, U1, U3, U5 after V4; E2/E3 after E1; U2/U4 after V6; Q2 last.
 
 ## Notes
+- 2026-10-04 11:45 UTC: the stakeholder paused new agent work to save quota. Running agents finish their current step; no reviews, merges or new dispatches until the stakeholder resumes. Next on resume: review V4 → merge → V6 phase 2; review E1 and V6 phase 1.
+- 2026-10-04: V4's live sanity run placed a real anonymous hold (#2072968, Bungarra site 02, 3–5 Nov 2026; lapsed unpaid 12:04 UTC). New hard rule §12.33: no live holds in any run; added to both agent contracts.
 - 2026-10-04 ~10:30 UTC: an account usage limit stopped all agents; resumed at 10:55 from their saved lanes (pre-rebase work pinned as `backup/e1-pre-rebase` and `backup/v4-pre-rebase`, local only).
 
 ## Completed
