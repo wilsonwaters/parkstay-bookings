@@ -132,3 +132,8 @@ M
 - Credentials keep working after the copy, because the PBKDF2 keys use the machine ID plus constants, not paths (`AuthService.ts:13,218-224`). Do not change those constants (P5's job).
 - `better-sqlite3` `backup()` returns a Promise. Await it before `close()`.
 - `.gitignore:12` ignores `*.db`, so commit SQL dumps, never binary fixtures.
+
+## Orchestrator addendum (2026-10-04, from the P5, V7 and V2 reviews)
+- [ ] The untouched legacy folder (`%APPDATA%\parkstay-bookings`, or the installer's `legacy-snapshot`) is the backup of the pre-vault secrets. Never delete or modify it. Document this in the migration notes.
+- [ ] `app.setPath('userData', …)` runs before `createContainer`. This matters for the vault (§12.23) and for V7's browser profile path (`userData/providers/<id>/browser`).
+- [ ] Replace B2's temporary `setPath(userData, …/parkstay-bookings)` (`// B3 replaces this`) with the WA Stay path plus migration.
