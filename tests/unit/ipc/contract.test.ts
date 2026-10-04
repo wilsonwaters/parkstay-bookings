@@ -88,7 +88,7 @@ describe('IPC contract', () => {
     expect(offenders).toEqual([]);
     // The walk reaches nested keys, so an empty result means something
     expect(schemaKeys(contract.watches.update.request)).toEqual(
-      expect.arrayContaining(['id', 'updates', 'arrivalDate', 'campgroundId'])
+      expect.arrayContaining(['id', 'updates', 'location', 'externalId', 'stay', 'arrival'])
     );
     expect(keysSeen).toBeGreaterThan(80);
   });

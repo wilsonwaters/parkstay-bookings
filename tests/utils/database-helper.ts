@@ -82,7 +82,9 @@ export class TestDatabaseHelper {
       'site_snipes',
       'watches',
       'bookings',
-      'queue_session',
+      'provider_state',
+      'provider_accounts',
+      'locations',
       'users',
       'settings',
     ];

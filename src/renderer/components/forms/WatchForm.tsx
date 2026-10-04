@@ -8,6 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { watchSchema, WatchSchemaType } from '../../../shared/schemas/watch.schema';
 import { Watch } from '../../../shared/types';
+import { watchToFormValues } from './legacy-mapping';
 
 interface Campground {
   id: number;
@@ -59,14 +60,7 @@ const WatchForm: React.FC<WatchFormProps> = ({
   } = useForm<WatchSchemaType>({
     resolver: zodResolver(watchSchema) as any,
     defaultValues: {
-      name: initialData?.name || '',
-      parkId: initialData?.parkId || '',
-      parkName: initialData?.parkName || '',
-      campgroundId: initialData?.campgroundId || '',
-      campgroundName: initialData?.campgroundName || '',
-      arrivalDate: initialData?.arrivalDate || new Date(),
-      departureDate: initialData?.departureDate || new Date(),
-      numGuests: initialData?.numGuests || 2,
+      ...watchToFormValues(initialData),
       checkIntervalMinutes: initialData?.checkIntervalMinutes || 60,
       autoBook: initialData?.autoBook || false,
       notifyOnly: initialData?.notifyOnly !== undefined ? initialData.notifyOnly : true,

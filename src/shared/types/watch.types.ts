@@ -1,18 +1,25 @@
 import { WatchResult } from './common.types';
+import type { ProviderId, StayParams } from './provider.types';
+import type { LocationRef, Stay, StayInput } from './stay.types';
 
+/**
+ * A recurring availability check for a stay at one location of one provider.
+ * Instants (`lastCheckedAt`, `nextCheckAt`, timestamps) are `Date`s; stay dates are
+ * calendar dates `YYYY-MM-DD`.
+ */
 export interface Watch {
   id: number;
   userId: number;
+  providerId: ProviderId;
+  /** `${providerId}:${location.externalId}` */
+  locationKey: string;
+  location: LocationRef;
   name: string;
-  parkId: string;
-  parkName: string;
-  campgroundId: string;
-  campgroundName: string;
-  arrivalDate: Date;
-  departureDate: Date;
-  numGuests: number;
-  preferredSites?: string[];
-  siteType?: string;
+  stay: Stay;
+  /** Preferred units (ParkStay: site ids or names). Empty means any unit. */
+  unitIds: string[];
+  /** The provider's own stay fields (ParkStay: `parkId`, `gearType`). */
+  stayParams: StayParams;
   checkIntervalMinutes: number;
   isActive: boolean;
   lastCheckedAt?: Date;
@@ -29,17 +36,14 @@ export interface Watch {
   updatedAt: Date;
 }
 
+/** A watch as create requests send it. Main resolves the user. */
 export interface WatchInput {
+  providerId: ProviderId;
   name: string;
-  parkId: string;
-  parkName: string;
-  campgroundId: string;
-  campgroundName: string;
-  arrivalDate: Date;
-  departureDate: Date;
-  numGuests: number;
-  preferredSites?: string[];
-  siteType?: string;
+  location: LocationRef;
+  stay: StayInput;
+  unitIds?: string[];
+  stayParams?: StayParams;
   checkIntervalMinutes?: number;
   autoBook?: boolean;
   notifyOnly?: boolean;
@@ -47,6 +51,9 @@ export interface WatchInput {
   maxPrice?: number;
   notes?: string;
 }
+
+/** The fields an update may change. A watch never moves to another provider. */
+export type WatchUpdate = Partial<Omit<WatchInput, 'providerId'>>;
 
 // Result from executing a watch
 export interface WatchExecutionResult {
@@ -64,9 +71,10 @@ export interface AvailabilityResult {
   siteType: string;
   available: boolean;
   price: number;
+  /** The stay this result covers, as calendar dates `YYYY-MM-DD`. */
   dates: {
-    arrival: Date;
-    departure: Date;
+    arrival: string;
+    departure: string;
   };
   partial?: boolean;
 }

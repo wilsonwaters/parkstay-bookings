@@ -4,21 +4,22 @@
  */
 
 import { BaseRepository } from './base.repository';
-import { Booking, BookingInput, BookingStatus } from '@shared/types';
+import { Booking, BookingInput, BookingStatus, BookingUpdate, locationKeyOf } from '@shared/types';
+import { nightsBetween } from '@shared/utils/calendar-date';
 import { logger } from '../../utils/logger';
+import { readStay, readStayParams, readUnitIds, StayRow, stayValues } from '../stay-columns';
 
-interface BookingRow {
+interface BookingRow extends StayRow {
   id: number;
   user_id: number;
+  provider_id: string;
   booking_reference: string;
-  park_name: string;
-  campground_name: string;
-  site_number: string | null;
-  site_type: string | null;
-  arrival_date: string;
-  departure_date: string;
+  location_external_id: string | null;
+  location_name: string;
+  area_name: string | null;
+  unit_ids: string | null;
+  stay_params: string | null;
   num_nights: number;
-  num_guests: number;
   total_cost: number | null;
   currency: string;
   status: string;
@@ -36,18 +37,24 @@ export class BookingRepository extends BaseRepository<Booking> {
    * Map database row to Booking model
    */
   protected mapRow(row: BookingRow): Booking {
+    const where = `bookings ${row.id}`;
     return {
       id: row.id,
       userId: row.user_id,
+      providerId: row.provider_id,
+      ...(row.location_external_id !== null
+        ? { locationKey: locationKeyOf(row.provider_id, row.location_external_id) }
+        : {}),
+      location: {
+        ...(row.location_external_id !== null ? { externalId: row.location_external_id } : {}),
+        name: row.location_name,
+        ...(row.area_name !== null ? { areaName: row.area_name } : {}),
+      },
       bookingReference: row.booking_reference,
-      parkName: row.park_name,
-      campgroundName: row.campground_name,
-      siteNumber: row.site_number || undefined,
-      siteType: row.site_type || undefined,
-      arrivalDate: new Date(row.arrival_date),
-      departureDate: new Date(row.departure_date),
+      stay: readStay(row),
+      unitIds: readUnitIds(row.unit_ids, where),
+      stayParams: readStayParams(row.stay_params, where),
       numNights: row.num_nights,
-      numGuests: row.num_guests,
       totalCost: row.total_cost || undefined,
       currency: row.currency,
       status: row.status as BookingStatus,
@@ -60,37 +67,30 @@ export class BookingRepository extends BaseRepository<Booking> {
   }
 
   /**
-   * Create new booking
+   * Create new booking. `num_nights` is worked out from the stay's calendar dates.
    */
   create(userId: number, input: BookingInput): Booking {
     try {
-      // Calculate number of nights
-      const arrival = new Date(input.arrivalDate);
-      const departure = new Date(input.departureDate);
-      const numNights = Math.ceil(
-        (departure.getTime() - arrival.getTime()) / (1000 * 60 * 60 * 24)
-      );
-
       const stmt = this.db.prepare(`
         INSERT INTO bookings (
-          user_id, booking_reference, park_name, campground_name,
-          site_number, site_type, arrival_date, departure_date,
-          num_nights, num_guests, total_cost, notes, status
+          user_id, provider_id, booking_reference, location_external_id, location_name,
+          area_name, unit_ids, stay_params, arrival_date, departure_date, num_adults,
+          num_children, num_infants, num_concessions, num_nights, total_cost, notes, status
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')
       `);
 
       const result = stmt.run(
         userId,
+        input.providerId,
         input.bookingReference,
-        input.parkName,
-        input.campgroundName,
-        input.siteNumber || null,
-        input.siteType || null,
-        arrival.toISOString(),
-        departure.toISOString(),
-        numNights,
-        input.numGuests,
+        input.location.externalId ?? null,
+        input.location.name,
+        input.location.areaName ?? null,
+        JSON.stringify(input.unitIds ?? []),
+        JSON.stringify(input.stayParams ?? {}),
+        ...stayValues(input.stay),
+        nightsBetween(input.stay.arrival, input.stay.departure),
         input.totalCost || null,
         input.notes || null
       );
@@ -98,7 +98,7 @@ export class BookingRepository extends BaseRepository<Booking> {
       const booking = this.findById(result.lastInsertRowid as number);
       if (!booking) throw new Error('Failed to create booking');
 
-      logger.info(`Booking created: ${input.bookingReference}`);
+      logger.info(`Booking created: ${booking.id}`);
       return booking;
     } catch (error) {
       logger.error('Error creating booking:', error);
@@ -122,13 +122,13 @@ export class BookingRepository extends BaseRepository<Booking> {
   }
 
   /**
-   * Find booking by reference
+   * Find a booking by its provider's reference. References are unique per provider.
    */
-  findByReference(reference: string): Booking | null {
+  findByReference(providerId: string, reference: string): Booking | null {
     try {
       const row = this.db
-        .prepare('SELECT * FROM bookings WHERE booking_reference = ?')
-        .get(reference);
+        .prepare('SELECT * FROM bookings WHERE provider_id = ? AND booking_reference = ?')
+        .get(providerId, reference);
       return row ? this.mapRow(row as BookingRow) : null;
     } catch (error) {
       logger.error(`Error finding booking by reference ${reference}:`, error);
@@ -137,77 +137,51 @@ export class BookingRepository extends BaseRepository<Booking> {
   }
 
   /**
-   * Update booking
+   * Update booking. The provider never changes; `location` and `stay` are replaced whole,
+   * and a new stay recalculates `num_nights`.
    */
-  update(id: number, updates: Partial<BookingInput>): Booking | null {
+  update(id: number, updates: BookingUpdate): Booking | null {
     try {
       const fields: string[] = [];
-      const values: any[] = [];
+      const values: unknown[] = [];
+      const push = (column: string, value: unknown): void => {
+        fields.push(`${column} = ?`);
+        values.push(value);
+      };
 
-      if (updates.parkName) {
-        fields.push('park_name = ?');
-        values.push(updates.parkName);
+      if (updates.bookingReference !== undefined) {
+        push('booking_reference', updates.bookingReference);
       }
-      if (updates.campgroundName) {
-        fields.push('campground_name = ?');
-        values.push(updates.campgroundName);
+      if (updates.location !== undefined) {
+        push('location_external_id', updates.location.externalId ?? null);
+        push('location_name', updates.location.name);
+        push('area_name', updates.location.areaName ?? null);
       }
-      if (updates.siteNumber !== undefined) {
-        fields.push('site_number = ?');
-        values.push(updates.siteNumber || null);
+      if (updates.unitIds !== undefined) push('unit_ids', JSON.stringify(updates.unitIds));
+      if (updates.stayParams !== undefined) {
+        push('stay_params', JSON.stringify(updates.stayParams));
       }
-      if (updates.siteType !== undefined) {
-        fields.push('site_type = ?');
-        values.push(updates.siteType || null);
+      if (updates.stay !== undefined) {
+        const [arrival, departure, adults, children, infants, concessions] = stayValues(
+          updates.stay
+        );
+        push('arrival_date', arrival);
+        push('departure_date', departure);
+        push('num_adults', adults);
+        push('num_children', children);
+        push('num_infants', infants);
+        push('num_concessions', concessions);
+        push('num_nights', nightsBetween(arrival, departure));
       }
-      if (updates.arrivalDate) {
-        fields.push('arrival_date = ?');
-        values.push(new Date(updates.arrivalDate).toISOString());
-      }
-      if (updates.departureDate) {
-        fields.push('departure_date = ?');
-        values.push(new Date(updates.departureDate).toISOString());
-      }
-      if (updates.numGuests) {
-        fields.push('num_guests = ?');
-        values.push(updates.numGuests);
-      }
-      if (updates.totalCost !== undefined) {
-        fields.push('total_cost = ?');
-        values.push(updates.totalCost || null);
-      }
-      if (updates.notes !== undefined) {
-        fields.push('notes = ?');
-        values.push(updates.notes || null);
-      }
-
-      // Recalculate nights if dates changed
-      if (updates.arrivalDate || updates.departureDate) {
-        const current = this.findById(id);
-        if (current) {
-          const arrival = updates.arrivalDate ? new Date(updates.arrivalDate) : current.arrivalDate;
-          const departure = updates.departureDate
-            ? new Date(updates.departureDate)
-            : current.departureDate;
-          const numNights = Math.ceil(
-            (departure.getTime() - arrival.getTime()) / (1000 * 60 * 60 * 24)
-          );
-          fields.push('num_nights = ?');
-          values.push(numNights);
-        }
-      }
+      if (updates.totalCost !== undefined) push('total_cost', updates.totalCost || null);
+      if (updates.notes !== undefined) push('notes', updates.notes || null);
 
       if (fields.length === 0) {
         return this.findById(id);
       }
 
       values.push(id);
-
-      const stmt = this.db.prepare(`
-        UPDATE bookings SET ${fields.join(', ')} WHERE id = ?
-      `);
-
-      stmt.run(...values);
+      this.db.prepare(`UPDATE bookings SET ${fields.join(', ')} WHERE id = ?`).run(...values);
 
       logger.info(`Booking updated: ID ${id}`);
       return this.findById(id);

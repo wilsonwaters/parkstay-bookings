@@ -16,15 +16,12 @@ import { mockUserInput } from '@tests/fixtures/users';
 import { BookingStatus } from '@shared/types';
 import { expectAsyncThrow } from '@tests/utils/test-helpers';
 
-// Fixed dates far from today. BookingRepository.findUpcoming/findPast compare with SQLite
-// date('now'), which Jest fake timers cannot pin, so the dates sit decades either side of
-// any real "now". Mid-day UTC keeps the calendar day the same in every time zone tested.
-const UPCOMING_ARRIVAL = new Date('2099-06-15T12:00:00.000Z');
-const UPCOMING_DEPARTURE = new Date('2099-06-18T12:00:00.000Z');
-const CANCELLED_ARRIVAL = new Date('2099-06-29T12:00:00.000Z');
-const CANCELLED_DEPARTURE = new Date('2099-07-01T12:00:00.000Z');
-const PAST_ARRIVAL = new Date('2000-06-15T12:00:00.000Z');
-const PAST_DEPARTURE = new Date('2000-06-17T12:00:00.000Z');
+// Fixed calendar dates far from today. BookingRepository.findUpcoming/findPast compare with
+// SQLite date('now'), which Jest fake timers cannot pin, so the dates sit decades either
+// side of any real "now".
+const UPCOMING = { arrival: '2099-06-15', departure: '2099-06-18', adults: 2 };
+const CANCELLED = { arrival: '2099-06-29', departure: '2099-07-01', adults: 2 };
+const PAST = { arrival: '2000-06-15', departure: '2000-06-17', adults: 2 };
 
 describe('BookingService', () => {
   let dbHelper: TestDatabaseHelper;
@@ -61,8 +58,30 @@ describe('BookingService', () => {
       expect(booking.id).toBeDefined();
       expect(booking.userId).toBe(testUserId);
       expect(booking.bookingReference).toBe(mockBookingInput.bookingReference);
-      expect(booking.parkName).toBe(mockBookingInput.parkName);
+      expect(booking.providerId).toBe('parkstay');
+      expect(booking.location).toEqual(mockBookingInput.location);
+      expect(booking.stay).toEqual({
+        ...mockBookingInput.stay,
+        children: 0,
+        infants: 0,
+        concessions: 0,
+      });
+      expect(booking.unitIds).toEqual(['12']);
+      expect(booking.stayParams).toEqual({ siteType: 'Unpowered' });
       expect(booking.status).toBe(BookingStatus.CONFIRMED);
+    });
+
+    it('allows the same reference on another provider (unique per provider)', async () => {
+      await bookingService.createBooking(testUserId, mockBookingInput);
+
+      const other = await bookingService.createBooking(testUserId, {
+        ...mockBookingInput,
+        providerId: 'fake',
+        location: { name: 'Elsewhere' },
+      });
+
+      expect(other.providerId).toBe('fake');
+      expect(other.bookingReference).toBe(mockBookingInput.bookingReference);
     });
 
     it('should throw error for duplicate booking reference', async () => {
@@ -86,8 +105,7 @@ describe('BookingService', () => {
 
     it('should calculate num_nights correctly', async () => {
       const input = createMockBookingInput({
-        arrivalDate: new Date('2024-06-01'),
-        departureDate: new Date('2024-06-04'),
+        stay: { arrival: '2024-06-01', departure: '2024-06-04', adults: 2 },
       });
 
       const booking = await bookingService.createBooking(testUserId, input);
@@ -124,6 +142,7 @@ describe('BookingService', () => {
     it('should retrieve booking by reference', async () => {
       await bookingService.createBooking(testUserId, mockBookingInput);
       const retrieved = await bookingService.getBookingByReference(
+        'parkstay',
         mockBookingInput.bookingReference
       );
 
@@ -132,8 +151,11 @@ describe('BookingService', () => {
     });
 
     it('should return null for non-existent reference', async () => {
-      const booking = await bookingService.getBookingByReference('NONEXISTENT');
+      const booking = await bookingService.getBookingByReference('parkstay', 'NONEXISTENT');
       expect(booking).toBeNull();
+      expect(
+        await bookingService.getBookingByReference('fake', mockBookingInput.bookingReference)
+      ).toBeNull();
     });
   });
 
@@ -173,49 +195,25 @@ describe('BookingService', () => {
 
   describe('getUpcomingBookings', () => {
     it('should return only upcoming bookings', async () => {
-      await bookingService.createBooking(
-        testUserId,
-        createMockBookingInput({
-          arrivalDate: UPCOMING_ARRIVAL,
-          departureDate: UPCOMING_DEPARTURE,
-        })
-      );
+      await bookingService.createBooking(testUserId, createMockBookingInput({ stay: UPCOMING }));
 
-      await bookingService.createBooking(
-        testUserId,
-        createMockBookingInput({
-          arrivalDate: PAST_ARRIVAL,
-          departureDate: PAST_DEPARTURE,
-        })
-      );
+      await bookingService.createBooking(testUserId, createMockBookingInput({ stay: PAST }));
 
       const upcoming = await bookingService.getUpcomingBookings(testUserId);
       expect(upcoming).toHaveLength(1);
-      expect(upcoming[0].arrivalDate).toEqual(UPCOMING_ARRIVAL);
+      expect(upcoming[0].stay.arrival).toBe(UPCOMING.arrival);
     });
   });
 
   describe('getPastBookings', () => {
     it('should return only past bookings', async () => {
-      await bookingService.createBooking(
-        testUserId,
-        createMockBookingInput({
-          arrivalDate: UPCOMING_ARRIVAL,
-          departureDate: UPCOMING_DEPARTURE,
-        })
-      );
+      await bookingService.createBooking(testUserId, createMockBookingInput({ stay: UPCOMING }));
 
-      await bookingService.createBooking(
-        testUserId,
-        createMockBookingInput({
-          arrivalDate: PAST_ARRIVAL,
-          departureDate: PAST_DEPARTURE,
-        })
-      );
+      await bookingService.createBooking(testUserId, createMockBookingInput({ stay: PAST }));
 
       const past = await bookingService.getPastBookings(testUserId);
       expect(past).toHaveLength(1);
-      expect(past[0].arrivalDate).toEqual(PAST_ARRIVAL);
+      expect(past[0].stay.arrival).toBe(PAST.arrival);
     });
   });
 
@@ -224,11 +222,11 @@ describe('BookingService', () => {
       const booking = await bookingService.createBooking(testUserId, mockBookingInput);
 
       const updated = await bookingService.updateBooking(booking.id, {
-        siteNumber: '99',
+        unitIds: ['99'],
         notes: 'Updated notes',
       });
 
-      expect(updated.siteNumber).toBe('99');
+      expect(updated.unitIds).toEqual(['99']);
       expect(updated.notes).toBe('Updated notes');
       expect(updated.bookingReference).toBe(mockBookingInput.bookingReference);
     });
@@ -246,8 +244,7 @@ describe('BookingService', () => {
       await expectAsyncThrow(
         () =>
           bookingService.updateBooking(booking.id, {
-            arrivalDate: new Date('2024-06-05'),
-            departureDate: new Date('2024-06-01'),
+            stay: { arrival: '2024-06-05', departure: '2024-06-01', adults: 2 },
           }),
         'Departure date must be after arrival date'
       );
@@ -293,30 +290,15 @@ describe('BookingService', () => {
   describe('getBookingStats', () => {
     it('should calculate booking statistics', async () => {
       // Create upcoming booking
-      await bookingService.createBooking(
-        testUserId,
-        createMockBookingInput({
-          arrivalDate: UPCOMING_ARRIVAL,
-          departureDate: UPCOMING_DEPARTURE,
-        })
-      );
+      await bookingService.createBooking(testUserId, createMockBookingInput({ stay: UPCOMING }));
 
       // Create past booking
-      await bookingService.createBooking(
-        testUserId,
-        createMockBookingInput({
-          arrivalDate: PAST_ARRIVAL,
-          departureDate: PAST_DEPARTURE,
-        })
-      );
+      await bookingService.createBooking(testUserId, createMockBookingInput({ stay: PAST }));
 
       // Create cancelled booking (with future dates so it's not counted as "past")
       const cancelled = await bookingService.createBooking(
         testUserId,
-        createMockBookingInput({
-          arrivalDate: CANCELLED_ARRIVAL,
-          departureDate: CANCELLED_DEPARTURE,
-        })
+        createMockBookingInput({ stay: CANCELLED })
       );
       await bookingService.cancelBooking(cancelled.id);
 

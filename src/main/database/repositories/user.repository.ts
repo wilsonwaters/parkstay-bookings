@@ -2,21 +2,24 @@
  * User Repository
  * Handles CRUD operations for users. `encrypted_password` holds a SecretVault envelope
  * (AuthService encrypts and decrypts it). The v1.x `encryption_key`, `encryption_iv` and
- * `encryption_auth_tag` columns are only read by the legacy secret migration and are always
- * written as `''` (NOT NULL columns; V6 retires them).
+ * `encryption_auth_tag` columns are only read by the legacy secret migration and are written
+ * as `''` with stored credentials (V6 retires them). Since migration v8 every credential
+ * column is nullable: NULL (a profile that never signed in, or cleared credentials) reads as
+ * `''`.
  */
 
 import { BaseRepository } from './base.repository';
 import { User, UserInput } from '@shared/types';
 import { logger } from '../../utils/logger';
 
+/** Since v8 the credential columns are nullable: the local profile needs no login. */
 interface UserRow {
   id: number;
-  email: string;
-  encrypted_password: string;
-  encryption_key: string;
-  encryption_iv: string;
-  encryption_auth_tag: string;
+  email: string | null;
+  encrypted_password: string | null;
+  encryption_key: string | null;
+  encryption_iv: string | null;
+  encryption_auth_tag: string | null;
   first_name: string | null;
   last_name: string | null;
   phone: string | null;
@@ -28,13 +31,14 @@ export class UserRepository extends BaseRepository<User> {
   protected readonly tableName = 'users';
 
   /**
-   * Map database row to User model
+   * Map database row to User model. A NULL credential column (a profile that never signed
+   * in) reads as '', the same as cleared credentials.
    */
   protected mapRow(row: UserRow): User {
     return {
       id: row.id,
-      email: row.email,
-      encryptedPassword: row.encrypted_password,
+      email: row.email ?? '',
+      encryptedPassword: row.encrypted_password ?? '',
       firstName: row.first_name || undefined,
       lastName: row.last_name || undefined,
       phone: row.phone || undefined,
@@ -114,7 +118,8 @@ export class UserRepository extends BaseRepository<User> {
 
   /**
    * Creates the single local profile (id 1) when the table is empty, with every credential
-   * field blank. A no-op when any row exists. Returns the local profile.
+   * column NULL (as migration v8 does). A no-op when any row exists. Returns the local
+   * profile.
    */
   createLocalProfileIfMissing(): User {
     this.db
@@ -122,7 +127,7 @@ export class UserRepository extends BaseRepository<User> {
         `INSERT INTO users (
            id, email, encrypted_password, encryption_key, encryption_iv, encryption_auth_tag
          )
-         SELECT 1, '', '', '', '', ''
+         SELECT 1, NULL, NULL, NULL, NULL, NULL
          WHERE NOT EXISTS (SELECT 1 FROM users)`
       )
       .run();
@@ -180,18 +185,18 @@ export class UserRepository extends BaseRepository<User> {
   }
 
   /**
-   * Blanks the credential fields of a row. The row itself, its profile fields and every
-   * record that references it are kept (architecture-notes §12.22).
+   * Clears the credential fields of a row (NULL). The row itself, its profile fields and
+   * every record that references it are kept (architecture-notes §12.22).
    */
   clearCredentials(id: number): void {
     this.db
       .prepare(
         `UPDATE users
-         SET email = '',
-             encrypted_password = '',
-             encryption_key = '',
-             encryption_iv = '',
-             encryption_auth_tag = ''
+         SET email = NULL,
+             encrypted_password = NULL,
+             encryption_key = NULL,
+             encryption_iv = NULL,
+             encryption_auth_tag = NULL
          WHERE id = ?`
       )
       .run(id);

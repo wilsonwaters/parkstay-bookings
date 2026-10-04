@@ -1,12 +1,38 @@
-import { Watch, WatchInput, WatchExecutionResult, AvailabilityResult } from '@shared/types';
+import {
+  Watch,
+  WatchInput,
+  WatchUpdate,
+  WatchExecutionResult,
+  AvailabilityResult,
+  Stay,
+} from '@shared/types';
 import { WatchResult } from '@shared/types/common.types';
+import {
+  addDays,
+  compareDates,
+  eachNight,
+  isCalendarDate,
+  todayIn,
+} from '@shared/utils/calendar-date';
 import { WatchRepository } from '../../database/repositories';
+import { PARKSTAY_PROVIDER_ID, parkstayManifest } from '../../providers/parkstay';
 import { ParkStayService } from '../parkstay/parkstay.service';
 import { NotificationService } from '../notification/notification.service';
 import { AppError } from '../../utils/app-error';
 import { logger } from '../../utils/logger';
 
 const log = logger.child({ module: 'watches' });
+
+/** Everyone in the party: ParkStay's availability search takes one guest count. */
+function partySize(stay: Stay): number {
+  return stay.adults + stay.children + stay.infants + stay.concessions;
+}
+
+/** The ParkStay gear type a watch filters on, if any (`stay_params.gearType`). */
+function gearTypeOf(watch: Watch): string | undefined {
+  const gearType = watch.stayParams.gearType;
+  return typeof gearType === 'string' && gearType !== '' ? gearType : undefined;
+}
 
 /**
  * Watch Service
@@ -31,11 +57,19 @@ export class WatchService {
    * Create a new watch
    */
   async create(userId: number, input: WatchInput): Promise<Watch> {
-    // Validate dates
-    if (input.arrivalDate < new Date()) {
-      throw new AppError('VALIDATION', 'Arrival date must be in the future');
+    // Watches run on ParkStay until the core services use the provider registry (V4).
+    if (input.providerId !== PARKSTAY_PROVIDER_ID) {
+      throw new AppError('VALIDATION', `Watches are not available for ${input.providerId}`);
     }
-    if (input.departureDate <= input.arrivalDate) {
+    // Validate dates: calendar dates, compared with today where the provider is
+    const { arrival, departure } = input.stay;
+    if (!isCalendarDate(arrival) || !isCalendarDate(departure)) {
+      throw new AppError('VALIDATION', 'Dates must be calendar dates (YYYY-MM-DD)');
+    }
+    if (compareDates(arrival, todayIn(parkstayManifest.timezone)) < 0) {
+      throw new AppError('VALIDATION', 'Arrival date must be today or in the future');
+    }
+    if (compareDates(departure, arrival) <= 0) {
       throw new AppError('VALIDATION', 'Departure date must be after arrival date');
     }
 
@@ -67,7 +101,7 @@ export class WatchService {
   /**
    * Update watch
    */
-  async update(id: number, updates: Partial<WatchInput>): Promise<Watch> {
+  async update(id: number, updates: WatchUpdate): Promise<Watch> {
     return this.watchRepo.update(id, updates);
   }
 
@@ -104,8 +138,14 @@ export class WatchService {
     const checkedAt = new Date();
 
     try {
+      // A row whose dates could not be read as calendar dates is marked in error, not run
+      const { arrival, departure } = watch.stay;
+      if (!isCalendarDate(arrival) || !isCalendarDate(departure)) {
+        throw new Error('The watch dates are not calendar dates (YYYY-MM-DD)');
+      }
+
       // Check if watch is still valid (arrival date not in past)
-      if (watch.arrivalDate < new Date()) {
+      if (compareDates(arrival, todayIn(parkstayManifest.timezone)) < 0) {
         // Deactivate watch as date has passed
         this.watchRepo.deactivate(watchId);
         return {
@@ -117,13 +157,15 @@ export class WatchService {
         };
       }
 
-      // Check availability via ParkStay API
-      const availabilityResult = await this.parkStayService.checkAvailability(watch.campgroundId, {
-        campgroundId: watch.campgroundId,
-        arrivalDate: watch.arrivalDate.toISOString().split('T')[0],
-        departureDate: watch.departureDate.toISOString().split('T')[0],
-        numGuests: watch.numGuests,
-        siteType: watch.siteType,
+      // Check availability via ParkStay API (the location is the campground)
+      const campgroundId = watch.location.externalId;
+      const siteType = gearTypeOf(watch);
+      const availabilityResult = await this.parkStayService.checkAvailability(campgroundId, {
+        campgroundId,
+        arrivalDate: arrival,
+        departureDate: departure,
+        numGuests: partySize(watch.stay),
+        siteType,
       });
 
       // Filter results based on preferences
@@ -132,18 +174,16 @@ export class WatchService {
       );
 
       // Filter by preferred sites if specified
-      if (watch.preferredSites && watch.preferredSites.length > 0) {
+      if (watch.unitIds.length > 0) {
         matchingSites = matchingSites.filter(
-          (site) =>
-            watch.preferredSites!.includes(site.siteId) ||
-            watch.preferredSites!.includes(site.siteName)
+          (site) => watch.unitIds.includes(site.siteId) || watch.unitIds.includes(site.siteName)
         );
       }
 
       // Filter by site type if specified
-      if (watch.siteType) {
+      if (siteType) {
         matchingSites = matchingSites.filter(
-          (site) => site.siteType.toLowerCase() === watch.siteType!.toLowerCase()
+          (site) => site.siteType.toLowerCase() === siteType.toLowerCase()
         );
       }
 
@@ -163,10 +203,7 @@ export class WatchService {
         siteType: site.siteType,
         available: true,
         price: site.dates[0]?.price || 0,
-        dates: {
-          arrival: watch.arrivalDate,
-          departure: watch.departureDate,
-        },
+        dates: { arrival, departure },
       }));
 
       // Check for partial matches if no full match found and partial matching is enabled
@@ -255,43 +292,38 @@ export class WatchService {
    * then groups consecutive available nights per site into blocks.
    */
   private async checkPartialAvailability(watch: Watch): Promise<AvailabilityResult[]> {
-    // Map: siteId → { siteName, siteType, price, availableDates }
+    // Map: siteId → { siteName, siteType, price, availableNights }
     const siteAvailability = new Map<
       string,
-      { siteName: string; siteType: string; price: number; availableDates: Date[] }
+      { siteName: string; siteType: string; price: number; availableNights: string[] }
     >();
 
-    const current = new Date(watch.arrivalDate);
-    const end = new Date(watch.departureDate);
+    const campgroundId = watch.location.externalId;
+    const siteType = gearTypeOf(watch);
 
-    while (current < end) {
-      const nextDay = new Date(current);
-      nextDay.setDate(nextDay.getDate() + 1);
-
+    for (const night of eachNight(watch.stay.arrival, watch.stay.departure)) {
       try {
-        const result = await this.parkStayService.checkAvailability(watch.campgroundId, {
-          campgroundId: watch.campgroundId,
-          arrivalDate: current.toISOString().split('T')[0],
-          departureDate: nextDay.toISOString().split('T')[0],
-          numGuests: watch.numGuests,
-          siteType: watch.siteType,
+        const result = await this.parkStayService.checkAvailability(campgroundId, {
+          campgroundId,
+          arrivalDate: night,
+          departureDate: addDays(night, 1),
+          numGuests: partySize(watch.stay),
+          siteType,
         });
 
         let nightSites = result.sites.filter((site) =>
           site.dates.every((date) => date.available && date.bookable)
         );
 
-        if (watch.preferredSites && watch.preferredSites.length > 0) {
+        if (watch.unitIds.length > 0) {
           nightSites = nightSites.filter(
-            (site) =>
-              watch.preferredSites!.includes(site.siteId) ||
-              watch.preferredSites!.includes(site.siteName)
+            (site) => watch.unitIds.includes(site.siteId) || watch.unitIds.includes(site.siteName)
           );
         }
 
-        if (watch.siteType) {
+        if (siteType) {
           nightSites = nightSites.filter(
-            (site) => site.siteType.toLowerCase() === watch.siteType!.toLowerCase()
+            (site) => site.siteType.toLowerCase() === siteType.toLowerCase()
           );
         }
 
@@ -307,64 +339,48 @@ export class WatchService {
               siteName: site.siteName,
               siteType: site.siteType,
               price: site.dates[0]?.price || 0,
-              availableDates: [],
+              availableNights: [],
             });
           }
-          siteAvailability.get(site.siteId)!.availableDates.push(new Date(current));
+          siteAvailability.get(site.siteId)!.availableNights.push(night);
         }
       } catch {
         // Skip nights where the individual availability check fails
       }
-
-      current.setDate(current.getDate() + 1);
     }
 
     // Find consecutive blocks per site and build results
     const results: AvailabilityResult[] = [];
 
     for (const [siteId, data] of siteAvailability) {
-      data.availableDates.sort((a, b) => a.getTime() - b.getTime());
-      if (data.availableDates.length === 0) continue;
+      const nights = [...data.availableNights].sort(compareDates);
+      if (nights.length === 0) continue;
 
-      let runStart = data.availableDates[0];
-      let runEnd = data.availableDates[0];
+      const pushRun = (first: string, last: string): void => {
+        results.push({
+          siteId,
+          siteName: data.siteName,
+          siteType: data.siteType,
+          available: true,
+          price: data.price,
+          dates: { arrival: first, departure: addDays(last, 1) },
+          partial: true,
+        });
+      };
 
-      for (let i = 1; i < data.availableDates.length; i++) {
-        const prev = data.availableDates[i - 1];
-        const curr = data.availableDates[i];
-        const diffDays = (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24);
-
-        if (diffDays === 1) {
-          runEnd = curr;
+      let runStart = nights[0];
+      let runEnd = nights[0];
+      for (const night of nights.slice(1)) {
+        if (night === addDays(runEnd, 1)) {
+          runEnd = night;
         } else {
-          const departure = new Date(runEnd);
-          departure.setDate(departure.getDate() + 1);
-          results.push({
-            siteId,
-            siteName: data.siteName,
-            siteType: data.siteType,
-            available: true,
-            price: data.price,
-            dates: { arrival: new Date(runStart), departure },
-            partial: true,
-          });
-          runStart = curr;
-          runEnd = curr;
+          pushRun(runStart, runEnd);
+          runStart = night;
+          runEnd = night;
         }
       }
-
       // Push the final run
-      const departure = new Date(runEnd);
-      departure.setDate(departure.getDate() + 1);
-      results.push({
-        siteId,
-        siteName: data.siteName,
-        siteType: data.siteType,
-        available: true,
-        price: data.price,
-        dates: { arrival: new Date(runStart), departure },
-        partial: true,
-      });
+      pushRun(runStart, runEnd);
     }
 
     return results;

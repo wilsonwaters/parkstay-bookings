@@ -7,6 +7,7 @@ import {
 } from '@shared/types';
 import { NotificationType, RelatedType } from '@shared/types/common.types';
 import { BOOKING_HOLD_MINUTES } from '@shared/constants';
+import { isCalendarDate, nightsBetween } from '@shared/utils/calendar-date';
 import { NotificationRepository } from '../../database/repositories';
 import { NotificationDispatcher } from './notification-dispatcher';
 import type { EventSink } from '@shared/contracts/events';
@@ -17,10 +18,13 @@ import { logger } from '../../utils/logger';
 const log = logger.child({ module: 'notifications' });
 
 /**
- * The provider of every watch, snipe and booking until they carry their own `providerId`
- * (V2, V4). Emails name it.
+ * A calendar date `YYYY-MM-DD` in the host's date format, as the day it names (formatted in
+ * UTC from UTC midnight, so the host time zone cannot shift it). Anything else is shown as is.
  */
-const LEGACY_PROVIDER_ID = 'parkstay';
+function formatCalendarDate(date: string): string {
+  if (!isCalendarDate(date)) return date;
+  return new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, { timeZone: 'UTC' });
+}
 
 /** What an email says a notification is about, beyond what is stored. */
 interface DispatchMeta {
@@ -97,11 +101,12 @@ export class NotificationService {
    */
   async notifyWatchFound(watch: Watch, availability: any[]): Promise<void> {
     const sitesText = availability.length === 1 ? '1 site' : `${availability.length} sites`;
-    const message = `Found ${sitesText} available at ${watch.campgroundName} for ${watch.arrivalDate.toLocaleDateString()} - ${watch.departureDate.toLocaleDateString()}`;
+    const message = `Found ${sitesText} available at ${watch.location.name} for ${formatCalendarDate(watch.stay.arrival)} - ${formatCalendarDate(watch.stay.departure)}`;
 
     await this.notify(
       {
         userId: watch.userId,
+        providerId: watch.providerId,
         type: NotificationType.WATCH_FOUND,
         title: 'Availability Found!',
         message,
@@ -109,7 +114,7 @@ export class NotificationService {
         relatedType: RelatedType.WATCH,
         actionUrl: `/watches/${watch.id}`,
       },
-      { providerId: LEGACY_PROVIDER_ID, locationName: watch.campgroundName }
+      { providerId: watch.providerId, locationName: watch.location.name }
     );
   }
 
@@ -118,24 +123,20 @@ export class NotificationService {
    */
   async notifyWatchPartialFound(watch: Watch, partialResults: AvailabilityResult[]): Promise<void> {
     // Highlight the longest consecutive block
-    const longestBlock = partialResults.reduce((best, r) => {
-      const nights =
-        (r.dates.departure.getTime() - r.dates.arrival.getTime()) / (1000 * 60 * 60 * 24);
-      const bestNights =
-        (best.dates.departure.getTime() - best.dates.arrival.getTime()) / (1000 * 60 * 60 * 24);
-      return nights > bestNights ? r : best;
-    });
-
-    const nights = Math.round(
-      (longestBlock.dates.departure.getTime() - longestBlock.dates.arrival.getTime()) /
-        (1000 * 60 * 60 * 24)
+    const nightsOf = (r: AvailabilityResult): number =>
+      nightsBetween(r.dates.arrival, r.dates.departure);
+    const longestBlock = partialResults.reduce((best, r) =>
+      nightsOf(r) > nightsOf(best) ? r : best
     );
+
+    const nights = nightsOf(longestBlock);
     const nightsText = nights === 1 ? '1 night' : `${nights} consecutive nights`;
-    const message = `Partial availability at ${watch.campgroundName}: ${nightsText} available from ${longestBlock.dates.arrival.toLocaleDateString()} - ${longestBlock.dates.departure.toLocaleDateString()}`;
+    const message = `Partial availability at ${watch.location.name}: ${nightsText} available from ${formatCalendarDate(longestBlock.dates.arrival)} - ${formatCalendarDate(longestBlock.dates.departure)}`;
 
     await this.notify(
       {
         userId: watch.userId,
+        providerId: watch.providerId,
         type: NotificationType.WATCH_FOUND,
         title: 'Partial Availability Found!',
         message,
@@ -143,7 +144,7 @@ export class NotificationService {
         relatedType: RelatedType.WATCH,
         actionUrl: `/watches/${watch.id}`,
       },
-      { providerId: LEGACY_PROVIDER_ID, locationName: watch.campgroundName }
+      { providerId: watch.providerId, locationName: watch.location.name }
     );
   }
 
@@ -151,14 +152,15 @@ export class NotificationService {
    * Notify when a Site Snipe places a temporary hold (payment still required).
    */
   async notifySnipeHeld(snipe: SiteSnipe): Promise<void> {
-    const arrival = snipe.arrivalDate.toLocaleDateString();
-    const departure = snipe.departureDate.toLocaleDateString();
-    const where = snipe.campgroundName || snipe.campgroundId;
+    const arrival = formatCalendarDate(snipe.stay.arrival);
+    const departure = formatCalendarDate(snipe.stay.departure);
+    const where = snipe.location.name || snipe.location.externalId;
     const message = `Site held at ${where} for ${arrival}–${departure}. Complete payment within ${BOOKING_HOLD_MINUTES} minutes.`;
 
     await this.notify(
       {
         userId: snipe.userId,
+        providerId: snipe.providerId,
         type: NotificationType.SNIPE_HELD,
         title: 'Site Held — Complete Payment!',
         message,
@@ -166,7 +168,7 @@ export class NotificationService {
         relatedType: RelatedType.SNIPE,
         actionUrl: `/site-sniper/${snipe.id}`,
       },
-      { providerId: LEGACY_PROVIDER_ID, locationName: snipe.campgroundName }
+      { providerId: snipe.providerId, locationName: snipe.location.name || undefined }
     );
   }
 
@@ -174,15 +176,16 @@ export class NotificationService {
    * Notify when a Site Snipe booking is completed (payment confirmed).
    */
   async notifySnipeBooked(snipe: SiteSnipe): Promise<void> {
-    const arrival = snipe.arrivalDate.toLocaleDateString();
-    const departure = snipe.departureDate.toLocaleDateString();
-    const where = snipe.campgroundName || snipe.campgroundId;
+    const arrival = formatCalendarDate(snipe.stay.arrival);
+    const departure = formatCalendarDate(snipe.stay.departure);
+    const where = snipe.location.name || snipe.location.externalId;
     const reference = snipe.bookedReference ? ` (ref ${snipe.bookedReference})` : '';
     const message = `Booking confirmed at ${where} for ${arrival}–${departure}${reference}.`;
 
     await this.notify(
       {
         userId: snipe.userId,
+        providerId: snipe.providerId,
         type: NotificationType.SNIPE_BOOKED,
         title: 'Snipe Booked!',
         message,
@@ -190,7 +193,7 @@ export class NotificationService {
         relatedType: RelatedType.SNIPE,
         actionUrl: `/site-sniper/${snipe.id}`,
       },
-      { providerId: LEGACY_PROVIDER_ID, locationName: snipe.campgroundName }
+      { providerId: snipe.providerId, locationName: snipe.location.name || undefined }
     );
   }
 
@@ -199,12 +202,14 @@ export class NotificationService {
    */
   async notifyBookingConfirmed(
     userId: number,
+    providerId: string,
     bookingId: number,
     bookingReference: string
   ): Promise<void> {
     await this.notify(
       {
         userId,
+        providerId,
         type: NotificationType.BOOKING_CONFIRMED,
         title: 'Booking Confirmed',
         message: `Your booking ${bookingReference} has been confirmed.`,
@@ -212,7 +217,7 @@ export class NotificationService {
         relatedType: RelatedType.BOOKING,
         actionUrl: `/bookings/${bookingId}`,
       },
-      { providerId: LEGACY_PROVIDER_ID }
+      { providerId }
     );
   }
 

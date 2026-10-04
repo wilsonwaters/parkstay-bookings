@@ -23,12 +23,13 @@ export class NotificationRepository extends BaseRepository<Notification> {
 
     const stmt = this.db.prepare(`
       INSERT INTO notifications (
-        user_id, type, title, message, related_id, related_type, action_url
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        user_id, provider_id, type, title, message, related_id, related_type, action_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
       input.userId,
+      input.providerId ?? null,
       input.type,
       input.title,
       input.message,
@@ -117,6 +118,7 @@ export class NotificationRepository extends BaseRepository<Notification> {
     return {
       id: row.id,
       userId: row.user_id,
+      ...(row.provider_id ? { providerId: row.provider_id } : {}),
       type: row.type as NotificationType,
       title: row.title,
       message: row.message,

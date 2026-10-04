@@ -4,6 +4,8 @@
  */
 
 import Database from 'better-sqlite3';
+import fs from 'fs';
+import path from 'path';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
 import {
   BookingRepository,
@@ -66,11 +68,30 @@ describe('parameterised repository SQL', () => {
     expect(watches.findDueForCheck().map((w) => w.id)).toEqual([due.id]);
   });
 
-  it('WatchRepository round-trips an empty preferred-sites list as JSON, not NULL', () => {
+  it('WatchRepository round-trips an empty unit-ids list as JSON, not NULL', () => {
     const watches = new WatchRepository(db);
-    const watch = watches.create(userId, createMockWatchInput({ preferredSites: [] }));
+    const watch = watches.create(userId, createMockWatchInput({ unitIds: [] }));
 
-    expect(watches.findById(watch.id)?.preferredSites).toEqual([]);
+    expect(watches.findById(watch.id)?.unitIds).toEqual([]);
+    expect(db.prepare('SELECT unit_ids FROM watches WHERE id = ?').get(watch.id)).toEqual({
+      unit_ids: '[]',
+    });
+  });
+
+  it('no repository interpolates a snipe status or release mode into SQL', () => {
+    const offenders: string[] = [];
+    const visit = (dir: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const file = path.join(dir, entry.name);
+        if (entry.isDirectory()) visit(file);
+        else if (/\$\{\s*Snipe(?:Status|ReleaseMode)\b/.test(fs.readFileSync(file, 'utf8'))) {
+          offenders.push(entry.name);
+        }
+      }
+    };
+    visit(path.resolve(__dirname, '../../../src/main/database'));
+
+    expect(offenders).toEqual([]);
   });
 
   it('SiteSniperRepository.findArmed binds the statuses as parameters', () => {
@@ -111,7 +132,7 @@ describe('parameterised repository SQL', () => {
     expect(sql[0]).toContain('release_mode = ?');
     expect(sql[0]).not.toContain(SnipeReleaseMode.CANCELLATION);
     expect(snipes.findByUserId(userId).map((s) => s.name)).toEqual(['D', 'C']);
-    expect(snipes.findById(cancellation.id)?.targetSiteIds).toEqual(['136', '137']);
+    expect(snipes.findById(cancellation.id)?.unitIds).toEqual(['136', '137']);
   });
 
   it('NotificationRepository counts and deletes with bound parameters', () => {
@@ -140,8 +161,8 @@ describe('parameterised repository SQL', () => {
   it('BookingRepository reads booking_data JSON, including falsy JSON values', () => {
     const bookings = new BookingRepository(db);
     const insert = db.prepare(
-      `INSERT INTO bookings (user_id, booking_reference, park_name, campground_name,
-         arrival_date, departure_date, num_nights, num_guests, status, booking_data)
+      `INSERT INTO bookings (user_id, booking_reference, area_name, location_name,
+         arrival_date, departure_date, num_nights, num_adults, status, booking_data)
        VALUES (?, ?, 'Park', 'Camp', '2026-01-01', '2026-01-02', 1, 2, 'confirmed', ?)`
     );
     const withData = insert.run(userId, 'REF-1', '{"gearType":"tent"}').lastInsertRowid as number;

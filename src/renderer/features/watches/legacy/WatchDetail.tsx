@@ -8,6 +8,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { Watch, WatchExecutionResult } from '../../../../shared/types/watch.types';
 import AvailabilityGrid from '../../../components/AvailabilityGrid';
+import { partySize, stayDate, stayParamText } from '../../../components/forms/legacy-mapping';
 
 const WatchDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -114,6 +115,8 @@ const WatchDetail: React.FC = () => {
     );
   }
 
+  const siteType = stayParamText(watch.stayParams, 'gearType');
+
   const formatDate = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date;
     return format(d, 'EEE, d MMM yyyy');
@@ -131,7 +134,7 @@ const WatchDetail: React.FC = () => {
             &larr; Back to Watches
           </button>
           <h1 className="text-3xl font-bold text-gray-900">{watch.name}</h1>
-          <p className="mt-1 text-gray-600">{watch.campgroundName}</p>
+          <p className="mt-1 text-gray-600">{watch.location.name}</p>
         </div>
         <div className="flex items-center space-x-3">
           <span
@@ -178,15 +181,19 @@ const WatchDetail: React.FC = () => {
           <div className="space-y-2">
             <div>
               <span className="text-sm text-gray-500">Check-in:</span>
-              <p className="font-medium text-gray-900">{formatDate(watch.arrivalDate)}</p>
+              <p className="font-medium text-gray-900">
+                {formatDate(stayDate(watch.stay.arrival))}
+              </p>
             </div>
             <div>
               <span className="text-sm text-gray-500">Check-out:</span>
-              <p className="font-medium text-gray-900">{formatDate(watch.departureDate)}</p>
+              <p className="font-medium text-gray-900">
+                {formatDate(stayDate(watch.stay.departure))}
+              </p>
             </div>
             <div>
               <span className="text-sm text-gray-500">Guests:</span>
-              <p className="font-medium text-gray-900">{watch.numGuests}</p>
+              <p className="font-medium text-gray-900">{partySize(watch.stay)}</p>
             </div>
           </div>
         </div>
@@ -219,10 +226,10 @@ const WatchDetail: React.FC = () => {
                 <p className="font-medium text-gray-900">${watch.maxPrice}/night</p>
               </div>
             )}
-            {watch.siteType && (
+            {siteType && (
               <div>
                 <span className="text-sm text-gray-500">Site Type:</span>
-                <p className="font-medium text-gray-900">{watch.siteType}</p>
+                <p className="font-medium text-gray-900">{siteType}</p>
               </div>
             )}
           </div>
@@ -386,8 +393,8 @@ const WatchDetail: React.FC = () => {
         {/* Availability Grid - show executionResult if available, otherwise show stored lastAvailability */}
         <AvailabilityGrid
           watchResults={executionResult?.availability || watch.lastAvailability}
-          arrivalDate={watch.arrivalDate}
-          departureDate={watch.departureDate}
+          arrivalDate={watch.stay.arrival}
+          departureDate={watch.stay.departure}
           isLoading={isChecking}
         />
       </div>

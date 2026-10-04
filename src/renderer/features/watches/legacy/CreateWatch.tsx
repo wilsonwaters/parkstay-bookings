@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import WatchForm from '../../../components/forms/WatchForm';
 import { WatchSchemaType } from '../../../../shared/schemas/watch.schema';
+import { watchFormToInput } from '../../../components/forms/legacy-mapping';
 
 const CreateWatch: React.FC = () => {
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ const CreateWatch: React.FC = () => {
   const handleSubmit = async (data: WatchSchemaType) => {
     try {
       setError('');
-      const response = await window.api.watches.create(data);
+      const response = await window.api.watches.create(watchFormToInput(data));
 
       if (response.success) {
         setShowSuccessToast(true);

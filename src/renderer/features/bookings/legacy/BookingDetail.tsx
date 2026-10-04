@@ -8,6 +8,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Booking, BookingStatus } from '../../../../shared/types';
 import { format } from 'date-fns';
 import { ConfirmDialog, Spinner, useToast } from '../../../components/ui';
+import { partySize, stayDate } from '../../../components/forms/legacy-mapping';
 
 const BookingDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -164,8 +165,8 @@ const BookingDetail: React.FC = () => {
         <div className="card">
           <div className="flex items-start justify-between mb-6">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">{booking.parkName}</h2>
-              <p className="text-lg text-gray-600">{booking.campgroundName}</p>
+              <h2 className="text-2xl font-bold text-gray-900">{booking.location.areaName}</h2>
+              <p className="text-lg text-gray-600">{booking.location.name}</p>
             </div>
             {getStatusBadge(booking.status)}
           </div>
@@ -176,13 +177,13 @@ const BookingDetail: React.FC = () => {
               <div>
                 <p className="text-sm font-medium text-gray-500">Check-in</p>
                 <p className="text-lg font-semibold text-gray-900">
-                  {format(new Date(booking.arrivalDate), 'EEEE, MMMM d, yyyy')}
+                  {format(stayDate(booking.stay.arrival), 'EEEE, MMMM d, yyyy')}
                 </p>
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Check-out</p>
                 <p className="text-lg font-semibold text-gray-900">
-                  {format(new Date(booking.departureDate), 'EEEE, MMMM d, yyyy')}
+                  {format(stayDate(booking.stay.departure), 'EEEE, MMMM d, yyyy')}
                 </p>
               </div>
             </div>
@@ -195,12 +196,12 @@ const BookingDetail: React.FC = () => {
               </div>
               <div>
                 <p className="text-sm font-medium text-gray-500">Guests</p>
-                <p className="text-lg font-semibold text-gray-900">{booking.numGuests}</p>
+                <p className="text-lg font-semibold text-gray-900">{partySize(booking.stay)}</p>
               </div>
-              {booking.siteNumber && (
+              {booking.unitIds[0] && (
                 <div>
                   <p className="text-sm font-medium text-gray-500">Site Number</p>
-                  <p className="text-lg font-semibold text-gray-900">{booking.siteNumber}</p>
+                  <p className="text-lg font-semibold text-gray-900">{booking.unitIds[0]}</p>
                 </div>
               )}
               {booking.totalCost && (

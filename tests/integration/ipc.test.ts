@@ -86,8 +86,21 @@ describe('IPC through the container', () => {
         id: created.data?.id,
         name: 'Round trip',
         userId: 1,
-        arrivalDate: input.arrivalDate,
+        providerId: 'parkstay',
+        locationKey: `parkstay:${input.location.externalId}`,
+        stay: { ...input.stay, children: 0, infants: 0, concessions: 0 },
       });
+    });
+
+    it('watches.create rejects an ISO timestamp as a stay date with VALIDATION', async () => {
+      const input = createMockWatchInput();
+      await expect(
+        call('watches:create', {
+          ...input,
+          stay: { ...input.stay, arrival: '2099-02-14T00:00:00.000Z' },
+        })
+      ).resolves.toMatchObject({ success: false, code: 'VALIDATION', issues: ['stay.arrival'] });
+      expect(container.repositories.watches.findAll()).toEqual([]);
     });
 
     it('notifiers.configure then notifiers.get round-trips the SMTP config, password write-only', async () => {
@@ -159,6 +172,8 @@ describe('IPC through the container', () => {
   });
 
   it('with no users row, watches.create returns NO_PROFILE', async () => {
+    // Migration v8 seeds the profile row; take it away to reach the error path.
+    container.db.exec('DELETE FROM users');
     expect(container.repositories.users.findAll()).toEqual([]);
 
     await expect(call('watches:create', createMockWatchInput())).resolves.toEqual({

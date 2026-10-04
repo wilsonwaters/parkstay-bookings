@@ -4,31 +4,29 @@
 
 import { Watch, WatchInput } from '@shared/types';
 import { WatchResult } from '@shared/types/common.types';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { addDays } from '@shared/utils/calendar-date';
 
 /**
  * Fixed reference date for generated watch dates, instead of the real clock. It is far in
- * the future because WatchService.create rejects arrival dates before the real "now".
- * Mid-day UTC keeps the local calendar day the same from UTC-11 to UTC+11.
+ * the future because WatchService.create rejects arrival dates before today.
  */
-const WATCH_FIXTURE_REFERENCE_DATE = new Date('2099-01-15T12:00:00.000Z');
+const WATCH_FIXTURE_REFERENCE_DATE = '2099-01-15';
 
-function daysAfterReference(days: number): Date {
-  return new Date(WATCH_FIXTURE_REFERENCE_DATE.getTime() + days * DAY_MS);
+function daysAfterReference(days: number): string {
+  return addDays(WATCH_FIXTURE_REFERENCE_DATE, days);
 }
 
 export const mockWatchInput: WatchInput = {
+  providerId: 'parkstay',
   name: 'Karijini Watch',
-  parkId: 'PARK001',
-  parkName: 'Karijini National Park',
-  campgroundId: 'CG001',
-  campgroundName: 'Dales Campground',
-  arrivalDate: new Date('2024-07-01'),
-  departureDate: new Date('2024-07-05'),
-  numGuests: 2,
-  preferredSites: ['Site 1', 'Site 2', 'Site 3'],
-  siteType: 'Unpowered',
+  location: {
+    externalId: 'CG001',
+    name: 'Dales Campground',
+    areaName: 'Karijini National Park',
+  },
+  stay: { arrival: '2024-07-01', departure: '2024-07-05', adults: 2 },
+  unitIds: ['Site 1', 'Site 2', 'Site 3'],
+  stayParams: { parkId: 'PARK001', gearType: 'Unpowered' },
   checkIntervalMinutes: 5,
   autoBook: false,
   notifyOnly: true,
@@ -39,24 +37,30 @@ export const mockWatchInput: WatchInput = {
 export const mockWatch: Watch = {
   id: 1,
   userId: 1,
+  providerId: 'parkstay',
+  locationKey: 'parkstay:CG001',
+  location: {
+    externalId: 'CG001',
+    name: 'Dales Campground',
+    areaName: 'Karijini National Park',
+  },
   name: 'Karijini Watch',
-  parkId: 'PARK001',
-  parkName: 'Karijini National Park',
-  campgroundId: 'CG001',
-  campgroundName: 'Dales Campground',
-  arrivalDate: new Date('2024-07-01'),
-  departureDate: new Date('2024-07-05'),
-  numGuests: 2,
-  preferredSites: ['Site 1', 'Site 2', 'Site 3'],
-  siteType: 'Unpowered',
+  stay: {
+    arrival: '2024-07-01',
+    departure: '2024-07-05',
+    adults: 2,
+    children: 0,
+    infants: 0,
+    concessions: 0,
+  },
+  unitIds: ['Site 1', 'Site 2', 'Site 3'],
+  stayParams: { parkId: 'PARK001', gearType: 'Unpowered' },
   checkIntervalMinutes: 5,
   isActive: true,
-  lastCheckedAt: null,
-  nextCheckAt: null,
-  lastResult: null,
   foundCount: 0,
   autoBook: false,
   notifyOnly: true,
+  allowPartialMatch: false,
   maxPrice: 50.0,
   notes: 'Looking for unpowered sites',
   createdAt: new Date('2024-01-01T00:00:00Z'),
@@ -98,13 +102,12 @@ export const mockDueWatch: Watch = {
 export const invalidWatchInputs = [
   {
     ...mockWatchInput,
-    arrivalDate: new Date('2000-01-15T12:00:00.000Z'), // In the past
-    expectedError: 'Arrival date must be in the future',
+    stay: { arrival: '2000-01-15', departure: '2000-01-18', adults: 2 }, // In the past
+    expectedError: 'Arrival date must be today or in the future',
   },
   {
     ...mockWatchInput,
-    arrivalDate: new Date('2024-07-05'),
-    departureDate: new Date('2024-07-01'),
+    stay: { arrival: '2099-07-05', departure: '2099-07-01', adults: 2 },
     expectedError: 'Departure date must be after arrival date',
   },
 ];
@@ -116,27 +119,29 @@ export function createMockWatch(overrides: Partial<Watch> = {}): Watch {
   };
 }
 
+/** A creatable watch input: its stay is 30 to 34 days after the reference date unless given. */
 export function createMockWatchInput(overrides: Partial<WatchInput> = {}): WatchInput {
   return {
     ...mockWatchInput,
-    arrivalDate: overrides.arrivalDate || daysAfterReference(30),
-    departureDate: overrides.departureDate || daysAfterReference(34),
+    stay: { arrival: daysAfterReference(30), departure: daysAfterReference(34), adults: 2 },
     ...overrides,
   };
 }
 
 export function createMultipleMockWatches(count: number, userId: number = 1): Watch[] {
   return Array.from({ length: count }, (_, i) => {
-    const arrivalDate = daysAfterReference((i + 1) * 7);
-    const departureDate = daysAfterReference((i + 1) * 7 + 3);
-
+    const externalId = `CG${String(i + 1).padStart(3, '0')}`;
     return createMockWatch({
       id: i + 1,
       userId,
       name: `Watch ${i + 1}`,
-      campgroundId: `CG${String(i + 1).padStart(3, '0')}`,
-      arrivalDate,
-      departureDate,
+      locationKey: `parkstay:${externalId}`,
+      location: { ...mockWatch.location, externalId },
+      stay: {
+        ...mockWatch.stay,
+        arrival: daysAfterReference((i + 1) * 7),
+        departure: daysAfterReference((i + 1) * 7 + 3),
+      },
     });
   });
 }

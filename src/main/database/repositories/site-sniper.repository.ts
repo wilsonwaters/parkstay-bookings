@@ -1,7 +1,42 @@
 import { BaseRepository } from './base.repository';
-import { SiteSnipe, SiteSnipeInput } from '@shared/types';
+import { locationKeyOf, SiteSnipe, SiteSnipeInput, SiteSnipeUpdate } from '@shared/types';
 import { SnipeResult, SnipeReleaseMode, SnipeStatus } from '@shared/types/common.types';
 import { AppError } from '../../utils/app-error';
+import { readStay, readStayParams, readUnitIds, StayRow, stayValues } from '../stay-columns';
+
+interface SiteSnipeRow extends StayRow {
+  id: number;
+  user_id: number;
+  provider_id: string;
+  name: string;
+  location_external_id: string;
+  location_name: string | null;
+  area_name: string | null;
+  unit_ids: string | null;
+  stay_params: string | null;
+  release_mode: string;
+  release_at: string | null;
+  access_gate_enabled: number;
+  lead_time_seconds: number;
+  poll_interval_ms: number;
+  window_duration_ms: number;
+  status: string;
+  is_active: number;
+  attempts_count: number;
+  max_attempts: number;
+  last_checked_at: string | null;
+  next_check_at: string | null;
+  last_result: string | null;
+  last_error: string | null;
+  hold_reference: string | null;
+  hold_expires_at: string | null;
+  hold_unit_id: string | null;
+  payment_url: string | null;
+  booked_reference: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 /**
  * Repository for Site Snipe entries (site_snipes table).
@@ -10,36 +45,32 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
   protected readonly tableName = 'site_snipes';
 
   /**
-   * Create a new Site Snipe. Applies sensible defaults for optional fields.
+   * Create a new Site Snipe. Applies sensible defaults for optional fields. Provider-specific
+   * defaults (gear type, vehicles) are the services' to apply: `stay_params` is stored as given.
    */
   create(userId: number, input: SiteSnipeInput): SiteSnipe {
     const stmt = this.db.prepare(`
       INSERT INTO site_snipes (
-        user_id, name, campground_id, campground_name, target_site_ids, site_type,
-        arrival_date, departure_date, num_adult, num_concession, num_child, num_infant,
-        num_vehicle, postcode, release_mode, release_at, queue_enabled, lead_time_seconds,
+        user_id, provider_id, name, location_external_id, location_name, area_name, unit_ids,
+        arrival_date, departure_date, num_adults, num_children, num_infants, num_concessions,
+        stay_params, release_mode, release_at, access_gate_enabled, lead_time_seconds,
         poll_interval_ms, window_duration_ms, status, is_active, max_attempts, notes
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
       userId,
+      input.providerId,
       input.name,
-      input.campgroundId,
-      input.campgroundName || null,
-      this.stringifyJson(input.targetSiteIds || []),
-      input.siteType || 'all',
-      this.formatDate(input.arrivalDate),
-      this.formatDate(input.departureDate),
-      input.numAdult ?? 2,
-      input.numConcession ?? 0,
-      input.numChild ?? 0,
-      input.numInfant ?? 0,
-      input.numVehicle ?? 1,
-      input.postcode || null,
+      input.location.externalId,
+      input.location.name || null,
+      input.location.areaName ?? null,
+      JSON.stringify(input.unitIds ?? []),
+      ...stayValues(input.stay),
+      JSON.stringify(input.stayParams ?? {}),
       input.releaseMode,
       this.formatDate(input.releaseAt),
-      input.queueEnabled ? 1 : 0,
+      input.accessGateEnabled ? 1 : 0,
       input.leadTimeSeconds ?? 120,
       input.pollIntervalMs ?? 1500,
       input.windowDurationMs ?? 900000,
@@ -57,36 +88,40 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
   }
 
   /**
-   * Update a Site Snipe's editable fields.
+   * Update a Site Snipe's editable fields. The provider never changes; `location` and
+   * `stay` are replaced whole.
    */
-  update(id: number, updates: Partial<SiteSnipeInput>): SiteSnipe {
+  update(id: number, updates: SiteSnipeUpdate): SiteSnipe {
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
 
-    const push = (column: string, value: any) => {
+    const push = (column: string, value: unknown): void => {
       fields.push(`${column} = ?`);
       values.push(value);
     };
 
     if (updates.name !== undefined) push('name', updates.name);
-    if (updates.campgroundId !== undefined) push('campground_id', updates.campgroundId);
-    if (updates.campgroundName !== undefined) push('campground_name', updates.campgroundName);
-    if (updates.targetSiteIds !== undefined)
-      push('target_site_ids', this.stringifyJson(updates.targetSiteIds));
-    if (updates.siteType !== undefined) push('site_type', updates.siteType);
-    if (updates.arrivalDate !== undefined)
-      push('arrival_date', this.formatDate(updates.arrivalDate));
-    if (updates.departureDate !== undefined)
-      push('departure_date', this.formatDate(updates.departureDate));
-    if (updates.numAdult !== undefined) push('num_adult', updates.numAdult);
-    if (updates.numConcession !== undefined) push('num_concession', updates.numConcession);
-    if (updates.numChild !== undefined) push('num_child', updates.numChild);
-    if (updates.numInfant !== undefined) push('num_infant', updates.numInfant);
-    if (updates.numVehicle !== undefined) push('num_vehicle', updates.numVehicle);
-    if (updates.postcode !== undefined) push('postcode', updates.postcode);
+    if (updates.location !== undefined) {
+      push('location_external_id', updates.location.externalId);
+      push('location_name', updates.location.name || null);
+      push('area_name', updates.location.areaName ?? null);
+    }
+    if (updates.unitIds !== undefined) push('unit_ids', JSON.stringify(updates.unitIds));
+    if (updates.stay !== undefined) {
+      const [arrival, departure, adults, children, infants, concessions] = stayValues(updates.stay);
+      push('arrival_date', arrival);
+      push('departure_date', departure);
+      push('num_adults', adults);
+      push('num_children', children);
+      push('num_infants', infants);
+      push('num_concessions', concessions);
+    }
+    if (updates.stayParams !== undefined) push('stay_params', JSON.stringify(updates.stayParams));
     if (updates.releaseMode !== undefined) push('release_mode', updates.releaseMode);
     if (updates.releaseAt !== undefined) push('release_at', this.formatDate(updates.releaseAt));
-    if (updates.queueEnabled !== undefined) push('queue_enabled', updates.queueEnabled ? 1 : 0);
+    if (updates.accessGateEnabled !== undefined) {
+      push('access_gate_enabled', updates.accessGateEnabled ? 1 : 0);
+    }
     if (updates.leadTimeSeconds !== undefined) push('lead_time_seconds', updates.leadTimeSeconds);
     if (updates.pollIntervalMs !== undefined) push('poll_interval_ms', updates.pollIntervalMs);
     if (updates.windowDurationMs !== undefined)
@@ -94,15 +129,10 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
     if (updates.maxAttempts !== undefined) push('max_attempts', updates.maxAttempts);
     if (updates.notes !== undefined) push('notes', updates.notes);
 
-    if (fields.length === 0) {
-      const snipe = this.findById(id);
-      if (!snipe) throw new AppError('NOT_FOUND', 'Site snipe not found');
-      return snipe;
+    if (fields.length > 0) {
+      values.push(id);
+      this.db.prepare(`UPDATE site_snipes SET ${fields.join(', ')} WHERE id = ?`).run(values);
     }
-
-    values.push(id);
-    const stmt = this.db.prepare(`UPDATE site_snipes SET ${fields.join(', ')} WHERE id = ?`);
-    stmt.run(values);
 
     const snipe = this.findById(id);
     if (!snipe) throw new AppError('NOT_FOUND', 'Site snipe not found');
@@ -116,7 +146,7 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
     const rows = this.db
       .prepare('SELECT * FROM site_snipes WHERE user_id = ? ORDER BY created_at DESC')
       .all(userId);
-    return rows.map((row) => this.mapRow(row));
+    return rows.map((row) => this.mapRow(row as SiteSnipeRow));
   }
 
   /**
@@ -124,7 +154,7 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
    */
   findActive(): SiteSnipe[] {
     const rows = this.db.prepare('SELECT * FROM site_snipes WHERE is_active = 1').all();
-    return rows.map((row) => this.mapRow(row));
+    return rows.map((row) => this.mapRow(row as SiteSnipeRow));
   }
 
   /**
@@ -134,7 +164,7 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
     const rows = this.db
       .prepare('SELECT * FROM site_snipes WHERE is_active = 1 AND status IN (?, ?)')
       .all(SnipeStatus.ARMED, SnipeStatus.WAITING_RELEASE);
-    return rows.map((row) => this.mapRow(row));
+    return rows.map((row) => this.mapRow(row as SiteSnipeRow));
   }
 
   /**
@@ -149,7 +179,7 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
            AND (next_check_at IS NULL OR next_check_at <= ?)`
       )
       .all(SnipeReleaseMode.CANCELLATION, now);
-    return rows.map((row) => this.mapRow(row));
+    return rows.map((row) => this.mapRow(row as SiteSnipeRow));
   }
 
   /**
@@ -207,24 +237,32 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
   }
 
   /**
-   * Record that a temporary hold was placed on a site.
-   * matchedSiteId is surfaced in the execution result; there is no dedicated column.
+   * Record that a temporary hold was placed: the provider's hold reference, when it expires
+   * and the unit it is on.
    */
   setHeld(
     id: number,
-    pk: string,
+    holdReference: string,
     expiresAt: Date,
     paymentUrl?: string,
-    _matchedSiteId?: string
+    holdUnitId?: string
   ): void {
     this.db
       .prepare(
         `UPDATE site_snipes
-         SET status = ?, last_result = ?, held_booking_pk = ?, held_expires_at = ?,
-             payment_url = ?, last_error = NULL
+         SET status = ?, last_result = ?, hold_reference = ?, hold_expires_at = ?,
+             hold_unit_id = ?, payment_url = ?, last_error = NULL
          WHERE id = ?`
       )
-      .run(SnipeStatus.HELD, SnipeResult.HELD, pk, expiresAt.toISOString(), paymentUrl || null, id);
+      .run(
+        SnipeStatus.HELD,
+        SnipeResult.HELD,
+        holdReference,
+        expiresAt.toISOString(),
+        holdUnitId ?? null,
+        paymentUrl || null,
+        id
+      );
   }
 
   /**
@@ -259,26 +297,25 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
     return snipe.attemptsCount >= snipe.maxAttempts;
   }
 
-  protected mapRow(row: any): SiteSnipe {
+  protected mapRow(row: SiteSnipeRow): SiteSnipe {
+    const where = `site_snipes ${row.id}`;
     return {
       id: row.id,
       userId: row.user_id,
+      providerId: row.provider_id,
+      locationKey: locationKeyOf(row.provider_id, row.location_external_id),
+      location: {
+        externalId: row.location_external_id,
+        name: row.location_name ?? '',
+        ...(row.area_name !== null ? { areaName: row.area_name } : {}),
+      },
       name: row.name,
-      campgroundId: row.campground_id,
-      campgroundName: row.campground_name || undefined,
-      targetSiteIds: this.parseJson<string[]>(row.target_site_ids) || [],
-      siteType: row.site_type,
-      arrivalDate: this.parseDate(row.arrival_date)!,
-      departureDate: this.parseDate(row.departure_date)!,
-      numAdult: row.num_adult,
-      numConcession: row.num_concession,
-      numChild: row.num_child,
-      numInfant: row.num_infant,
-      numVehicle: row.num_vehicle,
-      postcode: row.postcode || undefined,
+      stay: readStay(row),
+      unitIds: readUnitIds(row.unit_ids, where),
+      stayParams: readStayParams(row.stay_params, where),
       releaseMode: row.release_mode as SnipeReleaseMode,
       releaseAt: this.parseDate(row.release_at),
-      queueEnabled: Boolean(row.queue_enabled),
+      accessGateEnabled: Boolean(row.access_gate_enabled),
       leadTimeSeconds: row.lead_time_seconds,
       pollIntervalMs: row.poll_interval_ms,
       windowDurationMs: row.window_duration_ms,
@@ -290,8 +327,9 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
       nextCheckAt: this.parseDate(row.next_check_at),
       lastResult: (row.last_result as SnipeResult | null) || undefined,
       lastError: row.last_error || undefined,
-      heldBookingPk: row.held_booking_pk || undefined,
-      heldExpiresAt: this.parseDate(row.held_expires_at),
+      holdReference: row.hold_reference || undefined,
+      holdExpiresAt: this.parseDate(row.hold_expires_at),
+      holdUnitId: row.hold_unit_id || undefined,
       paymentUrl: row.payment_url || undefined,
       bookedReference: row.booked_reference || undefined,
       notes: row.notes || undefined,

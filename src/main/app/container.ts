@@ -20,11 +20,15 @@ import { app } from 'electron';
 import { closeDatabase } from '../database/connection';
 import {
   BookingRepository,
+  LocationRepository,
   NotifierRepository,
   NotificationRepository,
+  ProviderAccountRepository,
+  ProviderStateRepository,
   QueueSessionRepository,
   SettingsRepository,
   SiteSniperRepository,
+  SqliteKeyValueStore,
   UserRepository,
   WatchRepository,
 } from '../database/repositories';
@@ -45,11 +49,7 @@ import { RendererEvents } from '../ipc/events';
 import { TrustedWebContents } from '../ipc/trusted-web-contents';
 import { registerBuiltInProviders } from '../providers';
 import { ProviderRegistry } from '../providers/registry';
-import {
-  createProviderContext,
-  InMemoryKeyValueStore,
-  type ProviderContextDeps,
-} from '../providers/sdk';
+import { createProviderContext, type ProviderContextDeps } from '../providers/sdk';
 import { ElectronSessionHttpClient } from '../providers/sdk/http-electron';
 import { legacyMachineId } from '../security/legacy-decryptors';
 import { migrateLegacySecrets } from '../security/legacy-migration';
@@ -68,6 +68,11 @@ export interface AppRepositories {
   readonly watches: WatchRepository;
   readonly snipes: SiteSniperRepository;
   readonly queueSessions: QueueSessionRepository;
+  /** Each provider's key-value state (`provider_state`). */
+  readonly providerState: ProviderStateRepository;
+  readonly providerAccounts: ProviderAccountRepository;
+  /** The cached location catalogue (`locations` + FTS). */
+  readonly locations: LocationRepository;
 }
 
 export interface AppContainer {
@@ -139,6 +144,7 @@ export function createContainer({
   // `name: 'gmail-oauth'`, which the legacy secret migration reads in place)
   const gmailStorePath = path.join(userDataDir, 'gmail-oauth.json');
 
+  const providerState = new ProviderStateRepository(db);
   const repositories: AppRepositories = {
     users: new UserRepository(db),
     bookings: new BookingRepository(db),
@@ -147,7 +153,10 @@ export function createContainer({
     notifications: new NotificationRepository(db),
     watches: new WatchRepository(db),
     snipes: new SiteSniperRepository(db),
-    queueSessions: new QueueSessionRepository(db),
+    queueSessions: new QueueSessionRepository(providerState),
+    providerState,
+    providerAccounts: new ProviderAccountRepository(db),
+    locations: new LocationRepository(db),
   };
 
   // v1.x ciphertexts become vault envelopes before any secret is read (first vault use).
@@ -162,8 +171,8 @@ export function createContainer({
   // Each provider gets its own session partition, state, secrets and child logger.
   const providerDeps: ProviderContextDeps = {
     createHttp: (providerId) => new ElectronSessionHttpClient({ providerId }),
-    // V2 swaps in the SQLite store on `provider_state`.
-    createState: () => new InMemoryKeyValueStore(),
+    // `provider_state`, scoped to the provider; its scoped secrets live there too.
+    createState: (providerId) => new SqliteKeyValueStore(providerState, providerId),
     // Each provider's ScopedSecretVault: envelopes from this vault, in the provider's own state
     vault,
     logger,

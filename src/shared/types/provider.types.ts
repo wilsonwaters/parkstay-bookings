@@ -10,7 +10,10 @@
  */
 
 import { z } from 'zod';
+import { isCalendarDate } from '../utils/calendar-date';
 import { assertTypeEquals } from '../utils/type-equality';
+
+export { isCalendarDate };
 
 /** A provider id such as `parkstay`. Validated against the registry, never a hard-coded union. */
 export type ProviderId = string;
@@ -301,19 +304,6 @@ export interface ProviderAccount {
 // ---------------------------------------------------------------------------------------
 // Schemas
 // ---------------------------------------------------------------------------------------
-
-const CALENDAR_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-/** True for a real calendar date written `YYYY-MM-DD` (`2026-02-30` is not one). */
-export function isCalendarDate(value: string): boolean {
-  const match = CALENDAR_DATE_PATTERN.exec(value);
-  if (!match) return false;
-  const [year, month, day] = match.slice(1).map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return (
-    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
-  );
-}
 
 export const CalendarDateSchema = z
   .string()

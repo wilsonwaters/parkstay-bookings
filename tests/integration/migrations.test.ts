@@ -1,6 +1,9 @@
 /**
  * Migration integration tests: fresh databases, real v5 (v1.2.0) and v6 (pre-P2 branch)
  * fixtures upgraded to v7, schema equivalence, idempotency and atomicity.
+ *
+ * These pin the target to v7 (`runMigrations(db, 7)`) so they keep testing exactly what
+ * v7 does; `migration-v8.test.ts` covers v8 and full upgrades to the latest version.
  */
 
 import Database from 'better-sqlite3';
@@ -17,10 +20,8 @@ import {
 } from '@tests/fixtures/db/constants';
 import {
   applyMigration,
-  closeDatabase,
   LATEST_SCHEMA_VERSION,
   MigrationError,
-  openDatabase,
   runMigrations,
 } from '@main/database/connection';
 import { NotifierRepository, NotificationRepository } from '@main/database/repositories';
@@ -168,16 +169,16 @@ describe('database migrations', () => {
   });
 
   it('brings a fresh database to v7 with exactly the v7 tables', () => {
-    const db = openDatabase(path.join(tmpDir, 'fresh.db'));
+    const db = new Database(path.join(tmpDir, 'fresh.db'));
     try {
-      expect(version(db)).toBe(LATEST_SCHEMA_VERSION);
-      expect(LATEST_SCHEMA_VERSION).toBe(7);
+      runMigrations(db, 7);
+      expect(version(db)).toBe(7);
+      expect(LATEST_SCHEMA_VERSION).toBeGreaterThan(7);
       expect(tables(db)).toEqual(V7_TABLES);
       expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
-      expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
       expect(fkTargets(db, 'notification_delivery_logs')).toEqual(['notifications']);
     } finally {
-      closeDatabase(db);
+      db.close();
     }
   });
 
@@ -193,7 +194,7 @@ describe('database migrations', () => {
       db = loadFixture(fixture);
       configBefore = notifierConfig(db, 'notification_providers');
       rowsBefore = snapshot(db);
-      runMigrations(db);
+      runMigrations(db, 7);
     });
 
     afterEach(() => disposeFixture(db));
@@ -260,19 +261,20 @@ describe('database migrations', () => {
   });
 
   it('produces the same normalised schema from a fresh database and both fixtures', () => {
-    const fresh = openDatabase(path.join(tmpDir, 'fresh.db'));
+    const fresh = new Database(path.join(tmpDir, 'fresh.db'));
     const v5 = loadFixture('v5-release-1.2.0');
     const v6 = loadFixture('v6-branch');
     try {
-      runMigrations(v5);
-      runMigrations(v6);
+      runMigrations(fresh, 7);
+      runMigrations(v5, 7);
+      runMigrations(v6, 7);
 
       const expected = normalisedSchema(fresh);
       expect(expected.length).toBeGreaterThan(40);
       expect(normalisedSchema(v5)).toEqual(expected);
       expect(normalisedSchema(v6)).toEqual(expected);
     } finally {
-      closeDatabase(fresh);
+      fresh.close();
       disposeFixture(v5);
       disposeFixture(v6);
     }
@@ -281,11 +283,11 @@ describe('database migrations', () => {
   it('changes nothing and throws nothing when run a second time', () => {
     const db = loadFixture('v5-release-1.2.0');
     try {
-      runMigrations(db);
+      runMigrations(db, 7);
       const schema = normalisedSchema(db);
       const data = snapshot(db);
 
-      expect(() => runMigrations(db)).not.toThrow();
+      expect(() => runMigrations(db, 7)).not.toThrow();
       expect(normalisedSchema(db)).toEqual(schema);
       expect(snapshot(db)).toEqual(data);
     } finally {
@@ -304,7 +306,7 @@ describe('database migrations', () => {
 
       let thrown: unknown;
       try {
-        runMigrations(db);
+        runMigrations(db, 7);
       } catch (error) {
         thrown = error;
       }
@@ -319,7 +321,7 @@ describe('database migrations', () => {
 
       // The next start resumes from the last committed version.
       db.exec('DROP TABLE notifications_v7');
-      runMigrations(db);
+      runMigrations(db, 7);
       expect(version(db)).toBe(7);
     } finally {
       disposeFixture(db);
@@ -332,7 +334,7 @@ describe('database migrations', () => {
       // Step 3 creates idx_notifiers_channel; taking the name makes it fail after steps 1-2.
       db.exec('CREATE INDEX idx_notifiers_channel ON settings(category)');
 
-      expect(() => runMigrations(db)).toThrow(/Database migration 7 failed/);
+      expect(() => runMigrations(db, 7)).toThrow(/Database migration 7 failed/);
 
       // v6 committed on its own; v7's notifications and delivery-log rebuilds did not.
       expect(version(db)).toBe(6);
@@ -359,7 +361,7 @@ describe('database migrations', () => {
       ).run();
       const info = jest.spyOn(logger, 'info');
 
-      runMigrations(db);
+      runMigrations(db, 7);
 
       expect(
         db.prepare('SELECT notification_id FROM notification_delivery_logs WHERE id = 3').get()
@@ -383,7 +385,7 @@ describe('database migrations', () => {
         UPDATE sqlite_sequence SET seq = 70 WHERE name = 'notification_delivery_logs';
       `);
 
-      runMigrations(db);
+      runMigrations(db, 7);
 
       const seq = (name: string) =>
         (db.prepare('SELECT seq FROM sqlite_sequence WHERE name = ?').get(name) as { seq: number })
@@ -401,7 +403,7 @@ describe('database migrations', () => {
     try {
       db.exec('DELETE FROM migrations');
 
-      runMigrations(db);
+      runMigrations(db, 7);
 
       expect(version(db)).toBe(7);
       expect(count(db, 'watches')).toBe(V5_ROW_COUNTS.watches);
@@ -416,7 +418,7 @@ describe('database migrations', () => {
     const db = loadFixture('v5-release-1.2.0');
     const warn = jest.spyOn(logger, 'warn');
     try {
-      runMigrations(db);
+      runMigrations(db, 7);
 
       expect(warn).toHaveBeenCalledWith(
         'Migration 6: historic step introduced 1 foreign-key violation(s), to be repaired by a later migration: notification_delivery_logs -> notifications_old (1)'
@@ -436,7 +438,7 @@ describe('database migrations', () => {
     try {
       expect(db.pragma('foreign_key_check')).toHaveLength(1);
 
-      runMigrations(db);
+      runMigrations(db, 7);
 
       expect(warn).not.toHaveBeenCalled();
       expect(version(db)).toBe(7);
@@ -449,7 +451,7 @@ describe('database migrations', () => {
   it('rejects, and rolls back, a v8-style step that breaks a foreign key in a table it does not list', () => {
     const db = loadFixture('v5-release-1.2.0');
     try {
-      runMigrations(db);
+      runMigrations(db, 7);
       const data = snapshot(db);
       // As runMigrations does around every step.
       db.pragma('foreign_keys = OFF');

@@ -9,6 +9,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { siteSnipeSchema, SiteSnipeSchemaType } from '../../../shared/schemas/site-sniper.schema';
 import { SiteSnipe, SnipeReleaseMode } from '../../../shared/types';
+import { snipeToFormValues } from './legacy-mapping';
 
 interface Campground {
   id: number;
@@ -102,7 +103,7 @@ const SiteSniperForm: React.FC<SiteSniperFormProps> = ({
   const [searchResults, setSearchResults] = useState<Campground[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [campgroundError, setCampgroundError] = useState<string | null>(null);
-  const [siteIdsText, setSiteIdsText] = useState((initialData?.targetSiteIds || []).join(', '));
+  const [siteIdsText, setSiteIdsText] = useState((initialData?.unitIds || []).join(', '));
   const [releaseAtLocal, setReleaseAtLocal] = useState('');
 
   const {
@@ -115,21 +116,9 @@ const SiteSniperForm: React.FC<SiteSniperFormProps> = ({
     resolver: zodResolver(siteSnipeSchema) as any,
     defaultValues: {
       name: initialData?.name || '',
-      campgroundId: initialData?.campgroundId || '',
-      campgroundName: initialData?.campgroundName || '',
-      targetSiteIds: initialData?.targetSiteIds || [],
-      siteType: (initialData?.siteType as any) || 'all',
-      arrivalDate: initialData?.arrivalDate || new Date(),
-      departureDate: initialData?.departureDate || new Date(Date.now() + 24 * 60 * 60 * 1000),
-      numAdult: initialData?.numAdult ?? 2,
-      numConcession: initialData?.numConcession ?? 0,
-      numChild: initialData?.numChild ?? 0,
-      numInfant: initialData?.numInfant ?? 0,
-      numVehicle: initialData?.numVehicle ?? 1,
-      postcode: initialData?.postcode || undefined,
+      ...snipeToFormValues(initialData),
       releaseMode: initialData?.releaseMode || SnipeReleaseMode.DAILY_ROLLOVER,
       releaseAt: initialData?.releaseAt,
-      queueEnabled: initialData?.queueEnabled ?? false,
       leadTimeSeconds: initialData?.leadTimeSeconds ?? 120,
       pollIntervalMs: initialData?.pollIntervalMs ?? 1500,
       windowDurationMs: initialData?.windowDurationMs ?? 900000,

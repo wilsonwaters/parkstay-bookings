@@ -11,6 +11,7 @@ import { ConfirmDialog, Spinner, useToast } from '../../../components/ui';
 import ImportBookingForm from '../../../components/forms/ImportBookingForm';
 import ManualBookingForm from '../../../components/forms/ManualBookingForm';
 import ComingSoonBanner from '../../../components/ComingSoonBanner';
+import { partySize, stayDate } from '../../../components/forms/legacy-mapping';
 
 const BookingsList: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -89,11 +90,11 @@ const BookingsList: React.FC = () => {
     switch (filter) {
       case 'upcoming':
         filtered = filtered.filter(
-          (b) => new Date(b.arrivalDate) >= now && b.status === 'confirmed'
+          (b) => stayDate(b.stay.arrival) >= now && b.status === 'confirmed'
         );
         break;
       case 'past':
-        filtered = filtered.filter((b) => new Date(b.departureDate) < now);
+        filtered = filtered.filter((b) => stayDate(b.stay.departure) < now);
         break;
       case 'cancelled':
         filtered = filtered.filter((b) => b.status === 'cancelled');
@@ -105,15 +106,17 @@ const BookingsList: React.FC = () => {
       const query = searchQuery.toLowerCase();
       filtered = filtered.filter(
         (b) =>
-          b.parkName.toLowerCase().includes(query) ||
-          b.campgroundName.toLowerCase().includes(query) ||
+          (b.location.areaName ?? '').toLowerCase().includes(query) ||
+          b.location.name.toLowerCase().includes(query) ||
           b.bookingReference.toLowerCase().includes(query) ||
-          b.siteNumber?.toLowerCase().includes(query)
+          b.unitIds[0]?.toLowerCase().includes(query)
       );
     }
 
     // Sort by arrival date (descending)
-    filtered.sort((a, b) => new Date(b.arrivalDate).getTime() - new Date(a.arrivalDate).getTime());
+    filtered.sort(
+      (a, b) => stayDate(b.stay.arrival).getTime() - stayDate(a.stay.arrival).getTime()
+    );
 
     setFilteredBookings(filtered);
   };
@@ -263,8 +266,10 @@ const BookingsList: React.FC = () => {
                   <div className="flex-1">
                     <div className="flex items-start justify-between">
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900">{booking.parkName}</h3>
-                        <p className="text-sm text-gray-600">{booking.campgroundName}</p>
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {booking.location.areaName}
+                        </h3>
+                        <p className="text-sm text-gray-600">{booking.location.name}</p>
                       </div>
                       {getStatusBadge(booking.status)}
                     </div>
@@ -273,13 +278,13 @@ const BookingsList: React.FC = () => {
                       <div>
                         <p className="text-gray-500">Check-in</p>
                         <p className="font-medium text-gray-900">
-                          {format(new Date(booking.arrivalDate), 'MMM d, yyyy')}
+                          {format(stayDate(booking.stay.arrival), 'MMM d, yyyy')}
                         </p>
                       </div>
                       <div>
                         <p className="text-gray-500">Check-out</p>
                         <p className="font-medium text-gray-900">
-                          {format(new Date(booking.departureDate), 'MMM d, yyyy')}
+                          {format(stayDate(booking.stay.departure), 'MMM d, yyyy')}
                         </p>
                       </div>
                       <div>
@@ -288,14 +293,14 @@ const BookingsList: React.FC = () => {
                       </div>
                       <div>
                         <p className="text-gray-500">Guests</p>
-                        <p className="font-medium text-gray-900">{booking.numGuests}</p>
+                        <p className="font-medium text-gray-900">{partySize(booking.stay)}</p>
                       </div>
                     </div>
 
-                    {booking.siteNumber && (
+                    {booking.unitIds[0] && (
                       <div className="mt-3">
                         <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-primary-100 text-primary-800">
-                          Site {booking.siteNumber}
+                          Site {booking.unitIds[0]}
                         </span>
                       </div>
                     )}

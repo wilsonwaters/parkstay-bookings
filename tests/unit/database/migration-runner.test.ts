@@ -239,10 +239,33 @@ describe('runMigrations', () => {
 
     expect(thrown).toBeInstanceOf(DatabaseTooNewError);
     expect((thrown as DatabaseTooNewError).version).toBe(LATEST_SCHEMA_VERSION + 1);
-    expect((thrown as Error).message).toMatch(/newer than this app supports \(7\)/);
+    expect((thrown as Error).message).toMatch(/newer than this app supports \(8\)/);
     expect(pragma).not.toHaveBeenCalled();
     expect(db.prepare('SELECT type, name, sql FROM sqlite_master').all()).toEqual(schemaBefore);
+    expect(versions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    db.close();
+  });
+
+  it('stops at a lower target version, and a later call carries on from there', () => {
+    const db = new Database(':memory:');
+
+    runMigrations(db, 5);
+    expect(versions(db)).toEqual([1, 2, 3, 4, 5]);
+    expect(tableNames(db)).not.toContain('site_snipes');
+
+    runMigrations(db, 5);
+    expect(versions(db)).toEqual([1, 2, 3, 4, 5]);
+
+    runMigrations(db);
     expect(versions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    db.close();
+  });
+
+  it.each([0, 9, 2.5, NaN])('rejects the target version %p, running nothing', (target) => {
+    const db = new Database(':memory:');
+
+    expect(() => runMigrations(db, target)).toThrow(RangeError);
+    expect(tableNames(db)).toEqual([]);
     db.close();
   });
 });

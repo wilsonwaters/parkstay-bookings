@@ -37,27 +37,82 @@ describe('SiteSniperRepository', () => {
       expect(snipe.userId).toBe(userId);
       expect(snipe.status).toBe(SnipeStatus.ARMED);
       expect(snipe.isActive).toBe(true);
-      expect(snipe.targetSiteIds).toEqual(['136', '137']);
-      expect(snipe.numAdult).toBe(2);
-      expect(snipe.numVehicle).toBe(1);
+      expect(snipe.unitIds).toEqual(['136', '137']);
+      expect(snipe.stay.adults).toBe(2);
+      expect(snipe.stayParams.numVehicles).toBe(1);
       expect(snipe.maxAttempts).toBe(0);
+    });
+
+    it('round-trips the provider-aware fields: calendar dates, stay params and unit ids', () => {
+      const input = createMockSiteSnipeInput({
+        stay: {
+          arrival: '2026-07-19',
+          departure: '2026-07-21',
+          adults: 2,
+          children: 1,
+          infants: 1,
+          concessions: 1,
+        },
+      });
+      const snipe = repo.create(userId, input);
+
+      expect(repo.findById(snipe.id)).toMatchObject({
+        providerId: 'parkstay',
+        locationKey: 'parkstay:34',
+        location: { externalId: '34', name: 'Osprey Bay' },
+        stay: input.stay,
+        unitIds: ['136', '137'],
+        stayParams: { gearType: 'all', numVehicles: 1, postcode: '6000' },
+        accessGateEnabled: false,
+      });
+      expect(
+        dbHelper
+          .getDb()
+          .prepare(
+            'SELECT provider_id, arrival_date, departure_date, unit_ids, stay_params FROM site_snipes WHERE id = ?'
+          )
+          .get(snipe.id)
+      ).toEqual({
+        provider_id: 'parkstay',
+        arrival_date: '2026-07-19',
+        departure_date: '2026-07-21',
+        unit_ids: '["136","137"]',
+        stay_params: '{"gearType":"all","numVehicles":1,"postcode":"6000"}',
+      });
+    });
+
+    it('stores a release mode other than the ParkStay ones (no CHECK since v8)', () => {
+      const snipe = repo.create(
+        userId,
+        createMockSiteSnipeInput({ releaseMode: 'custom' as SnipeReleaseMode })
+      );
+      expect(repo.findById(snipe.id)?.releaseMode).toBe('custom');
     });
 
     it('applies defaults when optional fields are omitted', () => {
       const snipe = repo.create(userId, {
+        providerId: 'parkstay',
         name: 'Minimal',
-        campgroundId: '99',
-        arrivalDate: new Date('2026-09-01T00:00:00Z'),
-        departureDate: new Date('2026-09-03T00:00:00Z'),
+        location: { externalId: '99', name: '' },
+        stay: { arrival: '2026-09-01', departure: '2026-09-03', adults: 2 },
         releaseMode: SnipeReleaseMode.DAILY_ROLLOVER,
       });
 
-      expect(snipe.siteType).toBe('all');
-      expect(snipe.targetSiteIds).toEqual([]);
+      expect(snipe.stayParams).toEqual({});
+      expect(snipe.unitIds).toEqual([]);
+      expect(snipe.stay).toEqual({
+        arrival: '2026-09-01',
+        departure: '2026-09-03',
+        adults: 2,
+        children: 0,
+        infants: 0,
+        concessions: 0,
+      });
+      expect(snipe.location).toEqual({ externalId: '99', name: '' });
       expect(snipe.leadTimeSeconds).toBe(120);
       expect(snipe.pollIntervalMs).toBe(1500);
       expect(snipe.windowDurationMs).toBe(900000);
-      expect(snipe.queueEnabled).toBe(false);
+      expect(snipe.accessGateEnabled).toBe(false);
     });
   });
 
@@ -122,9 +177,10 @@ describe('SiteSniperRepository', () => {
       const updated = repo.findById(snipe.id)!;
       expect(updated.status).toBe(SnipeStatus.HELD);
       expect(updated.lastResult).toBe(SnipeResult.HELD);
-      expect(updated.heldBookingPk).toBe('555');
+      expect(updated.holdReference).toBe('555');
+      expect(updated.holdUnitId).toBe('136');
       expect(updated.paymentUrl).toBe('https://pay/');
-      expect(updated.heldExpiresAt?.toISOString()).toBe(expiresAt.toISOString());
+      expect(updated.holdExpiresAt?.toISOString()).toBe(expiresAt.toISOString());
     });
 
     it('setBooked records the reference and deactivates', () => {
@@ -183,12 +239,23 @@ describe('SiteSniperRepository', () => {
       const updated = repo.update(snipe.id, {
         name: 'Renamed',
         pollIntervalMs: 2500,
-        targetSiteIds: ['200'],
+        unitIds: ['200'],
+        stay: { arrival: '2026-08-01', departure: '2026-08-02', adults: 3 },
+        accessGateEnabled: true,
       });
 
       expect(updated.name).toBe('Renamed');
       expect(updated.pollIntervalMs).toBe(2500);
-      expect(updated.targetSiteIds).toEqual(['200']);
+      expect(updated.unitIds).toEqual(['200']);
+      expect(updated.stay).toMatchObject({
+        arrival: '2026-08-01',
+        departure: '2026-08-02',
+        adults: 3,
+      });
+      expect(updated.accessGateEnabled).toBe(true);
+      // Fields the update left out keep their values
+      expect(updated.stayParams).toEqual(snipe.stayParams);
+      expect(updated.location).toEqual(snipe.location);
     });
   });
 });

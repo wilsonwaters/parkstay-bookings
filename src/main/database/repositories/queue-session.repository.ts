@@ -1,68 +1,67 @@
 import { QueueSession, QueueStatus } from '@shared/types';
-import { BaseRepository } from './base.repository';
+import { ProviderStateRepository } from './provider-state.repository';
 
-/** `queue_session` is a singleton table: the DBCA queue session always lives in row 1. */
-const SESSION_ROW_ID = 1;
+/** Where the DBCA queue session lives in `provider_state` (agreed with V3). */
+export const QUEUE_SESSION_PROVIDER = 'parkstay';
+export const QUEUE_SESSION_KEY = 'queue.session';
 
-interface QueueSessionRow {
-  id: number;
-  session_key: string;
+/** The JSON stored under `('parkstay', 'queue.session')`. Migration v8 writes the same shape. */
+export interface StoredQueueSession {
+  sessionKey: string;
   status: string | null;
   position: number | null;
-  estimated_wait_seconds: number | null;
-  expiry_seconds: number | null;
-  expires_at: string;
-  created_at: string;
-  updated_at: string;
+  estimatedWaitSeconds: number | null;
+  expirySeconds: number | null;
+  /** ISO instant. */
+  expiresAt: string | null;
+  /** ISO instant. */
+  createdAt: string | null;
 }
 
 /**
- * Persists the DBCA queue session so the queue position survives restarts.
+ * Persists the DBCA queue session so the queue position survives restarts. Since v8 it is
+ * a `provider_state` entry rather than the `queue_session` table; V3 replaces this
+ * repository with the ParkStay provider's own state.
  */
-export class QueueSessionRepository extends BaseRepository<QueueSession> {
-  protected readonly tableName = 'queue_session';
+export class QueueSessionRepository {
+  constructor(private readonly state: ProviderStateRepository) {}
 
   /** The stored session, expired or not, or null when none is stored. */
   get(): QueueSession | null {
-    return this.findById(SESSION_ROW_ID);
+    const entry = this.state.getEntry<StoredQueueSession>(
+      QUEUE_SESSION_PROVIDER,
+      QUEUE_SESSION_KEY
+    );
+    if (!entry) return null;
+    const stored = entry.value;
+    return {
+      sessionKey: stored.sessionKey,
+      status: (stored.status ?? 'Unknown') as QueueStatus,
+      position: stored.position || 0,
+      estimatedWaitSeconds: stored.estimatedWaitSeconds || 0,
+      expirySeconds: stored.expirySeconds || 0,
+      createdAt: new Date(stored.createdAt ?? 0),
+      expiresAt: new Date(stored.expiresAt ?? 0),
+      lastCheckedAt: entry.updatedAt,
+    };
   }
 
-  /** Stores the session, replacing any previous one. `updated_at` records the save time. */
+  /** Stores the session, replacing any previous one. The entry's update time records the save time. */
   save(session: QueueSession): void {
-    this.db
-      .prepare(
-        `INSERT OR REPLACE INTO queue_session
-         (id, session_key, status, position, estimated_wait_seconds, expiry_seconds, expires_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(
-        SESSION_ROW_ID,
-        session.sessionKey,
-        session.status,
-        session.position,
-        session.estimatedWaitSeconds,
-        session.expirySeconds,
-        session.expiresAt.toISOString(),
-        session.createdAt.toISOString(),
-        new Date().toISOString()
-      );
+    const stored: StoredQueueSession = {
+      sessionKey: session.sessionKey,
+      status: session.status,
+      position: session.position,
+      estimatedWaitSeconds: session.estimatedWaitSeconds,
+      expirySeconds: session.expirySeconds,
+      expiresAt: session.expiresAt.toISOString(),
+      createdAt: session.createdAt.toISOString(),
+    };
+    this.state.set(QUEUE_SESSION_PROVIDER, QUEUE_SESSION_KEY, stored);
   }
 
   /** Removes the stored session. */
   clear(): void {
-    this.deleteById(SESSION_ROW_ID);
-  }
-
-  protected mapRow(row: QueueSessionRow): QueueSession {
-    return {
-      sessionKey: row.session_key,
-      status: row.status as QueueStatus,
-      position: row.position || 0,
-      estimatedWaitSeconds: row.estimated_wait_seconds || 0,
-      expirySeconds: row.expiry_seconds || 0,
-      createdAt: new Date(row.created_at),
-      expiresAt: new Date(row.expires_at),
-      lastCheckedAt: new Date(row.updated_at),
-    };
+    this.state.delete(QUEUE_SESSION_PROVIDER, QUEUE_SESSION_KEY);
   }
 }

@@ -11,3 +11,4 @@ export * from './queue.types';
 export * from './provider.types';
 export * from './catalog.types';
 export * from './secret.types';
+export * from './stay.types';

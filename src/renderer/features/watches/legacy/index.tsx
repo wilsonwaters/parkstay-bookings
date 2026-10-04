@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Watch } from '@shared/types';
 import { ConfirmDialog, Spinner, useToast } from '../../../components/ui';
+import { partySize, stayDate } from '../../../components/forms/legacy-mapping';
 
 /**
  * Watches Page
@@ -161,7 +162,7 @@ export default function WatchesPage() {
                 <div className="flex justify-between items-start mb-2">
                   <div>
                     <h3 className="text-xl font-semibold">{watch.name}</h3>
-                    <p className="text-gray-600">{watch.campgroundName}</p>
+                    <p className="text-gray-600">{watch.location.name}</p>
                   </div>
                   <span
                     className={`px-2 py-1 rounded text-sm ${
@@ -174,15 +175,15 @@ export default function WatchesPage() {
 
                 <div className="mb-3 text-sm text-gray-600">
                   <p>
-                    Dates: {new Date(watch.arrivalDate).toLocaleDateString()} -{' '}
-                    {new Date(watch.departureDate).toLocaleDateString()}
+                    Dates: {stayDate(watch.stay.arrival).toLocaleDateString()} -{' '}
+                    {stayDate(watch.stay.departure).toLocaleDateString()}
                     {watch.allowPartialMatch && (
                       <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
                         Partial
                       </span>
                     )}
                   </p>
-                  <p>Guests: {watch.numGuests}</p>
+                  <p>Guests: {partySize(watch.stay)}</p>
                   <p>Check Interval: {watch.checkIntervalMinutes} minutes</p>
                   {watch.lastCheckedAt && (
                     <p>Last Checked: {new Date(watch.lastCheckedAt).toLocaleString()}</p>

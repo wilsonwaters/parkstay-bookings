@@ -371,6 +371,28 @@ describe('migrateLegacySecrets edge cases', () => {
     ).toMatchObject({ secretState: 'missing', config: {} });
   });
 
+  it('a profile with NULL credentials (v8: never signed in, or after Logout) is current, not failed', () => {
+    db.exec(`UPDATE users SET email = NULL, encrypted_password = NULL, encryption_key = NULL,
+               encryption_iv = NULL, encryption_auth_tag = NULL`);
+    db.prepare(`UPDATE notifiers SET config = ''`).run();
+    const machineId = jest.fn(() => FIXTURE_MACHINE_ID);
+
+    expect(migrateLegacySecrets({ db, vault: t.vault, machineId, gmailStorePath })).toEqual({
+      migrated: 0,
+      current: 2,
+      failed: 0,
+    });
+    expect(machineId).not.toHaveBeenCalled();
+    expect(rows(db, 'users')[0]).toMatchObject({
+      email: null,
+      encrypted_password: null,
+      encryption_key: null,
+      encryption_iv: null,
+      encryption_auth_tag: null,
+    });
+    expect(new AuthService(new UserRepository(db), t.vault).getCredentialStatus()).toBeNull();
+  });
+
   it('gmail-oauth.json: a missing file is not configured, and a format-2 file is left as it is', () => {
     expect(migrate()).toEqual({ migrated: 2, current: 0, failed: 0 });
     expect(fs.existsSync(gmailStorePath)).toBe(false);

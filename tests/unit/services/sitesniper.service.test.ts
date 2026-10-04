@@ -5,7 +5,7 @@
  * constructor fakes (no real database), so we exercise the service logic in isolation.
  */
 
-import { SiteSnipe } from '@shared/types';
+import { SiteSnipe, SiteSnipeInput } from '@shared/types';
 import { SnipeReleaseMode, SnipeResult, SnipeStatus } from '@shared/types/common.types';
 import { SiteSniperService } from '@main/services/sitesniper/sitesniper.service';
 import type { SiteSniperRepository } from '@main/database/repositories';
@@ -35,22 +35,23 @@ function makeSnipe(overrides: Partial<SiteSnipe> = {}): SiteSnipe {
   return {
     id: 1,
     userId: 1,
+    providerId: 'parkstay',
+    locationKey: 'parkstay:34',
+    location: { externalId: '34', name: 'Osprey Bay' },
     name: 'Test Snipe',
-    campgroundId: '34',
-    campgroundName: 'Osprey Bay',
-    targetSiteIds: ['136', '137'],
-    siteType: 'all',
-    arrivalDate: new Date('2026-07-19T00:00:00Z'),
-    departureDate: new Date('2026-07-21T00:00:00Z'),
-    numAdult: 2,
-    numConcession: 0,
-    numChild: 0,
-    numInfant: 0,
-    numVehicle: 1,
-    postcode: '6000',
+    stay: {
+      arrival: '2026-07-19',
+      departure: '2026-07-21',
+      adults: 2,
+      children: 0,
+      infants: 0,
+      concessions: 0,
+    },
+    unitIds: ['136', '137'],
+    stayParams: { gearType: 'all', numVehicles: 1, postcode: '6000' },
     releaseMode: SnipeReleaseMode.DAILY_ROLLOVER,
     releaseAt: new Date('2026-01-19T16:00:00Z'),
-    queueEnabled: false,
+    accessGateEnabled: false,
     leadTimeSeconds: 120,
     pollIntervalMs: 1500,
     windowDurationMs: 900000,
@@ -60,6 +61,18 @@ function makeSnipe(overrides: Partial<SiteSnipe> = {}): SiteSnipe {
     maxAttempts: 0,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
+    ...overrides,
+  };
+}
+
+/** A ParkStay snipe input, as the renderer sends it. */
+function snipeInput(overrides: Partial<SiteSnipeInput> = {}): SiteSnipeInput {
+  return {
+    providerId: 'parkstay',
+    name: 'Snipe',
+    location: { externalId: '34', name: 'Osprey Bay' },
+    stay: { arrival: '2026-07-19', departure: '2026-07-21', adults: 2 },
+    releaseMode: SnipeReleaseMode.DAILY_ROLLOVER,
     ...overrides,
   };
 }
@@ -169,12 +182,12 @@ describe('SiteSniperService', () => {
       expect(notifications.notifySnipeHeld).toHaveBeenCalledTimes(1);
       expect(result.held).toBe(true);
       expect(result.result).toBe(SnipeResult.HELD);
-      expect(result.heldBookingPk).toBe('987654');
+      expect(result.holdReference).toBe('987654');
       expect(result.matchedSiteId).toBe('136');
     });
 
     it('picks the first open site when there are no target site ids', async () => {
-      mockRepo.findById.mockReturnValue(makeSnipe({ targetSiteIds: [] }));
+      mockRepo.findById.mockReturnValue(makeSnipe({ unitIds: [] }));
       parkStay.getSiteAvailabilityView.mockResolvedValue(
         availabilityView([{ siteId: '500', allOpen: true }])
       );
@@ -229,8 +242,7 @@ describe('SiteSniperService', () => {
         makeSnipe({
           id: 2,
           status: SnipeStatus.HELD,
-          arrivalDate: new Date('2026-07-20T00:00:00Z'),
-          departureDate: new Date('2026-07-22T00:00:00Z'),
+          stay: { ...makeSnipe().stay, arrival: '2026-07-20', departure: '2026-07-22' },
         }),
       ]);
       parkStay.getSiteAvailabilityView.mockResolvedValue(
@@ -275,8 +287,8 @@ describe('SiteSniperService', () => {
       expect(parkStay.getSiteAvailabilityView).not.toHaveBeenCalled();
     });
 
-    it('passes useQueue through to ParkStay calls when queueEnabled', async () => {
-      mockRepo.findById.mockReturnValue(makeSnipe({ queueEnabled: true }));
+    it('passes useQueue through to ParkStay calls when accessGateEnabled', async () => {
+      mockRepo.findById.mockReturnValue(makeSnipe({ accessGateEnabled: true }));
       parkStay.getSiteAvailabilityView.mockResolvedValue(
         availabilityView([{ siteId: '136', allOpen: true }])
       );
@@ -287,6 +299,65 @@ describe('SiteSniperService', () => {
       expect(parkStay.getSiteAvailabilityView).toHaveBeenCalledWith('34', expect.any(Object), true);
       expect(parkStay.createBookingHold).toHaveBeenCalledWith(expect.any(Object), true);
     });
+
+    it('maps the stay and the ParkStay stay fields onto the availability and hold calls', async () => {
+      mockRepo.findById.mockReturnValue(
+        makeSnipe({
+          stay: {
+            arrival: '2026-07-19',
+            departure: '2026-07-21',
+            adults: 2,
+            children: 1,
+            infants: 1,
+            concessions: 1,
+          },
+          stayParams: { gearType: 'campervan', numVehicles: 2, postcode: '6530' },
+        })
+      );
+      parkStay.getSiteAvailabilityView.mockResolvedValue(
+        availabilityView([{ siteId: '136', allOpen: true }])
+      );
+      parkStay.createBookingHold.mockResolvedValue({ success: true, pk: '1' });
+
+      await service.execute(1);
+
+      expect(parkStay.getSiteAvailabilityView).toHaveBeenCalledWith(
+        '34',
+        {
+          arrivalDate: '2026-07-19',
+          departureDate: '2026-07-21',
+          numAdult: 2,
+          numConcession: 1,
+          numChild: 1,
+          numInfant: 1,
+          gearType: 'campervan',
+        },
+        false
+      );
+      expect(parkStay.createBookingHold).toHaveBeenCalledWith(
+        expect.objectContaining({
+          campgroundId: '34',
+          arrivalDate: '2026-07-19',
+          departureDate: '2026-07-21',
+          numVehicle: 2,
+          postcode: '6530',
+        }),
+        false
+      );
+    });
+
+    it('marks a snipe whose stored dates are not calendar dates in error, without polling', async () => {
+      mockRepo.findById.mockReturnValue(
+        makeSnipe({ stay: { ...makeSnipe().stay, arrival: 'garbage' } })
+      );
+
+      const result = await service.execute(1);
+
+      expect(result.result).toBe(SnipeResult.ERROR);
+      expect(result.error).toMatch(/not calendar dates/);
+      expect(parkStay.getSiteAvailabilityView).not.toHaveBeenCalled();
+      expect(mockRepo.setResult).toHaveBeenCalledWith(1, SnipeResult.ERROR, expect.any(String));
+    });
   });
 
   describe('create', () => {
@@ -295,18 +366,38 @@ describe('SiteSniperService', () => {
       mockRepo.create.mockReturnValue(created);
       mockRepo.findById.mockReturnValue(created);
 
-      await service.create(1, {
-        name: 'Daily',
-        campgroundId: '34',
-        arrivalDate: new Date('2026-07-19T00:00:00Z'),
-        departureDate: new Date('2026-07-21T00:00:00Z'),
-        releaseMode: SnipeReleaseMode.DAILY_ROLLOVER,
-      });
+      await service.create(1, snipeInput({ name: 'Daily' }));
 
       const passedInput = mockRepo.create.mock.calls[0][1];
       expect(passedInput.releaseAt).toBeInstanceOf(Date);
       // 180 days before 2026-07-19 at 00:00 AWST → 2026-01-19T16:00:00Z
       expect(passedInput.releaseAt.toISOString()).toBe('2026-01-19T16:00:00.000Z');
+      // ParkStay's defaults for the stay fields the input left out
+      expect(passedInput.stayParams).toEqual({ gearType: 'all', numVehicles: 1 });
+    });
+
+    it('keeps the stay fields the input gives over the ParkStay defaults', async () => {
+      const created = makeSnipe();
+      mockRepo.create.mockReturnValue(created);
+      mockRepo.findById.mockReturnValue(created);
+
+      await service.create(
+        1,
+        snipeInput({ stayParams: { gearType: 'tent', numVehicles: 2, postcode: '6530' } })
+      );
+
+      expect(mockRepo.create.mock.calls[0][1].stayParams).toEqual({
+        gearType: 'tent',
+        numVehicles: 2,
+        postcode: '6530',
+      });
+    });
+
+    it('rejects a provider other than ParkStay, without storing anything', async () => {
+      await expect(service.create(1, snipeInput({ providerId: 'fake' }))).rejects.toMatchObject({
+        code: 'VALIDATION',
+      });
+      expect(mockRepo.create).not.toHaveBeenCalled();
     });
 
     it('primes the next check time for CANCELLATION mode', async () => {
@@ -314,13 +405,10 @@ describe('SiteSniperService', () => {
       mockRepo.create.mockReturnValue(created);
       mockRepo.findById.mockReturnValue(created);
 
-      await service.create(1, {
-        name: 'Cancellation',
-        campgroundId: '34',
-        arrivalDate: new Date('2026-07-19T00:00:00Z'),
-        departureDate: new Date('2026-07-21T00:00:00Z'),
-        releaseMode: SnipeReleaseMode.CANCELLATION,
-      });
+      await service.create(
+        1,
+        snipeInput({ name: 'Cancellation', releaseMode: SnipeReleaseMode.CANCELLATION })
+      );
 
       expect(mockRepo.updateCheckTimestamps).toHaveBeenCalledWith(
         created.id,
@@ -331,13 +419,14 @@ describe('SiteSniperService', () => {
 
     it('rejects a departure that is not after the arrival, without storing anything', async () => {
       await expect(
-        service.create(1, {
-          name: 'Backwards',
-          campgroundId: '34',
-          arrivalDate: new Date('2026-07-21T00:00:00Z'),
-          departureDate: new Date('2026-07-21T00:00:00Z'),
-          releaseMode: SnipeReleaseMode.CANCELLATION,
-        })
+        service.create(
+          1,
+          snipeInput({
+            name: 'Backwards',
+            stay: { arrival: '2026-07-21', departure: '2026-07-21', adults: 2 },
+            releaseMode: SnipeReleaseMode.CANCELLATION,
+          })
+        )
       ).rejects.toMatchObject({
         code: 'VALIDATION',
         message: 'Departure date must be after arrival date',
@@ -347,13 +436,10 @@ describe('SiteSniperService', () => {
 
     it('requires a release time for a scheduled release', async () => {
       await expect(
-        service.create(1, {
-          name: 'Scheduled',
-          campgroundId: '34',
-          arrivalDate: new Date('2026-07-19T00:00:00Z'),
-          departureDate: new Date('2026-07-21T00:00:00Z'),
-          releaseMode: SnipeReleaseMode.SCHEDULED,
-        })
+        service.create(
+          1,
+          snipeInput({ name: 'Scheduled', releaseMode: SnipeReleaseMode.SCHEDULED })
+        )
       ).rejects.toMatchObject({ code: 'VALIDATION' });
       expect(mockRepo.create).not.toHaveBeenCalled();
     });

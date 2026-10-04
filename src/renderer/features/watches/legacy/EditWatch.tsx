@@ -8,6 +8,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import WatchForm from '../../../components/forms/WatchForm';
 import { WatchSchemaType } from '../../../../shared/schemas/watch.schema';
 import { Watch } from '../../../../shared/types';
+import { watchFormToUpdate } from '../../../components/forms/legacy-mapping';
 
 const EditWatch: React.FC = () => {
   const navigate = useNavigate();
@@ -54,7 +55,7 @@ const EditWatch: React.FC = () => {
         return;
       }
 
-      const response = await window.api.watches.update(parseInt(id), data);
+      const response = await window.api.watches.update(parseInt(id), watchFormToUpdate(data));
 
       if (response.success) {
         setShowSuccessToast(true);

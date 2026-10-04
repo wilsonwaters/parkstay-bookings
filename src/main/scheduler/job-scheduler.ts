@@ -232,7 +232,7 @@ export class JobScheduler {
       return;
     }
 
-    if (snipe.queueEnabled) {
+    if (snipe.accessGateEnabled) {
       this.siteSniperService.setStatus(snipe.id, SnipeStatus.QUEUEING);
       const queue = this.siteSniperService.getQueueService();
       try {
@@ -288,7 +288,7 @@ export class JobScheduler {
       const done =
         result.held || result.result === SnipeResult.BOOKED || !current || !current.isActive;
       if (done) {
-        if (snipe.queueEnabled) {
+        if (snipe.accessGateEnabled) {
           this.siteSniperService.getQueueService().stopKeepAlive();
         }
         this.unscheduleSnipe(snipe.id);
@@ -312,7 +312,7 @@ export class JobScheduler {
       this.siteSniperService.setStatus(snipe.id, SnipeStatus.EXPIRED);
       await this.siteSniperService.deactivate(snipe.id);
     }
-    if (snipe.queueEnabled) {
+    if (snipe.accessGateEnabled) {
       this.siteSniperService.getQueueService().stopKeepAlive();
     }
     this.unscheduleSnipe(snipe.id);

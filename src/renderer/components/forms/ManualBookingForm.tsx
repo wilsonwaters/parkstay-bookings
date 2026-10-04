@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { bookingSchema, BookingSchemaType } from '../../../shared/schemas/booking.schema';
+import { bookingFormToInput } from './legacy-mapping';
 
 interface ManualBookingFormProps {
   onSuccess: () => void;
@@ -46,7 +47,7 @@ const ManualBookingForm: React.FC<ManualBookingFormProps> = ({ onSuccess, onCanc
       setIsSubmitting(true);
       setError('');
 
-      const response = await window.api.bookings.create(data);
+      const response = await window.api.bookings.create(bookingFormToInput(data));
 
       if (response.success) {
         onSuccess();

@@ -4,40 +4,53 @@
 
 import { z } from 'zod';
 import { SnipeReleaseMode } from '../types/common.types';
-import type { SiteSnipe, SiteSnipeInput, SnipeExecutionResult } from '../types/site-sniper.types';
+import { ProviderIdSchema, StayParamsSchema } from '../types/provider.types';
+import type {
+  SiteSnipe,
+  SiteSnipeInput,
+  SiteSnipeUpdate,
+  SnipeExecutionResult,
+} from '../types/site-sniper.types';
+import { LocationRefSchema, StayInputSchema } from '../types/stay.types';
+import { assertTypeEquals } from '../utils/type-equality';
 import { CHANNELS } from './channels';
 import { id, idPayload, Namespace } from './define';
 
 const C = CHANNELS.snipes;
 
 /**
- * A snipe as the renderer sends it. Field types only, so it can be `.partial()`'d for
- * updates; the cross-field rules (dates in order, a release time for scheduled releases)
- * stay in `SiteSniperService`.
+ * A snipe as the renderer sends it. Field types only (plus the stay's own date order), so
+ * it can be `.partial()`'d for updates; the cross-field rules (a release time for scheduled
+ * releases) stay in `SiteSniperService`. Stay dates are calendar dates `YYYY-MM-DD`;
+ * `releaseAt` is an instant.
  */
+// Annotated, not inferred: the inferred type is the union of the enum's members, which is
+// assignable to `SnipeReleaseMode` but not identical to it, so assertTypeEquals would fail.
+const releaseModeSchema: z.ZodType<SnipeReleaseMode> = z.nativeEnum(SnipeReleaseMode);
+
 export const snipeInputSchema = z.object({
+  providerId: ProviderIdSchema,
   name: z.string().min(1),
-  campgroundId: z.string().min(1),
-  campgroundName: z.string().optional(),
-  targetSiteIds: z.array(z.string()).optional(),
-  siteType: z.string().optional(),
-  arrivalDate: z.date(),
-  departureDate: z.date(),
-  numAdult: z.number().int().nonnegative().optional(),
-  numConcession: z.number().int().nonnegative().optional(),
-  numChild: z.number().int().nonnegative().optional(),
-  numInfant: z.number().int().nonnegative().optional(),
-  numVehicle: z.number().int().nonnegative().optional(),
-  postcode: z.string().optional(),
-  releaseMode: z.nativeEnum(SnipeReleaseMode),
+  location: LocationRefSchema,
+  stay: StayInputSchema,
+  unitIds: z.array(z.string()).optional(),
+  stayParams: StayParamsSchema.optional(),
+  releaseMode: releaseModeSchema,
   releaseAt: z.date().optional(),
-  queueEnabled: z.boolean().optional(),
+  accessGateEnabled: z.boolean().optional(),
   leadTimeSeconds: z.number().int().nonnegative().optional(),
   pollIntervalMs: z.number().int().positive().optional(),
   windowDurationMs: z.number().int().positive().optional(),
   maxAttempts: z.number().int().nonnegative().optional(),
   notes: z.string().optional(),
 });
+assertTypeEquals<z.input<typeof snipeInputSchema>, SiteSnipeInput>(true);
+assertTypeEquals<z.output<typeof snipeInputSchema>, SiteSnipeInput>(true);
+
+/** An update: any field but the provider. */
+export const snipeUpdateSchema = snipeInputSchema.omit({ providerId: true }).partial();
+assertTypeEquals<z.input<typeof snipeUpdateSchema>, SiteSnipeUpdate>(true);
+assertTypeEquals<z.output<typeof snipeUpdateSchema>, SiteSnipeUpdate>(true);
 
 export const snipes = {
   list: { channel: C.list, request: z.void(), args: {} as [], response: {} as SiteSnipe[] },
@@ -55,8 +68,8 @@ export const snipes = {
   },
   update: {
     channel: C.update,
-    request: z.object({ id, updates: snipeInputSchema.partial() }),
-    args: {} as [id: number, updates: Partial<SiteSnipeInput>],
+    request: z.object({ id, updates: snipeUpdateSchema }),
+    args: {} as [id: number, updates: SiteSnipeUpdate],
     response: {} as SiteSnipe,
   },
   delete: {

@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SiteSniperForm from '../../../components/forms/SiteSniperForm';
 import { SiteSnipeSchemaType } from '../../../../shared/schemas/site-sniper.schema';
+import { snipeFormToInput } from '../../../components/forms/legacy-mapping';
 
 const CreateSiteSnipe: React.FC = () => {
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ const CreateSiteSnipe: React.FC = () => {
   const handleSubmit = async (data: SiteSnipeSchemaType) => {
     try {
       setError('');
-      const response = await window.api.snipes.create(data);
+      const response = await window.api.snipes.create(snipeFormToInput(data));
 
       if (response.success) {
         setShowSuccessToast(true);

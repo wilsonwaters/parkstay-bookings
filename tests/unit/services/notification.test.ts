@@ -41,6 +41,8 @@ describe('NotificationService', () => {
       });
 
       expect(notification).toBeDefined();
+      // App-wide notifications have no provider
+      expect(notification.providerId).toBeUndefined();
       expect(notification.id).toBeDefined();
       expect(notification.userId).toBe(testUserId);
       expect(notification.title).toBe('Test Notification');
@@ -77,6 +79,42 @@ describe('NotificationService', () => {
       const notifications = await notificationService.getNotifications(testUserId);
       expect(notifications).toHaveLength(1);
       expect(notifications[0].type).toBe(NotificationType.WATCH_FOUND);
+      // Labelled with the watch's provider, and worded from its location and calendar dates
+      expect(notifications[0].providerId).toBe('parkstay');
+      expect(notifications[0].message).toContain('Dales Campground');
+      expect(notifications[0].message).toContain(
+        new Date('2024-07-01T00:00:00Z').toLocaleDateString(undefined, { timeZone: 'UTC' })
+      );
+    });
+  });
+
+  describe('notifyWatchPartialFound', () => {
+    it('words the longest block from its calendar dates', async () => {
+      const watch = { ...mockWatch, userId: testUserId };
+      await notificationService.notifyWatchPartialFound(watch, [
+        {
+          siteId: 'S1',
+          siteName: 'Site 1',
+          siteType: 'Unpowered',
+          available: true,
+          price: 20,
+          dates: { arrival: '2024-07-01', departure: '2024-07-02' },
+          partial: true,
+        },
+        {
+          siteId: 'S2',
+          siteName: 'Site 2',
+          siteType: 'Unpowered',
+          available: true,
+          price: 20,
+          dates: { arrival: '2024-07-02', departure: '2024-07-05' },
+          partial: true,
+        },
+      ]);
+
+      const [notification] = await notificationService.getNotifications(testUserId);
+      expect(notification.providerId).toBe('parkstay');
+      expect(notification.message).toContain('3 consecutive nights');
     });
   });
 
@@ -89,6 +127,8 @@ describe('NotificationService', () => {
       expect(notifications).toHaveLength(1);
       expect(notifications[0].type).toBe(NotificationType.SNIPE_HELD);
       expect(notifications[0].actionUrl).toBe(`/site-sniper/${snipe.id}`);
+      expect(notifications[0].providerId).toBe('parkstay');
+      expect(notifications[0].message).toContain('Osprey Bay');
     });
   });
 
@@ -100,6 +140,7 @@ describe('NotificationService', () => {
       const notifications = await notificationService.getNotifications(testUserId);
       expect(notifications).toHaveLength(1);
       expect(notifications[0].type).toBe(NotificationType.SNIPE_BOOKED);
+      expect(notifications[0].providerId).toBe('parkstay');
     });
   });
 

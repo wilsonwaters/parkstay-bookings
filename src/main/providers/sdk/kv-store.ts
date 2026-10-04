@@ -2,7 +2,8 @@
  * `KeyValueStore`: a provider's own small persistent state (queue session, cached release
  * times, scoped secrets). Each provider gets a store scoped to it. Values are JSON.
  *
- * `InMemoryKeyValueStore` is used until V2 adds the SQLite store on `provider_state`.
+ * The app gives each provider `SqliteKeyValueStore` on `provider_state`
+ * (`database/repositories/provider-state.repository.ts`); `InMemoryKeyValueStore` is for tests.
  */
 
 export interface KeyValueEntry<T = unknown> {
@@ -19,7 +20,7 @@ export interface KeyValueStore {
   list<T = unknown>(prefix?: string): Promise<KeyValueEntry<T>[]>;
 }
 
-/** Stores JSON text, as the SQLite store will, so callers never share mutable objects with it. */
+/** Stores JSON text, as the SQLite store does, so callers never share mutable objects with it. */
 export class InMemoryKeyValueStore implements KeyValueStore {
   private readonly entries = new Map<string, string>();
 

@@ -3,27 +3,27 @@
  */
 
 import { z } from 'zod';
-import type { Watch, WatchExecutionResult, WatchInput } from '../types/watch.types';
+import { ProviderIdSchema, StayParamsSchema } from '../types/provider.types';
+import { LocationRefSchema, StayInputSchema } from '../types/stay.types';
+import type { Watch, WatchExecutionResult, WatchInput, WatchUpdate } from '../types/watch.types';
+import { assertTypeEquals } from '../utils/type-equality';
 import { CHANNELS } from './channels';
 import { id, idPayload, Namespace } from './define';
 
 const C = CHANNELS.watches;
 
 /**
- * A watch as the renderer sends it. Field types only, so it can be `.partial()`'d for
- * updates; the cross-field rules (dates in order and in the future) stay in `WatchService`.
+ * A watch as the renderer sends it. Field types only (plus the stay's own date order), so
+ * it can be `.partial()`'d for updates; the cross-field rules (dates in the future) stay in
+ * `WatchService`. Stay dates are calendar dates `YYYY-MM-DD`.
  */
 export const watchInputSchema = z.object({
+  providerId: ProviderIdSchema,
   name: z.string().min(1),
-  parkId: z.string(),
-  parkName: z.string(),
-  campgroundId: z.string().min(1),
-  campgroundName: z.string(),
-  arrivalDate: z.date(),
-  departureDate: z.date(),
-  numGuests: z.number().int().positive(),
-  preferredSites: z.array(z.string()).optional(),
-  siteType: z.string().optional(),
+  location: LocationRefSchema,
+  stay: StayInputSchema,
+  unitIds: z.array(z.string()).optional(),
+  stayParams: StayParamsSchema.optional(),
   checkIntervalMinutes: z.number().int().positive().optional(),
   autoBook: z.boolean().optional(),
   notifyOnly: z.boolean().optional(),
@@ -31,6 +31,13 @@ export const watchInputSchema = z.object({
   maxPrice: z.number().nonnegative().optional(),
   notes: z.string().optional(),
 });
+assertTypeEquals<z.input<typeof watchInputSchema>, WatchInput>(true);
+assertTypeEquals<z.output<typeof watchInputSchema>, WatchInput>(true);
+
+/** An update: any field but the provider. */
+export const watchUpdateSchema = watchInputSchema.omit({ providerId: true }).partial();
+assertTypeEquals<z.input<typeof watchUpdateSchema>, WatchUpdate>(true);
+assertTypeEquals<z.output<typeof watchUpdateSchema>, WatchUpdate>(true);
 
 export const watches = {
   list: { channel: C.list, request: z.void(), args: {} as [], response: {} as Watch[] },
@@ -48,8 +55,8 @@ export const watches = {
   },
   update: {
     channel: C.update,
-    request: z.object({ id, updates: watchInputSchema.partial() }),
-    args: {} as [id: number, updates: Partial<WatchInput>],
+    request: z.object({ id, updates: watchUpdateSchema }),
+    args: {} as [id: number, updates: WatchUpdate],
     response: {} as Watch,
   },
   delete: {

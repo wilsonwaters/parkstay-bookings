@@ -40,10 +40,7 @@ describe('notification delivery log on a freshly migrated database', () => {
   });
 
   test('accepts a delivery log linked to a notification', () => {
-    db.prepare(
-      `INSERT INTO users (id, email, encrypted_password, encryption_key, encryption_iv,
-         encryption_auth_tag) VALUES (1, 'a@example.com', 'p', 'k', 'iv', 'tag')`
-    ).run();
+    // The local profile (users id 1) exists from migration v8.
     db.prepare(
       `INSERT INTO notifications (id, user_id, type, title, message)
        VALUES (1, 1, 'info', 'Title', 'Message')`

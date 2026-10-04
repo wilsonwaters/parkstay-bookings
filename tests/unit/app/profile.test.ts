@@ -1,7 +1,7 @@
 /**
- * The local profile (architecture-notes §12.21): `ensureLocalProfile` creates the single
- * profile row when the table is empty and never touches an existing one; `requireUserId`
- * resolves it for IPC handlers, or throws NO_PROFILE.
+ * The local profile (architecture-notes §12.21): migration v8 seeds the single profile row,
+ * `ensureLocalProfile` creates it when the table is empty and never touches an existing one;
+ * `requireUserId` resolves it for IPC handlers, or throws NO_PROFILE.
  */
 
 import Database from 'better-sqlite3';
@@ -25,7 +25,16 @@ describe('local profile', () => {
     await dbHelper.teardown();
   });
 
+  it('resolves the profile row a fresh v8 database already has (id 1, no credentials)', () => {
+    const profile = createLocalProfile(users);
+
+    expect(profile.requireUserId()).toBe(1);
+    expect(profile.ensureLocalProfile()).toBe(1);
+    expect(users.findAll()).toHaveLength(1);
+  });
+
   it('requireUserId throws AppError NO_PROFILE when there is no users row', () => {
+    db.exec('DELETE FROM users');
     const profile = createLocalProfile(users);
 
     expect(() => profile.requireUserId()).toThrow(AppError);
@@ -33,6 +42,7 @@ describe('local profile', () => {
   });
 
   it('ensureLocalProfile creates id 1 once and is idempotent', () => {
+    db.exec('DELETE FROM users');
     const profile = createLocalProfile(users);
 
     expect(profile.ensureLocalProfile()).toBe(1);
@@ -43,6 +53,7 @@ describe('local profile', () => {
   });
 
   it('keeps an existing profile, even one that is not id 1, and resolves the first users.id', () => {
+    db.exec('DELETE FROM users');
     db.prepare(
       `INSERT INTO users (id, email, encrypted_password, encryption_key, encryption_iv, encryption_auth_tag, first_name)
        VALUES (7, 'me@example.com', 'enc', 'key', 'iv', 'tag', 'Kept')`

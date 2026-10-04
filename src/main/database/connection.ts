@@ -6,7 +6,7 @@
  *
  * To add a new migration:
  * 1. Bump LATEST_SCHEMA_VERSION to the new version N
- * 2. Add a new `if (currentVersion < N)` block at the bottom of runMigrations()
+ * 2. Add a new `if (pending(N))` block at the bottom of runMigrations()
  * 3. Wrap its body in applyMigration(db, N, [tables it creates or rebuilds], () => { ... }).
  *    applyMigration runs the body and records version N in one transaction. The listed
  *    tables must be free of foreign-key violations when it commits, and the step may not
@@ -21,7 +21,7 @@ import * as path from 'path';
 import { logger } from '../utils/logger';
 
 /** Schema version this build creates and understands. */
-export const LATEST_SCHEMA_VERSION = 7;
+export const LATEST_SCHEMA_VERSION = 8;
 
 /** A migration step failed. Its transaction was rolled back, so the database is still at the previous version. */
 export class MigrationError extends Error {
@@ -371,11 +371,540 @@ function restoreSequence(db: Database.Database, table: string, seq: number | und
   }
 }
 
+// ---------------------------------------------------------------------------------------
+// Migration 008 helpers: the provider-aware data model (architecture-notes §5)
+// ---------------------------------------------------------------------------------------
+
+/** Whether `table` exists (tables only; not views or indexes). */
+function hasTable(db: Database.Database, table: string): boolean {
+  return (
+    db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) !==
+    undefined
+  );
+}
+
+/** Column name → NOT NULL flag, from `PRAGMA table_info`. Empty when the table is absent. */
+function columnsOf(db: Database.Database, table: string): Map<string, boolean> {
+  const rows = db.prepare('SELECT name, "notnull" FROM pragma_table_info(?)').all(table) as {
+    name: string;
+    notnull: number;
+  }[];
+  return new Map(rows.map((r) => [r.name, r.notnull === 1]));
+}
+
 /**
- * Brings the database up to LATEST_SCHEMA_VERSION.
+ * D(col): the calendar date `YYYY-MM-DD` a legacy date column meant (tech-review #14).
+ *
+ * Legacy code wrote calendar dates as ISO instants: UTC midnight (`toISOString` of a date
+ * input) or local midnight on the user's machine, e.g. `2026-12-12T16:00:00.000Z` for
+ * 13 Dec in Perth. Adding 12 hours and taking the date rounds to the nearest UTC midnight,
+ * which recovers the intended day for writes at UTC midnight and at local midnight anywhere
+ * from UTC-11 to UTC+12 (every Australian zone included).
+ *
+ * This is the spec's `CASE WHEN length(col) > 10 THEN COALESCE(date(col, '+12 hours'),
+ * substr(col, 1, 10)) ELSE col END`, applied only when the value starts with a real date.
+ * Values of 10 characters or fewer (already `YYYY-MM-DD`, empty, or junk) are copied
+ * unchanged, and so is NULL. A longer value that does not start with a real date is copied
+ * unchanged too, because SQLite would otherwise roll `2026-02-30` over to `2026-03-02` and
+ * truncate junk into a different value. A real date followed by a time SQLite cannot read
+ * keeps its date. `column` is a code constant. Exported for its tests.
+ */
+export function calendarDateSql(column: string): string {
+  return `CASE
+      WHEN length(${column}) > 10 AND date(substr(${column}, 1, 10)) IS substr(${column}, 1, 10)
+        THEN COALESCE(date(${column}, '+12 hours'), substr(${column}, 1, 10))
+      ELSE ${column}
+    END`;
+}
+
+/**
+ * The provider's own stay fields as a JSON object, from `name, value` pairs of SQL
+ * expressions (code constants). Members whose value is NULL are left out: json_patch with
+ * a NULL member removes it (RFC 7396).
+ */
+function stayParamsSql(...pairs: [string, string][]): string {
+  const members = pairs.map(([name, value]) => `'${name}', ${value}`).join(', ');
+  return `json_patch('{}', json_object(${members}))`;
+}
+
+/** Logs, once per table, how many rows kept a stay date that is not a calendar date. */
+function warnOnInvalidStayDates(db: Database.Database, table: string): void {
+  const { n } = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM ${table}
+       WHERE date(arrival_date) IS NOT arrival_date OR date(departure_date) IS NOT departure_date`
+    )
+    .get() as { n: number };
+  if (n > 0) {
+    logger.warn(
+      `Migration 008: ${n} ${table} row(s) have an arrival or departure that is not a calendar date (YYYY-MM-DD); copied unchanged`
+    );
+  }
+}
+
+/**
+ * users: the local profile no longer needs credentials (platform open question 1). The
+ * credential columns become nullable; every value is copied unchanged (P5 re-encrypts them,
+ * V6 drops them).
+ */
+function v8RebuildUsers(db: Database.Database): void {
+  if (columnsOf(db, 'users').get('email') === false) return;
+  const seq = readSequence(db, 'users');
+  db.exec(`
+    CREATE TABLE users_v8 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE,
+      encrypted_password TEXT,
+      encryption_key TEXT,
+      encryption_iv TEXT,
+      encryption_auth_tag TEXT,
+      first_name TEXT,
+      last_name TEXT,
+      phone TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    INSERT INTO users_v8 (id, email, encrypted_password, encryption_key, encryption_iv,
+        encryption_auth_tag, first_name, last_name, phone, created_at, updated_at)
+      SELECT id, email, encrypted_password, encryption_key, encryption_iv,
+        encryption_auth_tag, first_name, last_name, phone, created_at, updated_at
+      FROM users;
+    DROP TABLE users;
+    ALTER TABLE users_v8 RENAME TO users;
+    CREATE INDEX idx_users_email ON users(email);
+    CREATE TRIGGER update_users_timestamp
+    AFTER UPDATE ON users
+    BEGIN
+        UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END;
+  `);
+  restoreSequence(db, 'users', seq);
+}
+
+/**
+ * provider_accounts, with the ParkStay account taken from the first `users` row: its email
+ * and name. Sign-in state is unknown until V6 checks it.
+ */
+function v8CreateProviderAccounts(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS provider_accounts (
+      provider_id TEXT PRIMARY KEY,
+      status TEXT NOT NULL DEFAULT 'unknown',
+      display_name TEXT,
+      email TEXT,
+      last_signed_in_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  const { n: users } = db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number };
+  if (users > 1) {
+    logger.warn(`Migration 008: ${users} users rows; only the first becomes the ParkStay account`);
+  }
+  db.exec(`
+    INSERT OR IGNORE INTO provider_accounts (provider_id, status, display_name, email, last_signed_in_at)
+      SELECT 'parkstay', 'unknown',
+        NULLIF(trim(COALESCE(first_name, '') || ' ' || COALESCE(last_name, '')), ''),
+        NULLIF(email, ''),
+        NULL
+      FROM users ORDER BY id LIMIT 1;
+  `);
+}
+
+/** The single local profile (§12.21): id 1 with no credentials, when there is no row. */
+function v8EnsureLocalProfile(db: Database.Database): void {
+  db.exec(`
+    INSERT INTO users (id, email, encrypted_password, encryption_key, encryption_iv,
+        encryption_auth_tag)
+      SELECT 1, NULL, NULL, NULL, NULL, NULL
+      WHERE NOT EXISTS (SELECT 1 FROM users);
+  `);
+}
+
+/** watches: provider id, generic location, stay and unit columns; ParkStay extras in stay_params. */
+function v8RebuildWatches(db: Database.Database): void {
+  if (columnsOf(db, 'watches').has('provider_id')) return;
+  const seq = readSequence(db, 'watches');
+  db.exec(`
+    CREATE TABLE watches_v8 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      provider_id TEXT NOT NULL DEFAULT 'parkstay',
+      name TEXT NOT NULL,
+      location_external_id TEXT NOT NULL,
+      location_name TEXT NOT NULL,
+      area_name TEXT,
+      arrival_date TEXT NOT NULL,
+      departure_date TEXT NOT NULL,
+      num_adults INTEGER NOT NULL,
+      num_children INTEGER NOT NULL DEFAULT 0,
+      num_infants INTEGER NOT NULL DEFAULT 0,
+      num_concessions INTEGER NOT NULL DEFAULT 0,
+      unit_ids JSON NOT NULL DEFAULT '[]',
+      stay_params JSON NOT NULL DEFAULT '{}',
+      check_interval_minutes INTEGER DEFAULT 5,
+      is_active BOOLEAN DEFAULT 1,
+      last_checked_at DATETIME,
+      next_check_at DATETIME,
+      last_result TEXT,
+      found_count INTEGER DEFAULT 0,
+      auto_book BOOLEAN DEFAULT 0,
+      notify_only BOOLEAN DEFAULT 1,
+      allow_partial_match BOOLEAN DEFAULT 0,
+      max_price DECIMAL(10,2),
+      notes TEXT,
+      last_availability JSON,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    INSERT INTO watches_v8 (id, user_id, provider_id, name, location_external_id,
+        location_name, area_name, arrival_date, departure_date, num_adults, num_children,
+        num_infants, num_concessions, unit_ids, stay_params, check_interval_minutes,
+        is_active, last_checked_at, next_check_at, last_result, found_count, auto_book,
+        notify_only, allow_partial_match, max_price, notes, last_availability, created_at,
+        updated_at)
+      SELECT id, user_id, 'parkstay', name, campground_id,
+        campground_name, park_name, ${calendarDateSql('arrival_date')},
+        ${calendarDateSql('departure_date')}, num_guests, 0,
+        0, 0, COALESCE(preferred_sites, '[]'),
+        ${stayParamsSql(['parkId', 'park_id'], ['gearType', 'site_type'])},
+        check_interval_minutes,
+        is_active, last_checked_at, next_check_at, last_result, found_count, auto_book,
+        notify_only, allow_partial_match, max_price, notes, last_availability, created_at,
+        updated_at
+      FROM watches;
+    DROP TABLE watches;
+    ALTER TABLE watches_v8 RENAME TO watches;
+    CREATE INDEX idx_watches_user_id ON watches(user_id);
+    CREATE INDEX idx_watches_active ON watches(is_active);
+    CREATE INDEX idx_watches_next_check ON watches(next_check_at);
+    CREATE INDEX idx_watches_dates ON watches(arrival_date, departure_date);
+    CREATE INDEX idx_watches_provider_active ON watches(provider_id, is_active);
+    CREATE TRIGGER update_watches_timestamp
+    AFTER UPDATE ON watches
+    BEGIN
+        UPDATE watches SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END;
+  `);
+  restoreSequence(db, 'watches', seq);
+  warnOnInvalidStayDates(db, 'watches');
+}
+
+/**
+ * site_snipes: as watches, plus the access gate and hold columns (`queue_enabled` →
+ * `access_gate_enabled`, `held_*` → `hold_*`, new `hold_unit_id`). The release_mode CHECK
+ * is dropped: release modes are provider-described (§12.3).
+ */
+function v8RebuildSiteSnipes(db: Database.Database): void {
+  if (!hasTable(db, 'site_snipes') || columnsOf(db, 'site_snipes').has('provider_id')) return;
+  const seq = readSequence(db, 'site_snipes');
+  db.exec(`
+    CREATE TABLE site_snipes_v8 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      provider_id TEXT NOT NULL DEFAULT 'parkstay',
+      name TEXT NOT NULL,
+      location_external_id TEXT NOT NULL,
+      location_name TEXT,
+      area_name TEXT,
+      unit_ids JSON NOT NULL DEFAULT '[]',
+      arrival_date TEXT NOT NULL,
+      departure_date TEXT NOT NULL,
+      num_adults INTEGER DEFAULT 2,
+      num_children INTEGER DEFAULT 0,
+      num_infants INTEGER DEFAULT 0,
+      num_concessions INTEGER DEFAULT 0,
+      stay_params JSON NOT NULL DEFAULT '{}',
+      release_mode TEXT NOT NULL DEFAULT 'daily_rollover',
+      release_at DATETIME,
+      access_gate_enabled BOOLEAN DEFAULT 0,
+      lead_time_seconds INTEGER DEFAULT 120,
+      poll_interval_ms INTEGER DEFAULT 1500,
+      window_duration_ms INTEGER DEFAULT 900000,
+      status TEXT DEFAULT 'armed',
+      is_active BOOLEAN DEFAULT 1,
+      attempts_count INTEGER DEFAULT 0,
+      max_attempts INTEGER DEFAULT 0,
+      last_checked_at DATETIME,
+      next_check_at DATETIME,
+      last_result TEXT,
+      last_error TEXT,
+      hold_reference TEXT,
+      hold_expires_at DATETIME,
+      hold_unit_id TEXT,
+      payment_url TEXT,
+      booked_reference TEXT,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    INSERT INTO site_snipes_v8 (id, user_id, provider_id, name, location_external_id,
+        location_name, area_name, unit_ids, arrival_date, departure_date, num_adults,
+        num_children, num_infants, num_concessions, stay_params, release_mode, release_at,
+        access_gate_enabled, lead_time_seconds, poll_interval_ms, window_duration_ms, status,
+        is_active, attempts_count, max_attempts, last_checked_at, next_check_at, last_result,
+        last_error, hold_reference, hold_expires_at, hold_unit_id, payment_url,
+        booked_reference, notes, created_at, updated_at)
+      SELECT id, user_id, 'parkstay', name, campground_id,
+        campground_name, NULL, COALESCE(target_site_ids, '[]'),
+        ${calendarDateSql('arrival_date')}, ${calendarDateSql('departure_date')}, num_adult,
+        num_child, num_infant, num_concession,
+        ${stayParamsSql(['gearType', 'site_type'], ['numVehicles', 'num_vehicle'], ['postcode', 'postcode'])},
+        release_mode, release_at,
+        queue_enabled, lead_time_seconds, poll_interval_ms, window_duration_ms, status,
+        is_active, attempts_count, max_attempts, last_checked_at, next_check_at, last_result,
+        last_error, held_booking_pk, held_expires_at, NULL, payment_url,
+        booked_reference, notes, created_at, updated_at
+      FROM site_snipes;
+    DROP TABLE site_snipes;
+    ALTER TABLE site_snipes_v8 RENAME TO site_snipes;
+    CREATE INDEX idx_snipe_user_id ON site_snipes(user_id);
+    CREATE INDEX idx_snipe_active ON site_snipes(is_active);
+    CREATE INDEX idx_snipe_release_at ON site_snipes(release_at);
+    CREATE TRIGGER update_site_snipes_timestamp
+    AFTER UPDATE ON site_snipes
+    BEGIN
+      UPDATE site_snipes SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END;
+  `);
+  restoreSequence(db, 'site_snipes', seq);
+  warnOnInvalidStayDates(db, 'site_snipes');
+}
+
+/**
+ * bookings: unique per provider (`UNIQUE(provider_id, booking_reference)`), generic location,
+ * stay and unit columns. The site number becomes the only unit id, the site type a stay
+ * param, and `num_guests` the adults, as for watches.
+ */
+function v8RebuildBookings(db: Database.Database): void {
+  if (columnsOf(db, 'bookings').has('provider_id')) return;
+  const seq = readSequence(db, 'bookings');
+  db.exec(`
+    CREATE TABLE bookings_v8 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      provider_id TEXT NOT NULL DEFAULT 'parkstay',
+      booking_reference TEXT NOT NULL,
+      location_external_id TEXT,
+      location_name TEXT NOT NULL,
+      area_name TEXT,
+      unit_ids JSON NOT NULL DEFAULT '[]',
+      stay_params JSON NOT NULL DEFAULT '{}',
+      arrival_date TEXT NOT NULL,
+      departure_date TEXT NOT NULL,
+      num_nights INTEGER NOT NULL,
+      num_adults INTEGER NOT NULL,
+      num_children INTEGER NOT NULL DEFAULT 0,
+      num_infants INTEGER NOT NULL DEFAULT 0,
+      num_concessions INTEGER NOT NULL DEFAULT 0,
+      total_cost DECIMAL(10,2),
+      currency TEXT DEFAULT 'AUD',
+      status TEXT NOT NULL CHECK(status IN ('confirmed', 'cancelled', 'pending')),
+      booking_data JSON,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      synced_at DATETIME,
+      UNIQUE (provider_id, booking_reference),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    INSERT INTO bookings_v8 (id, user_id, provider_id, booking_reference,
+        location_external_id, location_name, area_name, unit_ids, stay_params, arrival_date,
+        departure_date, num_nights, num_adults, num_children, num_infants, num_concessions,
+        total_cost, currency, status, booking_data, notes, created_at, updated_at, synced_at)
+      SELECT id, user_id, 'parkstay', booking_reference,
+        NULL, campground_name, park_name,
+        CASE WHEN site_number IS NULL THEN '[]' ELSE json_array(site_number) END,
+        ${stayParamsSql(['siteType', 'site_type'])}, ${calendarDateSql('arrival_date')},
+        ${calendarDateSql('departure_date')}, num_nights, num_guests, 0, 0, 0,
+        total_cost, currency, status, booking_data, notes, created_at, updated_at, synced_at
+      FROM bookings;
+    DROP TABLE bookings;
+    ALTER TABLE bookings_v8 RENAME TO bookings;
+    CREATE INDEX idx_bookings_user_id ON bookings(user_id);
+    CREATE INDEX idx_bookings_reference ON bookings(booking_reference);
+    CREATE INDEX idx_bookings_status ON bookings(status);
+    CREATE INDEX idx_bookings_arrival_date ON bookings(arrival_date);
+    CREATE INDEX idx_bookings_dates ON bookings(arrival_date, departure_date);
+    CREATE INDEX idx_bookings_provider_arrival ON bookings(provider_id, arrival_date);
+    CREATE TRIGGER update_bookings_timestamp
+    AFTER UPDATE ON bookings
+    BEGIN
+        UPDATE bookings SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END;
+  `);
+  restoreSequence(db, 'bookings', seq);
+  warnOnInvalidStayDates(db, 'bookings');
+}
+
+/** notifications: a nullable provider id, 'parkstay' for those about a watch, snipe or booking. */
+function v8AddNotificationProvider(db: Database.Database): void {
+  if (columnsOf(db, 'notifications').has('provider_id')) return;
+  db.exec(`
+    ALTER TABLE notifications ADD COLUMN provider_id TEXT;
+    UPDATE notifications SET provider_id = 'parkstay'
+      WHERE related_type IN ('watch', 'snipe', 'booking');
+    CREATE INDEX idx_notifications_provider_id ON notifications(provider_id);
+  `);
+}
+
+/**
+ * provider_state, each provider's key-value store. The DBCA queue session moves into it as
+ * ('parkstay', 'queue.session'), in the JSON shape agreed with V3, and queue_session goes.
+ */
+function v8CreateProviderState(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS provider_state (
+      provider_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      value JSON NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (provider_id, key)
+    );
+  `);
+  if (!hasTable(db, 'queue_session')) return;
+  db.exec(`
+    INSERT OR IGNORE INTO provider_state (provider_id, key, value, updated_at)
+      SELECT 'parkstay', 'queue.session',
+        json_object('sessionKey', session_key, 'status', status, 'position', position,
+          'estimatedWaitSeconds', estimated_wait_seconds, 'expirySeconds', expiry_seconds,
+          'expiresAt', expires_at, 'createdAt', created_at),
+        COALESCE(updated_at, CURRENT_TIMESTAMP)
+      FROM queue_session ORDER BY id LIMIT 1;
+    DROP TABLE queue_session;
+  `);
+}
+
+/**
+ * locations, the cached catalogue of every provider, with an FTS5 index over name, area,
+ * region and summary kept in sync by triggers.
+ *
+ * `id INTEGER PRIMARY KEY` makes the rowid a real column, so it survives VACUUM: the FTS
+ * index is external-content and refers to rows by rowid. A location is identified by
+ * `UNIQUE (provider_id, external_id)`. Writers must upsert with ON CONFLICT DO UPDATE,
+ * never INSERT OR REPLACE, whose implicit delete skips the FTS delete trigger.
+ */
+function v8CreateLocations(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS locations (
+      id INTEGER PRIMARY KEY,
+      provider_id TEXT NOT NULL,
+      external_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      booking_mode TEXT NOT NULL,
+      lat REAL NOT NULL,
+      lng REAL NOT NULL,
+      area_name TEXT,
+      region TEXT,
+      summary TEXT,
+      description_html TEXT,
+      image_urls JSON NOT NULL DEFAULT '[]',
+      amenities JSON NOT NULL DEFAULT '[]',
+      unit_count INTEGER,
+      info_url TEXT,
+      booking_url TEXT,
+      raw JSON,
+      fetched_at DATETIME NOT NULL,
+      detail JSON,
+      detail_fetched_at DATETIME,
+      UNIQUE (provider_id, external_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_locations_provider ON locations(provider_id);
+    CREATE INDEX IF NOT EXISTS idx_locations_kind ON locations(kind);
+    CREATE INDEX IF NOT EXISTS idx_locations_booking_mode ON locations(booking_mode);
+    CREATE INDEX IF NOT EXISTS idx_locations_region ON locations(region);
+    CREATE INDEX IF NOT EXISTS idx_locations_lat_lng ON locations(lat, lng);
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS locations_fts USING fts5(
+      name, area_name, region, summary,
+      content = 'locations',
+      content_rowid = 'rowid',
+      tokenize = 'unicode61 remove_diacritics 2'
+    );
+    CREATE TRIGGER IF NOT EXISTS locations_fts_insert
+    AFTER INSERT ON locations
+    BEGIN
+      INSERT INTO locations_fts (rowid, name, area_name, region, summary)
+        VALUES (NEW.rowid, NEW.name, NEW.area_name, NEW.region, NEW.summary);
+    END;
+    CREATE TRIGGER IF NOT EXISTS locations_fts_delete
+    AFTER DELETE ON locations
+    BEGIN
+      INSERT INTO locations_fts (locations_fts, rowid, name, area_name, region, summary)
+        VALUES ('delete', OLD.rowid, OLD.name, OLD.area_name, OLD.region, OLD.summary);
+    END;
+    CREATE TRIGGER IF NOT EXISTS locations_fts_update
+    AFTER UPDATE OF name, area_name, region, summary ON locations
+    BEGIN
+      INSERT INTO locations_fts (locations_fts, rowid, name, area_name, region, summary)
+        VALUES ('delete', OLD.rowid, OLD.name, OLD.area_name, OLD.region, OLD.summary);
+      INSERT INTO locations_fts (rowid, name, area_name, region, summary)
+        VALUES (NEW.rowid, NEW.name, NEW.area_name, NEW.region, NEW.summary);
+    END;
+  `);
+}
+
+/** Tables whose rows belong to the local profile through `user_id`. */
+const PROFILE_OWNED_TABLES = ['watches', 'site_snipes', 'bookings', 'notifications'] as const;
+
+/**
+ * Gives rows whose `user_id` names no `users` row to the local profile. v1.x always ran with
+ * foreign keys on, so there should be none; but v8 lists `users` and the rebuilt tables as
+ * its own, which must be clean, so an orphan would otherwise stop the app from starting.
+ * The app has one profile, so the orphan was the user's own data: it is kept, not dropped.
+ */
+function v8AdoptOrphans(db: Database.Database): void {
+  const profile = db.prepare('SELECT id FROM users ORDER BY id LIMIT 1').get() as
+    | { id: number }
+    | undefined;
+  if (!profile) return;
+  for (const table of PROFILE_OWNED_TABLES) {
+    if (!hasTable(db, table)) continue;
+    // Moving a row to the profile is not an edit by the user, so its `updated_at` must not
+    // change: set the table's timestamp triggers aside for the UPDATE and put them back from
+    // their stored SQL (all inside the migration's transaction).
+    const triggers = db
+      .prepare(
+        `SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ? AND name LIKE 'update\\_%' ESCAPE '\\'`
+      )
+      .all(table) as Array<{ name: string; sql: string }>;
+    for (const trigger of triggers) db.exec(`DROP TRIGGER "${trigger.name}"`);
+    const { changes } = db
+      .prepare(
+        `UPDATE ${table} SET user_id = ? WHERE user_id IS NULL OR user_id NOT IN (SELECT id FROM users)`
+      )
+      .run(profile.id);
+    for (const trigger of triggers) db.exec(trigger.sql);
+    if (changes > 0) {
+      logger.warn(
+        `Migration 008: gave ${changes} ${table} row(s) whose user no longer exists to the local profile (id ${profile.id})`
+      );
+    }
+  }
+}
+
+/**
+ * Brings the database up to `targetVersion`, LATEST_SCHEMA_VERSION unless given. A lower
+ * target stops after that version (tests use it to build a database of an older shape).
  * Add new migrations at the bottom of this function.
  */
-export function runMigrations(database: Database.Database): void {
+export function runMigrations(
+  database: Database.Database,
+  targetVersion: number = LATEST_SCHEMA_VERSION
+): void {
+  if (
+    !Number.isInteger(targetVersion) ||
+    targetVersion < 1 ||
+    targetVersion > LATEST_SCHEMA_VERSION
+  ) {
+    throw new RangeError(
+      `runMigrations target version must be 1-${LATEST_SCHEMA_VERSION}, not ${targetVersion}`
+    );
+  }
+
   // Create migrations table if it doesn't exist
   database.exec(`
     CREATE TABLE IF NOT EXISTS migrations (
@@ -397,9 +926,12 @@ export function runMigrations(database: Database.Database): void {
   if (currentVersion > LATEST_SCHEMA_VERSION) {
     throw new DatabaseTooNewError(currentVersion, LATEST_SCHEMA_VERSION);
   }
-  if (currentVersion === LATEST_SCHEMA_VERSION) {
+  if (currentVersion >= targetVersion) {
     return;
   }
+  /** Whether migration `version` still has to run in this call. */
+  const pending = (version: number): boolean =>
+    currentVersion < version && version <= targetVersion;
 
   // Table rebuilds need foreign keys off. The pragma is ignored inside a transaction, so it
   // is set here, around all the steps, and always restored. Refuse to run if it cannot take
@@ -420,7 +952,7 @@ export function runMigrations(database: Database.Database): void {
     // Migration 001: Initial schema. Every statement is CREATE ... IF NOT EXISTS, so it is
     // harmless on pre-v2 installs that already have the tables. It writes no rows, so it
     // has no tables to check.
-    if (currentVersion < 1) {
+    if (pending(1)) {
       applyMigration(database, 1, [], () => {
         logger.info('Running migration 001: Initial schema');
         database.exec(SCHEMA_SQL);
@@ -428,7 +960,7 @@ export function runMigrations(database: Database.Database): void {
     }
 
     // Migration 002: Add last_availability column to watches
-    if (currentVersion < 2) {
+    if (pending(2)) {
       applyMigration(database, 2, [], () => {
         logger.info('Running migration 002: Add last_availability column');
 
@@ -452,7 +984,7 @@ export function runMigrations(database: Database.Database): void {
     }
 
     // Migration 003: Add the notifier tables (named notification_providers until v7)
-    if (currentVersion < 3) {
+    if (pending(3)) {
       applyMigration(database, 3, ['notification_providers', 'notification_delivery_logs'], () => {
         logger.info('Running migration 003: Add notifier tables');
 
@@ -496,7 +1028,7 @@ export function runMigrations(database: Database.Database): void {
     }
 
     // Migration 004: Add queue_session table for persisting queue position
-    if (currentVersion < 4) {
+    if (pending(4)) {
       applyMigration(database, 4, ['queue_session'], () => {
         logger.info('Running migration 004: Add queue_session table');
 
@@ -518,7 +1050,7 @@ export function runMigrations(database: Database.Database): void {
     }
 
     // Migration 005: Add allow_partial_match column to watches
-    if (currentVersion < 5) {
+    if (pending(5)) {
       applyMigration(database, 5, [], () => {
         logger.info('Running migration 005: Add allow_partial_match column to watches');
 
@@ -541,7 +1073,7 @@ export function runMigrations(database: Database.Database): void {
     // NOTE: renaming notifications aside makes SQLite rewrite the delivery-log FK to
     // "notifications_old", which is then dropped. The SQL is kept as released (so v5 → v7
     // upgrades replay it exactly); migration 007 repairs the damage.
-    if (currentVersion < 6) {
+    if (pending(6)) {
       applyMigration(database, 6, ['site_snipes', 'notifications'], () => {
         logger.info('Running migration 006: Add site_snipes table + widen notifications CHECK');
 
@@ -636,7 +1168,7 @@ export function runMigrations(database: Database.Database): void {
     // The old table is never renamed aside, because SQLite would then rewrite other tables'
     // FKs to the aside name (the 006 bug). Indexes are created only after the old table is
     // dropped, because index names are global.
-    if (currentVersion < 7) {
+    if (pending(7)) {
       applyMigration(
         database,
         7,
@@ -749,6 +1281,46 @@ export function runMigrations(database: Database.Database): void {
           logger.info(
             `Migration 007: dropped skip_the_queue_entries, discarding ${discarded} row(s)`
           );
+        }
+      );
+    }
+
+    // Migration 008: Provider-aware data model (architecture-notes §5).
+    // - users: credential columns become nullable; the profile no longer needs a login.
+    // - provider_accounts: the ParkStay account, from the first users row; then, when there is
+    //   no users row at all, the local profile row (id 1) is inserted.
+    // - watches, site_snipes, bookings: rebuilt with provider_id, generic location, stay and
+    //   unit columns and calendar dates YYYY-MM-DD; ParkStay extras move into stay_params.
+    // - notifications: nullable provider_id.
+    // - provider_state (queue_session moves into it) and locations with its FTS5 index.
+    // Rebuilds follow v7: create X_v8 -> copy -> drop X -> rename X_v8 to X -> indexes and
+    // triggers. Every step checks sqlite_master/table_info first, so it is idempotent.
+    if (pending(8)) {
+      applyMigration(
+        database,
+        8,
+        [
+          'users',
+          'provider_accounts',
+          'watches',
+          'site_snipes',
+          'bookings',
+          'notifications',
+          'provider_state',
+          'locations',
+        ],
+        () => {
+          logger.info('Running migration 008: Provider-aware data model');
+          v8RebuildUsers(database);
+          v8CreateProviderAccounts(database);
+          v8EnsureLocalProfile(database);
+          v8RebuildWatches(database);
+          v8RebuildSiteSnipes(database);
+          v8RebuildBookings(database);
+          v8AddNotificationProvider(database);
+          v8CreateProviderState(database);
+          v8CreateLocations(database);
+          v8AdoptOrphans(database);
         }
       );
     }

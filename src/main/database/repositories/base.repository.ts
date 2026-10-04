@@ -1,6 +1,18 @@
 import Database from 'better-sqlite3';
 
 /**
+ * Reads an instant column written either as ISO (`toISOString`) or by a
+ * `DEFAULT CURRENT_TIMESTAMP` ('YYYY-MM-DD HH:MM:SS', which SQLite writes in UTC but `new Date`
+ * would read as local time). NULL or empty reads as `undefined`.
+ */
+export function readInstant(value: string | null | undefined): Date | undefined {
+  if (!value) return undefined;
+  return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+    ? new Date(`${value.replace(' ', 'T')}Z`)
+    : new Date(value);
+}
+
+/**
  * Base class for every repository. The database is injected; repositories never open or
  * look up a connection themselves.
  *

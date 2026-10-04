@@ -257,11 +257,12 @@ describe('AuthService', () => {
 
       const row = userRepository.findById(stored.id);
       expect(row).not.toBeNull();
+      // Since v8 the credential columns are nullable: cleared reads like never signed in
       expect(storedRow()).toEqual({
-        encrypted_password: '',
-        encryption_key: '',
-        encryption_iv: '',
-        encryption_auth_tag: '',
+        encrypted_password: null,
+        encryption_key: null,
+        encryption_iv: null,
+        encryption_auth_tag: null,
       });
       expect(row).toMatchObject({
         email: '',
@@ -300,7 +301,15 @@ describe('AuthService', () => {
       expect(user?.email).toBe(mockUserInput.email);
     });
 
+    it('should return the local profile, without credentials, before any sign-in', () => {
+      // Migration v8 seeds the profile row with NULL credentials, read as ''.
+      const user = authService.getCurrentUser();
+      expect(user).toMatchObject({ id: 1, email: '', encryptedPassword: '' });
+      expect(authService.hasStoredCredentials()).toBe(false);
+    });
+
     it('should return null if no user exists', () => {
+      dbHelper.getDb().exec('DELETE FROM users');
       const user = authService.getCurrentUser();
       expect(user).toBeNull();
     });

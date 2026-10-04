@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { SiteSnipe, SnipeStatus } from '@shared/types';
 import { ConfirmDialog, Spinner, useToast } from '../../../components/ui';
 import ComingSoonBanner from '../../../components/ComingSoonBanner';
+import { stayDate } from '../../../components/forms/legacy-mapping';
 
 /**
  * Map a snipe status to a Tailwind badge colour.
@@ -231,8 +232,8 @@ export default function SiteSniperPage() {
             {snipes.map((snipe) => {
               const releaseAt = snipe.releaseAt ? new Date(snipe.releaseAt).getTime() : null;
               const countdownMs = releaseAt !== null ? releaseAt - now : null;
-              const heldExpiresAt = snipe.heldExpiresAt
-                ? new Date(snipe.heldExpiresAt).getTime()
+              const heldExpiresAt = snipe.holdExpiresAt
+                ? new Date(snipe.holdExpiresAt).getTime()
                 : null;
               const holdRemainingMs = heldExpiresAt !== null ? heldExpiresAt - now : null;
               return (
@@ -240,7 +241,9 @@ export default function SiteSniperPage() {
                   <div className="flex justify-between items-start mb-2">
                     <div>
                       <h3 className="text-xl font-semibold">{snipe.name}</h3>
-                      <p className="text-gray-600">{snipe.campgroundName || snipe.campgroundId}</p>
+                      <p className="text-gray-600">
+                        {snipe.location.name || snipe.location.externalId}
+                      </p>
                     </div>
                     <span
                       className={`px-2 py-1 rounded text-sm capitalize ${statusBadgeClass(
@@ -253,8 +256,8 @@ export default function SiteSniperPage() {
 
                   <div className="mb-3 text-sm text-gray-600">
                     <p>
-                      Dates: {new Date(snipe.arrivalDate).toLocaleDateString()} -{' '}
-                      {new Date(snipe.departureDate).toLocaleDateString()}
+                      Dates: {stayDate(snipe.stay.arrival).toLocaleDateString()} -{' '}
+                      {stayDate(snipe.stay.departure).toLocaleDateString()}
                     </p>
                     <p>
                       Release:{' '}

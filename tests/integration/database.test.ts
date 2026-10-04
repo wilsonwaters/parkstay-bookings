@@ -42,7 +42,12 @@ describe('Database Integration', () => {
       expect(tableNames).toContain('watches');
       expect(tableNames).toContain('notifiers');
       expect(tableNames).toContain('notification_delivery_logs');
-      expect(tableNames).toContain('queue_session');
+      // v8: queue_session moved into provider_state
+      expect(tableNames).not.toContain('queue_session');
+      expect(tableNames).toContain('provider_state');
+      expect(tableNames).toContain('provider_accounts');
+      expect(tableNames).toContain('locations');
+      expect(tableNames).toContain('locations_fts');
       expect(tableNames).not.toContain('skip_the_queue_entries');
       expect(tableNames).toContain('site_snipes');
       expect(tableNames).toContain('notifications');
@@ -140,7 +145,7 @@ describe('Database Integration', () => {
 
       expect(snipe.userId).toBe(user.id);
       expect(snipe.status).toBe(SnipeStatus.ARMED);
-      expect(snipe.targetSiteIds).toEqual(snipeInput.targetSiteIds);
+      expect(snipe.unitIds).toEqual(snipeInput.unitIds);
 
       // Simulate a successful hold
       const heldExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
@@ -148,8 +153,9 @@ describe('Database Integration', () => {
 
       const updated = snipeRepo.findById(snipe.id);
       expect(updated?.status).toBe(SnipeStatus.HELD);
-      expect(updated?.heldBookingPk).toBe('987654');
-      expect(updated?.heldExpiresAt).toBeDefined();
+      expect(updated?.holdReference).toBe('987654');
+      expect(updated?.holdUnitId).toBe('136');
+      expect(updated?.holdExpiresAt).toBeDefined();
     });
   });
 

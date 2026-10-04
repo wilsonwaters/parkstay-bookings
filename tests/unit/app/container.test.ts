@@ -126,6 +126,11 @@ const CONSTRUCTED_ONCE = {
   WatchRepository: repositories.WatchRepository,
   SiteSniperRepository: repositories.SiteSniperRepository,
   QueueSessionRepository: repositories.QueueSessionRepository,
+  ProviderStateRepository: repositories.ProviderStateRepository,
+  ProviderAccountRepository: repositories.ProviderAccountRepository,
+  LocationRepository: repositories.LocationRepository,
+  // One per provider; ParkStay is the only built-in one
+  SqliteKeyValueStore: repositories.SqliteKeyValueStore,
   AuthService,
   BookingService,
   GmailOTPService,
@@ -214,6 +219,9 @@ describe('createContainer', () => {
       expect.objectContaining({ vault, filePath: expect.stringMatching(/gmail-oauth\.json$/) })
     );
     expect(jest.mocked(createProviderContext).mock.calls[0][1].vault).toBe(vault);
+    expect(repositories.QueueSessionRepository).toHaveBeenCalledWith(r.providerState);
+    expect(repositories.SqliteKeyValueStore).toHaveBeenCalledWith(r.providerState, 'parkstay');
+    expect(QueueService).toHaveBeenCalledWith(r.queueSessions);
   });
 
   it('builds the vault lazily: a fresh install touches neither safeStorage nor the key file, nor reads the machine id', () => {
@@ -247,6 +255,18 @@ describe('createContainer', () => {
     await expect(other.secrets.get('token')).rejects.toThrow(
       'Secret "token" was not written by fake2'
     );
+  });
+
+  it('gives each provider its state on provider_state, scoped to it and persistent', async () => {
+    const { db } = build();
+    const state = jest.mocked(repositories.SqliteKeyValueStore).mock.results[0]
+      .value as repositories.SqliteKeyValueStore;
+
+    await state.set('release.cache', { opensAt: '2026-12-13' });
+
+    expect(db.prepare('SELECT provider_id, key, value FROM provider_state').all()).toEqual([
+      { provider_id: 'parkstay', key: 'release.cache', value: '{"opensAt":"2026-12-13"}' },
+    ]);
   });
 
   it('has no singletons: a second container shares no instance with the first', () => {

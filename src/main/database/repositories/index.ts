@@ -8,3 +8,6 @@ export * from './site-sniper.repository';
 export * from './notification.repository';
 export * from './notifier.repository';
 export * from './queue-session.repository';
+export * from './provider-state.repository';
+export * from './provider-account.repository';
+export * from './location.repository';

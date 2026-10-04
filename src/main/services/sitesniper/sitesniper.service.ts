@@ -1,12 +1,17 @@
 import {
   SiteSnipe,
   SiteSnipeInput,
+  SiteSnipeUpdate,
   SnipeExecutionResult,
   SiteAvailabilityEntry,
+  Stay,
+  StayParams,
 } from '@shared/types';
 import { SnipeResult, SnipeReleaseMode, SnipeStatus } from '@shared/types/common.types';
 import { PARKSTAY_BASE_URL, BOOKING_HOLD_MINUTES } from '@shared/constants';
+import { compareDates, isCalendarDate } from '@shared/utils/calendar-date';
 import { SiteSniperRepository } from '../../database/repositories';
+import { PARKSTAY_PROVIDER_ID } from '../../providers/parkstay';
 import { ParkStayService } from '../parkstay/parkstay.service';
 import { QueueService } from '../queue/queue.service';
 import { NotificationService } from '../notification/notification.service';
@@ -15,6 +20,31 @@ import { AppError } from '../../utils/app-error';
 import { logger } from '../../utils/logger';
 
 const log = logger.child({ module: 'sitesniper' });
+
+/** ParkStay's defaults for the stay fields a snipe leaves out. */
+const PARKSTAY_SNIPE_DEFAULTS: StayParams = { gearType: 'all', numVehicles: 1 };
+
+/** UTC midnight of a calendar date: the `Date` the release-timing helpers read by its UTC Y/M/D. */
+function utcMidnight(date: string): Date {
+  return new Date(`${date}T00:00:00.000Z`);
+}
+
+function stringParam(params: StayParams, key: string): string | undefined {
+  const value = params[key];
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+function numberParam(params: StayParams, key: string): number | undefined {
+  const value = params[key];
+  return typeof value === 'number' ? value : undefined;
+}
+
+/** Throws when a stored stay's dates are not calendar dates, so the attempt is marked in error. */
+function assertCalendarDates(stay: Stay): void {
+  if (!isCalendarDate(stay.arrival) || !isCalendarDate(stay.departure)) {
+    throw new Error('The snipe dates are not calendar dates (YYYY-MM-DD)');
+  }
+}
 
 /**
  * Site Sniper Service
@@ -50,18 +80,29 @@ export class SiteSniperService {
    * next check time for CANCELLATION mode.
    */
   async create(userId: number, input: SiteSnipeInput): Promise<SiteSnipe> {
-    // Cross-field rules (the IPC schema checks field types only)
-    if (input.departureDate <= input.arrivalDate) {
+    // Snipes run on ParkStay until the core services use the provider registry (V4).
+    if (input.providerId !== PARKSTAY_PROVIDER_ID) {
+      throw new AppError('VALIDATION', `Site Sniper is not available for ${input.providerId}`);
+    }
+    // Cross-field rules (the IPC schema checks field types and date order)
+    const { arrival, departure } = input.stay;
+    if (!isCalendarDate(arrival) || !isCalendarDate(departure)) {
+      throw new AppError('VALIDATION', 'Dates must be calendar dates (YYYY-MM-DD)');
+    }
+    if (compareDates(departure, arrival) <= 0) {
       throw new AppError('VALIDATION', 'Departure date must be after arrival date');
     }
     if (input.releaseMode === SnipeReleaseMode.SCHEDULED && !input.releaseAt) {
       throw new AppError('VALIDATION', 'A release date/time is required for scheduled releases');
     }
 
-    const prepared: SiteSnipeInput = { ...input };
+    const prepared: SiteSnipeInput = {
+      ...input,
+      stayParams: { ...PARKSTAY_SNIPE_DEFAULTS, ...input.stayParams },
+    };
 
     if (input.releaseMode === SnipeReleaseMode.DAILY_ROLLOVER) {
-      prepared.releaseAt = computeDailyRolloverReleaseAt(input.arrivalDate, new Date());
+      prepared.releaseAt = computeDailyRolloverReleaseAt(utcMidnight(arrival), new Date());
     } else if (input.releaseMode === SnipeReleaseMode.CANCELLATION) {
       prepared.releaseAt = undefined;
     }
@@ -94,16 +135,13 @@ export class SiteSniperService {
   /**
    * Update a snipe. Recomputes releaseAt when the dates or release mode change.
    */
-  async update(id: number, updates: Partial<SiteSnipeInput>): Promise<SiteSnipe> {
+  async update(id: number, updates: SiteSnipeUpdate): Promise<SiteSnipe> {
     let snipe = this.repo.update(id, updates);
 
-    const datesOrModeChanged =
-      updates.arrivalDate !== undefined ||
-      updates.departureDate !== undefined ||
-      updates.releaseMode !== undefined;
+    const datesOrModeChanged = updates.stay !== undefined || updates.releaseMode !== undefined;
 
     if (datesOrModeChanged && snipe.releaseMode === SnipeReleaseMode.DAILY_ROLLOVER) {
-      const releaseAt = computeDailyRolloverReleaseAt(snipe.arrivalDate, new Date());
+      const releaseAt = computeDailyRolloverReleaseAt(utcMidnight(snipe.stay.arrival), new Date());
       snipe = this.repo.update(id, { releaseAt });
     }
 
@@ -174,25 +212,31 @@ export class SiteSniperService {
         };
       }
 
+      // A row whose dates could not be read as calendar dates is marked in error, not run.
+      assertCalendarDates(snipe.stay);
+      const { stay, stayParams } = snipe;
+      // The location is the ParkStay campground.
+      const campgroundId = snipe.location.externalId;
+
       // Poll availability.
       const view = await this.parkStayService.getSiteAvailabilityView(
-        snipe.campgroundId,
+        campgroundId,
         {
-          arrivalDate: this.toYmd(snipe.arrivalDate),
-          departureDate: this.toYmd(snipe.departureDate),
-          numAdult: snipe.numAdult,
-          numConcession: snipe.numConcession,
-          numChild: snipe.numChild,
-          numInfant: snipe.numInfant,
-          gearType: snipe.siteType,
+          arrivalDate: stay.arrival,
+          departureDate: stay.departure,
+          numAdult: stay.adults,
+          numConcession: stay.concessions,
+          numChild: stay.children,
+          numInfant: stay.infants,
+          gearType: stringParam(stayParams, 'gearType'),
         },
-        snipe.queueEnabled
+        snipe.accessGateEnabled
       );
 
       // Determine matching site.
       let matched: SiteAvailabilityEntry | undefined;
-      if (snipe.targetSiteIds.length > 0) {
-        matched = view.sites.find((s) => snipe.targetSiteIds.includes(s.siteId) && s.allOpen);
+      if (snipe.unitIds.length > 0) {
+        matched = view.sites.find((s) => snipe.unitIds.includes(s.siteId) && s.allOpen);
       } else {
         matched = view.sites.find((s) => s.allOpen);
       }
@@ -227,19 +271,19 @@ export class SiteSniperService {
       // Attempt the hold.
       const hold = await this.parkStayService.createBookingHold(
         {
-          campgroundId: snipe.campgroundId,
+          campgroundId,
           campsiteId: matched.siteId,
           campsiteClassId: matched.siteClassId,
-          arrivalDate: this.toYmd(snipe.arrivalDate),
-          departureDate: this.toYmd(snipe.departureDate),
-          numAdult: snipe.numAdult,
-          numConcession: snipe.numConcession,
-          numChild: snipe.numChild,
-          numInfant: snipe.numInfant,
-          numVehicle: snipe.numVehicle,
-          postcode: snipe.postcode,
+          arrivalDate: stay.arrival,
+          departureDate: stay.departure,
+          numAdult: stay.adults,
+          numConcession: stay.concessions,
+          numChild: stay.children,
+          numInfant: stay.infants,
+          numVehicle: numberParam(stayParams, 'numVehicles'),
+          postcode: stringParam(stayParams, 'postcode'),
         },
-        snipe.queueEnabled
+        snipe.accessGateEnabled
       );
 
       this.repo.incrementAttempts(snipeId);
@@ -258,7 +302,7 @@ export class SiteSniperService {
           success: true,
           result: SnipeResult.HELD,
           held: true,
-          heldBookingPk: hold.pk,
+          holdReference: hold.pk,
           paymentUrl,
           matchedSiteId: matched.siteId,
           checkedAt,
@@ -371,7 +415,7 @@ export class SiteSniperService {
    */
   computeReleaseAt(snipe: SiteSnipe): Date | undefined {
     if (snipe.releaseMode === SnipeReleaseMode.DAILY_ROLLOVER) {
-      return computeDailyRolloverReleaseAt(snipe.arrivalDate, new Date());
+      return computeDailyRolloverReleaseAt(utcMidnight(snipe.stay.arrival), new Date());
     }
     if (snipe.releaseMode === SnipeReleaseMode.SCHEDULED) {
       return snipe.releaseAt;
@@ -395,10 +439,6 @@ export class SiteSniperService {
 
   // ---- internal helpers -------------------------------------------------------
 
-  private toYmd(date: Date): string {
-    return date.toISOString().slice(0, 10);
-  }
-
   private nextCheckFor(snipe: SiteSnipe, from: Date): Date | undefined {
     if (snipe.releaseMode === SnipeReleaseMode.CANCELLATION) {
       return new Date(from.getTime() + snipe.pollIntervalMs);
@@ -413,13 +453,12 @@ export class SiteSniperService {
         (s) =>
           s.id !== snipe.id && (s.status === SnipeStatus.HELD || s.status === SnipeStatus.BOOKED)
       );
-    return others.some((o) =>
-      this.datesOverlap(o.arrivalDate, o.departureDate, snipe.arrivalDate, snipe.departureDate)
-    );
+    return others.some((o) => this.staysOverlap(o.stay, snipe.stay));
   }
 
-  private datesOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean {
-    return aStart.getTime() < bEnd.getTime() && bStart.getTime() < aEnd.getTime();
+  /** Whether two stays share a night. Calendar dates `YYYY-MM-DD` compare correctly as text. */
+  private staysOverlap(a: Stay, b: Stay): boolean {
+    return a.arrival < b.departure && b.arrival < a.departure;
   }
 
   private delay(ms: number): Promise<void> {

@@ -4,9 +4,16 @@
  */
 
 import { BookingRepository } from '../../database/repositories/booking.repository';
-import { Booking, BookingInput, BookingStatus } from '@shared/types';
+import { Booking, BookingInput, BookingStatus, BookingUpdate, StayInput } from '@shared/types';
+import { compareDates, isCalendarDate } from '@shared/utils/calendar-date';
+import { PARKSTAY_PROVIDER_ID } from '../../providers/parkstay';
 import { logger } from '../../utils/logger';
 import { AppError } from '../../utils/app-error';
+
+/** Everyone in the party. */
+function partySize(stay: StayInput): number {
+  return stay.adults + (stay.children ?? 0) + (stay.infants ?? 0) + (stay.concessions ?? 0);
+}
 
 export class BookingService {
   private bookingRepository: BookingRepository;
@@ -23,8 +30,11 @@ export class BookingService {
       // Validate input
       this.validateBookingInput(input);
 
-      // Check if booking already exists
-      const existing = this.bookingRepository.findByReference(input.bookingReference);
+      // Check if booking already exists (references are unique per provider)
+      const existing = this.bookingRepository.findByReference(
+        input.providerId,
+        input.bookingReference
+      );
       if (existing) {
         throw new Error(`Booking with reference ${input.bookingReference} already exists`);
       }
@@ -53,11 +63,11 @@ export class BookingService {
   }
 
   /**
-   * Get booking by reference
+   * Get booking by its provider's reference
    */
-  async getBookingByReference(reference: string): Promise<Booking | null> {
+  async getBookingByReference(providerId: string, reference: string): Promise<Booking | null> {
     try {
-      return this.bookingRepository.findByReference(reference);
+      return this.bookingRepository.findByReference(providerId, reference);
     } catch (error) {
       logger.error(`Error getting booking by reference ${reference}:`, error);
       throw error;
@@ -103,23 +113,16 @@ export class BookingService {
   /**
    * Update booking details
    */
-  async updateBooking(id: number, updates: Partial<BookingInput>): Promise<Booking> {
+  async updateBooking(id: number, updates: BookingUpdate): Promise<Booking> {
     try {
       const existing = await this.getBooking(id);
       if (!existing) {
         throw new AppError('NOT_FOUND', `Booking ${id} not found`);
       }
 
-      // Validate updates if dates are being changed
-      if (updates.arrivalDate || updates.departureDate) {
-        const arrival = updates.arrivalDate ? new Date(updates.arrivalDate) : existing.arrivalDate;
-        const departure = updates.departureDate
-          ? new Date(updates.departureDate)
-          : existing.departureDate;
-
-        if (departure <= arrival) {
-          throw new Error('Departure date must be after arrival date');
-        }
+      // Validate the stay if it is being changed
+      if (updates.stay) {
+        this.validateStay(updates.stay);
       }
 
       const updated = this.bookingRepository.update(id, updates);
@@ -186,8 +189,11 @@ export class BookingService {
    */
   async importBooking(_userId: number, bookingReference: string): Promise<Booking> {
     try {
-      // Check if already imported
-      const existing = this.bookingRepository.findByReference(bookingReference);
+      // Check if already imported (only ParkStay bookings can be imported for now)
+      const existing = this.bookingRepository.findByReference(
+        PARKSTAY_PROVIDER_ID,
+        bookingReference
+      );
       if (existing) {
         throw new Error(`Booking ${bookingReference} already exists`);
       }
@@ -243,47 +249,51 @@ export class BookingService {
       throw new Error('Booking reference is required');
     }
 
-    if (!input.parkName || input.parkName.trim() === '') {
+    // ParkStay records the park; other providers may have no area for a location.
+    if (input.providerId === PARKSTAY_PROVIDER_ID && !input.location.areaName?.trim()) {
       throw new Error('Park name is required');
     }
 
-    if (!input.campgroundName || input.campgroundName.trim() === '') {
+    if (!input.location.name || input.location.name.trim() === '') {
       throw new Error('Campground name is required');
     }
 
-    if (!input.arrivalDate) {
-      throw new Error('Arrival date is required');
-    }
-
-    if (!input.departureDate) {
-      throw new Error('Departure date is required');
-    }
-
-    const arrival = new Date(input.arrivalDate);
-    const departure = new Date(input.departureDate);
-
-    if (isNaN(arrival.getTime())) {
-      throw new Error('Invalid arrival date');
-    }
-
-    if (isNaN(departure.getTime())) {
-      throw new Error('Invalid departure date');
-    }
-
-    if (departure <= arrival) {
-      throw new Error('Departure date must be after arrival date');
-    }
-
-    if (!input.numGuests || input.numGuests < 1) {
-      throw new Error('Number of guests must be at least 1');
-    }
-
-    if (input.numGuests > 50) {
-      throw new Error('Number of guests cannot exceed 50');
-    }
+    this.validateStay(input.stay);
 
     if (input.totalCost !== undefined && input.totalCost < 0) {
       throw new Error('Total cost cannot be negative');
+    }
+  }
+
+  /** The stay's dates are calendar dates in order, and the party is 1 to 50 people. */
+  private validateStay(stay: StayInput): void {
+    if (!stay.arrival) {
+      throw new Error('Arrival date is required');
+    }
+
+    if (!stay.departure) {
+      throw new Error('Departure date is required');
+    }
+
+    if (!isCalendarDate(stay.arrival)) {
+      throw new Error('Invalid arrival date');
+    }
+
+    if (!isCalendarDate(stay.departure)) {
+      throw new Error('Invalid departure date');
+    }
+
+    if (compareDates(stay.departure, stay.arrival) <= 0) {
+      throw new Error('Departure date must be after arrival date');
+    }
+
+    const guests = partySize(stay);
+    if (guests < 1) {
+      throw new Error('Number of guests must be at least 1');
+    }
+
+    if (guests > 50) {
+      throw new Error('Number of guests cannot exceed 50');
     }
   }
 

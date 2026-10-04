@@ -13,6 +13,10 @@ import { mockUserInput } from '@tests/fixtures/users';
 import { expectAsyncThrow } from '@tests/utils/test-helpers';
 import { WatchResult } from '@shared/types/common.types';
 import { AvailabilityResult } from '@shared/types';
+import { addDays, todayIn } from '@shared/utils/calendar-date';
+
+/** The calendar date `days` days from today in Perth, where ParkStay's dates are. */
+const inDays = (days: number): string => addDays(todayIn('Australia/Perth'), days);
 
 // Mock the services
 jest.mock('@main/services/parkstay/parkstay.service');
@@ -63,33 +67,50 @@ describe('WatchService', () => {
     });
 
     it('should reject watch with past arrival date', async () => {
-      const pastDate = new Date();
-      pastDate.setDate(pastDate.getDate() - 1);
-
       await expectAsyncThrow(
         () =>
           watchService.create(testUserId, {
             ...createMockWatchInput(),
-            arrivalDate: pastDate,
+            stay: { arrival: inDays(-1), departure: inDays(2), adults: 2 },
           }),
-        'Arrival date must be in the future'
+        'Arrival date must be today or in the future'
       );
     });
 
-    it('should reject watch with departure before arrival', async () => {
-      const arrival = new Date();
-      arrival.setDate(arrival.getDate() + 10);
-      const departure = new Date();
-      departure.setDate(departure.getDate() + 5);
+    it('should accept a watch arriving today (in the provider time zone)', async () => {
+      const watch = await watchService.create(
+        testUserId,
+        createMockWatchInput({ stay: { arrival: inDays(0), departure: inDays(1), adults: 2 } })
+      );
+      expect(watch.stay.arrival).toBe(inDays(0));
+    });
 
+    it('should reject watch with departure before arrival', async () => {
       await expectAsyncThrow(
         () =>
           watchService.create(testUserId, {
             ...createMockWatchInput(),
-            arrivalDate: arrival,
-            departureDate: departure,
+            stay: { arrival: inDays(10), departure: inDays(5), adults: 2 },
           }),
         'Departure date must be after arrival date'
+      );
+    });
+
+    it('should reject dates that are not calendar dates', async () => {
+      await expectAsyncThrow(
+        () =>
+          watchService.create(testUserId, {
+            ...createMockWatchInput(),
+            stay: { arrival: '2099-07-19T00:00:00.000Z', departure: '2099-07-21', adults: 2 },
+          }),
+        'Dates must be calendar dates (YYYY-MM-DD)'
+      );
+    });
+
+    it('should reject a provider other than ParkStay', async () => {
+      await expectAsyncThrow(
+        () => watchService.create(testUserId, createMockWatchInput({ providerId: 'fake' })),
+        'Watches are not available for fake'
       );
     });
   });
@@ -146,21 +167,15 @@ describe('WatchService', () => {
 
     it('should deactivate watch if arrival date has passed', async () => {
       // Create watch with date that will be in past
-      const pastDate = new Date();
-      pastDate.setDate(pastDate.getDate() + 1);
-      const futureDate = new Date(pastDate);
-      futureDate.setDate(futureDate.getDate() + 3);
-
       const input = createMockWatchInput({
-        arrivalDate: pastDate,
-        departureDate: futureDate,
+        stay: { arrival: inDays(1), departure: inDays(4), adults: 2 },
       });
 
       const watch = await watchService.create(testUserId, input);
 
       // Simulate time passing
       jest.useFakeTimers();
-      jest.setSystemTime(new Date(pastDate.getTime() + 2 * 24 * 60 * 60 * 1000));
+      jest.setSystemTime(new Date(Date.now() + 2 * 24 * 60 * 60 * 1000));
 
       const result = await watchService.execute(watch.id);
 
@@ -169,6 +184,48 @@ describe('WatchService', () => {
 
       const updatedWatch = await watchService.get(watch.id);
       expect(updatedWatch?.isActive).toBe(false);
+    });
+  });
+
+  describe('execute on the provider-aware watch', () => {
+    const noAvailability = { available: false, sites: [], totalAvailable: 0 };
+
+    it('maps the location, calendar dates, party and gear type onto the ParkStay call', async () => {
+      const watch = await watchService.create(
+        testUserId,
+        createMockWatchInput({
+          location: { externalId: '88', name: 'Lucky Bay', areaName: 'Cape Le Grand' },
+          stay: { arrival: inDays(20), departure: inDays(23), adults: 2, children: 1 },
+          stayParams: { parkId: '42', gearType: 'tent' },
+        })
+      );
+      parkStayService.checkAvailability = jest.fn().mockResolvedValue(noAvailability);
+
+      await watchService.execute(watch.id);
+
+      expect(parkStayService.checkAvailability).toHaveBeenCalledWith('88', {
+        campgroundId: '88',
+        arrivalDate: inDays(20),
+        departureDate: inDays(23),
+        numGuests: 3,
+        siteType: 'tent',
+      });
+    });
+
+    it('marks a stored row whose dates are not calendar dates in error instead of throwing', async () => {
+      const watch = await watchService.create(testUserId, createMockWatchInput());
+      dbHelper
+        .getDb()
+        .prepare("UPDATE watches SET arrival_date = 'garbage' WHERE id = ?")
+        .run(watch.id);
+      parkStayService.checkAvailability = jest.fn();
+
+      const result = await watchService.execute(watch.id);
+
+      expect(result.success).toBe(false);
+      expect(result.error?.message).toMatch(/not calendar dates/);
+      expect(parkStayService.checkAvailability).not.toHaveBeenCalled();
+      expect((await watchService.get(watch.id))?.lastResult).toBe(WatchResult.ERROR);
     });
   });
 
@@ -210,14 +267,8 @@ describe('WatchService', () => {
     });
 
     it('should not notify when allowPartialMatch is true but no nights are available', async () => {
-      const arrival = new Date();
-      arrival.setDate(arrival.getDate() + 30);
-      const departure = new Date(arrival);
-      departure.setDate(departure.getDate() + 2); // 2 nights
-
       const input = createMockWatchInput({
-        arrivalDate: arrival,
-        departureDate: departure,
+        stay: { arrival: inDays(30), departure: inDays(32), adults: 2 }, // 2 nights
         allowPartialMatch: true,
       });
       const watch = await watchService.create(testUserId, input);
@@ -237,14 +288,8 @@ describe('WatchService', () => {
     });
 
     it('should call notifyWatchPartialFound and set PARTIAL_FOUND when a consecutive block is found', async () => {
-      const arrival = new Date();
-      arrival.setDate(arrival.getDate() + 30);
-      const departure = new Date(arrival);
-      departure.setDate(departure.getDate() + 2); // 2 nights
-
       const input = createMockWatchInput({
-        arrivalDate: arrival,
-        departureDate: departure,
+        stay: { arrival: inDays(30), departure: inDays(32), adults: 2 }, // 2 nights
         allowPartialMatch: true,
         notifyOnly: false,
       });
@@ -269,9 +314,22 @@ describe('WatchService', () => {
         .calls[0][1] as AvailabilityResult[];
       expect(partialArg.length).toBeGreaterThan(0);
       expect(partialArg[0].partial).toBe(true);
+      // Night 1 only: the block is a calendar-date stay of one night
+      expect(partialArg[0].dates).toEqual({ arrival: inDays(30), departure: inDays(31) });
+      expect(parkStayService.checkAvailability).toHaveBeenNthCalledWith(
+        2,
+        'CG001',
+        expect.objectContaining({ arrivalDate: inDays(30), departureDate: inDays(31) })
+      );
+      expect(parkStayService.checkAvailability).toHaveBeenNthCalledWith(
+        3,
+        'CG001',
+        expect.objectContaining({ arrivalDate: inDays(31), departureDate: inDays(32) })
+      );
 
       const updatedWatch = await watchService.get(watch.id);
       expect(updatedWatch?.lastResult).toBe(WatchResult.PARTIAL_FOUND);
+      expect(updatedWatch?.lastAvailability?.[0].dates).toEqual(partialArg[0].dates);
     });
 
     it('should use full match path and not call checkPartialAvailability when full match is found', async () => {

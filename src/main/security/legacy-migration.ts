@@ -85,9 +85,14 @@ export function migrateLegacySecrets({
   let cachedMachineId: string | undefined;
   const getMachineId = (): string => (cachedMachineId ??= machineId());
 
+  // Since v8 the credential columns are nullable; NULL (no credentials) reads as ''.
   const users = db
     .prepare(
-      'SELECT id, encrypted_password, encryption_key, encryption_iv, encryption_auth_tag FROM users'
+      `SELECT id, COALESCE(encrypted_password, '') AS encrypted_password,
+         COALESCE(encryption_key, '') AS encryption_key,
+         COALESCE(encryption_iv, '') AS encryption_iv,
+         COALESCE(encryption_auth_tag, '') AS encryption_auth_tag
+       FROM users`
     )
     .all() as UserRow[];
   for (const row of users) count(attempt(`users row ${row.id}`, () => migrateUser(row)));

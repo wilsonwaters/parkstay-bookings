@@ -79,7 +79,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 
 `connection.ts` exports `openDatabase(filePath)` (enables foreign keys and WAL, then migrates), `closeDatabase(db)` and `runMigrations(db)`. It has no module singleton: repositories receive the `Database` through their constructor (`repositories/base.repository.ts`), and services receive their repositories.
 
-### Current migrations (version 7)
+### Current migrations (version 8)
 
 1. **v1** — Initial schema (users, bookings, watches, skip_the_queue_entries, notifications, job_logs, settings)
 2. **v2** — Add `last_availability` JSON column to watches
@@ -88,13 +88,14 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 5. **v5** — Add `allow_partial_match` column to watches (the released v1.2.0 schema)
 6. **v6** — Add `site_snipes` table (Site Sniper) and widen `notifications` CHECK constraints (adds `snipe_held`/`snipe_booked` types and `snipe` related_type)
 7. **v7** — Integrity: rebuild `notifications` without CHECK constraints (types are validated in `NotificationRepository`), rebuild `notification_delivery_logs` with a real FK to `notifications` (repairs v6) and `provider_channel` → `notifier_channel`, rename `notification_providers` → `notifiers`, drop `skip_the_queue_entries`
+8. **v8** — Provider-aware data model (architecture-notes §5): rebuild `watches`, `site_snipes` and `bookings` with `provider_id`, generic location/stay/unit columns (`location_external_id`, `location_name`, `area_name`, `num_adults`…, `unit_ids` JSON, `stay_params` JSON for ParkStay's park id, gear type, vehicles and postcode) and calendar dates `YYYY-MM-DD`; bookings unique per `(provider_id, booking_reference)`; `site_snipes` drops the `release_mode` CHECK and renames `queue_enabled` → `access_gate_enabled`, `held_*` → `hold_*`; `notifications.provider_id`; `users` credential columns nullable plus the seeded local profile row (id 1); new `provider_accounts`, `provider_state` (the queue session moves there as `('parkstay', 'queue.session')`, `queue_session` dropped) and `locations` with the FTS5 index `locations_fts`
 
 ### Adding a new migration
 
 1. Open `src/main/database/connection.ts`
-2. Bump `LATEST_SCHEMA_VERSION` to the new version N (currently 7)
+2. Bump `LATEST_SCHEMA_VERSION` to the new version N (currently 8)
 3. Find the `runMigrations()` function
-4. Add a new `if (currentVersion < N)` block at the bottom
+4. Add a new `if (pending(N))` block at the bottom (`runMigrations(db, target)` stops at `target`; tests use it to build an older schema)
 5. Wrap its body in `applyMigration(db, N, [tables it creates or rebuilds], () => { ... })`. It runs the body, `PRAGMA foreign_key_check` and the `INSERT INTO migrations` in one transaction, and throws `MigrationError(N)` on failure. The listed tables must be completely free of foreign-key violations when the step commits, and the step may not introduce a violation in any other table; violations that were already there only log a warning (rule in `assertForeignKeys`). Do not insert the version yourself, and do not set `PRAGMA foreign_keys` inside the body (it is a no-op in a transaction; the runner turns it off around all steps)
 6. Rebuild a table as: create it under a temp name → copy → drop the old table → rename the new one → create its indexes. Never rename the old table aside: SQLite then rewrites other tables' foreign keys to the aside name
 7. Add an upgrade test that starts from the v5 and v6 fixtures in `tests/fixtures/db/` (see its README)
