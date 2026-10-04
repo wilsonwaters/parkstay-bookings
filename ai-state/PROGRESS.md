@@ -6,15 +6,15 @@ _Last updated: 2026-10-02 (orchestrator)_
 Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
 
 ## Currently in flight
-Resumed 2026-10-04 after the quota pause.
-- **P6** (#17) Sandboxed preload: review running, lane P.
-- **P5** (#16) SecretVault: resume agent, lane M.
-- **V7** (#25) Browser automation: resume agent, lane W.
-- **V2** (#20) Data model v8: resume agent, lane V.
-- **B2** (#27) App identity rename: implementation agent, lane A.
-- Merge order when ready: P6 → P5 → V7 → V2 → B2.
+- **V2** (#20) Data model v8: implemented; adversarial review running, lane V.
+- **V3** (#21) ParkStay provider module: implementation, lane X (`/home/user/wt/lane-x`, branched from lane/v).
+- **B2** (#27) App identity rename: review REQUEST_CHANGES (the snapshot could copy a live v1 WAL DB because the running-app check looks for the new exe name; dead finish page). Fix agent running, lane A.
+- **Q1** (#40) Electron smoke E2E, phase 1 (harness plus shell journeys): lane M.
 
 ## Completed
+- **P6** (#17) Sandboxed preload: APPROVE (the reviewer re-verified V1 namespaces in the sandboxed built and packaged app), merged.
+- **P5** (#16) SecretVault: APPROVE. Durability fixes: read-back verification before the legacy copy is replaced, fsync before rename, `conf` pinned. Merged.
+- **V7** (#25) Browser automation: review REQUEST_CHANGES (Playwright launched Edge/Chrome with Chromium's sandbox off). Fixed: `chromiumSandbox: true`, quit hold hides windows, safe kill, docs for search-mode providers. Merged after resolving P5 overlaps.
 - **V1** (#19) Provider SDK and contract: review REQUEST_CHANGES (Electron transport couldn't see redirects in production). Fixed on `net.request` with 21/21 live Electron tests (`npm run test:electron`). Registry flag rules, two-way schema/type assertions and extensibility hooks (§12.30). Merged.
 - **D3** (#31) App shell: review REQUEST_CHANGES (emoji bell, heading ring, brushstroke width), fixed. TODO(V1) shim swapped for the real types; window minimum 960×640 moved into main-window.ts. Merged.
 - **P4** (#15) Main-process hardening: reviewed (APPROVE; the reviewer independently re-ran 27/27 runtime checks). Fixed: SMTP password not reused across host/user changes, queue key masked in logs, recursive log redaction, flaky OAuth test. Merged.
