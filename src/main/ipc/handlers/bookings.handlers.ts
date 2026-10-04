@@ -9,7 +9,9 @@ import type { Handle } from '../handle';
 export function registerBookingsHandlers(handle: Handle, c: AppContainer): void {
   const { bookings } = contract;
 
-  handle(bookings.list, () => c.bookingService.listBookings(c.profile.requireUserId()));
+  handle(bookings.list, (filter) =>
+    c.bookingService.listBookings(c.profile.requireUserId(), filter ?? {})
+  );
 
   handle(bookings.get, ({ id }) => c.bookingService.getBooking(id));
 
@@ -24,17 +26,7 @@ export function registerBookingsHandlers(handle: Handle, c: AppContainer): void 
     return true;
   });
 
-  handle(bookings.sync, ({ id }) => c.bookingService.syncBooking(id));
-
-  handle(bookings.syncAll, async () => {
-    const all = await c.bookingService.listBookings(c.profile.requireUserId());
-    for (const booking of all) {
-      await c.bookingService.syncBooking(booking.id);
-    }
-    return true;
-  });
-
-  handle(bookings.import, ({ bookingReference }) =>
-    c.bookingService.importBooking(c.profile.requireUserId(), bookingReference)
+  handle(bookings.import, ({ providerId, reference }) =>
+    c.bookingService.importBooking(c.profile.requireUserId(), providerId, reference)
   );
 }

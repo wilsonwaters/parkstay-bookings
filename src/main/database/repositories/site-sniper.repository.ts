@@ -1,5 +1,11 @@
 import { BaseRepository } from './base.repository';
-import { locationKeyOf, SiteSnipe, SiteSnipeInput, SiteSnipeUpdate } from '@shared/types';
+import {
+  locationKeyOf,
+  SiteSnipe,
+  SiteSnipeInput,
+  SiteSnipeUpdate,
+  type SnipeListFilter,
+} from '@shared/types';
 import { SnipeResult, SnipeReleaseMode, SnipeStatus } from '@shared/types/common.types';
 import { AppError } from '../../utils/app-error';
 import { readStay, readStayParams, readUnitIds, StayRow, stayValues } from '../stay-columns';
@@ -140,12 +146,65 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
   }
 
   /**
-   * Find all snipes for a user (newest first).
+   * The user's snipes, optionally of one provider or status (newest first).
    */
-  findByUserId(userId: number): SiteSnipe[] {
+  findByUserId(userId: number, filter: SnipeListFilter = {}): SiteSnipe[] {
+    const where = ['user_id = ?'];
+    const values: unknown[] = [userId];
+    if (filter.providerId !== undefined) {
+      where.push('provider_id = ?');
+      values.push(filter.providerId);
+    }
+    if (filter.status !== undefined) {
+      where.push('status = ?');
+      values.push(filter.status);
+    }
     const rows = this.db
-      .prepare('SELECT * FROM site_snipes WHERE user_id = ? ORDER BY created_at DESC')
-      .all(userId);
+      .prepare(
+        `SELECT * FROM site_snipes WHERE ${where.join(' AND ')} ORDER BY created_at DESC, id DESC`
+      )
+      .all(values);
+    return rows.map((row) => this.mapRow(row as SiteSnipeRow));
+  }
+
+  /**
+   * Snipes of the provider and user that hold or booked a night of the stay, other than
+   * `excludeId`: BOOKED ones, and HELD ones whose hold has not expired at `now`. Calendar
+   * dates compare as text.
+   */
+  findHeldOverlapping(
+    providerId: string,
+    userId: number,
+    arrival: string,
+    departure: string,
+    now: Date,
+    excludeId?: number
+  ): SiteSnipe[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM site_snipes
+         WHERE provider_id = ? AND user_id = ? AND id != ?
+           AND (status = ? OR (status = ? AND (hold_expires_at IS NULL OR hold_expires_at > ?)))
+           AND arrival_date < ? AND ? < departure_date`
+      )
+      .all(
+        providerId,
+        userId,
+        excludeId ?? -1,
+        SnipeStatus.BOOKED,
+        SnipeStatus.HELD,
+        now.toISOString(),
+        departure,
+        arrival
+      );
+    return rows.map((row) => this.mapRow(row as SiteSnipeRow));
+  }
+
+  /** HELD snipes whose hold has an expiry, for the hold-expiry timers. */
+  findHeld(): SiteSnipe[] {
+    const rows = this.db
+      .prepare('SELECT * FROM site_snipes WHERE status = ? AND hold_expires_at IS NOT NULL')
+      .all(SnipeStatus.HELD);
     return rows.map((row) => this.mapRow(row as SiteSnipeRow));
   }
 
@@ -263,6 +322,40 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
         paymentUrl || null,
         id
       );
+  }
+
+  /**
+   * The hold was placed: `setHeld` and deactivation in one transaction, so a restart never
+   * sees an active snipe that already holds a unit.
+   */
+  markHeld(
+    id: number,
+    holdReference: string,
+    expiresAt: Date,
+    paymentUrl?: string,
+    holdUnitId?: string
+  ): void {
+    this.db.transaction(() => {
+      this.setHeld(id, holdReference, expiresAt, paymentUrl, holdUnitId);
+      this.db.prepare('UPDATE site_snipes SET is_active = 0 WHERE id = ?').run(id);
+    })();
+  }
+
+  /** Ends the snipe: a terminal status (EXPIRED, FAILED), its result and message, inactive. */
+  finish(id: number, status: SnipeStatus, result: SnipeResult, error?: string): void {
+    this.db
+      .prepare(
+        `UPDATE site_snipes SET status = ?, last_result = ?, last_error = ?, is_active = 0
+         WHERE id = ?`
+      )
+      .run(status, result, error ?? null, id);
+  }
+
+  /** The release instant the scheduler arms for (a recomputed daily rollover). */
+  setReleaseAt(id: number, releaseAt: Date): void {
+    this.db
+      .prepare('UPDATE site_snipes SET release_at = ? WHERE id = ?')
+      .run(this.formatDate(releaseAt), id);
   }
 
   /**

@@ -14,21 +14,24 @@ describe('AvailabilityGrid', () => {
         departureDate="2026-11-05"
         watchResults={[
           {
-            siteId: '2',
-            siteName: 'CAMPSITE 02',
-            siteType: 'all',
-            available: true,
-            price: 30,
-            dates: { arrival: '2026-11-03', departure: '2026-11-05' },
+            unitId: '2',
+            unitName: 'CAMPSITE 02',
+            unitType: 'all',
+            arrival: '2026-11-03',
+            departure: '2026-11-05',
+            partial: false,
+            priceKnown: true,
+            total: 60,
           },
           {
-            siteId: '4',
-            siteName: 'CAMPSITE 04',
-            siteType: 'all',
-            available: true,
-            price: 35,
-            dates: { arrival: '2026-11-03', departure: '2026-11-04' },
+            unitId: '4',
+            unitName: 'CAMPSITE 04',
+            unitType: 'all',
+            arrival: '2026-11-03',
+            departure: '2026-11-04',
             partial: true,
+            priceKnown: true,
+            total: 35,
           },
         ]}
       />

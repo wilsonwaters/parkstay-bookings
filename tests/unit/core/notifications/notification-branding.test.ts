@@ -4,8 +4,8 @@
  * NotificationService (B2): OS notifications show the WA Stay icon from `getBrandIconPath`,
  * and the messages it dispatches to notifiers (email) name the provider and the location.
  */
-import { NotificationService } from '@main/services/notification/notification.service';
-import type { NotificationDispatcher } from '@main/services/notification/notification-dispatcher';
+import { NotificationService } from '@main/core/notifications/notification.service';
+import type { NotificationDispatcher } from '@main/core/notifications/notification-dispatcher';
 import { NotificationRepository, UserRepository } from '@main/database/repositories';
 import { NotificationType } from '@shared/types/common.types';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';

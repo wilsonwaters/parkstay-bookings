@@ -11,9 +11,13 @@
  *
  * Knobs:
  * - `failNext(module, error)`: the next call into that module rejects with `error`;
- * - `delayMs`: every async call waits this long first (abortable);
- * - `calls`: every call, in order;
- * - `accessStates`: the states the access gate steps through on `ensure()`.
+ * - `delayMs`: every async call waits this long first (abortable); `delays` per module;
+ * - `calls`: every call, in order, with its `signal`;
+ * - `peakInFlight(module)`: the most calls into the module at once;
+ * - `accessStates`: the states the access gate steps through on `ensure()`;
+ * - `availability`: a state per unit for every night, or a list of nights (state and price);
+ *   `setAvailability` changes it later;
+ * - `scriptHold(...results)`: the next `holds.create` calls answer these.
  *
  * Every async method honours its `AbortSignal` and rejects with an `AbortError`.
  */
@@ -47,6 +51,7 @@ import type {
   AccountStatus,
   LocationAvailability,
   NightState,
+  NightStatus,
   ProviderCapabilities,
   ProviderManifest,
   StayQuery,
@@ -68,7 +73,20 @@ export interface FakeCall {
   module: FakeModule;
   method: string;
   args: unknown[];
+  signal?: AbortSignal;
 }
+
+/**
+ * One night of a unit: its state, and its price (`FAKE_PRICE` when available unless given;
+ * `null` for no price).
+ */
+export interface FakeNight {
+  state: NightState;
+  price?: number | null;
+}
+
+/** A unit's nights: the same state every night, or night by night (missing nights are booked). */
+export type FakeUnitNights = NightState | FakeNight[];
 
 export interface FakeLocationSeed {
   externalId: string;
@@ -83,15 +101,17 @@ export interface FakeProviderOptions {
   capabilities?: Partial<ProviderCapabilities>;
   locations?: FakeLocationSeed[];
   /**
-   * Night states by `externalId` → unit id → state for every night. Units default to
-   * `u1` (available) and `u2` (booked).
+   * Nights by `externalId` → unit id → a state for every night, or night by night. Units
+   * default to `u1` (available) and `u2` (booked).
    */
-  availability?: Record<string, Record<string, NightState>>;
+  availability?: Record<string, Record<string, FakeUnitNights>>;
   /** The signed-in state `auth.isSignedIn` reports. */
   account?: AccountStatus['state'];
   accessStates?: AccessState[];
   bookings?: ExternalBooking[];
   delayMs?: number;
+  /** Per-module delays, instead of `delayMs`. */
+  delays?: Partial<Record<FakeModule, number>>;
 }
 
 export interface FakeProvider extends AccommodationProvider {
@@ -101,6 +121,12 @@ export interface FakeProvider extends AccommodationProvider {
   /** The context the factory was called with. */
   ctx?: ProviderContext;
   failNext(module: FakeModule, error: Error): void;
+  /** Replaces a location's units from now on. */
+  setAvailability(externalId: string, units: Record<string, FakeUnitNights>): void;
+  /** The next `holds.create` calls answer these, in order. */
+  scriptHold(...results: HoldResult[]): void;
+  /** The most calls into `module` in flight at once. */
+  peakInFlight(module: FakeModule): number;
   /** How many `holdOpen()` releases are outstanding. */
   readonly holdCount: number;
   readonly disposed: boolean;
@@ -165,6 +191,12 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
   const bookings = options.bookings ?? [];
   const failures = new Map<FakeModule, Error>();
   const calls: FakeCall[] = [];
+  const availabilityByLocation: Record<string, Record<string, FakeUnitNights>> = {
+    ...options.availability,
+  };
+  const scriptedHolds: HoldResult[] = [];
+  const active = new Map<FakeModule, number>();
+  const peaks = new Map<FakeModule, number>();
   let holdCount = 0;
   let holdSequence = 0;
   let disposed = false;
@@ -226,9 +258,16 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
     args: unknown[],
     signal?: AbortSignal
   ): Promise<void> {
-    calls.push({ module, method, args });
-    // Always yields to a timer, so an abort right after the call still lands.
-    await wait(fake.delayMs, signal);
+    calls.push({ module, method, args, signal });
+    const now = (active.get(module) ?? 0) + 1;
+    active.set(module, now);
+    peaks.set(module, Math.max(peaks.get(module) ?? 0, now));
+    try {
+      // Always yields to a timer, so an abort right after the call still lands.
+      await wait(options.delays?.[module] ?? fake.delayMs, signal);
+    } finally {
+      active.set(module, (active.get(module) ?? 1) - 1);
+    }
     const failure = failures.get(module);
     if (failure) {
       failures.delete(module);
@@ -266,28 +305,42 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
     };
   }
 
-  function unitStates(externalId: string): Record<string, NightState> {
-    return options.availability?.[externalId] ?? { u1: 'available', u2: 'booked' };
+  function unitStates(externalId: string): Record<string, FakeUnitNights> {
+    return availabilityByLocation[externalId] ?? { u1: 'available', u2: 'booked' };
+  }
+
+  function nightsOf(spec: FakeUnitNights, dates: string[]): NightStatus[] {
+    return dates.map((date, i) => {
+      const night: FakeNight =
+        typeof spec === 'string' ? { state: spec } : (spec[i] ?? { state: 'booked' });
+      const price =
+        night.price === null
+          ? undefined
+          : (night.price ?? (night.state === 'available' ? FAKE_PRICE : undefined));
+      return { date, state: night.state, ...(price !== undefined ? { price } : {}) };
+    });
   }
 
   function checkNow(externalId: string, stay: StayQuery, unitIds?: string[]): LocationAvailability {
     seedFor(externalId);
-    const nights = eachNight(stay);
+    const dates = eachNight(stay);
     const units = Object.entries(unitStates(externalId))
       .filter(([unitId]) => !unitIds || unitIds.includes(unitId))
-      .map(([unitId, state]) => {
-        const fullyAvailable = state === 'available';
+      .map(([unitId, spec]) => {
+        const nights = nightsOf(spec, dates);
+        const fullyAvailable =
+          nights.length > 0 && nights.every((night) => night.state === 'available');
+        const priced = nights.every((night) => night.price !== undefined);
         return {
           unitId,
           unitName: `Site ${unitId}`,
           unitType: 'Tent site',
-          nights: nights.map((date) => ({
-            date,
-            state,
-            price: state === 'available' ? FAKE_PRICE : undefined,
-          })),
+          nights,
           fullyAvailable,
-          total: fullyAvailable ? FAKE_PRICE * nights.length : undefined,
+          total:
+            fullyAvailable && priced
+              ? nights.reduce((sum, night) => sum + (night.price ?? 0), 0)
+              : undefined,
         };
       });
     return {
@@ -402,6 +455,15 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
     failNext(module, error) {
       failures.set(module, error);
     },
+    setAvailability(externalId, units) {
+      availabilityByLocation[externalId] = units;
+    },
+    scriptHold(...results) {
+      scriptedHolds.push(...results);
+    },
+    peakInFlight(module) {
+      return peaks.get(module) ?? 0;
+    },
     get holdCount() {
       return holdCount;
     },
@@ -469,6 +531,8 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
       ? {
           async create(request, signal): Promise<HoldResult> {
             await enter('holds', 'create', [request], signal);
+            const scripted = scriptedHolds.shift();
+            if (scripted) return scripted;
             if (accountState !== 'signed-in' && requiresAccountForHolds(capabilities.account)) {
               return {
                 ok: false,

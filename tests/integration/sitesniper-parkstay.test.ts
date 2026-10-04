@@ -1,7 +1,8 @@
 /**
- * The rewired Site Sniper against the real ParkStay module and a fixture server: an
- * in-memory database, the real snipe repository, and Bungarra's live sample. It covers the
- * hold being placed, the race being lost (and won on the next tick), and HTTP 500.
+ * The core Site Sniper against the real ParkStay module (through its registry) and a
+ * fixture server: an in-memory database, the real snipe repository, and Bungarra's live
+ * sample. It covers the hold being placed, the race being lost (and won on the next tick),
+ * HTTP 500, and the daily-rollover release time recomputed when a migrated snipe is armed.
  */
 
 import type Database from 'better-sqlite3';
@@ -9,8 +10,10 @@ import { Writable } from 'stream';
 import winston from 'winston';
 import { openDatabase } from '@main/database/connection';
 import { SiteSniperRepository, UserRepository } from '@main/database/repositories';
-import { SiteSniperService } from '@main/services/sitesniper/sitesniper.service';
-import type { NotificationService } from '@main/services/notification/notification.service';
+import { NightGuard } from '@main/core/holds/night-guard';
+import { SiteSniperService } from '@main/core/snipes/snipe.service';
+import { WatchRepository } from '@main/database/repositories';
+import { SnipeRunner } from '@main/scheduler/snipe-runner';
 import { logger } from '@main/utils/logger';
 import { SnipeReleaseMode, SnipeResult, SnipeStatus } from '@shared/types/common.types';
 import { FIXED_NOW } from '@tests/utils/fake-provider';
@@ -63,11 +66,12 @@ describe('SiteSniperService on ParkStay (fixture server)', () => {
     repo = new SiteSniperRepository(db);
     parkstay = createTestParkStay(server);
     notifications = { notifySnipeHeld: jest.fn().mockResolvedValue(undefined) };
-    service = new SiteSniperService(
-      repo,
-      parkstay.provider,
-      notifications as unknown as NotificationService
-    );
+    service = new SiteSniperService({
+      snipes: repo,
+      providers: parkstay.registry,
+      notifications,
+      nightGuard: new NightGuard(repo, new WatchRepository(db)),
+    });
   });
 
   afterEach(() => {
@@ -87,13 +91,19 @@ describe('SiteSniperService on ParkStay (fixture server)', () => {
       releaseMode: SnipeReleaseMode.CANCELLATION,
     });
     repo.activate(snipe.id);
+    repo.updateStatus(snipe.id, SnipeStatus.SNIPING);
     return snipe;
+  }
+
+  /** One attempt, as a scheduler tick makes it. */
+  async function attempt(id: number) {
+    return (await service.execute(id)).result;
   }
 
   it('polls with ParkStay dates (no HTTP 500), finds site 3 free and places the hold', async () => {
     const snipe = await bungarraSnipe();
 
-    const result = await service.execute(snipe.id);
+    const result = await attempt(snipe.id);
 
     expect(result).toMatchObject({
       success: true,
@@ -145,7 +155,7 @@ describe('SiteSniperService on ParkStay (fixture server)', () => {
     logger.level = 'info';
     try {
       const snipe = await bungarraSnipe(['1', '2']);
-      await service.execute(snipe.id);
+      await attempt(snipe.id);
       // Units 1 and 2 are booked both nights: nothing to hold.
       expect(repo.findById(snipe.id)!.lastResult).toBe(SnipeResult.UNAVAILABLE);
       expect(server.requestsTo('/api/create_booking')).toHaveLength(0);
@@ -163,13 +173,13 @@ describe('SiteSniperService on ParkStay (fixture server)', () => {
     const snipe = await bungarraSnipe(['4']);
     server.createBooking = { status: 400, body: parkStayFixture('create-booking-error.json') };
 
-    const lost = await service.execute(snipe.id);
+    const lost = await attempt(snipe.id);
     expect(lost).toMatchObject({ success: true, result: SnipeResult.UNAVAILABLE, held: false });
     expect(lost.error).toContain("Someone hit 'Book now' before you");
     expect(repo.findById(snipe.id)).toMatchObject({ isActive: true });
 
     server.createBooking = { status: 200, body: parkStayFixture('create-booking-success.json') };
-    const won = await service.execute(snipe.id);
+    const won = await attempt(snipe.id);
     expect(won).toMatchObject({ result: SnipeResult.HELD, matchedSiteId: '4' });
   });
 
@@ -177,7 +187,7 @@ describe('SiteSniperService on ParkStay (fixture server)', () => {
     const snipe = await bungarraSnipe();
     server.overrides.set('/api/campsite_availablity_view/20/', { status: 500, body: {} });
 
-    const result = await service.execute(snipe.id);
+    const result = await attempt(snipe.id);
 
     expect(result).toMatchObject({ success: false, result: SnipeResult.ERROR, held: false });
     expect(result.error).toMatch(/HTTP 500/);
@@ -196,5 +206,35 @@ describe('SiteSniperService on ParkStay (fixture server)', () => {
       releaseMode: SnipeReleaseMode.DAILY_ROLLOVER,
     });
     expect(snipe.releaseAt?.toISOString()).toBe('2026-10-02T18:00:00.000Z');
+  });
+
+  it('re-arms a v8-migrated daily-rollover row stored at 00:00 AWST for the campground’s 02:00 release', async () => {
+    // As migration v8 left it: the old midnight-AWST instant for a 1 Apr 2027 arrival
+    const migrated = repo.create(userId, {
+      providerId: 'parkstay',
+      name: 'Bungarra rollover (migrated)',
+      location: { externalId: '20', name: 'Bungarra' },
+      stay: { arrival: '2027-04-01', departure: '2027-04-03', adults: 2 },
+      stayParams: { gearType: 'all', numVehicles: 1 },
+      releaseMode: SnipeReleaseMode.DAILY_ROLLOVER,
+      releaseAt: new Date('2026-10-02T16:00:00.000Z'),
+    });
+    const runner = new SnipeRunner({ snipes: service });
+    try {
+      runner.arm(migrated.id);
+      // The release time comes from Bungarra's view (02:00 AM)
+      const moved = () =>
+        repo.findById(migrated.id)!.releaseAt?.getTime() !== Date.parse('2026-10-02T16:00:00Z');
+      for (let i = 0; i < 100 && !moved(); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(repo.findById(migrated.id)).toMatchObject({
+        status: SnipeStatus.ARMED,
+        releaseAt: new Date('2026-10-02T18:00:00.000Z'),
+      });
+      expect(runner.isScheduled(migrated.id)).toBe(true);
+    } finally {
+      await Promise.all(runner.stop());
+    }
   });
 });

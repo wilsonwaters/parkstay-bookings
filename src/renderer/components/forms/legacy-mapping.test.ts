@@ -37,7 +37,7 @@ const watchForm: WatchSchemaType = {
   numGuests: 3,
   siteType: 'tent,caravan',
   checkIntervalMinutes: 60,
-  autoBook: false,
+  autoHold: false,
   notifyOnly: true,
   allowPartialMatch: true,
   notes: '',
@@ -74,14 +74,22 @@ describe('legacy form mapping', () => {
       name: 'Easter',
       location: { externalId: '34', name: 'Osprey Bay', areaName: 'Osprey Bay' },
       stay: { arrival: '2099-04-03', departure: '2099-04-06', adults: 3 },
-      stayParams: { parkId: '34', gearType: 'tent,caravan' },
+      // Two gear types ticked: any gear (ParkStay checks one)
+      stayParams: { parkId: '34' },
       checkIntervalMinutes: 60,
-      autoBook: false,
+      autoHold: false,
       notifyOnly: true,
       allowPartialMatch: true,
       notes: '',
     });
     expect(contract.watches.create.request.parse(input)).toEqual(input);
+  });
+
+  it('keeps a single ticked gear type', () => {
+    expect(watchFormToInput({ ...watchForm, siteType: 'tent' }).stayParams).toEqual({
+      parkId: '34',
+      gearType: 'tent',
+    });
   });
 
   it('leaves an empty site type out of the stay params, and the provider out of updates', () => {

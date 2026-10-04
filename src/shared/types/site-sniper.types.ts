@@ -74,6 +74,12 @@ export interface SiteSnipeInput {
 /** The fields an update may change. A snipe never moves to another provider. */
 export type SiteSnipeUpdate = Partial<Omit<SiteSnipeInput, 'providerId'>>;
 
+/** `snipes.list` filter. Main resolves the user. */
+export interface SnipeListFilter {
+  providerId?: ProviderId;
+  status?: SnipeStatus;
+}
+
 /**
  * Result of a single snipe execution attempt.
  */

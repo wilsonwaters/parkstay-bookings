@@ -221,8 +221,9 @@ if (instance.isPrimary) {
       if (!closing) return null;
       container = null;
       logger.info('Application shutting down...');
-      // Cuts the renderer off, stops the scheduler, disposes the providers (ParkStay's queue
-      // gate with them) and closes the database; resolves once every browser has closed
+      // Cuts the renderer off, aborts the scheduler's jobs, disposes the providers (ParkStay's
+      // queue gate with them) and closes the database once the jobs have settled; resolves
+      // once every browser has closed
       return closing.dispose();
     },
     log: logger,

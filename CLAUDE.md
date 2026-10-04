@@ -18,7 +18,7 @@ WA ParkStay Bookings is an Electron + React + TypeScript desktop application tha
 | UI Framework | React 18 |
 | Language | TypeScript 5 |
 | Database | SQLite via better-sqlite3 |
-| Scheduling | node-cron |
+| Scheduling | Chained `setTimeout` timers (`src/main/scheduler/`) |
 | HTTP Client | axios |
 | Email | nodemailer, googleapis (Gmail OAuth2) |
 | Validation | Zod |
@@ -47,11 +47,11 @@ npm run dist:win     # Package Windows installer
 src/
 ├── main/           # Electron main process (Node.js)
 │   ├── app/        # Composition root (container.ts), local profile, renderer entry/origin
-│   ├── core/       # Provider-agnostic domain services (catalog/: LocationCatalogService)
+│   ├── core/       # Provider-agnostic domain services (catalog, watches, snipes, bookings, holds, notifications)
 │   ├── database/   # SQLite connection, migrations, repositories
 │   ├── providers/  # Provider SDK (sdk/), ProviderRegistry, built-in providers (parkstay/)
-│   ├── services/   # Business logic (auth, booking, watch, sitesniper, gmail, notification)
-│   ├── scheduler/  # node-cron job scheduler
+│   ├── services/   # Other services (auth, gmail, updater)
+│   ├── scheduler/  # Watch due-loop and per-snipe timer chains
 │   ├── ipc/        # handle.ts, sender guard, renderer events, handlers/ (one per namespace)
 │   └── utils/      # Logger
 ├── preload/        # Secure context bridge (window.api), bundled by esbuild, sandboxed
@@ -66,7 +66,7 @@ src/
     └── schemas/    # Zod validation schemas
 ```
 
-**Composition root** (`src/main/app/container.ts`): `createContainer({ db })` builds every repository, service, notifier, dispatcher, scheduler, updater and Gmail service once, by constructor injection; nothing else in `src/main` calls `new` on them, and there are no singletons. `src/main/index.ts` opens the database, builds the container, runs `profile.ensureLocalProfile()`, registers the IPC handlers and starts the scheduler; `before-quit` calls `container.dispose()` (scheduler, providers and their queue gates, database).
+**Composition root** (`src/main/app/container.ts`): `createContainer({ db })` builds every repository, service, notifier, dispatcher, scheduler, updater and Gmail service once, by constructor injection; nothing else in `src/main` calls `new` on them, and there are no singletons. `src/main/index.ts` opens the database, builds the container, runs `profile.ensureLocalProfile()`, registers the IPC handlers and starts the scheduler; `before-quit` calls `container.dispose()` (scheduler jobs aborted and awaited, providers and their queue gates, then the database).
 
 **Local profile** (`src/main/app/profile.ts`): one `users` row is the local profile that owns every watch, snipe, booking and notification. Main resolves it (`requireUserId()`, or `NO_PROFILE`); the renderer never sends a `userId`. Nothing may delete the row: Logout clears only the credential fields.
 
@@ -106,23 +106,23 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 | Service | File | Purpose |
 | --- | --- | --- |
 | AuthService | `src/main/services/auth/AuthService.ts` | AES-256-GCM credential encryption |
-| BookingService | `src/main/services/booking/BookingService.ts` | Booking CRUD and sync |
-| WatchService | `src/main/services/watch/watch.service.ts` | Availability monitoring |
-| SiteSniperService | `src/main/services/sitesniper/sitesniper.service.ts` | Site Sniper — auto-holds a high-demand site the instant it is released (daily rollover / scheduled / cancellation modes) |
+| BookingService | `src/main/core/bookings/booking.service.ts` | Booking CRUD on any provider, `manageUrl`, import through `bookingImport` |
+| WatchService | `src/main/core/watches/watch.service.ts` | Availability monitoring through the provider registry (matching, partial runs, price rule, auto-hold) |
+| SiteSniperService | `src/main/core/snipes/snipe.service.ts` | Site Sniper — auto-holds a high-demand site the instant it is released; release and queue rules come from the provider |
 | ProviderRegistry | `src/main/providers/registry.ts` | Accommodation providers behind the SDK in `providers/sdk/` (manifests, capability checks); built-ins listed in `providers/index.ts` |
 | LocationCatalogService | `src/main/core/catalog/location-catalog.service.ts` | Every provider's locations (`catalog.*`): 24 h catalogue sync into `locations` (single-flight, per-provider failure isolation, `catalog:updated`), FTS5 search with filters and facets, 6 h detail cache with stale fallback, bulk and per-location availability caches |
 | ParkStay provider | `src/main/providers/parkstay/` | The ParkStay (DBCA) module: catalogue, availability (YYYY/MM/DD dates, per-night prices), DBCA queue access gate (`queue/`), release policy, `create_booking` holds, links. Watches and snipes use it through the registry |
-| NotificationService | `src/main/services/notification/notification.service.ts` | Desktop/in-app notifications |
-| NotificationDispatcher | `src/main/services/notification/notification-dispatcher.ts` | External notifiers (email) |
+| NotificationService | `src/main/core/notifications/notification.service.ts` | Desktop/in-app notifications (desktop title `{shortName} · {title}`) |
+| NotificationDispatcher | `src/main/core/notifications/notification-dispatcher.ts` | External notifiers (email) |
 | GmailOTPService | `src/main/services/gmail/GmailOTPService.ts` | Gmail OAuth2 OTP extraction |
 | AutoUpdaterService | `src/main/services/updater/auto-updater.service.ts` | Auto-updates via GitHub Releases |
-| JobScheduler | `src/main/scheduler/job-scheduler.ts` | Cron-based watch execution + timer-based Site Sniper scheduling |
+| JobScheduler | `src/main/scheduler/job-scheduler.ts` | Watch due-loop (`next_check_at`, 2 per provider) + per-snipe timer chains (generation token, abort); re-arms on resume; bounded `stop()` on quit |
 
 ## Notification System
 
 - `NotificationService` handles desktop/in-app notifications
 - `NotificationDispatcher` sends to external **notifiers** (email, etc.). "Notifier" is the outbound channel; a "provider" is an accommodation source (architecture-notes §2)
-- Notifiers are in `src/main/services/notification/notifiers/` (`BaseNotifier`), built in `app/container.ts` and passed to the dispatcher
+- Notifiers are in `src/main/core/notifications/notifiers/` (`BaseNotifier`), built in `app/container.ts` and passed to the dispatcher
 - Notifier configs (`notifiers` table, `NotifierRepository`) are encrypted with AES-256-GCM in the database
 - Email SMTP notifier: `notifiers/email-smtp.notifier.ts` (`SmtpEmailNotifier`)
 

@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { z } from 'zod';
 import { contract, CHANNELS, EVENT_NAMES } from '@shared/contracts';
+import { DEFAULT_WATCH_INTERVAL, WATCH_INTERVAL_OPTIONS } from '@shared/contracts/watches';
 import type { MethodDef } from '@shared/contracts/define';
 import { openDatabase } from '@main/database/connection';
 import { createContainer, AppContainer } from '@main/app/container';
@@ -74,6 +75,38 @@ describe('IPC contract', () => {
     // Event names never collide with invoke channels
     const eventNames: readonly string[] = EVENT_NAMES;
     expect(all.map(([, , def]) => def.channel).filter((c) => eventNames.includes(c))).toEqual([]);
+  });
+
+  it('watches, snipes and bookings (V4): list filters, the interval options, provider imports, no sync', () => {
+    for (const namespace of ['watches', 'snipes', 'bookings'] as const) {
+      const list = contract[namespace].list.request;
+      expect(list.safeParse(undefined).success).toBe(true);
+      expect(list.safeParse({}).success).toBe(true);
+      expect(list.safeParse({ providerId: 'parkstay' }).success).toBe(true);
+      expect(list.safeParse({ providerId: 'Not An Id' }).success).toBe(false);
+    }
+    expect(contract.watches.list.request.safeParse({ status: 'active' }).success).toBe(true);
+    expect(contract.watches.list.request.safeParse({ status: 'armed' }).success).toBe(false);
+
+    expect(WATCH_INTERVAL_OPTIONS).toEqual([15, 30, 60, 240, 720, 1440]);
+    expect(DEFAULT_WATCH_INTERVAL).toBe(60);
+    const interval = (minutes: number) =>
+      contract.watches.update.request.safeParse({
+        id: 1,
+        updates: { checkIntervalMinutes: minutes },
+      }).success;
+    expect(WATCH_INTERVAL_OPTIONS.every(interval)).toBe(true);
+    expect([5, 45, 0].some(interval)).toBe(false);
+    expect(schemaKeys(contract.watches.create.request)).toContain('autoHold');
+    expect(schemaKeys(contract.watches.create.request)).not.toContain('autoBook');
+
+    expect(
+      contract.bookings.import.request.safeParse({ providerId: 'parkstay', reference: 'PB123' })
+        .success
+    ).toBe(true);
+    expect(Object.keys(CHANNELS.bookings)).not.toEqual(expect.arrayContaining(['sync']));
+    expect(Object.values(CHANNELS.bookings)).not.toContain('bookings:sync-all');
+    expect(Object.keys(contract.bookings)).toEqual(expect.not.arrayContaining(['sync', 'syncAll']));
   });
 
   it('has no request schema with a key named userId', () => {

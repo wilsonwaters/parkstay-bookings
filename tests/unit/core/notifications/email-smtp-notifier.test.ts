@@ -6,7 +6,7 @@
  */
 import path from 'path';
 import type Mail from 'nodemailer/lib/mailer';
-import { SmtpEmailNotifier } from '@main/services/notification/notifiers/email-smtp.notifier';
+import { SmtpEmailNotifier } from '@main/core/notifications/notifiers/email-smtp.notifier';
 import { registerBuiltInProviders } from '@main/providers';
 import { ProviderRegistry } from '@main/providers/registry';
 import { BRAND_COLORS } from '@shared/constants';
@@ -21,7 +21,7 @@ jest.mock('nodemailer', () => ({
 }));
 
 const SENDER = 'me@example.com';
-const LOGO = path.resolve(__dirname, '../../../resources/icons/email-logo.png');
+const LOGO = path.resolve(__dirname, '../../../../resources/icons/email-logo.png');
 
 /** Provider names come from the real registry, as the container wires them. */
 function providerNames(): (id: string) => string | undefined {

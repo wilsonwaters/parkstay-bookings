@@ -23,10 +23,11 @@ export interface UpdateProgress {
 
 export interface EventPayloads {
   'notification:created': Notification;
-  /** Emitted by V4. */
+  /** After every change to a watch (a deleted watch is sent once more, in its last state). */
   'watch:updated': Watch;
-  /** Emitted by V4. */
+  /** After every change to a snipe (a deleted snipe is sent once more, in its last state). */
   'snipe:updated': SiteSnipe;
+  /** After every change to a booking (a deleted booking is sent once more, in its last state). */
   'booking:updated': Booking;
   'updater:available': { version: string; releaseNotes?: string };
   'updater:not-available': null;

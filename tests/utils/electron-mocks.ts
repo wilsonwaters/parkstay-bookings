@@ -20,6 +20,8 @@ export function electron(): Record<string, unknown> {
     },
     Notification: jest.fn().mockImplementation(() => ({ on: jest.fn(), show: jest.fn() })),
     shell: { openExternal: jest.fn(), openPath: jest.fn() },
+    // The scheduler re-arms its timers on `resume` and `unlock-screen`; a test emits them.
+    powerMonitor: new EventEmitter(),
     ipcMain: { handle: jest.fn() },
     session: { fromPartition: jest.fn(() => fakeSession()) },
     // Providers' HTTP clients send through `net.request`; it fails unless a test stubs it.

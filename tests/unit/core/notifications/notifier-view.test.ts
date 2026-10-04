@@ -7,7 +7,7 @@ import {
   storedPassword,
   toNotifierView,
   withStoredPassword,
-} from '@main/services/notification/notifier-view';
+} from '@main/core/notifications/notifier-view';
 import type { AppError } from '@main/utils/app-error';
 import { Notifier, NotifierChannel, NotifierStatus, SMTPPreset } from '@shared/types';
 

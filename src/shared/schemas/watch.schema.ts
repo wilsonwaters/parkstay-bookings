@@ -30,7 +30,7 @@ export const watchSchema = z
       .refine((val) => [60, 240, 720, 1440].includes(val), {
         message: 'Check interval must be 1 hour, 4 hours, 12 hours, or 24 hours',
       }),
-    autoBook: z.boolean(),
+    autoHold: z.boolean(),
     notifyOnly: z.boolean(),
     allowPartialMatch: z.boolean(),
     maxPrice: z.number().positive().optional(),
@@ -40,9 +40,9 @@ export const watchSchema = z
     message: 'Departure date must be after arrival date',
     path: ['departureDate'],
   })
-  .refine((data) => !(data.autoBook && data.arrivalDate < getTodayMidnight()), {
+  .refine((data) => !(data.autoHold && data.arrivalDate < getTodayMidnight()), {
     message: 'Cannot auto-book for past dates',
-    path: ['autoBook'],
+    path: ['autoHold'],
   });
 
 export type WatchSchemaType = z.infer<typeof watchSchema>;

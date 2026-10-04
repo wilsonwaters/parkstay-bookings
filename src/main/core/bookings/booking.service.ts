@@ -1,12 +1,25 @@
 /**
- * Booking Service
- * Handles booking management operations
+ * Booking Service: the local booking records, on any provider.
+ *
+ * Bookings are unique per `(providerId, reference)`. Every booking it returns carries
+ * `manageUrl`, where the person manages it on the provider's site (§12.5): the provider's
+ * bookings page, or its website. `importBooking` asks the provider for a booking by its
+ * reference (`capabilities.bookingImport`); ParkStay has none, so it is a `CAPABILITY` error.
  */
 
-import { BookingRepository } from '../../database/repositories/booking.repository';
-import { Booking, BookingInput, BookingStatus, BookingUpdate, StayInput } from '@shared/types';
+import type { EventSink } from '@shared/contracts/events';
+import {
+  Booking,
+  BookingInput,
+  type BookingListFilter,
+  BookingStatus,
+  BookingUpdate,
+  StayInput,
+} from '@shared/types';
 import { compareDates, isCalendarDate } from '@shared/utils/calendar-date';
-import { PARKSTAY_PROVIDER_ID } from '../../providers/parkstay';
+import type { BookingRepository } from '../../database/repositories/booking.repository';
+import type { ProviderRegistry } from '../../providers/registry';
+import type { ExternalBooking } from '../../providers/sdk/provider';
 import { logger } from '../../utils/logger';
 import { AppError } from '../../utils/app-error';
 
@@ -15,11 +28,49 @@ function partySize(stay: StayInput): number {
   return stay.adults + (stay.children ?? 0) + (stay.infants ?? 0) + (stay.concessions ?? 0);
 }
 
+const IMPORTED_STATUS: Record<ExternalBooking['status'], BookingStatus> = {
+  confirmed: BookingStatus.CONFIRMED,
+  pending: BookingStatus.PENDING,
+  cancelled: BookingStatus.CANCELLED,
+  unknown: BookingStatus.PENDING,
+};
+
+export interface BookingServiceDeps {
+  bookings: BookingRepository;
+  providers: ProviderRegistry;
+  /** `booking:updated` after every change. */
+  events?: EventSink;
+}
+
 export class BookingService {
   private bookingRepository: BookingRepository;
+  private readonly providers: ProviderRegistry;
+  private readonly events?: EventSink;
 
-  constructor(bookingRepository: BookingRepository) {
-    this.bookingRepository = bookingRepository;
+  constructor(deps: BookingServiceDeps) {
+    this.bookingRepository = deps.bookings;
+    this.providers = deps.providers;
+    this.events = deps.events;
+  }
+
+  /** The booking with `manageUrl`: the provider's bookings page, else its website. */
+  private withManageUrl(booking: Booking): Booking {
+    const provider = this.providers.tryGet(booking.providerId);
+    if (!provider) return booking;
+    const manageUrl =
+      provider.links.manageBooking?.(booking.bookingReference) ?? provider.manifest.website;
+    return { ...booking, manageUrl };
+  }
+
+  private withManageUrlOrNull(booking: Booking | null): Booking | null {
+    return booking ? this.withManageUrl(booking) : null;
+  }
+
+  /** Emits `booking:updated` and returns the booking as the renderer sees it. */
+  private changed(booking: Booking): Booking {
+    const dto = this.withManageUrl(booking);
+    this.events?.emit('booking:updated', dto);
+    return dto;
   }
 
   /**
@@ -42,8 +93,8 @@ export class BookingService {
       // Create booking
       const booking = this.bookingRepository.create(userId, input);
 
-      logger.info(`Booking created: ${booking.bookingReference}`);
-      return booking;
+      logger.info(`Booking created: ${booking.id}`);
+      return this.changed(booking);
     } catch (error) {
       logger.error('Error creating booking:', error);
       throw error;
@@ -55,7 +106,7 @@ export class BookingService {
    */
   async getBooking(id: number): Promise<Booking | null> {
     try {
-      return this.bookingRepository.findById(id);
+      return this.withManageUrlOrNull(this.bookingRepository.findById(id));
     } catch (error) {
       logger.error(`Error getting booking ${id}:`, error);
       throw error;
@@ -67,7 +118,9 @@ export class BookingService {
    */
   async getBookingByReference(providerId: string, reference: string): Promise<Booking | null> {
     try {
-      return this.bookingRepository.findByReference(providerId, reference);
+      return this.withManageUrlOrNull(
+        this.bookingRepository.findByReference(providerId, reference)
+      );
     } catch (error) {
       logger.error(`Error getting booking by reference ${reference}:`, error);
       throw error;
@@ -75,11 +128,13 @@ export class BookingService {
   }
 
   /**
-   * List all bookings for a user
+   * The user's bookings, optionally of one provider or status
    */
-  async listBookings(userId: number): Promise<Booking[]> {
+  async listBookings(userId: number, filter: BookingListFilter = {}): Promise<Booking[]> {
     try {
-      return this.bookingRepository.findByUserId(userId);
+      return this.bookingRepository
+        .findByUserId(userId, filter)
+        .map((booking) => this.withManageUrl(booking));
     } catch (error) {
       logger.error(`Error listing bookings for user ${userId}:`, error);
       throw error;
@@ -91,7 +146,7 @@ export class BookingService {
    */
   async getUpcomingBookings(userId: number): Promise<Booking[]> {
     try {
-      return this.bookingRepository.findUpcoming(userId);
+      return this.bookingRepository.findUpcoming(userId).map((b) => this.withManageUrl(b));
     } catch (error) {
       logger.error(`Error getting upcoming bookings for user ${userId}:`, error);
       throw error;
@@ -103,7 +158,7 @@ export class BookingService {
    */
   async getPastBookings(userId: number): Promise<Booking[]> {
     try {
-      return this.bookingRepository.findPast(userId);
+      return this.bookingRepository.findPast(userId).map((b) => this.withManageUrl(b));
     } catch (error) {
       logger.error(`Error getting past bookings for user ${userId}:`, error);
       throw error;
@@ -131,7 +186,7 @@ export class BookingService {
       }
 
       logger.info(`Booking updated: ${id}`);
-      return updated;
+      return this.changed(updated);
     } catch (error) {
       logger.error(`Error updating booking ${id}:`, error);
       throw error;
@@ -158,7 +213,7 @@ export class BookingService {
       }
 
       logger.info(`Booking cancelled: ${id}`);
-      return updated;
+      return this.changed(updated);
     } catch (error) {
       logger.error(`Error cancelling booking ${id}:`, error);
       throw error;
@@ -177,6 +232,8 @@ export class BookingService {
 
       this.bookingRepository.deleteById(id);
       logger.info(`Booking deleted: ${id}`);
+      // Its last state, once more, so a list showing it refreshes
+      this.events?.emit('booking:updated', booking);
     } catch (error) {
       logger.error(`Error deleting booking ${id}:`, error);
       throw error;
@@ -184,61 +241,45 @@ export class BookingService {
   }
 
   /**
-   * Import booking from ParkStay
-   * This is a placeholder - actual implementation would involve ParkStay API
+   * Imports a booking from its provider by reference (`capabilities.bookingImport`): created,
+   * or brought up to date when it is already here. Throws `ProviderCapabilityError`
+   * (`CAPABILITY`) for a provider that cannot import, such as ParkStay.
    */
-  async importBooking(_userId: number, bookingReference: string): Promise<Booking> {
-    try {
-      // Check if already imported (only bookings from the ParkStay provider can be imported for now)
-      const existing = this.bookingRepository.findByReference(
-        PARKSTAY_PROVIDER_ID,
-        bookingReference
-      );
-      if (existing) {
-        throw new Error(`Booking ${bookingReference} already exists`);
-      }
+  async importBooking(userId: number, providerId: string, reference: string): Promise<Booking> {
+    const provider = this.providers.require(providerId, 'bookingImport');
+    const external = await provider.bookings.get(reference);
+    const input: BookingInput = {
+      providerId,
+      bookingReference: external.reference,
+      location: {
+        externalId: external.externalId,
+        name: external.locationName,
+      },
+      stay: {
+        arrival: external.arrival,
+        departure: external.departure,
+        adults: Math.max(1, external.guests ?? 1),
+      },
+      ...(external.unitName ? { unitIds: [external.unitName] } : {}),
+      ...(external.totalPrice !== undefined ? { totalCost: external.totalPrice } : {}),
+    };
+    this.validateStay(input.stay);
 
-      // TODO: In real implementation, this would:
-      // 1. Call ParkStay API to get booking details for the specified user
-      // 2. Parse the response
-      // 3. Create booking in database
-
-      // For now, throw error indicating this needs ParkStay integration
-      throw new Error('Booking import requires ParkStay API integration');
-    } catch (error) {
-      logger.error(`Error importing booking ${bookingReference}:`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Sync booking with ParkStay
-   * This is a placeholder - actual implementation would involve ParkStay API
-   */
-  async syncBooking(id: number): Promise<Booking> {
-    try {
-      const booking = await this.getBooking(id);
-      if (!booking) {
-        throw new AppError('NOT_FOUND', `Booking ${id} not found`);
-      }
-
-      // In real implementation, this would:
-      // 1. Call ParkStay API to get latest booking status
-      // 2. Update booking in database
-      // 3. Mark as synced
-
-      // For now, just mark as synced
-      const updated = this.bookingRepository.markSynced(id);
-      if (!updated) {
-        throw new Error(`Failed to sync booking ${id}`);
-      }
-
-      logger.info(`Booking synced: ${id}`);
-      return updated;
-    } catch (error) {
-      logger.error(`Error syncing booking ${id}:`, error);
-      throw error;
-    }
+    const existing = this.bookingRepository.findByReference(providerId, external.reference);
+    const saved = existing
+      ? this.bookingRepository.update(existing.id, {
+          location: input.location,
+          stay: input.stay,
+          ...(input.unitIds ? { unitIds: input.unitIds } : {}),
+          ...(input.totalCost !== undefined ? { totalCost: input.totalCost } : {}),
+        })
+      : this.bookingRepository.create(userId, input);
+    if (!saved) throw new AppError('INTERNAL', `Booking ${external.reference} was not saved`);
+    this.bookingRepository.updateStatus(saved.id, IMPORTED_STATUS[external.status]);
+    const synced = this.bookingRepository.markSynced(saved.id);
+    if (!synced) throw new AppError('INTERNAL', `Booking ${external.reference} was not saved`);
+    logger.info(`Booking imported: ${synced.id} (${providerId})`);
+    return this.changed(synced);
   }
 
   /**
@@ -247,11 +288,6 @@ export class BookingService {
   private validateBookingInput(input: BookingInput): void {
     if (!input.bookingReference || input.bookingReference.trim() === '') {
       throw new Error('Booking reference is required');
-    }
-
-    // ParkStay records the park; other providers may have no area for a location.
-    if (input.providerId === PARKSTAY_PROVIDER_ID && !input.location.areaName?.trim()) {
-      throw new Error('Park name is required');
     }
 
     if (!input.location.name || input.location.name.trim() === '') {
@@ -294,33 +330,6 @@ export class BookingService {
 
     if (guests > 50) {
       throw new Error('Number of guests cannot exceed 50');
-    }
-  }
-
-  /**
-   * Get booking statistics
-   */
-  async getBookingStats(userId: number): Promise<{
-    total: number;
-    upcoming: number;
-    past: number;
-    cancelled: number;
-  }> {
-    try {
-      const all = await this.listBookings(userId);
-      const upcoming = await this.getUpcomingBookings(userId);
-      const past = await this.getPastBookings(userId);
-      const cancelled = all.filter((b) => b.status === BookingStatus.CANCELLED);
-
-      return {
-        total: all.length,
-        upcoming: upcoming.length,
-        past: past.length,
-        cancelled: cancelled.length,
-      };
-    } catch (error) {
-      logger.error(`Error getting booking stats for user ${userId}:`, error);
-      throw error;
     }
   }
 }
