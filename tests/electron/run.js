@@ -2,7 +2,8 @@
 /**
  * `npm run test:electron`: live Electron tests, outside Jest.
  *
- * Bundles each `tests/electron/*.electron.ts` with esbuild (`electron` stays external) and
+ * Bundles each `tests/electron/*.electron.ts` with esbuild (`electron` and the lazily loaded
+ * `playwright-core` stay external) and
  * launches it as Electron's main script. On Linux without a display it runs under
  * `xvfb-run -a`. Exits non-zero when any test fails.
  *
@@ -43,7 +44,8 @@ for (const entry of entries) {
     platform: 'node',
     target: 'node18',
     format: 'cjs',
-    external: ['electron'],
+    // playwright-core is loaded lazily, on the first browser automation; these tests never do.
+    external: ['electron', 'playwright-core'],
     tsconfig: path.join(root, 'tsconfig.json'),
     sourcemap: 'inline',
     logLevel: 'warning',
