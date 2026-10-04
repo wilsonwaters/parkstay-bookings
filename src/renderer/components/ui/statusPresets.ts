@@ -37,6 +37,7 @@ export const statusPresets = {
       label: 'Some nights found',
     },
     [WatchResult.NOT_FOUND]: { tone: 'neutral', icon: Search, label: 'Nothing yet' },
+    [WatchResult.HELD]: { tone: 'warning', icon: Timer, label: 'Site held' },
     [WatchResult.ERROR]: { tone: 'danger', icon: CircleAlert, label: 'Check failed' },
   },
   snipe: {

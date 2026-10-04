@@ -3,7 +3,8 @@ import {
   NotificationInput,
   Watch,
   SiteSnipe,
-  AvailabilityResult,
+  type WatchHold,
+  type WatchMatch,
 } from '@shared/types';
 import { NotificationType, RelatedType } from '@shared/types/common.types';
 import { isCalendarDate, nightsBetween } from '@shared/utils/calendar-date';
@@ -27,8 +28,28 @@ function formatCalendarDate(date: string): string {
 
 /** What an email says a notification is about, beyond what is stored. */
 interface DispatchMeta {
-  providerId?: string;
   locationName?: string;
+}
+
+/** A provider's short name (`ParkStay`), or undefined for an unknown provider. */
+export type ProviderNameResolver = (providerId: string) => string | undefined;
+
+export interface NotificationServiceOptions {
+  /** Resolves a provider's short name through the registry, for desktop titles. */
+  providerName?: ProviderNameResolver;
+}
+
+/**
+ * The title of the OS (desktop) notification: `ParkStay · Site held` when the notification
+ * belongs to a provider the registry knows, otherwise the stored title. The stored and
+ * in-app title has no prefix; `providerId` carries the provider (architecture-notes §12.31).
+ */
+export function desktopTitle(
+  notification: Pick<Notification, 'title' | 'providerId'>,
+  providerName: ProviderNameResolver
+): string {
+  const shortName = notification.providerId ? providerName(notification.providerId) : undefined;
+  return shortName ? `${shortName} · ${notification.title}` : notification.title;
 }
 
 /**
@@ -39,6 +60,7 @@ export class NotificationService {
   private notificationRepo: NotificationRepository;
   private dispatcher: NotificationDispatcher | null = null;
   private events: EventSink | null = null;
+  private readonly providerName: ProviderNameResolver;
   private soundEnabled: boolean = true;
   private desktopEnabled: boolean = true;
 
@@ -46,17 +68,19 @@ export class NotificationService {
   constructor(
     notificationRepo: NotificationRepository,
     dispatcher?: NotificationDispatcher,
-    events?: EventSink
+    events?: EventSink,
+    options: NotificationServiceOptions = {}
   ) {
     this.notificationRepo = notificationRepo;
     this.dispatcher = dispatcher || null;
     this.events = events || null;
+    this.providerName = options.providerName ?? (() => undefined);
   }
 
   /**
    * Create a notification
-   * @param input - Notification data to store
-   * @param dispatchMeta - The provider and location, for external notifiers (email, etc.)
+   * @param input - Notification data to store (its title without a provider prefix)
+   * @param dispatchMeta - The location, for external notifiers (email, etc.)
    */
   async notify(input: NotificationInput, dispatchMeta?: DispatchMeta): Promise<Notification> {
     // Store notification in database
@@ -83,7 +107,7 @@ export class NotificationService {
           message: notification.message,
           actionUrl: notification.actionUrl,
           type: notification.type,
-          providerId: dispatchMeta?.providerId,
+          providerId: notification.providerId,
           locationName: dispatchMeta?.locationName,
         });
       } catch (error) {
@@ -96,11 +120,14 @@ export class NotificationService {
   }
 
   /**
-   * Notify when watch finds availability
+   * Notify when a watch finds the whole stay. `note` is a sentence added to the message, such
+   * as why no automatic hold was placed.
    */
-  async notifyWatchFound(watch: Watch, availability: any[]): Promise<void> {
-    const sitesText = availability.length === 1 ? '1 site' : `${availability.length} sites`;
-    const message = `Found ${sitesText} available at ${watch.location.name} for ${formatCalendarDate(watch.stay.arrival)} - ${formatCalendarDate(watch.stay.departure)}`;
+  async notifyWatchFound(watch: Watch, matches: WatchMatch[], note?: string): Promise<void> {
+    const sitesText = matches.length === 1 ? '1 site' : `${matches.length} sites`;
+    const message =
+      `Found ${sitesText} available at ${watch.location.name} for ${formatCalendarDate(watch.stay.arrival)} - ${formatCalendarDate(watch.stay.departure)}` +
+      (note ? `. ${note}` : '');
 
     await this.notify(
       {
@@ -113,24 +140,23 @@ export class NotificationService {
         relatedType: RelatedType.WATCH,
         actionUrl: `/watches/${watch.id}`,
       },
-      { providerId: watch.providerId, locationName: watch.location.name }
+      { locationName: watch.location.name }
     );
   }
 
   /**
    * Notify when watch finds partial (consecutive subset) availability
    */
-  async notifyWatchPartialFound(watch: Watch, partialResults: AvailabilityResult[]): Promise<void> {
+  async notifyWatchPartialFound(watch: Watch, partialResults: WatchMatch[]): Promise<void> {
     // Highlight the longest consecutive block
-    const nightsOf = (r: AvailabilityResult): number =>
-      nightsBetween(r.dates.arrival, r.dates.departure);
+    const nightsOf = (r: WatchMatch): number => nightsBetween(r.arrival, r.departure);
     const longestBlock = partialResults.reduce((best, r) =>
       nightsOf(r) > nightsOf(best) ? r : best
     );
 
     const nights = nightsOf(longestBlock);
     const nightsText = nights === 1 ? '1 night' : `${nights} consecutive nights`;
-    const message = `Partial availability at ${watch.location.name}: ${nightsText} available from ${formatCalendarDate(longestBlock.dates.arrival)} - ${formatCalendarDate(longestBlock.dates.departure)}`;
+    const message = `Partial availability at ${watch.location.name}: ${nightsText} available from ${formatCalendarDate(longestBlock.arrival)} - ${formatCalendarDate(longestBlock.departure)}`;
 
     await this.notify(
       {
@@ -143,7 +169,31 @@ export class NotificationService {
         relatedType: RelatedType.WATCH,
         actionUrl: `/watches/${watch.id}`,
       },
-      { providerId: watch.providerId, locationName: watch.location.name }
+      { locationName: watch.location.name }
+    );
+  }
+
+  /**
+   * Notify when a watch's automatic hold was placed (payment still required), like a snipe's.
+   */
+  async notifyWatchHeld(watch: Watch, hold: WatchHold, unitName: string): Promise<void> {
+    const arrival = formatCalendarDate(watch.stay.arrival);
+    const departure = formatCalendarDate(watch.stay.departure);
+    const minutesLeft = Math.max(1, Math.round((Date.parse(hold.expiresAt) - Date.now()) / 60_000));
+    const message = `${unitName} held at ${watch.location.name} for ${arrival}–${departure}. Complete payment within ${minutesLeft} minutes.`;
+
+    await this.notify(
+      {
+        userId: watch.userId,
+        providerId: watch.providerId,
+        type: NotificationType.SNIPE_HELD,
+        title: 'Site Held — Complete Payment!',
+        message,
+        relatedId: watch.id,
+        relatedType: RelatedType.WATCH,
+        actionUrl: `/watches/${watch.id}`,
+      },
+      { locationName: watch.location.name }
     );
   }
 
@@ -172,7 +222,7 @@ export class NotificationService {
         relatedType: RelatedType.SNIPE,
         actionUrl: `/site-sniper/${snipe.id}`,
       },
-      { providerId: snipe.providerId, locationName: snipe.location.name || undefined }
+      { locationName: snipe.location.name || undefined }
     );
   }
 
@@ -197,7 +247,7 @@ export class NotificationService {
         relatedType: RelatedType.SNIPE,
         actionUrl: `/site-sniper/${snipe.id}`,
       },
-      { providerId: snipe.providerId, locationName: snipe.location.name || undefined }
+      { locationName: snipe.location.name || undefined }
     );
   }
 
@@ -210,19 +260,16 @@ export class NotificationService {
     bookingId: number,
     bookingReference: string
   ): Promise<void> {
-    await this.notify(
-      {
-        userId,
-        providerId,
-        type: NotificationType.BOOKING_CONFIRMED,
-        title: 'Booking Confirmed',
-        message: `Your booking ${bookingReference} has been confirmed.`,
-        relatedId: bookingId,
-        relatedType: RelatedType.BOOKING,
-        actionUrl: `/bookings/${bookingId}`,
-      },
-      { providerId }
-    );
+    await this.notify({
+      userId,
+      providerId,
+      type: NotificationType.BOOKING_CONFIRMED,
+      title: 'Booking Confirmed',
+      message: `Your booking ${bookingReference} has been confirmed.`,
+      relatedId: bookingId,
+      relatedType: RelatedType.BOOKING,
+      actionUrl: `/bookings/${bookingId}`,
+    });
   }
 
   /**
@@ -267,7 +314,7 @@ export class NotificationService {
   private async showDesktopNotification(notification: Notification): Promise<void> {
     try {
       const desktopNotification = new ElectronNotification({
-        title: notification.title,
+        title: desktopTitle(notification, this.providerName),
         body: notification.message,
         silent: !this.soundEnabled,
         icon: getBrandIconPath(),

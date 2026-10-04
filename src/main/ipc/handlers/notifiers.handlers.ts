@@ -9,7 +9,7 @@
 
 import { contract } from '@shared/contracts';
 import type { AppContainer } from '../../app/container';
-import { toNotifierView, withStoredPassword } from '../../services/notification/notifier-view';
+import { toNotifierView, withStoredPassword } from '../../core/notifications/notifier-view';
 import { logger } from '../../utils/logger';
 import type { Handle } from '../handle';
 

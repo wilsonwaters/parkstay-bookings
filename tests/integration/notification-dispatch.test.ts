@@ -10,8 +10,8 @@
 import Database from 'better-sqlite3';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
 import { NotifierRepository } from '@main/database/repositories';
-import { NotificationDispatcher } from '@main/services/notification/notification-dispatcher';
-import { BaseNotifier } from '@main/services/notification/notifiers/base.notifier';
+import { NotificationDispatcher } from '@main/core/notifications/notification-dispatcher';
+import { BaseNotifier } from '@main/core/notifications/notifiers/base.notifier';
 import { logger } from '@main/utils/logger';
 import {
   NotifierChannel,

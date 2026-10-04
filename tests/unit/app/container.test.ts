@@ -15,16 +15,16 @@ import { openDatabase } from '@main/database/connection';
 import { createContainer, AppContainer } from '@main/app/container';
 import * as repositories from '@main/database/repositories';
 import { AuthService } from '@main/services/auth/AuthService';
-import { BookingService } from '@main/services/booking/BookingService';
+import { BookingService } from '@main/core/bookings/booking.service';
 import { GmailOTPService } from '@main/services/gmail/GmailOTPService';
 import { OAuth2Handler } from '@main/services/gmail/oauth2-handler';
-import { NotificationDispatcher } from '@main/services/notification/notification-dispatcher';
-import { NotificationService } from '@main/services/notification/notification.service';
-import { SmtpEmailNotifier } from '@main/services/notification/notifiers/email-smtp.notifier';
-import { SiteSniperService } from '@main/services/sitesniper/sitesniper.service';
+import { NotificationDispatcher } from '@main/core/notifications/notification-dispatcher';
+import { NotificationService } from '@main/core/notifications/notification.service';
+import { SmtpEmailNotifier } from '@main/core/notifications/notifiers/email-smtp.notifier';
+import { SiteSniperService } from '@main/core/snipes/snipe.service';
 import { AutoUpdaterService } from '@main/services/updater/auto-updater.service';
 import { ProviderRegistry } from '@main/providers/registry';
-import { WatchService } from '@main/services/watch/watch.service';
+import { WatchService } from '@main/core/watches/watch.service';
 import { LocationCatalogService } from '@main/core/catalog/location-catalog.service';
 import { JobScheduler } from '@main/scheduler/job-scheduler';
 import { RendererEvents } from '@main/ipc/events';
@@ -41,6 +41,7 @@ jest.mock('electron', () => ({
   app: { getAppPath: () => '/app', getPath: () => '/tmp', isPackaged: false },
   Notification: jest.fn(),
   shell: { openExternal: jest.fn(), openPath: jest.fn() },
+  powerMonitor: { on: jest.fn(), removeListener: jest.fn() },
   session: {
     fromPartition: jest.fn(() => jest.requireActual('@tests/utils/electron-mocks').fakeSession()),
   },
@@ -71,8 +72,8 @@ jest.mock('@main/database/repositories', () => mockCountedModule('@main/database
 jest.mock('@main/services/auth/AuthService', () =>
   mockCountedModule('@main/services/auth/AuthService')
 );
-jest.mock('@main/services/booking/BookingService', () =>
-  mockCountedModule('@main/services/booking/BookingService')
+jest.mock('@main/core/bookings/booking.service', () =>
+  mockCountedModule('@main/core/bookings/booking.service')
 );
 jest.mock('@main/services/gmail/GmailOTPService', () =>
   mockCountedModule('@main/services/gmail/GmailOTPService')
@@ -80,23 +81,23 @@ jest.mock('@main/services/gmail/GmailOTPService', () =>
 jest.mock('@main/services/gmail/oauth2-handler', () =>
   mockCountedModule('@main/services/gmail/oauth2-handler')
 );
-jest.mock('@main/services/notification/notification-dispatcher', () =>
-  mockCountedModule('@main/services/notification/notification-dispatcher')
+jest.mock('@main/core/notifications/notification-dispatcher', () =>
+  mockCountedModule('@main/core/notifications/notification-dispatcher')
 );
-jest.mock('@main/services/notification/notification.service', () =>
-  mockCountedModule('@main/services/notification/notification.service')
+jest.mock('@main/core/notifications/notification.service', () =>
+  mockCountedModule('@main/core/notifications/notification.service')
 );
-jest.mock('@main/services/notification/notifiers/email-smtp.notifier', () =>
-  mockCountedModule('@main/services/notification/notifiers/email-smtp.notifier')
+jest.mock('@main/core/notifications/notifiers/email-smtp.notifier', () =>
+  mockCountedModule('@main/core/notifications/notifiers/email-smtp.notifier')
 );
-jest.mock('@main/services/sitesniper/sitesniper.service', () =>
-  mockCountedModule('@main/services/sitesniper/sitesniper.service')
+jest.mock('@main/core/snipes/snipe.service', () =>
+  mockCountedModule('@main/core/snipes/snipe.service')
 );
 jest.mock('@main/services/updater/auto-updater.service', () =>
   mockCountedModule('@main/services/updater/auto-updater.service')
 );
-jest.mock('@main/services/watch/watch.service', () =>
-  mockCountedModule('@main/services/watch/watch.service')
+jest.mock('@main/core/watches/watch.service', () =>
+  mockCountedModule('@main/core/watches/watch.service')
 );
 jest.mock('@main/scheduler/job-scheduler', () =>
   mockCountedModule('@main/scheduler/job-scheduler')
@@ -168,8 +169,8 @@ describe('createContainer', () => {
     jest.clearAllMocks();
   });
 
-  afterEach(() => {
-    opened.splice(0).forEach((c) => c.dispose());
+  afterEach(async () => {
+    await Promise.all(opened.splice(0).map((c) => c.dispose()));
     userDataDirs.splice(0).forEach(removeUserData);
   });
 
@@ -182,19 +183,40 @@ describe('createContainer', () => {
 
     // The single instances are the ones injected into their dependants.
     const r = container.repositories;
-    // Watches and snipes run on the registry's ParkStay provider (V4 resolves them per watch).
-    const parkstay = container.providers.get('parkstay');
-    expect(WatchService).toHaveBeenCalledWith(r.watches, parkstay, container.notificationService);
-    expect(SiteSniperService).toHaveBeenCalledWith(
-      r.snipes,
-      parkstay,
-      container.notificationService
+    // Core services resolve providers through the registry (no provider is wired in).
+    expect(WatchService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        watches: r.watches,
+        providers: container.providers,
+        notifications: container.notificationService,
+        events: container.rendererEvents,
+      })
     );
+    expect(SiteSniperService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        snipes: r.snipes,
+        providers: container.providers,
+        notifications: container.notificationService,
+        events: container.rendererEvents,
+      })
+    );
+    // The watch and snipe services share one night guard
+    const [[watchDeps]] = jest.mocked(WatchService).mock.calls;
+    const [[snipeDeps]] = jest.mocked(SiteSniperService).mock.calls;
+    expect(watchDeps.nightGuard).toBe(snipeDeps.nightGuard);
+    expect(BookingService).toHaveBeenCalledWith({
+      bookings: r.bookings,
+      providers: container.providers,
+      events: container.rendererEvents,
+    });
     expect(NotificationService).toHaveBeenCalledWith(
       r.notifications,
       container.notifierDispatcher,
-      container.rendererEvents
+      container.rendererEvents,
+      { providerName: expect.any(Function) }
     );
+    const [, , , notificationOptions] = jest.mocked(NotificationService).mock.calls[0];
+    expect(notificationOptions?.providerName?.('parkstay')).toBe('ParkStay');
     expect(AutoUpdaterService).toHaveBeenCalledWith(container.rendererEvents);
     // The catalogue reads the registry, caches in locations and provider_state, and announces
     // syncs on the renderer events bus
@@ -211,7 +233,12 @@ describe('createContainer', () => {
       container.catalogService
     );
     expect(RendererEvents).toHaveBeenCalledWith(container.trustedWebContents);
-    expect(JobScheduler).toHaveBeenCalledWith(container.watchService, container.siteSniperService);
+    expect(JobScheduler).toHaveBeenCalledWith({
+      watches: container.watchService,
+      snipes: container.siteSniperService,
+      providers: container.providers,
+      power: expect.objectContaining({ on: expect.any(Function) }),
+    });
     expect(GmailOTPService).toHaveBeenCalledWith(jest.mocked(OAuth2Handler).mock.results[0].value);
     expect(NotificationDispatcher).toHaveBeenCalledWith(r.notifiers, [
       jest.mocked(SmtpEmailNotifier).mock.results[0].value,
@@ -227,8 +254,6 @@ describe('createContainer', () => {
     );
     expect(jest.mocked(createProviderContext).mock.calls[0][1].vault).toBe(vault);
     expect(repositories.SqliteKeyValueStore).toHaveBeenCalledWith(r.providerState, 'parkstay');
-    // ParkStay's queue gate is the provider's, not a service of its own.
-    expect(container.siteSniperService.getAccessGate()).toBe(parkstay.access);
   });
 
   it('builds the vault lazily: a fresh install touches neither safeStorage nor the key file, nor reads the machine id', () => {
@@ -323,20 +348,21 @@ describe('createContainer', () => {
     expect(isReleaseInProgress?.('parkstay')).toBe(false);
   });
 
-  it('dispose disposes the providers before the database closes', () => {
+  it('dispose disposes the providers before the database closes', async () => {
     const { container, db } = build();
     const disposeAll = jest.spyOn(container.providers, 'disposeAll');
     const close = jest.spyOn(db, 'close');
 
-    container.dispose();
-    container.dispose();
+    const first = container.dispose();
+    expect(container.dispose()).toBe(first);
+    await first;
 
     expect(disposeAll).toHaveBeenCalledTimes(1);
     expect(disposeAll.mock.invocationCallOrder[0]).toBeLessThan(close.mock.invocationCallOrder[0]);
     expect(container.providers.list()).toEqual([]);
   });
 
-  it("dispose cuts the renderer off, stops the scheduler, disposes ParkStay's queue gate, then closes the database, once", () => {
+  it("dispose cuts the renderer off, stops the scheduler, disposes ParkStay's queue gate, then closes the database, once", async () => {
     const { container, db } = build();
     const revoke = jest.spyOn(container.trustedWebContents, 'revokeAll');
     const stop = jest.spyOn(container.scheduler, 'stop');
@@ -345,8 +371,11 @@ describe('createContainer', () => {
     const disposeGate = jest.spyOn(gate, 'dispose');
     const close = jest.spyOn(db, 'close');
 
-    container.dispose();
-    container.dispose();
+    const disposing = container.dispose();
+    void container.dispose();
+    // The database closes only once the scheduler's jobs have settled
+    expect(close).not.toHaveBeenCalled();
+    await disposing;
 
     expect(revoke).toHaveBeenCalledTimes(1);
     expect(stop).toHaveBeenCalledTimes(1);

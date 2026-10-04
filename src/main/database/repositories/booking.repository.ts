@@ -4,7 +4,14 @@
  */
 
 import { BaseRepository } from './base.repository';
-import { Booking, BookingInput, BookingStatus, BookingUpdate, locationKeyOf } from '@shared/types';
+import {
+  Booking,
+  BookingInput,
+  type BookingListFilter,
+  BookingStatus,
+  BookingUpdate,
+  locationKeyOf,
+} from '@shared/types';
 import { nightsBetween } from '@shared/utils/calendar-date';
 import { logger } from '../../utils/logger';
 import { readStay, readStayParams, readUnitIds, StayRow, stayValues } from '../stay-columns';
@@ -107,13 +114,23 @@ export class BookingRepository extends BaseRepository<Booking> {
   }
 
   /**
-   * Find bookings by user ID
+   * The user's bookings, optionally of one provider or status, latest arrival first.
    */
-  findByUserId(userId: number): Booking[] {
+  findByUserId(userId: number, filter: BookingListFilter = {}): Booking[] {
     try {
+      const where = ['user_id = ?'];
+      const values: unknown[] = [userId];
+      if (filter.providerId !== undefined) {
+        where.push('provider_id = ?');
+        values.push(filter.providerId);
+      }
+      if (filter.status !== undefined) {
+        where.push('status = ?');
+        values.push(filter.status);
+      }
       const rows = this.db
-        .prepare('SELECT * FROM bookings WHERE user_id = ? ORDER BY arrival_date DESC')
-        .all(userId);
+        .prepare(`SELECT * FROM bookings WHERE ${where.join(' AND ')} ORDER BY arrival_date DESC`)
+        .all(values);
       return rows.map((row) => this.mapRow(row as BookingRow));
     } catch (error) {
       logger.error(`Error finding bookings for user ${userId}:`, error);

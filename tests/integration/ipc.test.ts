@@ -62,8 +62,8 @@ describe('IPC through the container', () => {
     container.scheduler.start();
   });
 
-  afterEach(() => {
-    container.dispose();
+  afterEach(async () => {
+    await container.dispose();
     autoUpdater.removeAllListeners();
   });
 
@@ -242,7 +242,10 @@ describe('IPC through the container', () => {
     container.profile.ensureLocalProfile();
     const listWatches = jest.spyOn(container.watchService, 'list');
 
-    void container.dispose();
+    const disposing = container.dispose();
+    // Cut off at once; the database closes once the scheduler's jobs have settled
+    await expect(call('watches:list')).resolves.toMatchObject({ code: 'FORBIDDEN' });
+    await disposing;
     expect(container.db.open).toBe(false);
 
     // Refused before any handler runs, so nothing reaches the closed database

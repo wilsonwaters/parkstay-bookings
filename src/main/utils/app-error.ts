@@ -14,16 +14,23 @@ const DEFAULT_MESSAGES: Record<ApiErrorCode, string> = {
   NOT_IMPLEMENTED: 'Not available yet',
 };
 
+export interface AppErrorOptions {
+  /** The request fields at fault, as dotted paths (`releaseAt`, `stayParams.postcode`). */
+  issues?: string[];
+}
+
 /**
- * An error with an API code. `ipc/handle.ts` maps it to `{ success: false, code, error }`;
- * any other thrown value becomes `INTERNAL`.
+ * An error with an API code. `ipc/handle.ts` maps it to `{ success: false, code, error }`
+ * (with `issues` when given); any other thrown value becomes `INTERNAL`.
  */
 export class AppError extends Error {
   readonly code: ApiErrorCode;
+  readonly issues?: string[];
 
-  constructor(code: ApiErrorCode, message?: string) {
+  constructor(code: ApiErrorCode, message?: string, options: AppErrorOptions = {}) {
     super(message ?? DEFAULT_MESSAGES[code]);
     this.name = 'AppError';
     this.code = code;
+    if (options.issues) this.issues = options.issues;
   }
 }

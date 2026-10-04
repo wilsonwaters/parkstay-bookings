@@ -3,13 +3,14 @@
  */
 
 import { z } from 'zod';
-import { SnipeReleaseMode } from '../types/common.types';
+import { SnipeReleaseMode, SnipeStatus } from '../types/common.types';
 import { ProviderIdSchema, StayParamsSchema } from '../types/provider.types';
 import type {
   SiteSnipe,
   SiteSnipeInput,
   SiteSnipeUpdate,
   SnipeExecutionResult,
+  SnipeListFilter,
 } from '../types/site-sniper.types';
 import { LocationRefSchema, StayInputSchema } from '../types/stay.types';
 import { assertTypeEquals } from '../utils/type-equality';
@@ -52,8 +53,24 @@ export const snipeUpdateSchema = snipeInputSchema.omit({ providerId: true }).par
 assertTypeEquals<z.input<typeof snipeUpdateSchema>, SiteSnipeUpdate>(true);
 assertTypeEquals<z.output<typeof snipeUpdateSchema>, SiteSnipeUpdate>(true);
 
+const snipeStatusSchema: z.ZodType<SnipeStatus> = z.nativeEnum(SnipeStatus);
+
+/** `snipes.list`: every snipe of the local profile, or those of one provider or status. */
+export const snipeListFilterSchema = z.object({
+  providerId: ProviderIdSchema.optional(),
+  status: snipeStatusSchema.optional(),
+});
+assertTypeEquals<z.input<typeof snipeListFilterSchema>, SnipeListFilter>(true);
+assertTypeEquals<z.output<typeof snipeListFilterSchema>, SnipeListFilter>(true);
+
 export const snipes = {
-  list: { channel: C.list, request: z.void(), args: {} as [], response: {} as SiteSnipe[] },
+  list: {
+    channel: C.list,
+    // No payload lists everything.
+    request: snipeListFilterSchema.optional(),
+    args: {} as [filter?: SnipeListFilter],
+    response: {} as SiteSnipe[],
+  },
   get: {
     channel: C.get,
     request: idPayload,

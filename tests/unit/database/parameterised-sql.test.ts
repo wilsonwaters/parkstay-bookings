@@ -56,16 +56,29 @@ describe('parameterised repository SQL', () => {
     expect(watches.findByUserId(12345)).toEqual([]);
   });
 
-  it('WatchRepository.findActive and findDueForCheck filter by state and due time', () => {
+  it('WatchRepository.findActive and findDue filter by state, due time and provider', () => {
     const watches = new WatchRepository(db);
     const due = watches.create(userId, createMockWatchInput({ name: 'Due' }));
     const later = watches.create(userId, createMockWatchInput({ name: 'Later' }));
     const inactive = watches.create(userId, createMockWatchInput({ name: 'Inactive' }));
-    watches.updateCheckTimestamps(later.id, new Date(), new Date(Date.now() + 3600_000));
+    const other = watches.create(
+      userId,
+      createMockWatchInput({ name: 'Other provider', providerId: 'fake' })
+    );
+    watches.setNextCheckAt(later.id, new Date(Date.now() + 3600_000));
     watches.deactivate(inactive.id);
 
-    expect(watches.findActive().map((w) => w.id)).toEqual([due.id, later.id]);
-    expect(watches.findDueForCheck().map((w) => w.id)).toEqual([due.id]);
+    expect(watches.findActive().map((w) => w.id)).toEqual([due.id, later.id, other.id]);
+    let found: number[] = [];
+    const sql = preparedSql(() => {
+      found = watches.findDue(new Date(), ['parkstay']).map((w) => w.id);
+    });
+    expect(found).toEqual([due.id]);
+    // The provider ids are bound as parameters, never written into the SQL.
+    expect(sql).toHaveLength(1);
+    expect(sql[0]).toContain('provider_id IN (?)');
+    expect(sql[0]).not.toContain('parkstay');
+    expect(watches.findDue(new Date(), [])).toEqual([]);
   });
 
   it('WatchRepository round-trips an empty unit-ids list as JSON, not NULL', () => {

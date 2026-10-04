@@ -77,11 +77,6 @@ export const invalidBookingInputs = [
   },
   {
     ...mockBookingInput,
-    location: { ...mockBookingInput.location, areaName: '' },
-    expectedError: 'Park name is required',
-  },
-  {
-    ...mockBookingInput,
     location: { ...mockBookingInput.location, name: '' },
     expectedError: 'Campground name is required',
   },

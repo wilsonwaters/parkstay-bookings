@@ -23,6 +23,8 @@ export interface Booking {
   status: BookingStatus;
   bookingData?: ParkStayBookingData;
   notes?: string;
+  /** Where the person manages the booking on the provider's site (its bookings page, or its website). */
+  manageUrl?: string;
   createdAt: Date;
   updatedAt: Date;
   syncedAt?: Date;
@@ -42,6 +44,18 @@ export interface BookingInput {
 
 /** The fields an update may change. A booking never moves to another provider. */
 export type BookingUpdate = Partial<Omit<BookingInput, 'providerId'>>;
+
+/** `bookings.list` filter. Main resolves the user. */
+export interface BookingListFilter {
+  providerId?: ProviderId;
+  status?: BookingStatus;
+}
+
+/** `bookings.import`: a booking the provider knows by its reference. */
+export interface BookingImportRequest {
+  providerId: ProviderId;
+  reference: string;
+}
 
 // Raw booking data from ParkStay API
 export interface ParkStayBookingData {

@@ -3,14 +3,31 @@
  */
 
 import { z } from 'zod';
+import { DEFAULT_WATCH_INTERVAL, WATCH_INTERVAL_OPTIONS } from '../constants/app-constants';
 import { ProviderIdSchema, StayParamsSchema } from '../types/provider.types';
 import { LocationRefSchema, StayInputSchema } from '../types/stay.types';
-import type { Watch, WatchExecutionResult, WatchInput, WatchUpdate } from '../types/watch.types';
+import type {
+  Watch,
+  WatchExecutionResult,
+  WatchInput,
+  WatchListFilter,
+  WatchUpdate,
+} from '../types/watch.types';
 import { assertTypeEquals } from '../utils/type-equality';
 import { CHANNELS } from './channels';
 import { id, idPayload, Namespace } from './define';
 
 const C = CHANNELS.watches;
+
+/** The check intervals a watch may have (minutes), and the default (PQ6). */
+export { DEFAULT_WATCH_INTERVAL, WATCH_INTERVAL_OPTIONS };
+
+const checkIntervalSchema = z
+  .number()
+  .int()
+  .refine((minutes) => (WATCH_INTERVAL_OPTIONS as readonly number[]).includes(minutes), {
+    message: `Must be one of ${WATCH_INTERVAL_OPTIONS.join(', ')} minutes`,
+  });
 
 /**
  * A watch as the renderer sends it. Field types only (plus the stay's own date order), so
@@ -24,8 +41,8 @@ export const watchInputSchema = z.object({
   stay: StayInputSchema,
   unitIds: z.array(z.string()).optional(),
   stayParams: StayParamsSchema.optional(),
-  checkIntervalMinutes: z.number().int().positive().optional(),
-  autoBook: z.boolean().optional(),
+  checkIntervalMinutes: checkIntervalSchema.optional(),
+  autoHold: z.boolean().optional(),
   notifyOnly: z.boolean().optional(),
   allowPartialMatch: z.boolean().optional(),
   maxPrice: z.number().nonnegative().optional(),
@@ -39,8 +56,22 @@ export const watchUpdateSchema = watchInputSchema.omit({ providerId: true }).par
 assertTypeEquals<z.input<typeof watchUpdateSchema>, WatchUpdate>(true);
 assertTypeEquals<z.output<typeof watchUpdateSchema>, WatchUpdate>(true);
 
+/** `watches.list`: every watch of the local profile, or those of one provider or state. */
+export const watchListFilterSchema = z.object({
+  providerId: ProviderIdSchema.optional(),
+  status: z.enum(['active', 'inactive']).optional(),
+});
+assertTypeEquals<z.input<typeof watchListFilterSchema>, WatchListFilter>(true);
+assertTypeEquals<z.output<typeof watchListFilterSchema>, WatchListFilter>(true);
+
 export const watches = {
-  list: { channel: C.list, request: z.void(), args: {} as [], response: {} as Watch[] },
+  list: {
+    channel: C.list,
+    // No payload lists everything.
+    request: watchListFilterSchema.optional(),
+    args: {} as [filter?: WatchListFilter],
+    response: {} as Watch[],
+  },
   get: {
     channel: C.get,
     request: idPayload,

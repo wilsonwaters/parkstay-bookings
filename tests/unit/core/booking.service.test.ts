@@ -1,9 +1,14 @@
 /**
- * BookingService Unit Tests
- * Tests booking management operations (CRUD, validation, statistics)
+ * BookingService: booking records on any provider (CRUD, validation), `manageUrl` on every
+ * booking it returns, `booking:updated` events, and import through the provider's
+ * `bookingImport` capability (ParkStay has none).
  */
 
-import { BookingService } from '@main/services/booking/BookingService';
+import { BookingService } from '@main/core/bookings/booking.service';
+import { parkstayFactory, parkstayManifest } from '@main/providers/parkstay';
+import { ProviderRegistry } from '@main/providers/registry';
+import { ProviderCapabilityError, toApiError } from '@main/providers/sdk/errors';
+import { createFakeProvider, createTestProviderContext } from '@tests/utils/fake-provider';
 import { BookingRepository } from '@main/database/repositories/booking.repository';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
 import { UserRepository } from '@main/database/repositories/user.repository';
@@ -20,13 +25,15 @@ import { expectAsyncThrow } from '@tests/utils/test-helpers';
 // SQLite date('now'), which Jest fake timers cannot pin, so the dates sit decades either
 // side of any real "now".
 const UPCOMING = { arrival: '2099-06-15', departure: '2099-06-18', adults: 2 };
-const CANCELLED = { arrival: '2099-06-29', departure: '2099-07-01', adults: 2 };
 const PAST = { arrival: '2000-06-15', departure: '2000-06-17', adults: 2 };
 
 describe('BookingService', () => {
   let dbHelper: TestDatabaseHelper;
   let bookingService: BookingService;
   let bookingRepository: BookingRepository;
+  let registry: ProviderRegistry;
+  let fake: ReturnType<typeof createFakeProvider>;
+  let events: { emit: jest.Mock };
   let userRepository: UserRepository;
   let testUserId: number;
 
@@ -35,7 +42,30 @@ describe('BookingService', () => {
     await dbHelper.setup();
 
     bookingRepository = new BookingRepository(dbHelper.getDb());
-    bookingService = new BookingService(bookingRepository);
+    registry = new ProviderRegistry();
+    registry.register(parkstayFactory, createTestProviderContext(parkstayManifest));
+    fake = createFakeProvider({
+      bookings: [
+        {
+          reference: 'FAKE-77',
+          externalId: '1',
+          locationName: 'Banksia Camp',
+          unitName: 'Site u1',
+          arrival: '2099-03-01',
+          departure: '2099-03-04',
+          guests: 3,
+          status: 'confirmed',
+          totalPrice: 90,
+        },
+      ],
+    });
+    registry.register(fake.factory, createTestProviderContext(fake.manifest));
+    events = { emit: jest.fn() };
+    bookingService = new BookingService({
+      bookings: bookingRepository,
+      providers: registry,
+      events,
+    });
 
     // Create test user
     userRepository = new UserRepository(dbHelper.getDb());
@@ -287,36 +317,98 @@ describe('BookingService', () => {
     });
   });
 
-  describe('getBookingStats', () => {
-    it('should calculate booking statistics', async () => {
-      // Create upcoming booking
-      await bookingService.createBooking(testUserId, createMockBookingInput({ stay: UPCOMING }));
-
-      // Create past booking
-      await bookingService.createBooking(testUserId, createMockBookingInput({ stay: PAST }));
-
-      // Create cancelled booking (with future dates so it's not counted as "past")
-      const cancelled = await bookingService.createBooking(
+  describe('manageUrl', () => {
+    it('every booking it returns links to where the provider manages it', async () => {
+      const created = await bookingService.createBooking(testUserId, mockBookingInput);
+      const onFake = await bookingService.createBooking(
         testUserId,
-        createMockBookingInput({ stay: CANCELLED })
+        createMockBookingInput({ providerId: 'fake', bookingReference: 'FAKE-1' })
       );
-      await bookingService.cancelBooking(cancelled.id);
 
-      const stats = await bookingService.getBookingStats(testUserId);
-
-      expect(stats.total).toBe(3);
-      expect(stats.upcoming).toBe(1);
-      expect(stats.past).toBe(1);
-      expect(stats.cancelled).toBe(1);
+      expect(created.manageUrl).toBe('https://parkstay.dbca.wa.gov.au/mybookings/');
+      expect(onFake.manageUrl).toBe('https://fake.example/bookings/FAKE-1');
+      expect((await bookingService.getBooking(created.id))?.manageUrl).toBe(created.manageUrl);
+      const listed = await bookingService.listBookings(testUserId);
+      expect(listed.map((b) => b.manageUrl)).toEqual(
+        expect.arrayContaining([created.manageUrl, onFake.manageUrl])
+      );
     });
 
-    it('should return zero stats for user with no bookings', async () => {
-      const stats = await bookingService.getBookingStats(testUserId);
+    it('falls back to the website when the provider has no bookings page, and to none for an unknown provider', async () => {
+      const bare = new ProviderRegistry();
+      const plain = createFakeProvider({ id: 'plain' });
+      // A provider whose links have no manageBooking
+      const factory = Object.assign(
+        (ctx: Parameters<typeof plain.factory>[0]) => {
+          const provider = plain.factory(ctx);
+          return {
+            ...provider,
+            links: { location: provider.links.location, booking: provider.links.booking },
+          };
+        },
+        { id: plain.factory.id, manifest: plain.factory.manifest }
+      );
+      bare.register(factory, createTestProviderContext(plain.manifest));
+      const service = new BookingService({ bookings: bookingRepository, providers: bare });
 
-      expect(stats.total).toBe(0);
-      expect(stats.upcoming).toBe(0);
-      expect(stats.past).toBe(0);
-      expect(stats.cancelled).toBe(0);
+      const onPlain = await service.createBooking(
+        testUserId,
+        createMockBookingInput({ providerId: 'plain', bookingReference: 'P-1' })
+      );
+      const unknown = await service.createBooking(
+        testUserId,
+        createMockBookingInput({ providerId: 'gone', bookingReference: 'G-1' })
+      );
+
+      expect(onPlain.manageUrl).toBe('https://plain.example');
+      expect(unknown.manageUrl).toBeUndefined();
+    });
+  });
+
+  describe('importBooking', () => {
+    it('is a CAPABILITY error on ParkStay, which cannot import bookings', async () => {
+      const failure = bookingService.importBooking(testUserId, 'parkstay', 'PB123');
+
+      await expect(failure).rejects.toBeInstanceOf(ProviderCapabilityError);
+      expect(toApiError(await failure.catch((e) => e)).code).toBe('CAPABILITY');
+      expect(bookingRepository.findAll()).toEqual([]);
+    });
+
+    it('imports a booking from the provider, and a second import updates it instead of duplicating', async () => {
+      const imported = await bookingService.importBooking(testUserId, 'fake', 'FAKE-77');
+
+      expect(imported).toMatchObject({
+        providerId: 'fake',
+        bookingReference: 'FAKE-77',
+        location: { externalId: '1', name: 'Banksia Camp' },
+        stay: { arrival: '2099-03-01', departure: '2099-03-04', adults: 3 },
+        totalCost: 90,
+        status: BookingStatus.CONFIRMED,
+        manageUrl: 'https://fake.example/bookings/FAKE-77',
+      });
+      expect(imported.syncedAt).toBeInstanceOf(Date);
+      expect(fake.calls.filter((c) => c.method === 'get')).toHaveLength(1);
+
+      const again = await bookingService.importBooking(testUserId, 'fake', 'FAKE-77');
+      expect(again.id).toBe(imported.id);
+      expect(bookingRepository.findAll()).toHaveLength(1);
+      expect(events.emit).toHaveBeenCalledWith('booking:updated', again);
+    });
+  });
+
+  describe('booking:updated', () => {
+    it('is emitted after create, update, cancel and delete', async () => {
+      const booking = await bookingService.createBooking(testUserId, mockBookingInput);
+      await bookingService.updateBooking(booking.id, { notes: 'Bring the kayak' });
+      await bookingService.cancelBooking(booking.id);
+      await bookingService.deleteBooking(booking.id);
+
+      expect(events.emit.mock.calls.map(([name, payload]) => [name, payload.id])).toEqual([
+        ['booking:updated', booking.id],
+        ['booking:updated', booking.id],
+        ['booking:updated', booking.id],
+        ['booking:updated', booking.id],
+      ]);
     });
   });
 });

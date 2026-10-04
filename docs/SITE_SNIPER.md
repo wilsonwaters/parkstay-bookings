@@ -138,7 +138,8 @@ window.api.on.snipeStatusUpdate((snipe) => { /* refresh UI */ });
 6. **booked** — recorded once you confirm the booking.
 
 Because the release instant needs sub‑second precision, the scheduler uses real timers
-(`setTimeout`/`setInterval`, long‑timer‑safe), not minute‑granularity cron.
+(one chained `setTimeout` per snipe, long‑timer‑safe, re‑armed after sleep), not
+minute‑granularity cron. A poll starts only after the previous one has finished.
 
 ---
 
@@ -181,11 +182,11 @@ Key modules:
 
 | Module | Purpose |
 | --- | --- |
-| `src/main/services/sitesniper/sitesniper.service.ts` | Snipe CRUD + the `execute` attempt (poll → hold → notify) |
-| `src/main/services/sitesniper/release-timing.ts` | Pure AWST release‑instant math (unit‑tested) |
-| `src/main/scheduler/job-scheduler.ts` | Timer‑based precision scheduling of snipes |
-| `src/main/services/parkstay/parkstay.service.ts` | `getSiteAvailabilityView`, `createBookingHold` |
-| `src/main/services/queue/queue.service.ts` | DBCA queue session + keep‑alive |
+| `src/main/core/snipes/snipe.service.ts` | Snipe CRUD + the `execute` attempt (check → one‑booking‑per‑night guard → hold → notify) |
+| `src/main/core/holds/night-guard.ts` | One booking per night, across snipes and auto‑hold watches |
+| `src/main/scheduler/snipe-runner.ts` | Each snipe's timer chain (warm‑up, release, poll), generation token, abort |
+| `src/main/scheduler/job-scheduler.ts` | Watches' due‑loop and snipes; re‑arms after sleep; bounded stop on quit |
+| `src/main/providers/parkstay/` | ParkStay availability, holds, release policy and DBCA queue gate |
 | `src/main/database/repositories/site-sniper.repository.ts` | `site_snipes` persistence (migration v6) |
 
 > **Status of the ParkStay integration.** The availability and queue endpoints are verified

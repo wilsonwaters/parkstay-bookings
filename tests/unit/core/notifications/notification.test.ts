@@ -2,7 +2,7 @@
  * NotificationService Unit Tests
  */
 
-import { NotificationService } from '@main/services/notification/notification.service';
+import { NotificationService } from '@main/core/notifications/notification.service';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
 import { UserRepository } from '@main/database/repositories/user.repository';
 import { NotificationRepository } from '@main/database/repositories';
@@ -73,7 +73,15 @@ describe('NotificationService', () => {
     it('should create watch found notification', async () => {
       const watch = { ...mockWatch, userId: testUserId };
       await notificationService.notifyWatchFound(watch, [
-        { siteId: 'S1', siteName: 'Site 1', siteType: 'Unpowered' },
+        {
+          unitId: 'S1',
+          unitName: 'Site 1',
+          unitType: 'Unpowered',
+          arrival: '2024-07-01',
+          departure: '2024-07-05',
+          partial: false,
+          priceKnown: false,
+        },
       ]);
 
       const notifications = await notificationService.getNotifications(testUserId);
@@ -93,22 +101,24 @@ describe('NotificationService', () => {
       const watch = { ...mockWatch, userId: testUserId };
       await notificationService.notifyWatchPartialFound(watch, [
         {
-          siteId: 'S1',
-          siteName: 'Site 1',
-          siteType: 'Unpowered',
-          available: true,
-          price: 20,
-          dates: { arrival: '2024-07-01', departure: '2024-07-02' },
+          unitId: 'S1',
+          unitName: 'Site 1',
+          unitType: 'Unpowered',
+          arrival: '2024-07-01',
+          departure: '2024-07-02',
           partial: true,
+          priceKnown: true,
+          total: 20,
         },
         {
-          siteId: 'S2',
-          siteName: 'Site 2',
-          siteType: 'Unpowered',
-          available: true,
-          price: 20,
-          dates: { arrival: '2024-07-02', departure: '2024-07-05' },
+          unitId: 'S2',
+          unitName: 'Site 2',
+          unitType: 'Unpowered',
+          arrival: '2024-07-02',
+          departure: '2024-07-05',
           partial: true,
+          priceKnown: true,
+          total: 60,
         },
       ]);
 

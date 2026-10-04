@@ -121,7 +121,12 @@ function failure(channel: string, error: unknown): APIResponse<never> {
     } else {
       logger.warn(`IPC ${channel} failed: ${error.code}`);
     }
-    return { success: false, code: error.code, error: error.message };
+    return {
+      success: false,
+      code: error.code,
+      error: error.message,
+      ...(error.issues ? { issues: error.issues } : {}),
+    };
   }
   if (error instanceof ProviderError) {
     // CAPABILITY, UNKNOWN_PROVIDER, PROVIDER_ERROR, ACCESS_GATE, AUTH_REQUIRED (or INTERNAL)

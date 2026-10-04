@@ -32,11 +32,11 @@ interface WatchFormProps {
   submitLabel?: string;
 }
 
+// ParkStay's gear types (its `stayFields`); none or several ticked means any.
 const SITE_TYPES = [
-  { value: 'tent', label: 'Tent Site' },
-  { value: 'caravan', label: 'Caravan/RV Site' },
-  { value: 'cabin', label: 'Cabin' },
-  { value: 'hut', label: 'Hut' },
+  { value: 'tent', label: 'Tent' },
+  { value: 'campervan', label: 'Campervan' },
+  { value: 'caravan', label: 'Caravan' },
 ];
 
 const CHECK_INTERVALS = [
@@ -70,7 +70,7 @@ const WatchForm: React.FC<WatchFormProps> = ({
     defaultValues: {
       ...watchToFormValues(initialData),
       checkIntervalMinutes: initialData?.checkIntervalMinutes || 60,
-      autoBook: initialData?.autoBook || false,
+      autoHold: initialData?.autoHold || false,
       notifyOnly: initialData?.notifyOnly !== undefined ? initialData.notifyOnly : true,
       allowPartialMatch: initialData?.allowPartialMatch || false,
       maxPrice: initialData?.maxPrice,
@@ -78,7 +78,7 @@ const WatchForm: React.FC<WatchFormProps> = ({
     },
   });
 
-  const autoBook = watch('autoBook');
+  const autoHold = watch('autoHold');
   const campgroundName = watch('campgroundName');
 
   // Load all campgrounds on mount, and again whenever the catalogue syncs
@@ -351,25 +351,26 @@ const WatchForm: React.FC<WatchFormProps> = ({
       <div className="card bg-blue-50 border-blue-200">
         <div className="flex items-start">
           <input
-            id="autoBook"
+            id="autoHold"
             type="checkbox"
-            {...register('autoBook')}
+            {...register('autoHold')}
             className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded mt-1"
           />
           <div className="ml-3">
-            <label htmlFor="autoBook" className="text-sm font-medium text-gray-900">
-              Enable Auto-booking
+            <label htmlFor="autoHold" className="text-sm font-medium text-gray-900">
+              Hold a site automatically when found
             </label>
             <p className="text-sm text-gray-600 mt-1">
-              Automatically book when availability is found (requires valid credentials)
+              Places a temporary hold on the first free site; you complete payment on the
+              provider&apos;s site
             </p>
           </div>
         </div>
-        {errors.autoBook && <p className="mt-2 text-sm text-red-600">{errors.autoBook.message}</p>}
+        {errors.autoHold && <p className="mt-2 text-sm text-red-600">{errors.autoHold.message}</p>}
       </div>
 
       {/* Notification Preferences */}
-      {!autoBook && (
+      {!autoHold && (
         <div className="card bg-green-50 border-green-200">
           <div className="flex items-start">
             <input
@@ -389,7 +390,7 @@ const WatchForm: React.FC<WatchFormProps> = ({
       )}
 
       {/* Partial Match Alert */}
-      {!autoBook && (
+      {!autoHold && (
         <div className="card bg-yellow-50 border-yellow-200">
           <div className="flex items-start">
             <input

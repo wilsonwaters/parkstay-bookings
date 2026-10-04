@@ -20,10 +20,11 @@ export const MAX_STAY_OFF_PEAK_NIGHTS = 28; // Maximum consecutive nights off-pe
 export const AWST_TIMEZONE = 'Australia/Perth'; // AWST = UTC+8
 export const AWST_UTC_OFFSET = 8;
 
-// Polling intervals (minutes)
-export const DEFAULT_WATCH_INTERVAL = 5;
-export const MIN_WATCH_INTERVAL = 1;
-export const MAX_WATCH_INTERVAL = 60;
+// Watch check intervals (minutes, PQ6). The renderer offers exactly these; the scheduler never
+// checks a watch more often than every 15 minutes (a legacy shorter value is run at 15).
+export const WATCH_INTERVAL_OPTIONS = [15, 30, 60, 240, 720, 1440] as const;
+export const DEFAULT_WATCH_INTERVAL = 60;
+export const MIN_WATCH_INTERVAL_MINUTES = 15;
 
 // Site Sniper
 export const DEFAULT_SNIPE_POLL_INTERVAL_MS = 1500;
@@ -35,7 +36,6 @@ export const CANCELLATION_POLL_MIN_MS = 3000; // politeness floor for continuous
 export const NINGALOO_RELEASE_HOUR_AWST = 10; // 10:00 AWST first Tuesday (subject to change per DBCA)
 
 // Limits
-export const MAX_CONCURRENT_WATCHES = 10;
 export const MAX_GUESTS = 50;
 
 // Retry configuration

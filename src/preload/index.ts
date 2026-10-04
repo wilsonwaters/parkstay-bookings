@@ -44,18 +44,16 @@ const none = (): undefined => undefined;
 
 const api: WindowApi = {
   bookings: bind('bookings', {
-    list: none,
+    list: (filter) => filter,
     get: (id) => ({ id }),
     create: (input) => input,
     update: (id, updates) => ({ id, updates }),
     delete: (id) => ({ id }),
-    sync: (id) => ({ id }),
-    syncAll: none,
-    import: (bookingReference) => ({ bookingReference }),
+    import: (providerId, reference) => ({ providerId, reference }),
   }),
 
   watches: bind('watches', {
-    list: none,
+    list: (filter) => filter,
     get: (id) => ({ id }),
     create: (input) => input,
     update: (id, updates) => ({ id, updates }),
@@ -66,7 +64,7 @@ const api: WindowApi = {
   }),
 
   snipes: bind('snipes', {
-    list: none,
+    list: (filter) => filter,
     get: (id) => ({ id }),
     create: (input) => input,
     update: (id, updates) => ({ id, updates }),

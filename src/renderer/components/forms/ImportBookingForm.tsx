@@ -27,7 +27,11 @@ const ImportBookingForm: React.FC<ImportBookingFormProps> = ({ onSuccess, onCanc
       setIsLoading(true);
       setError('');
 
-      const response = await window.api.bookings.import(reference.trim().toUpperCase());
+      const response = await window.api.bookings.import(
+        // The legacy form imports from ParkStay only; U3 rebuilds it provider-first.
+        'parkstay',
+        reference.trim().toUpperCase()
+      );
 
       if (response.success) {
         onSuccess();

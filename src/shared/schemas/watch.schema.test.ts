@@ -34,7 +34,7 @@ describe('Watch Schema Validation', () => {
         departureDate: nextWeek,
         numGuests: 4,
         checkIntervalMinutes: 60,
-        autoBook: false,
+        autoHold: false,
         notifyOnly: true,
         allowPartialMatch: false,
       };
@@ -91,7 +91,7 @@ describe('Watch Schema Validation', () => {
         numGuests: 2,
         siteType: 'tent',
         checkIntervalMinutes: 60,
-        autoBook: true,
+        autoHold: true,
         notifyOnly: false,
         allowPartialMatch: false,
       };

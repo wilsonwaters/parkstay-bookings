@@ -16,7 +16,7 @@
 
 import path from 'path';
 import type Database from 'better-sqlite3';
-import { app } from 'electron';
+import { app, powerMonitor } from 'electron';
 import { SnipeStatus } from '@shared/types/common.types';
 import { LocationCatalogService } from '../core/catalog/location-catalog.service';
 import { closeDatabase } from '../database/connection';
@@ -33,21 +33,21 @@ import {
   UserRepository,
   WatchRepository,
 } from '../database/repositories';
+import { BookingService } from '../core/bookings/booking.service';
+import { NightGuard } from '../core/holds/night-guard';
+import { NotificationDispatcher } from '../core/notifications/notification-dispatcher';
+import { NotificationService } from '../core/notifications/notification.service';
+import { SmtpEmailNotifier } from '../core/notifications/notifiers/email-smtp.notifier';
+import { SiteSniperService } from '../core/snipes/snipe.service';
+import { WatchService } from '../core/watches/watch.service';
 import { AuthService } from '../services/auth/AuthService';
-import { BookingService } from '../services/booking/BookingService';
 import { GmailOTPService } from '../services/gmail/GmailOTPService';
 import { OAuth2Handler } from '../services/gmail/oauth2-handler';
-import { NotificationDispatcher } from '../services/notification/notification-dispatcher';
-import { NotificationService } from '../services/notification/notification.service';
-import { SmtpEmailNotifier } from '../services/notification/notifiers/email-smtp.notifier';
-import { SiteSniperService } from '../services/sitesniper/sitesniper.service';
 import { AutoUpdaterService } from '../services/updater/auto-updater.service';
-import { WatchService } from '../services/watch/watch.service';
 import { JobScheduler } from '../scheduler/job-scheduler';
 import { RendererEvents } from '../ipc/events';
 import { TrustedWebContents } from '../ipc/trusted-web-contents';
 import { registerBuiltInProviders } from '../providers';
-import { PARKSTAY_PROVIDER_ID } from '../providers/parkstay';
 import { ProviderRegistry } from '../providers/registry';
 import { createProviderContext, type ProviderContextDeps } from '../providers/sdk';
 import { ElectronSessionHttpClient } from '../providers/sdk/http-electron';
@@ -100,11 +100,13 @@ export interface AppContainer {
   readonly scheduler: JobScheduler;
   /**
    * Cuts the renderer off (no webContents is trusted any more, so no invoke reaches a
-   * handler and no event is sent), stops the scheduler and the catalogue service (aborting
-   * any sync in flight), starts disposing the providers (and with them ParkStay's queue
-   * gate) and closes the database, all before it returns. The promise
-   * resolves once every provider is disposed and its browser closed (each browser gets at
-   * most 5 s, then is killed); it never rejects. Safe to call twice.
+   * handler and no event is sent), stops the scheduler (aborting every check and attempt in
+   * flight) and the catalogue service (aborting any sync in flight), and starts disposing
+   * the providers (and with them ParkStay's queue gate), all before it returns. The
+   * database closes once the scheduler's jobs have settled (at most
+   * `SCHEDULER_STOP_GRACE_MS`), so no job writes to a closed database. The promise resolves
+   * once the database is closed and every provider is disposed and its browser closed (each
+   * browser gets at most 5 s, then is killed); it never rejects. Safe to call twice.
    */
   dispose(): Promise<void>;
 }
@@ -211,46 +213,67 @@ export function createContainer({
         ),
   });
 
+  // A provider's short name (`ParkStay`), for emails and desktop notification titles
+  const providerName = (id: string): string | undefined => providers.tryGet(id)?.manifest.shortName;
   const notifierDispatcher = new NotificationDispatcher(repositories.notifiers, [
-    new SmtpEmailNotifier({
-      providerName: (id) => providers.tryGet(id)?.manifest.shortName,
-      logoPath: getEmailLogoPath(),
-    }),
+    new SmtpEmailNotifier({ providerName, logoPath: getEmailLogoPath() }),
   ]);
   const authService = new AuthService(repositories.users, vault);
-  const bookingService = new BookingService(repositories.bookings);
   const notificationService = new NotificationService(
     repositories.notifications,
     notifierDispatcher,
-    rendererEvents
+    rendererEvents,
+    { providerName }
   );
-  // Watches and snipes run on ParkStay until V4 resolves them through the registry.
-  const watchService = new WatchService(
-    repositories.watches,
-    providers.require(PARKSTAY_PROVIDER_ID, 'watches'),
-    notificationService
-  );
-  const siteSniperService = new SiteSniperService(
-    repositories.snipes,
-    providers.require(PARKSTAY_PROVIDER_ID, 'snipes'),
-    notificationService
-  );
+  // Core services resolve every provider through the registry and its capabilities.
+  const nightGuard = new NightGuard(repositories.snipes, repositories.watches);
+  const bookingService = new BookingService({
+    bookings: repositories.bookings,
+    providers,
+    events: rendererEvents,
+  });
+  const watchService = new WatchService({
+    watches: repositories.watches,
+    providers,
+    notifications: notificationService,
+    nightGuard,
+    events: rendererEvents,
+    // V6 replaces this with its account service
+    accountState: (providerId) =>
+      repositories.providerAccounts.get(providerId)?.status ?? 'unknown',
+  });
+  const siteSniperService = new SiteSniperService({
+    snipes: repositories.snipes,
+    providers,
+    notifications: notificationService,
+    nightGuard,
+    events: rendererEvents,
+  });
   const gmailService = new GmailOTPService(new OAuth2Handler({ vault, filePath: gmailStorePath }));
   const autoUpdater = new AutoUpdaterService(rendererEvents);
-  const scheduler = new JobScheduler(watchService, siteSniperService);
+  const scheduler = new JobScheduler({
+    watches: watchService,
+    snipes: siteSniperService,
+    providers,
+    power: powerMonitor,
+  });
 
   let disposed: Promise<void> | null = null;
   const dispose = (): Promise<void> => {
     if (disposed) return disposed;
     // Nothing from the renderer may reach the database once it closes below.
     trustedWebContents.revokeAll();
-    scheduler.stop();
+    // Aborts every job in flight at once; resolves when they settle (bounded).
+    const stopping = scheduler.stop();
     // Aborts a catalogue sync in flight, so it writes nothing once the database closes.
     catalogService.stop();
-    // Never rejects; each provider's dispose (its queue gate, its browser) starts before the
-    // database closes.
-    disposed = providers.disposeAll();
-    closeDatabase(db);
+    // Never rejects; each provider's dispose (its queue gate, its browser) starts now, in
+    // parallel with the jobs settling, so both fit the quit hold.
+    const providersClosing = providers.disposeAll();
+    disposed = stopping
+      .then(() => closeDatabase(db))
+      .catch((error: unknown) => logger.error('Closing the database failed:', error))
+      .then(() => providersClosing);
     return disposed;
   };
 

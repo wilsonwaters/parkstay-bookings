@@ -21,8 +21,6 @@ export const CHANNELS = {
     create: 'bookings:create',
     update: 'bookings:update',
     delete: 'bookings:delete',
-    sync: 'bookings:sync',
-    syncAll: 'bookings:sync-all',
     import: 'bookings:import',
   },
   watches: {

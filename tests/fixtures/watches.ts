@@ -26,9 +26,9 @@ export const mockWatchInput: WatchInput = {
   },
   stay: { arrival: '2024-07-01', departure: '2024-07-05', adults: 2 },
   unitIds: ['Site 1', 'Site 2', 'Site 3'],
-  stayParams: { parkId: 'PARK001', gearType: 'Unpowered' },
-  checkIntervalMinutes: 5,
-  autoBook: false,
+  stayParams: { parkId: 'PARK001', gearType: 'tent' },
+  checkIntervalMinutes: 60,
+  autoHold: false,
   notifyOnly: true,
   maxPrice: 50.0,
   notes: 'Looking for unpowered sites',
@@ -54,11 +54,11 @@ export const mockWatch: Watch = {
     concessions: 0,
   },
   unitIds: ['Site 1', 'Site 2', 'Site 3'],
-  stayParams: { parkId: 'PARK001', gearType: 'Unpowered' },
-  checkIntervalMinutes: 5,
+  stayParams: { parkId: 'PARK001', gearType: 'tent' },
+  checkIntervalMinutes: 60,
   isActive: true,
   foundCount: 0,
-  autoBook: false,
+  autoHold: false,
   notifyOnly: true,
   allowPartialMatch: false,
   maxPrice: 50.0,
@@ -84,10 +84,10 @@ export const mockInactiveWatch: Watch = {
   foundCount: 1,
 };
 
-export const mockWatchWithAutoBook: Watch = {
+export const mockWatchWithAutoHold: Watch = {
   ...mockWatch,
   id: 4,
-  autoBook: true,
+  autoHold: true,
   notifyOnly: false,
 };
 

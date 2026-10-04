@@ -6,9 +6,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
-import { Watch, WatchExecutionResult } from '../../../../shared/types/watch.types';
+import { Watch, WatchExecutionResult, WatchMatch } from '../../../../shared/types/watch.types';
 import AvailabilityGrid from '../../../components/AvailabilityGrid';
 import { partySize, stayDate, stayParamText } from '../../../components/forms/legacy-mapping';
+
+/** The units the last check found free for the whole stay, as matches for the grid. */
+function storedMatchesOf(watch: Watch): WatchMatch[] {
+  return (watch.lastAvailability ?? [])
+    .filter((unit) => unit.fullyAvailable)
+    .map((unit) => ({
+      unitId: unit.unitId,
+      unitName: unit.unitName,
+      unitType: unit.unitType,
+      arrival: watch.stay.arrival,
+      departure: watch.stay.departure,
+      partial: false,
+      priceKnown: unit.total !== undefined,
+      total: unit.total,
+    }));
+}
 
 const WatchDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -116,6 +132,7 @@ const WatchDetail: React.FC = () => {
   }
 
   const siteType = stayParamText(watch.stayParams, 'gearType');
+  const storedMatches = storedMatchesOf(watch);
 
   const formatDate = (date: Date | string) => {
     const d = typeof date === 'string' ? new Date(date) : date;
@@ -211,8 +228,8 @@ const WatchDetail: React.FC = () => {
               </p>
             </div>
             <div>
-              <span className="text-sm text-gray-500">Auto-book:</span>
-              <p className="font-medium text-gray-900">{watch.autoBook ? 'Enabled' : 'Disabled'}</p>
+              <span className="text-sm text-gray-500">Hold automatically:</span>
+              <p className="font-medium text-gray-900">{watch.autoHold ? 'Enabled' : 'Disabled'}</p>
             </div>
             <div>
               <span className="text-sm text-gray-500">Partial Match Alerts:</span>
@@ -319,7 +336,7 @@ const WatchDetail: React.FC = () => {
                     />
                   </svg>
                   <span className="text-green-800 font-medium">
-                    Availability found! {executionResult.availability?.length || 0} matching site(s)
+                    Availability found! {executionResult.matches.length} matching site(s)
                   </span>
                 </>
               ) : (
@@ -348,7 +365,7 @@ const WatchDetail: React.FC = () => {
         )}
 
         {/* Stored Availability Info (when no manual check has been done) */}
-        {!executionResult && watch.lastAvailability && watch.lastAvailability.length > 0 && (
+        {!executionResult && storedMatches.length > 0 && (
           <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200">
             <div className="flex items-center">
               <svg className="h-5 w-5 text-blue-500 mr-2" fill="currentColor" viewBox="0 0 20 20">
@@ -359,7 +376,7 @@ const WatchDetail: React.FC = () => {
                 />
               </svg>
               <span className="text-blue-800 font-medium">
-                Last check found {watch.lastAvailability.length} matching site(s)
+                Last check found {storedMatches.length} matching site(s)
               </span>
               {watch.lastCheckedAt && (
                 <span className="ml-auto text-sm text-gray-500">
@@ -370,29 +387,27 @@ const WatchDetail: React.FC = () => {
           </div>
         )}
 
-        {!executionResult &&
-          (!watch.lastAvailability || watch.lastAvailability.length === 0) &&
-          watch.lastCheckedAt && (
-            <div className="mb-4 p-3 rounded-lg bg-gray-50 border border-gray-200">
-              <div className="flex items-center">
-                <svg className="h-5 w-5 text-gray-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span className="text-gray-700">No matching availability found in last check</span>
-                <span className="ml-auto text-sm text-gray-500">
-                  As of {format(new Date(watch.lastCheckedAt), 'PPp')}
-                </span>
-              </div>
+        {!executionResult && storedMatches.length === 0 && watch.lastCheckedAt && (
+          <div className="mb-4 p-3 rounded-lg bg-gray-50 border border-gray-200">
+            <div className="flex items-center">
+              <svg className="h-5 w-5 text-gray-400 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <span className="text-gray-700">No matching availability found in last check</span>
+              <span className="ml-auto text-sm text-gray-500">
+                As of {format(new Date(watch.lastCheckedAt), 'PPp')}
+              </span>
             </div>
-          )}
+          </div>
+        )}
 
         {/* Availability Grid - show executionResult if available, otherwise show stored lastAvailability */}
         <AvailabilityGrid
-          watchResults={executionResult?.availability || watch.lastAvailability}
+          watchResults={executionResult?.matches ?? storedMatches}
           arrivalDate={watch.stay.arrival}
           departureDate={watch.stay.departure}
           isLoading={isChecking}

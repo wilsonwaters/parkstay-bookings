@@ -4,8 +4,10 @@
  *
  * The first `before-quit`:
  * 1. hides every window, so nobody keeps using an app that is shutting down;
- * 2. runs `shutDown`, which cuts the renderer off and closes the database before it returns
- *    (`AppContainer.dispose`), and resolves once every browser has closed;
+ * 2. runs `shutDown` (`AppContainer.dispose`), which cuts the renderer off, aborts the
+ *    scheduler's jobs and starts closing the providers at once, closes the database once the
+ *    jobs have settled (at most `SCHEDULER_STOP_GRACE_MS`, 3 s), and resolves once every
+ *    browser has closed;
  * 3. holds the quit (`preventDefault`) until that resolves or `graceMs` passes, whichever
  *    is first, and then quits again.
  *

@@ -5,10 +5,10 @@
 
 import React from 'react';
 import { format, eachDayOfInterval, parseISO } from 'date-fns';
-import { AvailabilityResult } from '../../shared/types/watch.types';
+import { WatchMatch } from '../../shared/types/watch.types';
 
 interface AvailabilityGridProps {
-  watchResults?: AvailabilityResult[];
+  watchResults?: WatchMatch[];
   arrivalDate: Date | string;
   departureDate: Date | string;
   isLoading?: boolean;
@@ -49,35 +49,25 @@ const AvailabilityGrid: React.FC<AvailabilityGridProps> = ({
     // sub-range, which may be narrower than the watch's full range (partial matches).
     watchResults.forEach((result) => {
       const dateMap = new Map<string, { available: boolean; price: number; bookable: boolean }>();
-      if (result.dates) {
-        const a =
-          typeof result.dates.arrival === 'string'
-            ? parseISO(result.dates.arrival)
-            : result.dates.arrival;
-        const d =
-          typeof result.dates.departure === 'string'
-            ? parseISO(result.dates.departure)
-            : result.dates.departure;
-        // departure is the checkout date (exclusive) — last available night is d - 1.
-        const lastNight = new Date(d);
-        lastNight.setDate(lastNight.getDate() - 1);
-        if (lastNight >= a) {
-          eachDayOfInterval({ start: a, end: lastNight }).forEach((day) => {
-            dateMap.set(format(day, 'yyyy-MM-dd'), {
-              available: true,
-              price: result.price ?? 0,
-              bookable: true,
-            });
-          });
-        }
-      }
+      const a = parseISO(result.arrival);
+      const d = parseISO(result.departure);
+      // departure is the checkout date (exclusive) — last available night is d - 1.
+      const lastNight = new Date(d);
+      lastNight.setDate(lastNight.getDate() - 1);
+      const nights = lastNight >= a ? eachDayOfInterval({ start: a, end: lastNight }) : [];
+      // The nightly price, when the provider priced every night.
+      const nightly =
+        result.total !== undefined && nights.length > 0 ? result.total / nights.length : 0;
+      nights.forEach((day) => {
+        dateMap.set(format(day, 'yyyy-MM-dd'), { available: true, price: nightly, bookable: true });
+      });
       sites.push({
-        siteId: result.siteId,
-        siteName: result.siteName,
-        siteType: result.siteType,
-        available: result.available,
-        price: result.price,
-        total: [...dateMap.values()].reduce((sum, night) => sum + night.price, 0),
+        siteId: result.unitId,
+        siteName: result.unitName,
+        siteType: result.unitType ?? '',
+        available: true,
+        price: result.total !== undefined ? nightly : undefined,
+        total: result.total,
         dateAvailability: dateMap,
       });
     });

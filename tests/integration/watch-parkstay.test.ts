@@ -7,8 +7,9 @@
 import type Database from 'better-sqlite3';
 import { openDatabase } from '@main/database/connection';
 import { UserRepository, WatchRepository } from '@main/database/repositories';
-import { WatchService } from '@main/services/watch/watch.service';
-import type { NotificationService } from '@main/services/notification/notification.service';
+import { NightGuard } from '@main/core/holds/night-guard';
+import { WatchService } from '@main/core/watches/watch.service';
+import { SiteSniperRepository } from '@main/database/repositories';
 import { WatchResult } from '@shared/types/common.types';
 import type { WatchInput } from '@shared/types';
 import { FIXED_NOW } from '@tests/utils/fake-provider';
@@ -58,11 +59,13 @@ describe('WatchService on ParkStay (fixture server)', () => {
       notifyWatchFound: jest.fn().mockResolvedValue(undefined),
       notifyWatchPartialFound: jest.fn().mockResolvedValue(undefined),
     };
-    service = new WatchService(
-      new WatchRepository(db),
-      createTestParkStay(server).provider,
-      notifications as unknown as NotificationService
-    );
+    const watches = new WatchRepository(db);
+    service = new WatchService({
+      watches,
+      providers: createTestParkStay(server).registry,
+      notifications: { ...notifications, notifyWatchHeld: jest.fn() },
+      nightGuard: new NightGuard(new SiteSniperRepository(db), watches),
+    });
   });
 
   afterEach(() => {
@@ -85,17 +88,17 @@ describe('WatchService on ParkStay (fixture server)', () => {
     const result = await service.execute(watch.id);
 
     expect(result.found).toBe(true);
-    expect(result.availability).toEqual(
+    expect(result.matches).toEqual(
       ['3', '4', '5'].map((id) => ({
-        siteId: id,
-        siteName: `CAMPSITE 0${id}`,
-        siteType: 'all',
-        available: true,
-        price: 30,
-        dates: { arrival: '2026-11-10', departure: '2026-11-12' },
+        unitId: id,
+        unitName: `CAMPSITE 0${id}`,
+        arrival: '2026-11-10',
+        departure: '2026-11-12',
+        partial: false,
+        priceKnown: true,
+        total: 60,
       }))
     );
-    expect(result.availability!.every((r) => r.price > 0)).toBe(true);
     expect(server.requestsTo('/api/campsite_availablity_view/20/')).toHaveLength(1);
     expect((await service.get(watch.id))?.lastResult).toBe(WatchResult.FOUND);
   });
@@ -125,15 +128,15 @@ describe('WatchService on ParkStay (fixture server)', () => {
     const result = await service.execute(watch.id);
 
     expect(result.found).toBe(true);
-    expect(result.availability).toEqual([
+    expect(result.matches).toEqual([
       {
-        siteId: '1',
-        siteName: 'CAMPSITE 01',
-        siteType: 'all',
-        available: true,
-        price: 30,
-        dates: { arrival: '2026-11-10', departure: '2026-11-11' },
+        unitId: '1',
+        unitName: 'CAMPSITE 01',
+        arrival: '2026-11-10',
+        departure: '2026-11-11',
         partial: true,
+        priceKnown: true,
+        total: 30,
       },
     ]);
     expect(server.requestsTo('/api/campsite_availablity_view/20/')).toHaveLength(1);

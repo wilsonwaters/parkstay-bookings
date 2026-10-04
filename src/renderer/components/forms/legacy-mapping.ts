@@ -77,6 +77,21 @@ function defined<T extends object>(value: T): T {
 // Watches
 // ---------------------------------------------------------------------------------------
 
+/** The ParkStay gear types the legacy watch form offers (its `stayFields` options). */
+const LEGACY_GEAR_TYPES = ['tent', 'campervan', 'caravan'];
+
+/**
+ * The one gear type ticked, or undefined (any gear, which main fills in) when none or
+ * several are: ParkStay checks a single gear type.
+ */
+function singleGearType(siteType: string | undefined): string | undefined {
+  const ticked = (siteType ?? '')
+    .split(',')
+    .map((gear) => gear.trim())
+    .filter(Boolean);
+  return ticked.length === 1 && LEGACY_GEAR_TYPES.includes(ticked[0]) ? ticked[0] : undefined;
+}
+
 export function watchFormToInput(form: WatchSchemaType): WatchInput {
   return defined({
     providerId: LEGACY_FORM_PROVIDER_ID,
@@ -88,9 +103,9 @@ export function watchFormToInput(form: WatchSchemaType): WatchInput {
       adults: form.numGuests,
     },
     unitIds: form.preferredSites,
-    stayParams: compactParams({ parkId: form.parkId, gearType: form.siteType }),
+    stayParams: compactParams({ parkId: form.parkId, gearType: singleGearType(form.siteType) }),
     checkIntervalMinutes: form.checkIntervalMinutes,
-    autoBook: form.autoBook,
+    autoHold: form.autoHold,
     notifyOnly: form.notifyOnly,
     allowPartialMatch: form.allowPartialMatch,
     maxPrice: form.maxPrice,

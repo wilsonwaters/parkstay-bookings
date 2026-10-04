@@ -1,6 +1,14 @@
 import { BaseRepository } from './base.repository';
-import { locationKeyOf, Watch, WatchInput, WatchUpdate } from '@shared/types';
+import {
+  locationKeyOf,
+  type UnitAvailability,
+  Watch,
+  WatchInput,
+  type WatchListFilter,
+  WatchUpdate,
+} from '@shared/types';
 import { WatchResult } from '@shared/types/common.types';
+import { DEFAULT_WATCH_INTERVAL } from '@shared/constants';
 import { AppError } from '../../utils/app-error';
 import { readStay, readStayParams, readUnitIds, StayRow, stayValues } from '../stay-columns';
 
@@ -56,8 +64,8 @@ export class WatchRepository extends BaseRepository<Watch> {
       ...stayValues(input.stay),
       JSON.stringify(input.unitIds ?? []),
       JSON.stringify(input.stayParams ?? {}),
-      input.checkIntervalMinutes || 5,
-      input.autoBook ? 1 : 0,
+      input.checkIntervalMinutes || DEFAULT_WATCH_INTERVAL,
+      input.autoHold ? 1 : 0,
       input.notifyOnly !== false ? 1 : 0,
       input.allowPartialMatch ? 1 : 0,
       input.maxPrice || null,
@@ -102,7 +110,7 @@ export class WatchRepository extends BaseRepository<Watch> {
     if (updates.checkIntervalMinutes !== undefined) {
       push('check_interval_minutes', updates.checkIntervalMinutes);
     }
-    if (updates.autoBook !== undefined) push('auto_book', updates.autoBook ? 1 : 0);
+    if (updates.autoHold !== undefined) push('auto_book', updates.autoHold ? 1 : 0);
     if (updates.notifyOnly !== undefined) push('notify_only', updates.notifyOnly ? 1 : 0);
     if (updates.allowPartialMatch !== undefined) {
       push('allow_partial_match', updates.allowPartialMatch ? 1 : 0);
@@ -121,10 +129,22 @@ export class WatchRepository extends BaseRepository<Watch> {
   }
 
   /**
-   * Find watches by user ID
+   * The user's watches, optionally of one provider or state, oldest first.
    */
-  findByUserId(userId: number): Watch[] {
-    const rows = this.db.prepare('SELECT * FROM watches WHERE user_id = ?').all(userId);
+  findByUserId(userId: number, filter: WatchListFilter = {}): Watch[] {
+    const where = ['user_id = ?'];
+    const values: unknown[] = [userId];
+    if (filter.providerId !== undefined) {
+      where.push('provider_id = ?');
+      values.push(filter.providerId);
+    }
+    if (filter.status !== undefined) {
+      where.push('is_active = ?');
+      values.push(filter.status === 'active' ? 1 : 0);
+    }
+    const rows = this.db
+      .prepare(`SELECT * FROM watches WHERE ${where.join(' AND ')} ORDER BY id`)
+      .all(values);
     return rows.map((row) => this.mapRow(row as WatchRow));
   }
 
@@ -137,24 +157,53 @@ export class WatchRepository extends BaseRepository<Watch> {
   }
 
   /**
-   * Find watches due for checking
+   * Active watches of these providers due at `now` (never checked, or `next_check_at` reached),
+   * the longest overdue first.
    */
-  findDueForCheck(): Watch[] {
-    const now = new Date().toISOString();
+  findDue(now: Date, providerIds: readonly string[]): Watch[] {
+    if (providerIds.length === 0) return [];
+    const placeholders = providerIds.map(() => '?').join(', ');
     const rows = this.db
       .prepare(
-        'SELECT * FROM watches WHERE is_active = 1 AND (next_check_at IS NULL OR next_check_at <= ?)'
+        `SELECT * FROM watches
+         WHERE is_active = 1 AND (next_check_at IS NULL OR next_check_at <= ?)
+           AND provider_id IN (${placeholders})
+         ORDER BY next_check_at IS NOT NULL, next_check_at, id`
       )
-      .all(now);
+      .all(now.toISOString(), ...providerIds);
     return rows.map((row) => this.mapRow(row as WatchRow));
   }
 
   /**
-   * Activate watch
+   * Watches of the provider and user whose auto-hold placed a hold on a night of the stay
+   * (`last_result 'held'`), other than `excludeId`. Calendar dates compare as text.
    */
-  activate(id: number): void {
-    const stmt = this.db.prepare('UPDATE watches SET is_active = 1 WHERE id = ?');
-    stmt.run(id);
+  findHeldOverlapping(
+    providerId: string,
+    userId: number,
+    arrival: string,
+    departure: string,
+    excludeId?: number
+  ): Watch[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM watches
+         WHERE provider_id = ? AND user_id = ? AND last_result = ? AND id != ?
+           AND arrival_date < ? AND ? < departure_date`
+      )
+      .all(providerId, userId, WatchResult.HELD, excludeId ?? -1, departure, arrival);
+    return rows.map((row) => this.mapRow(row as WatchRow));
+  }
+
+  /**
+   * Activate watch. `nextCheckAt` makes it due (the scheduler picks it up on its next tick).
+   */
+  activate(id: number, nextCheckAt?: Date): void {
+    this.db
+      .prepare(
+        'UPDATE watches SET is_active = 1, next_check_at = COALESCE(?, next_check_at) WHERE id = ?'
+      )
+      .run(nextCheckAt ? nextCheckAt.toISOString() : null, id);
   }
 
   /**
@@ -165,40 +214,76 @@ export class WatchRepository extends BaseRepository<Watch> {
     stmt.run(id);
   }
 
-  /**
-   * Update check timestamps
-   */
-  updateCheckTimestamps(id: number, lastChecked: Date, nextCheck: Date): void {
-    const stmt = this.db.prepare(`
-      UPDATE watches
-      SET last_checked_at = ?, next_check_at = ?
-      WHERE id = ?
-    `);
-    stmt.run(lastChecked.toISOString(), nextCheck.toISOString(), id);
+  /** When the watch is next due. */
+  setNextCheckAt(id: number, nextCheckAt: Date): void {
+    this.db
+      .prepare('UPDATE watches SET next_check_at = ? WHERE id = ?')
+      .run(nextCheckAt.toISOString(), id);
   }
 
   /**
-   * Update last result
+   * Records one check in one transaction: its result, the units it saw (when it got that
+   * far), when it ran and when the watch is next due. `found` adds one to `found_count`.
    */
-  updateLastResult(id: number, result: WatchResult, found: boolean): void {
-    const stmt = this.db.prepare(`
-      UPDATE watches
-      SET last_result = ?, found_count = found_count + ?
-      WHERE id = ?
-    `);
-    stmt.run(result, found ? 1 : 0, id);
+  recordRun(
+    id: number,
+    run: {
+      result: WatchResult;
+      found: boolean;
+      checkedAt: Date;
+      nextCheckAt: Date;
+      availability?: UnitAvailability[];
+    }
+  ): void {
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `UPDATE watches
+           SET last_result = ?, found_count = found_count + ?, last_checked_at = ?, next_check_at = ?
+           WHERE id = ?`
+        )
+        .run(
+          run.result,
+          run.found ? 1 : 0,
+          run.checkedAt.toISOString(),
+          run.nextCheckAt.toISOString(),
+          id
+        );
+      if (run.availability) {
+        this.db
+          .prepare('UPDATE watches SET last_availability = ? WHERE id = ?')
+          .run(JSON.stringify(run.availability), id);
+      }
+    })();
+  }
+
+  /** The auto-hold placed a hold: `last_result 'held'`, and the watch stops. */
+  markHeld(id: number): void {
+    this.db
+      .prepare('UPDATE watches SET last_result = ?, is_active = 0 WHERE id = ?')
+      .run(WatchResult.HELD, id);
+  }
+
+  /** The last result alone (an unknown provider, found when the scheduler starts). */
+  setLastResult(id: number, result: WatchResult): void {
+    this.db.prepare('UPDATE watches SET last_result = ? WHERE id = ?').run(result, id);
   }
 
   /**
-   * Update last availability results
+   * `last_availability` as units, or undefined. Rows written before V4 hold another shape
+   * (per-site results); they read as undefined until the next check replaces them.
    */
-  updateLastAvailability(id: number, availability: unknown[]): void {
-    const stmt = this.db.prepare(`
-      UPDATE watches
-      SET last_availability = ?
-      WHERE id = ?
-    `);
-    stmt.run(JSON.stringify(availability), id);
+  private readAvailability(value: string | null): UnitAvailability[] | undefined {
+    const parsed = this.parseJson<unknown>(value);
+    if (!Array.isArray(parsed)) return undefined;
+    const units = parsed.every(
+      (item) =>
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as UnitAvailability).unitId === 'string' &&
+        Array.isArray((item as UnitAvailability).nights)
+    );
+    return units ? (parsed as UnitAvailability[]) : undefined;
   }
 
   protected mapRow(row: WatchRow): Watch {
@@ -222,9 +307,9 @@ export class WatchRepository extends BaseRepository<Watch> {
       lastCheckedAt: this.parseDate(row.last_checked_at),
       nextCheckAt: this.parseDate(row.next_check_at),
       lastResult: (row.last_result ?? undefined) as WatchResult | undefined,
-      lastAvailability: this.parseJson(row.last_availability),
+      lastAvailability: this.readAvailability(row.last_availability),
       foundCount: row.found_count,
-      autoBook: Boolean(row.auto_book),
+      autoHold: Boolean(row.auto_book),
       notifyOnly: Boolean(row.notify_only),
       allowPartialMatch: Boolean(row.allow_partial_match),
       maxPrice: row.max_price ?? undefined,

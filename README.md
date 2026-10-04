@@ -55,7 +55,7 @@
 | UI Framework | React 18 |
 | Language | TypeScript 5 |
 | Database | SQLite (better-sqlite3) |
-| Job Scheduler | node-cron |
+| Job Scheduler | Chained `setTimeout` timers |
 | HTTP Client | axios |
 | Email | nodemailer, googleapis |
 | Validation | Zod |
@@ -154,7 +154,7 @@ parkstay-bookings/
 │   │   │   ├── queue/          # DBCA queue handler
 │   │   │   ├── stq/            # Skip The Queue
 │   │   │   └── watch/          # Availability monitoring
-│   │   ├── scheduler/          # node-cron job scheduler
+│   │   ├── scheduler/          # Watch due-loop and Site Sniper timers
 │   │   ├── ipc/                # IPC handlers
 │   │   └── utils/              # Logger, helpers
 │   ├── preload/                # Preload scripts (security bridge)
