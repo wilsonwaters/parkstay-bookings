@@ -6,12 +6,13 @@ _Last updated: 2026-10-02 (orchestrator)_
 Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
 
 ## Currently in flight
-- **V2** (#20) Data model v8: implemented; adversarial review running, lane V.
-- **V3** (#21) ParkStay provider module: implementation, lane X (`/home/user/wt/lane-x`, branched from lane/v).
-- **B2** (#27) App identity rename: review REQUEST_CHANGES (the snapshot could copy a live v1 WAL DB because the running-app check looks for the new exe name; dead finish page). Fix agent running, lane A.
-- **Q1** (#40) Electron smoke E2E, phase 1 (harness plus shell journeys): lane M.
+- **V3** (#21) ParkStay provider module: lane X. It is based on V2's pre-merge commit `da98c6e`; when done, rebase with `git rebase --onto ccr-da6e94c0-litpr7 da98c6e lane/x`.
+- **B3** (#28) Legacy install migration: lane A.
+- **Q1** (#40) Electron smoke E2E, phase 1: lane M.
 
 ## Completed
+- **V2** (#20) Data model v8: APPROVE after an adversarial migration review (every row and column matched on v5/v6 plus edge data). Orchestrator rebase onto B2: notifications carry the real provider and location, orphan adoption keeps `updated_at`. Merged.
+- **B2** (#27) App identity rename: review REQUEST_CHANGES (the installer snapshot didn't close the running v1 exe; dead finish page). Fixed: legacy app closed before the snapshot, standard finish page, small email logo. Merged.
 - **P6** (#17) Sandboxed preload: APPROVE (the reviewer re-verified V1 namespaces in the sandboxed built and packaged app), merged.
 - **P5** (#16) SecretVault: APPROVE. Durability fixes: read-back verification before the legacy copy is replaced, fsync before rename, `conf` pinned. Merged.
 - **V7** (#25) Browser automation: review REQUEST_CHANGES (Playwright launched Edge/Chrome with Chromium's sandbox off). Fixed: `chromiumSandbox: true`, quit hold hides windows, safe kill, docs for search-mode providers. Merged after resolving P5 overlaps.
