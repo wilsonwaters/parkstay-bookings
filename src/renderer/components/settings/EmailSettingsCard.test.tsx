@@ -20,6 +20,7 @@ function storedNotifier(hasPassword: boolean): NotifierView {
       toEmail: 'me@example.com',
     },
     hasPassword,
+    secretState: hasPassword ? 'ok' : 'missing',
     status: NotifierStatus.CONFIGURED,
     createdAt: new Date('2026-10-01T00:00:00Z'),
     updatedAt: new Date('2026-10-01T00:00:00Z'),

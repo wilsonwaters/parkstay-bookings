@@ -1,56 +1,50 @@
 /**
  * Authentication Service
- * Handles user authentication, credential encryption, and session management
+ * Stores the ParkStay credentials on the local profile. The password is encrypted with the
+ * SecretVault (`users.encrypted_password` holds the envelope).
  */
 
-import crypto from 'crypto';
-import { machineIdSync } from 'node-machine-id';
 import { UserRepository } from '../../database/repositories/user.repository';
+import {
+  SecretUnreadableError,
+  type SecretRead,
+  type SecretVault,
+} from '../../security/secret-vault';
 import { User, UserCredentials, UserInput } from '@shared/types';
 import type { CredentialStatus } from '@shared/contracts/auth';
 import { logger } from '../../utils/logger';
-
-// Secret salt for key derivation (in production, this would be stored securely)
-const APP_SECRET = 'parkstay-bookings-v1-secret';
 
 /** A profile row holds credentials until Logout blanks them. */
 function hasCredentials(user: User): boolean {
   return user.encryptedPassword !== '';
 }
 
-interface EncryptedData {
-  encrypted: string;
-  iv: string;
-  authTag: string;
-}
-
 export class AuthService {
-  private userRepository: UserRepository;
-  private encryptionKey: Buffer | null = null;
-  private machineId: string;
-
-  constructor(userRepository: UserRepository) {
-    this.userRepository = userRepository;
-    this.machineId = machineIdSync();
-  }
+  constructor(
+    private readonly userRepository: UserRepository,
+    private readonly vault: SecretVault
+  ) {}
 
   /**
    * Store user credentials on the local profile. There is one profile, so storing
    * credentials for another email replaces the stored ones; the profile row and its data
-   * are kept. Creates the row only when there is none (startup normally ensures it).
+   * are kept. Creates the row only when there is none (startup normally ensures it). The
+   * same email is refused while its stored password still reads; an unreadable one is
+   * replaced (this is the user entering it again).
    */
   async storeCredentials(credentials: UserInput): Promise<User> {
     try {
       const profile = this.userRepository.getFirstUser();
-      if (profile && hasCredentials(profile) && profile.email === credentials.email) {
+      if (
+        profile &&
+        hasCredentials(profile) &&
+        profile.email === credentials.email &&
+        this.readPassword(profile).state === 'ok'
+      ) {
         throw new Error('User with this email already exists');
       }
 
-      // Encrypt password
-      const encryptedData = await this.encryptPassword(credentials.password);
-
-      // Store encryption key for this user
-      const userEncryptionKey = this.generateEncryptionKey();
+      const encryptedPassword = this.vault.encrypt(credentials.password);
       const profileFields = {
         firstName: credentials.firstName,
         lastName: credentials.lastName,
@@ -61,20 +55,10 @@ export class AuthService {
         ? this.userRepository.setCredentials(
             profile.id,
             credentials.email,
-            encryptedData.encrypted,
-            userEncryptionKey,
-            encryptedData.iv,
-            encryptedData.authTag,
+            encryptedPassword,
             profileFields
           )
-        : this.userRepository.create(
-            credentials.email,
-            encryptedData.encrypted,
-            userEncryptionKey,
-            encryptedData.iv,
-            encryptedData.authTag,
-            profileFields
-          );
+        : this.userRepository.create(credentials.email, encryptedPassword, profileFields);
 
       logger.info(`Credentials stored for user: ${credentials.email}`);
       return user;
@@ -85,41 +69,32 @@ export class AuthService {
   }
 
   /**
-   * What the renderer may see: the email and whether a password is stored, never the
-   * password itself. Null when no credentials are stored.
+   * What the renderer may see: the email, whether a usable password is stored, and the
+   * password's `secretState`, never the password itself. Null when no credentials are stored.
    */
   getCredentialStatus(): CredentialStatus | null {
     const user = this.userRepository.getFirstUser();
-    if (!user || !hasCredentials(user)) return null;
-    return { email: user.email, hasPassword: true };
+    if (!user || (user.email === '' && !hasCredentials(user))) return null;
+    const { state } = this.readPassword(user);
+    return { email: user.email, hasPassword: state === 'ok', secretState: state };
   }
 
   /**
-   * Get stored credentials, password decrypted. Main process only: never return this over IPC.
+   * Get stored credentials, password decrypted. Main process only: never return this over
+   * IPC. Null when none are stored; throws `SecretUnreadableError` when the stored password
+   * cannot be decrypted.
    */
   async getCredentials(): Promise<UserCredentials | null> {
-    try {
-      // Get first user (single-user app)
-      const user = this.userRepository.getFirstUser();
-      if (!user || !hasCredentials(user)) {
-        return null;
-      }
+    const user = this.userRepository.getFirstUser();
+    if (!user || !hasCredentials(user)) return null;
 
-      // Decrypt password
-      const password = await this.decryptPassword({
-        encrypted: user.encryptedPassword,
-        iv: user.encryptionIv,
-        authTag: user.encryptionAuthTag,
-      });
-
-      return {
-        email: user.email,
-        password,
-      };
-    } catch (error) {
-      logger.error('Error getting credentials:', error);
-      throw error;
+    const password = this.readPassword(user);
+    if (password.state !== 'ok') {
+      if (password.state === 'missing') return null;
+      logger.warn('The stored ParkStay password could not be decrypted; it must be entered again');
+      throw new SecretUnreadableError('decrypt-failed', password.reason ?? 'Unreadable password');
     }
+    return { email: user.email, password: password.value };
   }
 
   /**
@@ -132,18 +107,10 @@ export class AuthService {
         throw new Error('User not found');
       }
 
-      // Encrypt new password
-      const encryptedData = await this.encryptPassword(newPassword);
-
-      // Update user
       const updated = this.userRepository.updateCredentials(
         user.id,
-        encryptedData.encrypted,
-        user.encryptionKey,
-        encryptedData.iv,
-        encryptedData.authTag
+        this.vault.encrypt(newPassword)
       );
-
       if (!updated) {
         throw new Error('Failed to update credentials');
       }
@@ -175,7 +142,7 @@ export class AuthService {
   }
 
   /**
-   * Check if credentials are stored on the local profile
+   * Check if credentials are stored on the local profile (readable or not)
    */
   hasStoredCredentials(): boolean {
     const user = this.userRepository.getFirstUser();
@@ -189,78 +156,11 @@ export class AuthService {
     return this.userRepository.getFirstUser();
   }
 
-  /**
-   * Encrypt password using AES-256-GCM
-   */
-  private async encryptPassword(password: string): Promise<EncryptedData> {
-    try {
-      const key = await this.getEncryptionKey();
-      const iv = crypto.randomBytes(16);
-
-      const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-
-      let encrypted = cipher.update(password, 'utf8', 'hex');
-      encrypted += cipher.final('hex');
-
-      const authTag = cipher.getAuthTag();
-
-      return {
-        encrypted,
-        iv: iv.toString('hex'),
-        authTag: authTag.toString('hex'),
-      };
-    } catch (error) {
-      logger.error('Error encrypting password:', error);
-      throw new Error('Failed to encrypt password');
-    }
-  }
-
-  /**
-   * Decrypt password using AES-256-GCM
-   */
-  private async decryptPassword(data: EncryptedData): Promise<string> {
-    try {
-      const key = await this.getEncryptionKey();
-
-      const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(data.iv, 'hex'));
-
-      decipher.setAuthTag(Buffer.from(data.authTag, 'hex'));
-
-      let decrypted = decipher.update(data.encrypted, 'hex', 'utf8');
-      decrypted += decipher.final('utf8');
-
-      return decrypted;
-    } catch (error) {
-      logger.error('Error decrypting password:', error);
-      throw new Error('Failed to decrypt password');
-    }
-  }
-
-  /**
-   * Get or generate encryption key
-   */
-  private async getEncryptionKey(): Promise<Buffer> {
-    if (this.encryptionKey) {
-      return this.encryptionKey;
-    }
-
-    // Derive key from machine ID and app secret
-    this.encryptionKey = crypto.pbkdf2Sync(
-      this.machineId + APP_SECRET,
-      'parkstay-salt',
-      100000,
-      32,
-      'sha512'
-    );
-
-    return this.encryptionKey;
-  }
-
-  /**
-   * Generate a unique encryption key for user storage
-   */
-  private generateEncryptionKey(): string {
-    return crypto.randomBytes(32).toString('hex');
+  /** Decrypts the stored password; a `local` envelope is re-encrypted to `os` when possible. */
+  private readPassword(user: User): SecretRead {
+    return this.vault.read(user.encryptedPassword, (envelope) => {
+      this.userRepository.resealPassword(user.id, user.encryptedPassword, envelope);
+    });
   }
 
   /**

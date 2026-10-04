@@ -1,9 +1,13 @@
 /**
  * Composition root: every service is built once, with shared instances; nothing is a
  * singleton (two containers share nothing); dispose stops the scheduler, then destroys the
- * queue service, then closes the database.
+ * queue service, then closes the database. The SecretVault is shared by every consumer,
+ * including each provider's ScopedSecretVault, and building the container on a fresh
+ * install does not touch `safeStorage`.
  */
 
+import fs from 'fs';
+import path from 'path';
 import type Database from 'better-sqlite3';
 import { openDatabase } from '@main/database/connection';
 import { createContainer, AppContainer } from '@main/app/container';
@@ -24,7 +28,11 @@ import { WatchService } from '@main/services/watch/watch.service';
 import { JobScheduler } from '@main/scheduler/job-scheduler';
 import { RendererEvents } from '@main/ipc/events';
 import { TrustedWebContents } from '@main/ipc/trusted-web-contents';
+import { createProviderContext, type ProviderContextDeps } from '@main/providers/sdk';
+import { SecretVault } from '@main/security/secret-vault';
 import { TEST_LOGS_DIR } from '@tests/utils/ipc-harness';
+import { containerSecrets, FakeSafeStorage, removeUserData } from '@tests/utils/fake-safe-storage';
+import { testManifest } from '@tests/utils/fake-provider';
 
 jest.mock('electron', () => ({
   app: { getAppPath: () => '/app', getPath: () => '/tmp', isPackaged: false },
@@ -38,9 +46,6 @@ jest.mock('electron-updater', () => {
   const { EventEmitter } = jest.requireActual('events');
   return { autoUpdater: new EventEmitter() };
 });
-jest.mock('electron-store', () =>
-  jest.fn().mockImplementation(() => ({ get: jest.fn(), set: jest.fn(), delete: jest.fn() }))
-);
 jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }));
 
 /**
@@ -104,6 +109,12 @@ jest.mock('@main/ipc/trusted-web-contents', () =>
   mockCountedModule('@main/ipc/trusted-web-contents')
 );
 jest.mock('@main/providers/registry', () => mockCountedModule('@main/providers/registry'));
+jest.mock('@main/security/secret-vault', () => mockCountedModule('@main/security/secret-vault'));
+// createProviderContext is recorded, so a test can see the deps each provider got
+jest.mock('@main/providers/sdk', () => {
+  const actual = jest.requireActual('@main/providers/sdk');
+  return { ...actual, createProviderContext: jest.fn(actual.createProviderContext) };
+});
 
 const CONSTRUCTED_ONCE = {
   UserRepository: repositories.UserRepository,
@@ -130,16 +141,24 @@ const CONSTRUCTED_ONCE = {
   RendererEvents,
   TrustedWebContents,
   ProviderRegistry,
+  SecretVault,
 };
 
 describe('createContainer', () => {
   const opened: AppContainer[] = [];
+  const userDataDirs: string[] = [];
 
-  function build(): { container: AppContainer; db: Database.Database } {
+  function build(safeStorage: FakeSafeStorage = new FakeSafeStorage()): {
+    container: AppContainer;
+    db: Database.Database;
+    userDataDir: string;
+  } {
     const db = openDatabase(':memory:');
-    const container = createContainer({ db, logsDir: TEST_LOGS_DIR });
+    const secrets = containerSecrets(safeStorage);
+    userDataDirs.push(secrets.userDataDir);
+    const container = createContainer({ db, logsDir: TEST_LOGS_DIR, ...secrets });
     opened.push(container);
-    return { container, db };
+    return { container, db, userDataDir: secrets.userDataDir };
   }
 
   beforeEach(() => {
@@ -148,6 +167,7 @@ describe('createContainer', () => {
 
   afterEach(() => {
     opened.splice(0).forEach((c) => c.dispose());
+    userDataDirs.splice(0).forEach(removeUserData);
   });
 
   it('builds every repository, service, notifier, dispatcher, scheduler and updater exactly once', () => {
@@ -183,6 +203,48 @@ describe('createContainer', () => {
     expect(NotificationDispatcher).toHaveBeenCalledWith(r.notifiers, [
       jest.mocked(SmtpEmailNotifier).mock.results[0].value,
     ]);
+
+    // One vault, shared by every consumer of secrets
+    const vault = container.vault;
+    expect(jest.mocked(SecretVault).mock.results[0].value).toBe(vault);
+    expect(repositories.NotifierRepository).toHaveBeenCalledWith(container.db, vault);
+    expect(AuthService).toHaveBeenCalledWith(r.users, vault);
+    expect(OAuth2Handler).toHaveBeenCalledWith(
+      expect.objectContaining({ vault, filePath: expect.stringMatching(/gmail-oauth\.json$/) })
+    );
+    expect(jest.mocked(createProviderContext).mock.calls[0][1].vault).toBe(vault);
+  });
+
+  it('builds the vault lazily: a fresh install touches neither safeStorage nor the key file', () => {
+    const safeStorage = new FakeSafeStorage();
+    const { container, userDataDir } = build(safeStorage);
+
+    expect(safeStorage.calls).toEqual([]);
+    expect(fs.existsSync(path.join(userDataDir, 'secret-vault.key'))).toBe(false);
+    expect(container.vault.status()).toEqual({ backend: 'os' }); // first use
+  });
+
+  it("gives each provider a ScopedSecretVault on the app's vault, namespaced per provider", async () => {
+    const { container } = build();
+    const parkstay = jest.mocked(createProviderContext).mock.results[0].value;
+    expect(parkstay.id).toBe('parkstay');
+
+    await parkstay.secrets.set('token', 'parkstay-token-value');
+    const stored = await parkstay.state.get<string>('secret:token');
+    expect(stored).toMatch(/^vault:v1:os:/);
+    expect(stored).not.toContain('parkstay-token-value');
+    expect(container.vault.decrypt(stored as string)).toContain('parkstay-token-value');
+    await expect(parkstay.secrets.get('token')).resolves.toBe('parkstay-token-value');
+
+    // Another provider built with the same deps has its own store, and the ParkStay
+    // ciphertext copied into it does not read as its secret
+    const deps = jest.mocked(createProviderContext).mock.calls[0][1] as ProviderContextDeps;
+    const other = createProviderContext(testManifest('fake2'), deps);
+    await expect(other.secrets.get('token')).resolves.toBeUndefined();
+    await other.state.set('secret:token', stored);
+    await expect(other.secrets.get('token')).rejects.toThrow(
+      'Secret "token" was not written by fake2'
+    );
   });
 
   it('has no singletons: a second container shares no instance with the first', () => {

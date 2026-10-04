@@ -1,27 +1,32 @@
 /**
  * Gmail OAuth loopback sign-in, with a real loopback server, google-auth-library's real
  * `OAuth2Client` (only `getToken`, the network call, stubbed) and a captured
- * `openExternal`.
+ * `openExternal`. Also the handler's storage: `gmail-oauth.json` format 2, each item a
+ * SecretVault envelope, read and written through a real vault on a fake `safeStorage`.
  */
 
 import crypto from 'crypto';
+import fs from 'fs';
 import http from 'http';
+import path from 'path';
 import { OAuth2Client } from 'google-auth-library';
+import { parseGmailSecretFile } from '@main/security/gmail-secret-file';
 import { runLoopbackFlow } from '@main/services/gmail/loopback-flow';
 import { OAuth2Handler } from '@main/services/gmail/oauth2-handler';
 import { logger } from '@main/utils/logger';
-
-const mockStore = new Map<string, unknown>();
+import {
+  FakeSafeStorage,
+  FOREIGN_OS_KEY,
+  removeUserData,
+  tempUserData,
+  testVault,
+  type TestVault,
+} from '@tests/utils/fake-safe-storage';
 
 jest.mock('electron', () => ({ shell: { openExternal: jest.fn() } }));
-jest.mock('electron-store', () =>
-  jest.fn().mockImplementation(() => ({
-    get: (key: string) => mockStore.get(key),
-    set: (key: string, value: unknown) => mockStore.set(key, value),
-    delete: (key: string) => mockStore.delete(key),
-    clear: () => mockStore.clear(),
-  }))
-);
+
+let t: TestVault;
+let gmailFile: string;
 
 const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
 const TOKENS = {
@@ -91,12 +96,32 @@ beforeEach(() => {
   jest.spyOn(logger, 'info').mockImplementation(() => logger);
   jest.spyOn(logger, 'warn').mockImplementation(() => logger);
   jest.spyOn(logger, 'error').mockImplementation(() => logger);
-  mockStore.clear();
+  t = testVault({ userDataDir: tempUserData() });
+  gmailFile = path.join(t.userDataDir, 'gmail-oauth.json');
 });
 
 afterEach(() => {
   jest.restoreAllMocks();
+  removeUserData(t.userDataDir);
 });
+
+/** Writes a format-2 file whose items are envelopes of `items`, as the app stores them. */
+function storeItems(items: { credentials?: object; tokens?: object }): void {
+  const file: Record<string, unknown> = { format: 2 };
+  if (items.credentials) file.credentials = t.vault.encrypt(JSON.stringify(items.credentials));
+  if (items.tokens) file.tokens = t.vault.encrypt(JSON.stringify(items.tokens));
+  fs.writeFileSync(gmailFile, JSON.stringify(file));
+}
+
+/** The decrypted items of the stored file. */
+function storedItems(): { credentials?: unknown; tokens?: unknown } {
+  const file = parseGmailSecretFile(fs.readFileSync(gmailFile));
+  if (!file) throw new Error('not a format-2 file');
+  return {
+    ...(file.credentials && { credentials: JSON.parse(t.vault.decrypt(file.credentials)) }),
+    ...(file.tokens && { tokens: JSON.parse(t.vault.decrypt(file.tokens)) }),
+  };
+}
 
 describe('runLoopbackFlow', () => {
   it('listens on 127.0.0.1 only, on a port the OS picks', async () => {
@@ -231,6 +256,8 @@ describe('OAuth2Handler', () => {
       }
     );
     const oauth = new OAuth2Handler({
+      vault: t.vault,
+      filePath: gmailFile,
       openExternal: async (url) => {
         urls.push(url);
         opened();
@@ -267,10 +294,12 @@ describe('OAuth2Handler', () => {
   });
 
   it('ignores a stored legacy redirectUri and never returns the client secret', async () => {
-    mockStore.set('gmail_credentials', {
-      clientId: 'legacy-id',
-      clientSecret: 'legacy-secret',
-      redirectUri: 'http://localhost:3000/oauth2callback',
+    storeItems({
+      credentials: {
+        clientId: 'legacy-id',
+        clientSecret: 'legacy-secret',
+        redirectUri: 'http://localhost:3000/oauth2callback',
+      },
     });
     const h = handler(300);
 
@@ -307,7 +336,90 @@ describe('OAuth2Handler', () => {
       redirectUri: 'http://localhost:3000/oauth2callback',
     } as never);
 
-    expect(mockStore.get('gmail_credentials')).toEqual({ clientId: 'id', clientSecret: 'secret' });
+    expect(storedItems()).toEqual({ credentials: { clientId: 'id', clientSecret: 'secret' } });
     expect(h.oauth.getCredentialStatus()).toEqual({ clientId: 'id', hasClientSecret: true });
+  });
+});
+
+describe('OAuth2Handler storage (gmail-oauth.json format 2)', () => {
+  const handler = (): OAuth2Handler => new OAuth2Handler({ vault: t.vault, filePath: gmailFile });
+
+  it('writes format 2 with vault envelopes, atomically, and reads it back in a new handler', async () => {
+    const h = handler();
+    expect(fs.existsSync(gmailFile)).toBe(false); // nothing read or written at construction
+    h.setCredentials({ clientId: 'client-id', clientSecret: 'GOCSPX-format-2-secret' });
+
+    const raw = fs.readFileSync(gmailFile);
+    expect(JSON.parse(raw.toString())).toEqual({
+      format: 2,
+      credentials: expect.stringMatching(/^vault:v1:os:/),
+    });
+    expect(raw.toString()).not.toContain('GOCSPX-format-2-secret');
+    expect(fs.readdirSync(t.userDataDir)).toEqual(['gmail-oauth.json']); // no temp file left
+
+    // Tokens arrive through a sign-in; seed them the way the app stores them
+    storeItems({
+      credentials: storedItems().credentials as object,
+      tokens: { ...TOKENS, access_token: 'ya29.format-2-token' },
+    });
+    const fresh = handler();
+    expect(fresh.getCredentials()).toEqual({
+      clientId: 'client-id',
+      clientSecret: 'GOCSPX-format-2-secret',
+    });
+    expect(fresh.getAuthStatus()).toEqual({
+      isAuthorized: true,
+      expiryDate: TOKENS.expiry_date,
+      secretState: 'ok',
+    });
+
+    // Revoking removes only the tokens
+    await expect(fresh.revoke()).resolves.toBe(true);
+    expect(storedItems()).toEqual({
+      credentials: { clientId: 'client-id', clientSecret: 'GOCSPX-format-2-secret' },
+    });
+    expect(fresh.getAuthStatus()).toEqual({ isAuthorized: false, secretState: 'missing' });
+  });
+
+  it('reports missing when nothing is stored', () => {
+    expect(handler().getAuthStatus()).toEqual({ isAuthorized: false, secretState: 'missing' });
+    expect(handler().getCredentialStatus()).toBeNull();
+  });
+
+  it('undecryptable items read as unreadable and are never overwritten by reads; a user save replaces only what it saves', () => {
+    const other = testVault({ safeStorage: new FakeSafeStorage(FOREIGN_OS_KEY) });
+    const file = {
+      format: 2,
+      credentials: other.vault.encrypt(JSON.stringify({ clientId: 'a', clientSecret: 'b' })),
+      tokens: other.vault.encrypt(JSON.stringify(TOKENS)),
+    };
+    fs.writeFileSync(gmailFile, JSON.stringify(file));
+    const before = fs.readFileSync(gmailFile);
+    const h = handler();
+
+    expect(h.getAuthStatus()).toEqual({ isAuthorized: false, secretState: 'unreadable' });
+    expect(h.getCredentialStatus()).toBeNull();
+    expect(h.isAuthorized()).toBe(false);
+    expect(fs.readFileSync(gmailFile).equals(before)).toBe(true);
+
+    h.setCredentials({ clientId: 'new-id', clientSecret: 'entered-again' });
+    const after = JSON.parse(fs.readFileSync(gmailFile, 'utf8'));
+    expect(after.tokens).toBe(file.tokens); // the unreadable tokens are kept as they were
+    expect(t.vault.decrypt(after.credentials)).toContain('entered-again');
+    expect(h.getAuthStatus()).toEqual({ isAuthorized: false, secretState: 'unreadable' });
+  });
+
+  it('re-encrypts local-key items to OS encryption once that is available, and stores them', () => {
+    t.safeStorage.available = false;
+    const h = handler();
+    h.setCredentials({ clientId: 'id', clientSecret: 'local-secret' });
+    expect(JSON.parse(fs.readFileSync(gmailFile, 'utf8')).credentials).toMatch(/^vault:v1:local:/);
+
+    t.safeStorage.available = true;
+    expect(handler().getCredentials()).toEqual({ clientId: 'id', clientSecret: 'local-secret' });
+    expect(JSON.parse(fs.readFileSync(gmailFile, 'utf8')).credentials).toMatch(/^vault:v1:os:/);
+    expect(storedItems()).toEqual({
+      credentials: { clientId: 'id', clientSecret: 'local-secret' },
+    });
   });
 });

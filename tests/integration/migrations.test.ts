@@ -24,10 +24,10 @@ import {
   runMigrations,
 } from '@main/database/connection';
 import { NotifierRepository, NotificationRepository } from '@main/database/repositories';
+import { decryptLegacyNotifierConfig } from '@main/security/legacy-decryptors';
 import { NotifierChannel } from '@shared/types';
 import { logger } from '@main/utils/logger';
-
-jest.mock('node-machine-id', () => ({ machineIdSync: () => FIXTURE_MACHINE_ID }));
+import { testVault } from '@tests/utils/fake-safe-storage';
 
 const V7_TABLES = [
   'bookings',
@@ -236,14 +236,17 @@ describe('database migrations', () => {
     it('keeps the notifier config ciphertext byte-identical and still decryptable', () => {
       expect(notifierConfig(db, 'notifiers')).toBe(configBefore);
 
-      const notifier = new NotifierRepository(db).findByChannel(NotifierChannel.EMAIL_SMTP);
-      expect(notifier?.config).toMatchObject({
+      // The schema migration leaves the legacy ciphertext alone; migrateLegacySecrets (P5)
+      // converts it afterwards (tests/integration/legacy-secret-migration.test.ts)
+      expect(
+        JSON.parse(decryptLegacyNotifierConfig(notifierConfig(db, 'notifiers'), FIXTURE_MACHINE_ID))
+      ).toMatchObject({
         auth: { user: 'fixture.user@example.com', pass: FIXTURE_SMTP_PASSWORD },
       });
     });
 
     it('accepts new delivery logs and keeps legacy notification types readable', () => {
-      const notifiers = new NotifierRepository(db);
+      const notifiers = new NotifierRepository(db, testVault().vault);
       const log = notifiers.logDelivery({
         notificationId: 2,
         notifierChannel: NotifierChannel.EMAIL_SMTP,

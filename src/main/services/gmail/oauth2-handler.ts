@@ -1,27 +1,49 @@
 /**
  * OAuth2 Handler
- * Manages OAuth2 authentication flow for Gmail API
+ * Manages OAuth2 authentication flow for Gmail API.
+ *
+ * The client credentials and tokens are stored in `<userData>/gmail-oauth.json` (format 2),
+ * each as a SecretVault envelope (`security/gmail-secret-file.ts`). Nothing is read at
+ * construction. Something stored that cannot be decrypted reads as `secretState:
+ * 'unreadable'` and is kept until the user saves new credentials or signs in again; a file
+ * that cannot be read at all is then moved aside to `gmail-oauth.json.corrupt-<timestamp>`.
  */
 
+import path from 'path';
+import fs from 'fs';
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import Store from 'electron-store';
 import { shell } from 'electron';
-import { OAuth2Credentials, OAuth2Tokens, OAuth2FlowResult } from '@shared/types/gmail.types';
+import {
+  GmailAuthStatus,
+  OAuth2Credentials,
+  OAuth2Tokens,
+  OAuth2FlowResult,
+} from '@shared/types/gmail.types';
+import type { SecretState } from '@shared/types/secret.types';
 import type { GmailCredentialStatus } from '@shared/contracts/gmail';
+import {
+  preserveCorruptGmailSecretFile,
+  readGmailSecretFile,
+  writeGmailSecretFile,
+  type GmailSecretFileV2,
+} from '../../security/gmail-secret-file';
+import type { SecretVault } from '../../security/secret-vault';
 import { logger } from '../../utils/logger';
 import { DEFAULT_FLOW_TIMEOUT_MS, runLoopbackFlow } from './loopback-flow';
 
-const STORAGE_KEY = 'gmail_oauth_tokens';
 const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
 
-interface StoreSchema {
-  gmail_oauth_tokens?: OAuth2Tokens;
-  /** Legacy (v1) entries also carry a `redirectUri`, which is ignored. */
-  gmail_credentials?: OAuth2Credentials;
-}
+type StoredItem = 'credentials' | 'tokens';
+
+/** A stored item: its value when it reads. */
+type ItemRead<T> = { state: 'ok'; value: T } | { state: Exclude<SecretState, 'ok'> };
 
 export interface OAuth2HandlerOptions {
+  /** Encrypts and decrypts what is stored. */
+  vault: SecretVault;
+  /** `<userData>/gmail-oauth.json`. */
+  filePath: string;
   /** Opens the consent page in the system browser. Defaults to `shell.openExternal`. */
   openExternal?: (url: string) => Promise<void>;
   /** Builds the OAuth client. Defaults to googleapis' `OAuth2Client`. */
@@ -36,7 +58,8 @@ function clientCredentials({ clientId, clientSecret }: OAuth2Credentials): OAuth
 }
 
 export class OAuth2Handler {
-  private store: Store<StoreSchema>;
+  private readonly vault: SecretVault;
+  private readonly filePath: string;
   private oauth2Client: OAuth2Client | null = null;
   private credentials: OAuth2Credentials | null = null;
   private readonly openExternal: (url: string) => Promise<void>;
@@ -44,11 +67,9 @@ export class OAuth2Handler {
   private readonly flowTimeoutMs: number;
   private authorizing = false;
 
-  constructor(options: OAuth2HandlerOptions = {}) {
-    this.store = new Store<StoreSchema>({
-      name: 'gmail-oauth',
-      encryptionKey: 'parkstay-gmail-oauth-encryption-key',
-    });
+  constructor(options: OAuth2HandlerOptions) {
+    this.vault = options.vault;
+    this.filePath = options.filePath;
     this.openExternal = options.openExternal ?? ((url) => shell.openExternal(url));
     // No redirect URI: each sign-in passes its own loopback address
     this.createClient =
@@ -62,7 +83,7 @@ export class OAuth2Handler {
    */
   setCredentials(credentials: OAuth2Credentials): void {
     this.credentials = clientCredentials(credentials);
-    this.store.set('gmail_credentials', this.credentials);
+    this.writeItem('credentials', this.credentials);
 
     this.oauth2Client = this.createClient(this.credentials);
 
@@ -83,9 +104,9 @@ export class OAuth2Handler {
       return this.credentials;
     }
 
-    const stored = this.store.get('gmail_credentials');
-    if (stored) {
-      this.credentials = clientCredentials(stored);
+    const stored = this.readItem<OAuth2Credentials>('credentials');
+    if (stored.state === 'ok') {
+      this.credentials = clientCredentials(stored.value);
       return this.credentials;
     }
 
@@ -278,7 +299,7 @@ export class OAuth2Handler {
    * Store tokens securely
    */
   private storeTokens(tokens: OAuth2Tokens): void {
-    this.store.set(STORAGE_KEY, tokens);
+    this.writeItem('tokens', tokens);
     logger.info('OAuth2 tokens stored securely');
   }
 
@@ -286,7 +307,57 @@ export class OAuth2Handler {
    * Get stored tokens
    */
   private getStoredTokens(): OAuth2Tokens | null {
-    return this.store.get(STORAGE_KEY) || null;
+    const tokens = this.readItem<OAuth2Tokens>('tokens');
+    return tokens.state === 'ok' ? tokens.value : null;
+  }
+
+  /**
+   * Reads and decrypts one stored item. A `local` envelope is re-encrypted to `os` when that
+   * is available.
+   */
+  private readItem<T>(item: StoredItem): ItemRead<T> {
+    const stored = readGmailSecretFile(this.filePath);
+    if (stored.kind === 'missing') return { state: 'missing' };
+    if (stored.kind === 'other') return { state: 'unreadable' };
+
+    const envelope = stored.file[item];
+    const secret = this.vault.read(envelope, (resealed) =>
+      this.updateFile((file) => {
+        if (file[item] === envelope) file[item] = resealed;
+      })
+    );
+    if (secret.state !== 'ok') return { state: secret.state };
+    try {
+      return { state: 'ok', value: JSON.parse(secret.value) as T };
+    } catch {
+      return { state: 'unreadable' };
+    }
+  }
+
+  /** Encrypts and stores one item (`undefined` removes it). The user saved it: this may replace an unreadable one. */
+  private writeItem(item: StoredItem, value: unknown): void {
+    const envelope = value === undefined ? undefined : this.vault.encrypt(JSON.stringify(value));
+    this.updateFile((file) => {
+      if (envelope === undefined) delete file[item];
+      else file[item] = envelope;
+    });
+  }
+
+  /** Read, change, write back atomically. A file that cannot be read is moved aside first. */
+  private updateFile(change: (file: GmailSecretFileV2) => void): void {
+    const stored = readGmailSecretFile(this.filePath);
+    let file: GmailSecretFileV2 = { format: 2 };
+    if (stored.kind === 'v2') file = stored.file;
+    if (stored.kind === 'other') this.preserveUnreadableFile();
+    change(file);
+    writeGmailSecretFile(this.filePath, file);
+  }
+
+  private preserveUnreadableFile(): void {
+    const kept = preserveCorruptGmailSecretFile(this.filePath);
+    logger.warn(
+      `Unreadable Gmail OAuth file replaced; the old one is kept as ${path.basename(kept)}`
+    );
   }
 
   /**
@@ -298,17 +369,23 @@ export class OAuth2Handler {
   }
 
   /**
-   * Get authorization status
+   * Get authorization status. `secretState` is `unreadable` when the stored credentials or
+   * tokens cannot be decrypted (then never authorized), otherwise that of the tokens.
    */
-  getAuthStatus(): { isAuthorized: boolean; expiryDate?: number } {
-    const tokens = this.getStoredTokens();
-    if (!tokens) {
-      return { isAuthorized: false };
+  getAuthStatus(): GmailAuthStatus {
+    const tokens = this.readItem<OAuth2Tokens>('tokens');
+    const credentials = this.readItem<OAuth2Credentials>('credentials');
+    if (tokens.state === 'unreadable' || credentials.state === 'unreadable') {
+      return { isAuthorized: false, secretState: 'unreadable' };
+    }
+    if (tokens.state !== 'ok') {
+      return { isAuthorized: false, secretState: tokens.state };
     }
 
     return {
-      isAuthorized: this.isTokenValid(tokens),
-      expiryDate: tokens.expiry_date,
+      isAuthorized: this.isTokenValid(tokens.value),
+      expiryDate: tokens.value.expiry_date,
+      secretState: 'ok',
     };
   }
 
@@ -324,7 +401,7 @@ export class OAuth2Handler {
         }
       }
 
-      this.store.delete(STORAGE_KEY);
+      this.writeItem('tokens', undefined);
       this.oauth2Client = null;
 
       logger.info('OAuth2 authorization revoked');
@@ -339,7 +416,8 @@ export class OAuth2Handler {
    * Clear stored credentials and tokens
    */
   clearAll(): void {
-    this.store.clear();
+    if (readGmailSecretFile(this.filePath).kind === 'other') this.preserveUnreadableFile();
+    else fs.rmSync(this.filePath, { force: true });
     this.oauth2Client = null;
     this.credentials = null;
     logger.info('All OAuth2 data cleared');

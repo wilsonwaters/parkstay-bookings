@@ -14,12 +14,11 @@ import { createContainer, AppContainer } from '@main/app/container';
 import { registerIpcHandlers } from '@main/ipc';
 import { FakeIpcMain, TEST_LOGS_DIR } from '@tests/utils/ipc-harness';
 
+import { containerSecrets } from '@tests/utils/fake-safe-storage';
+
 jest.mock('electron', () => jest.requireActual('@tests/utils/electron-mocks').electron());
 jest.mock('electron-updater', () =>
   jest.requireActual('@tests/utils/electron-mocks').electronUpdater()
-);
-jest.mock('electron-store', () =>
-  jest.requireActual('@tests/utils/electron-mocks').electronStore()
 );
 jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }));
 
@@ -117,7 +116,11 @@ describe('IPC contract', () => {
     let ipc: FakeIpcMain;
 
     beforeEach(() => {
-      container = createContainer({ db: openDatabase(':memory:'), logsDir: TEST_LOGS_DIR });
+      container = createContainer({
+        db: openDatabase(':memory:'),
+        logsDir: TEST_LOGS_DIR,
+        ...containerSecrets(),
+      });
       ipc = new FakeIpcMain();
       registerIpcHandlers(container, { isTrustedSender: () => true, ipc });
     });

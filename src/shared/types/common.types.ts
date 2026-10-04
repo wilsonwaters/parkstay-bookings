@@ -90,10 +90,8 @@ export enum SettingCategory {
 export interface User {
   id: number;
   email: string;
+  /** A SecretVault envelope, or '' when no password is stored. Main process only. */
   encryptedPassword: string;
-  encryptionKey: string;
-  encryptionIv: string;
-  encryptionAuthTag: string;
   firstName?: string;
   lastName?: string;
   phone?: string;

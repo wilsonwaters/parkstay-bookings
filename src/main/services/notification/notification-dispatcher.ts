@@ -4,6 +4,7 @@
  */
 
 import {
+  NOTIFIER_SECRET_UNREADABLE,
   NotifierChannel,
   NotificationMessage,
   NotificationDeliveryResult,
@@ -23,6 +24,10 @@ export interface DispatchResult {
 export class NotificationDispatcher {
   private notifiers: Map<NotifierChannel, BaseNotifier> = new Map();
   private notifierRepository: NotifierRepository;
+  /** Notifiers whose stored settings cannot be decrypted: never sent to, until saved again. */
+  private unreadable = new Set<NotifierChannel>();
+  /** Unreadable notifiers already logged by `dispatch` (it logs each one once). */
+  private unreadableLogged = new Set<NotifierChannel>();
 
   /** The notifiers are built by the composition root (`app/container.ts`) and passed in. */
   constructor(notifierRepository: NotifierRepository, notifiers: BaseNotifier[]) {
@@ -48,7 +53,8 @@ export class NotificationDispatcher {
   }
 
   /**
-   * Load notifier configurations from database
+   * Load notifier configurations from database. A notifier whose stored settings cannot be
+   * decrypted is not configured: `dispatch` skips it instead of sending with an empty config.
    */
   loadNotifierConfigurations(): void {
     try {
@@ -56,6 +62,12 @@ export class NotificationDispatcher {
 
       for (const stored of storedNotifiers) {
         const notifier = this.notifiers.get(stored.channel);
+        if (stored.secretState === 'unreadable') {
+          this.unreadable.add(stored.channel);
+          notifier?.setEnabled(stored.enabled);
+          continue;
+        }
+        this.unreadable.delete(stored.channel);
         if (notifier) {
           notifier.configure(stored.config as Record<string, unknown>);
           notifier.setEnabled(stored.enabled);
@@ -78,6 +90,17 @@ export class NotificationDispatcher {
     for (const [channel, notifier] of this.notifiers) {
       if (!notifier.isEnabled()) {
         logger.debug(`Skipping disabled notifier: ${channel}`);
+        continue;
+      }
+
+      if (this.unreadable.has(channel)) {
+        if (!this.unreadableLogged.has(channel)) {
+          this.unreadableLogged.add(channel);
+          logger.warn(
+            `Skipping notifier ${channel}: its saved settings could not be decrypted; re-enter them in Settings`
+          );
+        }
+        results.push({ channel, result: { success: false, error: NOTIFIER_SECRET_UNREADABLE } });
         continue;
       }
 
@@ -173,6 +196,9 @@ export class NotificationDispatcher {
     enabled: boolean
   ): void {
     const notifier = this.notifiers.get(channel);
+    // Saved again by the user: readable from now on
+    this.unreadable.delete(channel);
+    this.unreadableLogged.delete(channel);
     if (notifier) {
       notifier.configure(config);
       notifier.setEnabled(enabled);
@@ -180,6 +206,11 @@ export class NotificationDispatcher {
     } else {
       logger.warn(`Notifier not found: ${channel}`);
     }
+  }
+
+  /** Whether the notifier's stored settings could not be decrypted (it is never sent to). */
+  isUnreadable(channel: NotifierChannel): boolean {
+    return this.unreadable.has(channel);
   }
 
   /**
@@ -192,6 +223,14 @@ export class NotificationDispatcher {
         success: false,
         message: 'Notifier not found',
         error: `Unknown channel: ${channel}`,
+      };
+    }
+
+    if (this.unreadable.has(channel)) {
+      return {
+        success: false,
+        message: 'Configuration unreadable',
+        error: NOTIFIER_SECRET_UNREADABLE,
       };
     }
 

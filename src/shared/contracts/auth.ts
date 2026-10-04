@@ -5,15 +5,21 @@
 
 import { z } from 'zod';
 import type { UserInput } from '../types/common.types';
+import type { SecretState } from '../types/secret.types';
 import { CHANNELS } from './channels';
 import type { Namespace } from './define';
 
 const C = CHANNELS.auth;
 
-/** What the renderer may know about the stored ParkStay credentials: never the password. */
+/**
+ * What the renderer may know about the stored ParkStay credentials: never the password.
+ * `hasPassword` is true only when the stored password can be read (`secretState: 'ok'`); an
+ * `unreadable` one must be entered again.
+ */
 export interface CredentialStatus {
   email: string;
   hasPassword: boolean;
+  secretState: SecretState;
 }
 
 export const credentialsInputSchema = z.object({

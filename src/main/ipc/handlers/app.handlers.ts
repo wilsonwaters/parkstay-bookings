@@ -24,6 +24,7 @@ export function registerAppHandlers(handle: Handle, c: AppContainer): void {
     arch: os.arch(),
     userDataPath: app.getPath('userData'),
     logsPath: c.logsDir,
+    secretStorage: c.vault.status(),
   }));
 
   // The folder the log files are written to; created first, in case logging could not create it

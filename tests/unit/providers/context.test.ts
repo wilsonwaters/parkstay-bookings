@@ -10,11 +10,11 @@ import {
   FakeSecretVault,
   InMemoryKeyValueStore,
   NodeHttpClient,
-  UnavailableSecretVault,
   type ProviderContextDeps,
 } from '@main/providers/sdk';
 import { DEFAULT_PROVIDER_LIMITS } from '@shared/types/provider.types';
 import { createMemoryLogger, testManifest } from '@tests/utils/fake-provider';
+import { removeUserData, testVault } from '@tests/utils/fake-safe-storage';
 
 function deps(overrides: Partial<ProviderContextDeps> = {}): ProviderContextDeps {
   return {
@@ -90,15 +90,40 @@ describe('ScopedSecretVault', () => {
     expect(await store.get('secret:token')).toBeUndefined();
   });
 
-  it('refuses to store anything until a real vault is wired', async () => {
-    const secrets = createScopedSecretVault({
-      providerId: 'fake',
-      vault: new UnavailableSecretVault(),
-      store: new InMemoryKeyValueStore(),
-    });
-    await expect(secrets.set('token', 'abc')).rejects.toThrow(
-      'Secret storage is not available yet'
-    );
+  it('a ciphertext that decrypts to something other than a sealed secret is refused without quoting it', async () => {
+    const vault = new FakeSecretVault();
+    const store = new InMemoryKeyValueStore();
+    const secrets = createScopedSecretVault({ providerId: 'fake', vault, store });
+
+    for (const plaintext of ['raw-secret-token-91f', '{"provider":"fake","key":"token"}']) {
+      await store.set('secret:token', vault.encrypt(plaintext));
+      const error = await secrets.get('token').then(
+        () => null,
+        (e: Error) => e
+      );
+      expect(error?.message).toBe('Secret "token" is damaged');
+      expect(error?.message).not.toContain('raw-secret-token-91f');
+    }
+  });
+
+  it("on the app's SecretVault: stores vault envelopes, and re-encrypts a local-key secret to OS encryption once available", async () => {
+    const t = testVault();
+    try {
+      t.safeStorage.available = false;
+      const store = new InMemoryKeyValueStore();
+      const secrets = createScopedSecretVault({ providerId: 'fake', vault: t.vault, store });
+      await secrets.set('token', 'abc');
+      expect(await store.get('secret:token')).toMatch(/^vault:v1:local:/);
+
+      t.safeStorage.available = true;
+      expect(await secrets.get('token')).toBe('abc');
+      const resealed = await store.get<string>('secret:token');
+      expect(resealed).toMatch(/^vault:v1:os:/);
+      expect(await secrets.get('token')).toBe('abc');
+      expect(await store.get('secret:token')).toBe(resealed); // no further rewrite
+    } finally {
+      removeUserData(t.userDataDir);
+    }
   });
 
   it('FakeSecretVault round-trips and rejects foreign ciphertext', () => {

@@ -10,6 +10,7 @@ import {
   GmailMessage,
   OTPResult,
   EmailPollOptions,
+  GmailAuthStatus,
   OAuth2Credentials,
 } from '@shared/types/gmail.types';
 import type { GmailCredentialStatus } from '@shared/contracts/gmail';
@@ -58,7 +59,7 @@ export class GmailOTPService {
   /**
    * Get authorization status details
    */
-  getAuthStatus(): { isAuthorized: boolean; expiryDate?: number } {
+  getAuthStatus(): GmailAuthStatus {
     return this.oauth2Handler.getAuthStatus();
   }
 

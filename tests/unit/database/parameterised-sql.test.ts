@@ -27,8 +27,8 @@ describe('parameterised repository SQL', () => {
     dbHelper = new TestDatabaseHelper('parameterised-sql');
     db = await dbHelper.setup();
     const users = new UserRepository(db);
-    userId = users.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag').id;
-    otherUserId = users.create(mockUserInput2.email, 'enc', 'key', 'iv', 'tag').id;
+    userId = users.create(mockUserInput.email, 'enc').id;
+    otherUserId = users.create(mockUserInput2.email, 'enc').id;
   });
 
   afterEach(async () => {

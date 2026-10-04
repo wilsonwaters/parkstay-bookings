@@ -1,29 +1,50 @@
 /**
  * AuthService Unit Tests
- * Tests authentication, credential encryption, and user management
+ * Tests authentication, credential encryption (SecretVault envelopes), the password's
+ * secret state, and user management
  */
 
 import { AuthService } from '@main/services/auth/AuthService';
 import { UserRepository } from '@main/database/repositories/user.repository';
+import { SecretUnreadableError } from '@main/security/secret-vault';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
 import { mockUserInput } from '@tests/fixtures/users';
 import { expectAsyncThrow } from '@tests/utils/test-helpers';
+import {
+  FakeSafeStorage,
+  FOREIGN_OS_KEY,
+  removeUserData,
+  testVault,
+  type TestVault,
+} from '@tests/utils/fake-safe-storage';
 
 describe('AuthService', () => {
   let dbHelper: TestDatabaseHelper;
   let authService: AuthService;
   let userRepository: UserRepository;
+  let t: TestVault;
 
   beforeEach(async () => {
     dbHelper = new TestDatabaseHelper('auth-service');
     await dbHelper.setup();
     userRepository = new UserRepository(dbHelper.getDb());
-    authService = new AuthService(userRepository);
+    t = testVault();
+    authService = new AuthService(userRepository, t.vault);
   });
 
   afterEach(async () => {
     await dbHelper.teardown();
+    removeUserData(t.userDataDir);
   });
+
+  /** The raw `users` columns of the profile row. */
+  const storedRow = () =>
+    dbHelper
+      .getDb()
+      .prepare(
+        'SELECT encrypted_password, encryption_key, encryption_iv, encryption_auth_tag FROM users'
+      )
+      .get() as Record<string, string>;
 
   describe('storeCredentials', () => {
     it('should store user credentials with encryption', async () => {
@@ -36,12 +57,15 @@ describe('AuthService', () => {
       expect(user.lastName).toBe(mockUserInput.lastName);
       expect(user.phone).toBe(mockUserInput.phone);
 
-      // Verify password is encrypted (not plain text)
-      expect(user.encryptedPassword).not.toBe(mockUserInput.password);
-      expect(user.encryptedPassword).toBeTruthy();
-      expect(user.encryptionKey).toBeTruthy();
-      expect(user.encryptionIv).toBeTruthy();
-      expect(user.encryptionAuthTag).toBeTruthy();
+      // The password is a vault envelope; the v1.x columns are blank
+      expect(user.encryptedPassword).toMatch(/^vault:v1:os:/);
+      expect(user.encryptedPassword).not.toContain(mockUserInput.password);
+      expect(storedRow()).toEqual({
+        encrypted_password: user.encryptedPassword,
+        encryption_key: '',
+        encryption_iv: '',
+        encryption_auth_tag: '',
+      });
     });
 
     it('should throw error if user already exists', async () => {
@@ -86,8 +110,64 @@ describe('AuthService', () => {
 
       const status = authService.getCredentialStatus();
 
-      expect(status).toEqual({ email: mockUserInput.email, hasPassword: true });
+      expect(status).toEqual({
+        email: mockUserInput.email,
+        hasPassword: true,
+        secretState: 'ok',
+      });
       expect(JSON.stringify(status)).not.toContain(mockUserInput.password);
+    });
+
+    it('reports an undecryptable password as unreadable (hasPassword false) and never overwrites it', async () => {
+      // Saved under another machine's or account's OS key
+      const other = testVault({ safeStorage: new FakeSafeStorage(FOREIGN_OS_KEY) });
+      try {
+        await new AuthService(userRepository, other.vault).storeCredentials(mockUserInput);
+      } finally {
+        removeUserData(other.userDataDir);
+      }
+      const before = storedRow();
+
+      expect(authService.getCredentialStatus()).toEqual({
+        email: mockUserInput.email,
+        hasPassword: false,
+        secretState: 'unreadable',
+      });
+      await expect(authService.getCredentials()).rejects.toBeInstanceOf(SecretUnreadableError);
+      expect(authService.hasStoredCredentials()).toBe(true);
+      expect(storedRow()).toEqual(before);
+
+      // Entering it again (same email) is the explicit save that replaces it
+      await authService.storeCredentials(mockUserInput);
+      expect(authService.getCredentialStatus()).toMatchObject({ secretState: 'ok' });
+      await expect(authService.getCredentials()).resolves.toMatchObject({
+        password: mockUserInput.password,
+      });
+    });
+
+    it('a leftover legacy (v1.x) ciphertext reads as unreadable', async () => {
+      await authService.storeCredentials(mockUserInput);
+      dbHelper
+        .getDb()
+        .prepare("UPDATE users SET encrypted_password = 'a1b2c3d4', encryption_iv = 'aa'")
+        .run();
+
+      expect(authService.getCredentialStatus()).toMatchObject({
+        hasPassword: false,
+        secretState: 'unreadable',
+      });
+    });
+
+    it('reports a legacy empty password as missing', async () => {
+      await authService.storeCredentials(mockUserInput);
+      dbHelper.getDb().prepare("UPDATE users SET encrypted_password = ''").run();
+
+      expect(authService.getCredentialStatus()).toEqual({
+        email: mockUserInput.email,
+        hasPassword: false,
+        secretState: 'missing',
+      });
+      await expect(authService.getCredentials()).resolves.toBeNull();
     });
 
     it('is null with no credentials stored, including after Logout', async () => {
@@ -177,12 +257,15 @@ describe('AuthService', () => {
 
       const row = userRepository.findById(stored.id);
       expect(row).not.toBeNull();
+      expect(storedRow()).toEqual({
+        encrypted_password: '',
+        encryption_key: '',
+        encryption_iv: '',
+        encryption_auth_tag: '',
+      });
       expect(row).toMatchObject({
         email: '',
         encryptedPassword: '',
-        encryptionKey: '',
-        encryptionIv: '',
-        encryptionAuthTag: '',
         firstName: mockUserInput.firstName,
         lastName: mockUserInput.lastName,
         phone: mockUserInput.phone,
@@ -283,16 +366,26 @@ describe('AuthService', () => {
   });
 
   describe('Encryption', () => {
-    it('should use different IV for each encryption', async () => {
+    it('should encrypt the same password differently each time', async () => {
       const user1 = await authService.storeCredentials(mockUserInput);
       await authService.deleteCredentials();
 
       const user2 = await authService.storeCredentials(mockUserInput);
 
-      // Even with same password, IV should be different
-      expect(user1.encryptionIv).not.toBe(user2.encryptionIv);
-      // And encrypted password should be different
       expect(user1.encryptedPassword).not.toBe(user2.encryptedPassword);
+    });
+
+    it('re-encrypts a local-key password to OS encryption once that is available, and stores it', async () => {
+      t.safeStorage.available = false;
+      await authService.storeCredentials(mockUserInput);
+      expect(storedRow().encrypted_password).toMatch(/^vault:v1:local:/);
+
+      t.safeStorage.available = true;
+      await expect(authService.getCredentials()).resolves.toMatchObject({
+        password: mockUserInput.password,
+      });
+      expect(storedRow().encrypted_password).toMatch(/^vault:v1:os:/);
+      expect(t.vault.decrypt(storedRow().encrypted_password)).toBe(mockUserInput.password);
     });
 
     it('should maintain encryption integrity', async () => {

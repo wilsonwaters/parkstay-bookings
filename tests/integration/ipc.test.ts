@@ -23,13 +23,11 @@ import {
   TEST_LOGS_DIR,
   TRUSTED_SENDER_ID,
 } from '@tests/utils/ipc-harness';
+import { containerSecrets } from '@tests/utils/fake-safe-storage';
 
 jest.mock('electron', () => jest.requireActual('@tests/utils/electron-mocks').electron());
 jest.mock('electron-updater', () =>
   jest.requireActual('@tests/utils/electron-mocks').electronUpdater()
-);
-jest.mock('electron-store', () =>
-  jest.requireActual('@tests/utils/electron-mocks').electronStore()
 );
 jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }));
 
@@ -45,7 +43,11 @@ describe('IPC through the container', () => {
     ipc.invoke(channel, fakeEvent(), payload) as Promise<APIResponse<T>>;
 
   beforeEach(() => {
-    container = createContainer({ db: openDatabase(':memory:'), logsDir: TEST_LOGS_DIR });
+    container = createContainer({
+      db: openDatabase(':memory:'),
+      logsDir: TEST_LOGS_DIR,
+      ...containerSecrets(),
+    });
     mainWindow = fakeWebContents(TRUSTED_SENDER_ID);
     container.trustedWebContents.register(mainWindow);
     ipc = new FakeIpcMain();
@@ -114,6 +116,7 @@ describe('IPC through the container', () => {
             enabled: true,
             config: { ...config, auth: { user: 'me@example.com' } },
             hasPassword: true,
+            secretState: 'ok',
           }),
         }
       );
@@ -123,6 +126,7 @@ describe('IPC through the container', () => {
       };
       expect(stored.channel).toBe('email_smtp');
       expect(stored.config).not.toContain('app-password');
+      expect(stored.config).toMatch(/^vault:v1:os:/);
     });
 
     it('Logout (auth.deleteCredentials) keeps the profile and its watches', async () => {

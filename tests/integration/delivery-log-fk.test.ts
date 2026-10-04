@@ -11,8 +11,7 @@ import Database from 'better-sqlite3';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
 import { NotifierRepository } from '@main/database/repositories/notifier.repository';
 import { NotifierChannel } from '@shared/types';
-
-jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }));
+import { testVault } from '@tests/utils/fake-safe-storage';
 
 describe('notification delivery log on a freshly migrated database', () => {
   let dbHelper: TestDatabaseHelper;
@@ -22,7 +21,7 @@ describe('notification delivery log on a freshly migrated database', () => {
   beforeEach(async () => {
     dbHelper = new TestDatabaseHelper('delivery-log-fk');
     db = await dbHelper.setup();
-    repo = new NotifierRepository(db);
+    repo = new NotifierRepository(db, testVault().vault);
   });
 
   afterEach(async () => {

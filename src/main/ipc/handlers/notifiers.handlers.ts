@@ -54,7 +54,10 @@ export function registerNotifiersHandlers(handle: Handle, c: AppContainer): void
 
   handle(notifiers.test, async ({ channel }) => {
     const result = await dispatcher.testNotifier(channel);
-    repository.updateLastTested(channel, result.success, result.error);
+    // Unreadable settings were not tested: their error state is computed, never stored
+    if (!dispatcher.isUnreadable(channel)) {
+      repository.updateLastTested(channel, result.success, result.error);
+    }
     return result;
   });
 }

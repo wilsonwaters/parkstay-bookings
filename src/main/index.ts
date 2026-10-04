@@ -7,9 +7,13 @@
  *    instance hands over to the first (which brings its window to the front) and quits.
  * 3. After `ready`: log files under userData, the database, the container, the IPC handlers,
  *    the scheduler and the main window. From then on errors are logged and survived.
+ *
+ * The container's SecretVault uses `safeStorage`, whose Windows key lives in userData's
+ * `Local State`: the final userData path must be set before `ready` (B3), and any legacy
+ * data folder copied before `createContainer` (architecture-notes §12.23).
  */
 
-import { app, BrowserWindow, dialog } from 'electron';
+import { app, BrowserWindow, dialog, safeStorage } from 'electron';
 import path from 'path';
 import { openDatabase } from './database/connection';
 import { createContainer, AppContainer } from './app/container';
@@ -92,7 +96,14 @@ async function start(): Promise<void> {
   const db = openDatabase(path.join(userData, 'parkstay.db'));
 
   // Build every service once, then make sure the local profile row exists
-  const ready = createContainer({ db, logsDir });
+  // Builds the SecretVault and migrates v1.x secrets into it: its first use of safeStorage
+  const ready = createContainer({
+    db,
+    logsDir,
+    userDataDir: userData,
+    safeStorage,
+    isReady: () => app.isReady(),
+  });
   container = ready;
   ready.profile.ensureLocalProfile();
 

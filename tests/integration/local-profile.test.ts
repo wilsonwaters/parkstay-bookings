@@ -14,8 +14,9 @@ import { AuthService } from '@main/services/auth/AuthService';
 import { createLocalProfile } from '@main/app/profile';
 import { mockUserInput } from '@tests/fixtures/users';
 import { createMockWatchInput } from '@tests/fixtures/watches';
+import { testVault } from '@tests/utils/fake-safe-storage';
 
-jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }));
+const { vault } = testVault();
 
 describe('local profile row', () => {
   let dbHelper: TestDatabaseHelper;
@@ -32,7 +33,7 @@ describe('local profile row', () => {
 
   test('survives credential deletion (Logout), together with its data', async () => {
     const users = new UserRepository(db);
-    const auth = new AuthService(users);
+    const auth = new AuthService(users, vault);
     const profile = await auth.storeCredentials(mockUserInput);
     const watch = new WatchRepository(db).create(profile.id, createMockWatchInput());
 
@@ -51,13 +52,13 @@ describe('local profile row', () => {
     expect(users.findAll()).toEqual([
       expect.objectContaining({ id: 1, email: '', encryptedPassword: '' }),
     ]);
-    expect(new AuthService(users).hasStoredCredentials()).toBe(false);
+    expect(new AuthService(users, vault).hasStoredCredentials()).toBe(false);
   });
 
   test('a fresh-install profile survives sign-in and Logout with its data', async () => {
     const users = new UserRepository(db);
     const userId = createLocalProfile(users).ensureLocalProfile();
-    const auth = new AuthService(users);
+    const auth = new AuthService(users, vault);
     const watch = new WatchRepository(db).create(userId, createMockWatchInput());
 
     await auth.storeCredentials(mockUserInput);

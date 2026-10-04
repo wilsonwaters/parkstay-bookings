@@ -42,7 +42,7 @@ describe('BookingService', () => {
 
     // Create test user
     userRepository = new UserRepository(dbHelper.getDb());
-    const user = userRepository.create(mockUserInput.email, 'encrypted', 'key', 'iv', 'tag', {
+    const user = userRepository.create(mockUserInput.email, 'encrypted', {
       firstName: mockUserInput.firstName,
       lastName: mockUserInput.lastName,
     });
@@ -158,7 +158,7 @@ describe('BookingService', () => {
 
     it('should only return bookings for specific user', async () => {
       // Create another user
-      const user2 = userRepository.create('user2@test.com', 'enc', 'key', 'iv', 'tag');
+      const user2 = userRepository.create('user2@test.com', 'enc');
 
       await bookingService.createBooking(testUserId, createMockBookingInput());
       await bookingService.createBooking(user2.id, createMockBookingInput());

@@ -9,12 +9,15 @@ import { BookingRepository } from '@main/database/repositories/booking.repositor
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
 import { mockUserInput } from '@tests/fixtures/users';
 import { createMockBookingInput } from '@tests/fixtures/bookings';
+import { testVault } from '@tests/utils/fake-safe-storage';
+import type { SecretVault } from '@main/security/secret-vault';
 
 describe('Authentication Flow Integration', () => {
   let dbHelper: TestDatabaseHelper;
   let authService: AuthService;
   let userRepository: UserRepository;
   let bookingRepository: BookingRepository;
+  let vault: SecretVault;
 
   beforeEach(async () => {
     dbHelper = new TestDatabaseHelper('auth-flow');
@@ -23,7 +26,8 @@ describe('Authentication Flow Integration', () => {
     const db = dbHelper.getDb();
     userRepository = new UserRepository(db);
     bookingRepository = new BookingRepository(db);
-    authService = new AuthService(userRepository);
+    vault = testVault().vault;
+    authService = new AuthService(userRepository, vault);
   });
 
   afterEach(async () => {
@@ -57,7 +61,7 @@ describe('Authentication Flow Integration', () => {
       await authService.storeCredentials(mockUserInput);
 
       // Create new service instance (simulating app restart)
-      const newAuthService = new AuthService(userRepository);
+      const newAuthService = new AuthService(userRepository, vault);
 
       // Should still have credentials
       expect(newAuthService.hasStoredCredentials()).toBe(true);
@@ -133,7 +137,6 @@ describe('Authentication Flow Integration', () => {
 
       // Encrypted passwords should be different
       expect(user1.encryptedPassword).not.toBe(user2.encryptedPassword);
-      expect(user1.encryptionIv).not.toBe(user2.encryptionIv);
     });
 
     it('should handle password with special characters', async () => {

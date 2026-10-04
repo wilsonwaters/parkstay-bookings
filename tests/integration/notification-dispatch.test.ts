@@ -1,5 +1,6 @@
 /**
- * NotificationDispatcher delivery logging against a real migrated database.
+ * NotificationDispatcher delivery logging against a real migrated database, and the skip of
+ * notifiers whose stored settings cannot be decrypted.
  *
  * Before v7, every delivery-log insert failed (no such table: main.notifications_old), and
  * the second logDelivery in the dispatcher's catch block threw out of dispatch(), so one
@@ -19,8 +20,7 @@ import {
   NotifierValidationResult,
   TestConnectionResult,
 } from '@shared/types';
-
-jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }));
+import { FakeSafeStorage, FOREIGN_OS_KEY, testVault } from '@tests/utils/fake-safe-storage';
 
 /** In-memory notifier: records what it receives, or throws when told to. */
 class FakeNotifier extends BaseNotifier {
@@ -82,7 +82,7 @@ describe('NotificationDispatcher delivery logging', () => {
   beforeEach(async () => {
     dbHelper = new TestDatabaseHelper('notification-dispatch');
     db = await dbHelper.setup();
-    notifierRepo = new NotifierRepository(db);
+    notifierRepo = new NotifierRepository(db, testVault().vault);
     dispatcher = new NotificationDispatcher(notifierRepo, []);
   });
 
@@ -170,5 +170,48 @@ describe('NotificationDispatcher delivery logging', () => {
       'Failed to write delivery log for desktop:',
       expect.objectContaining({ message: 'no such table: main.notifications_old' })
     );
+  });
+
+  it('skips a notifier whose stored settings cannot be decrypted (logging it once) and sends again once saved', async () => {
+    // Settings saved under another machine's OS key: unreadable here
+    const other = testVault({ safeStorage: new FakeSafeStorage(FOREIGN_OS_KEY) });
+    new NotifierRepository(db, other.vault).upsert({
+      channel: NotifierChannel.EMAIL_SMTP,
+      displayName: 'Email (SMTP)',
+      enabled: true,
+      config: { host: 'smtp.example.com', auth: { user: 'me', pass: 'unreadable-pass' } },
+    });
+    const email = new FakeNotifier(NotifierChannel.EMAIL_SMTP, 'deliver');
+    const send = jest.spyOn(email, 'send');
+    const configure = jest.spyOn(email, 'configure');
+    const warn = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
+    const loaded = new NotificationDispatcher(notifierRepo, [email]);
+
+    const first = await loaded.dispatch(message);
+    await loaded.dispatch(message);
+
+    expect(send).not.toHaveBeenCalled();
+    expect(configure).not.toHaveBeenCalled(); // never configured with an empty config
+    expect(first).toEqual([
+      {
+        channel: NotifierChannel.EMAIL_SMTP,
+        result: { success: false, error: 'Saved password could not be decrypted; re-enter it' },
+      },
+    ]);
+    expect(warn.mock.calls.filter(([text]) => /Skipping notifier email_smtp/.test(text))).toEqual([
+      [
+        'Skipping notifier email_smtp: its saved settings could not be decrypted; re-enter them in Settings',
+      ],
+    ]);
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('unreadable-pass');
+    expect(logs()).toEqual([]);
+    await expect(loaded.testNotifier(NotifierChannel.EMAIL_SMTP)).resolves.toMatchObject({
+      success: false,
+    });
+
+    // The user saves the settings again
+    loaded.configureNotifier(NotifierChannel.EMAIL_SMTP, { host: 'smtp.example.com' }, true);
+    await loaded.dispatch(message);
+    expect(send).toHaveBeenCalledTimes(1);
   });
 });

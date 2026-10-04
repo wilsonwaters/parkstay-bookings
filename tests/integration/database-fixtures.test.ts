@@ -14,10 +14,7 @@ import {
   V5_ROW_COUNTS,
   V6_ROW_COUNTS,
 } from '@tests/fixtures/db/constants';
-import { UserRepository } from '@main/database/repositories/user.repository';
-import { AuthService } from '@main/services/auth/AuthService';
-
-jest.mock('node-machine-id', () => ({ machineIdSync: () => FIXTURE_MACHINE_ID }));
+import { decryptLegacyUserPassword } from '@main/security/legacy-decryptors';
 
 function rowCounts(db: Database.Database, tables: string[]): Record<string, number> {
   return Object.fromEntries(
@@ -61,12 +58,21 @@ describe('schema fixtures', () => {
       expect(db.pragma('integrity_check', { simple: true })).toBe('ok');
     });
 
-    it('stores the user password with the legacy scheme and fixture machine id', async () => {
-      const auth = new AuthService(new UserRepository(db));
-      await expect(auth.getCredentials()).resolves.toEqual({
-        email: 'fixture.user@example.com',
-        password: FIXTURE_USER_PASSWORD,
-      });
+    it('stores the user password with the legacy scheme and fixture machine id', () => {
+      const row = db
+        .prepare('SELECT email, encrypted_password, encryption_iv, encryption_auth_tag FROM users')
+        .get() as Record<string, string>;
+      expect(row.email).toBe('fixture.user@example.com');
+      expect(
+        decryptLegacyUserPassword(
+          {
+            encrypted: row.encrypted_password,
+            iv: row.encryption_iv,
+            authTag: row.encryption_auth_tag,
+          },
+          FIXTURE_MACHINE_ID
+        )
+      ).toBe(FIXTURE_USER_PASSWORD);
     });
   });
 

@@ -9,7 +9,11 @@ import { EventEmitter } from 'events';
 import path from 'path';
 
 const mockOrder: string[] = [];
-const mockState = { hasLock: true, openDatabaseError: null as Error | null };
+const mockState = {
+  hasLock: true,
+  openDatabaseError: null as Error | null,
+  containerOptions: null as null | Record<string, unknown>,
+};
 const mockCrashPolicy = { markReady: jest.fn(), failStartup: jest.fn() };
 const mockWindowOptions: Array<{ preloadPath: string }> = [];
 
@@ -23,11 +27,16 @@ jest.mock('electron', () => {
     }),
     whenReady: jest.fn(() => Promise.resolve()),
     getPath: jest.fn(() => '/user-data'),
+    isReady: jest.fn(() => true),
     getLoginItemSettings: jest.fn(() => ({ wasOpenedAsHidden: false })),
     quit: jest.fn(),
     exit: jest.fn(),
   });
-  return { app, dialog: { showErrorBox: jest.fn() } };
+  return {
+    app,
+    dialog: { showErrorBox: jest.fn() },
+    safeStorage: { name: 'electron-safeStorage' },
+  };
 });
 
 jest.mock('@main/app/crash-policy', () => ({
@@ -57,8 +66,9 @@ jest.mock('@main/database/connection', () => ({
 }));
 
 jest.mock('@main/app/container', () => ({
-  createContainer: jest.fn(() => {
+  createContainer: jest.fn((options: Record<string, unknown>) => {
     mockOrder.push('createContainer');
+    mockState.containerOptions = options;
     return {
       profile: {
         ensureLocalProfile: () => mockOrder.push('ensureLocalProfile'),
@@ -110,6 +120,7 @@ beforeEach(() => {
   mockWindowOptions.length = 0;
   mockState.hasLock = true;
   mockState.openDatabaseError = null;
+  mockState.containerOptions = null;
   mockCrashPolicy.markReady.mockClear();
   mockCrashPolicy.failStartup.mockClear();
   app.removeAllListeners();
@@ -144,6 +155,20 @@ describe('main process startup', () => {
     expect(mockWindowOptions.map((options) => options.preloadPath)).toEqual([
       path.join(mainDir, '../../preload/index.js'),
     ]);
+  });
+
+  it("builds the container (the vault's first use) after ready, on the final userData path, with Electron's safeStorage", async () => {
+    await launch();
+
+    const options = mockState.containerOptions as Record<string, unknown> & {
+      isReady: () => boolean;
+    };
+    expect(options).toMatchObject({
+      userDataDir: '/user-data',
+      logsDir: path.join('/user-data', 'logs'),
+      safeStorage: { name: 'electron-safeStorage' },
+    });
+    expect(options.isReady()).toBe(true); // app.isReady()
   });
 
   it('a second instance quits without opening the database or waiting for ready', async () => {

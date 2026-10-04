@@ -1,6 +1,9 @@
 /**
  * User Repository
- * Handles CRUD operations for users with encrypted credentials
+ * Handles CRUD operations for users. `encrypted_password` holds a SecretVault envelope
+ * (AuthService encrypts and decrypts it). The v1.x `encryption_key`, `encryption_iv` and
+ * `encryption_auth_tag` columns are only read by the legacy secret migration and are always
+ * written as `''` (NOT NULL columns; V6 retires them).
  */
 
 import { BaseRepository } from './base.repository';
@@ -32,9 +35,6 @@ export class UserRepository extends BaseRepository<User> {
       id: row.id,
       email: row.email,
       encryptedPassword: row.encrypted_password,
-      encryptionKey: row.encryption_key,
-      encryptionIv: row.encryption_iv,
-      encryptionAuthTag: row.encryption_auth_tag,
       firstName: row.first_name || undefined,
       lastName: row.last_name || undefined,
       phone: row.phone || undefined,
@@ -46,29 +46,19 @@ export class UserRepository extends BaseRepository<User> {
   /**
    * Create new user
    */
-  create(
-    email: string,
-    encryptedPassword: string,
-    encryptionKey: string,
-    encryptionIv: string,
-    encryptionAuthTag: string,
-    userData?: Partial<UserInput>
-  ): User {
+  create(email: string, encryptedPassword: string, userData?: Partial<UserInput>): User {
     try {
       const stmt = this.db.prepare(`
         INSERT INTO users (
           email, encrypted_password, encryption_key, encryption_iv,
           encryption_auth_tag, first_name, last_name, phone
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, '', '', '', ?, ?, ?)
       `);
 
       const result = stmt.run(
         email,
         encryptedPassword,
-        encryptionKey,
-        encryptionIv,
-        encryptionAuthTag,
         userData?.firstName || null,
         userData?.lastName || null,
         userData?.phone || null
@@ -101,24 +91,18 @@ export class UserRepository extends BaseRepository<User> {
   /**
    * Update user credentials
    */
-  updateCredentials(
-    id: number,
-    encryptedPassword: string,
-    encryptionKey: string,
-    encryptionIv: string,
-    encryptionAuthTag: string
-  ): User | null {
+  updateCredentials(id: number, encryptedPassword: string): User | null {
     try {
       const stmt = this.db.prepare(`
         UPDATE users
         SET encrypted_password = ?,
-            encryption_key = ?,
-            encryption_iv = ?,
-            encryption_auth_tag = ?
+            encryption_key = '',
+            encryption_iv = '',
+            encryption_auth_tag = ''
         WHERE id = ?
       `);
 
-      stmt.run(encryptedPassword, encryptionKey, encryptionIv, encryptionAuthTag, id);
+      stmt.run(encryptedPassword, id);
 
       logger.info(`User credentials updated: ID ${id}`);
       return this.findById(id);
@@ -155,9 +139,6 @@ export class UserRepository extends BaseRepository<User> {
     id: number,
     email: string,
     encryptedPassword: string,
-    encryptionKey: string,
-    encryptionIv: string,
-    encryptionAuthTag: string,
     userData?: Partial<UserInput>
   ): User {
     this.db
@@ -165,9 +146,9 @@ export class UserRepository extends BaseRepository<User> {
         `UPDATE users
          SET email = ?,
              encrypted_password = ?,
-             encryption_key = ?,
-             encryption_iv = ?,
-             encryption_auth_tag = ?,
+             encryption_key = '',
+             encryption_iv = '',
+             encryption_auth_tag = '',
              first_name = COALESCE(?, first_name),
              last_name = COALESCE(?, last_name),
              phone = COALESCE(?, phone)
@@ -176,9 +157,6 @@ export class UserRepository extends BaseRepository<User> {
       .run(
         email,
         encryptedPassword,
-        encryptionKey,
-        encryptionIv,
-        encryptionAuthTag,
         userData?.firstName ?? null,
         userData?.lastName ?? null,
         userData?.phone ?? null,
@@ -188,6 +166,17 @@ export class UserRepository extends BaseRepository<User> {
     if (!user) throw new Error(`User ${id} not found`);
     logger.info(`User credentials set: ID ${id}`);
     return user;
+  }
+
+  /**
+   * Replaces the stored password envelope with `envelope` (the same password re-encrypted),
+   * only if it is still `previous`. Returns whether it was replaced.
+   */
+  resealPassword(id: number, previous: string, envelope: string): boolean {
+    const result = this.db
+      .prepare('UPDATE users SET encrypted_password = ? WHERE id = ? AND encrypted_password = ?')
+      .run(envelope, id, previous);
+    return result.changes > 0;
   }
 
   /**

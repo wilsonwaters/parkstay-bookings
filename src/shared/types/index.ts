@@ -10,3 +10,4 @@ export * from './gmail.types';
 export * from './queue.types';
 export * from './provider.types';
 export * from './catalog.types';
+export * from './secret.types';

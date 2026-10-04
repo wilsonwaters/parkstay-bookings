@@ -22,6 +22,7 @@ import {
   fakeEvent,
   fakeWebContents,
   FakeWebContents,
+  TEST_LOGS_DIR,
   TRUSTED_SENDER_ID,
 } from '@tests/utils/ipc-harness';
 import {
@@ -30,12 +31,11 @@ import {
   type FakeProvider,
 } from '@tests/utils/fake-provider';
 
+import { containerSecrets } from '@tests/utils/fake-safe-storage';
+
 jest.mock('electron', () => jest.requireActual('@tests/utils/electron-mocks').electron());
 jest.mock('electron-updater', () =>
   jest.requireActual('@tests/utils/electron-mocks').electronUpdater()
-);
-jest.mock('electron-store', () =>
-  jest.requireActual('@tests/utils/electron-mocks').electronStore()
 );
 jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }));
 
@@ -52,7 +52,11 @@ describe('providers / catalog / accounts over IPC', () => {
 
   /** Builds the container, lets `before` add providers, then registers the handlers. */
   function start(before?: (c: AppContainer) => void): void {
-    container = createContainer({ db: openDatabase(':memory:') });
+    container = createContainer({
+      db: openDatabase(':memory:'),
+      logsDir: TEST_LOGS_DIR,
+      ...containerSecrets(),
+    });
     before?.(container);
     mainWindow = fakeWebContents(TRUSTED_SENDER_ID);
     container.trustedWebContents.register(mainWindow);

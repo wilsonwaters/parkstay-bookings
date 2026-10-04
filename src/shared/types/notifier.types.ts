@@ -4,6 +4,8 @@
  * (SMTP). In WA Stay a "provider" is an accommodation source, never a notifier.
  */
 
+import type { SecretState } from './secret.types';
+
 /**
  * Supported notification channels
  */
@@ -49,6 +51,9 @@ export interface SMTPConfig {
   toEmail?: string; // Recipient email (defaults to fromEmail or auth.user if not set)
 }
 
+/** `lastError` of a notifier whose stored settings cannot be decrypted. */
+export const NOTIFIER_SECRET_UNREADABLE = 'Saved password could not be decrypted; re-enter it';
+
 /**
  * Notifier configuration stored in the `notifiers` table
  */
@@ -58,6 +63,11 @@ export interface Notifier {
   displayName: string;
   enabled: boolean;
   config: SMTPConfig | Record<string, unknown>; // Notifier-specific config
+  /**
+   * The stored (encrypted) config: `unreadable` means it could not be decrypted, so `config`
+   * is empty, `status` is `error` and `lastError` is `NOTIFIER_SECRET_UNREADABLE`.
+   */
+  secretState: SecretState;
   status: NotifierStatus;
   lastTestedAt?: Date;
   lastError?: string;

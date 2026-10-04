@@ -3,6 +3,8 @@
  * Types for Gmail API integration and OTP extraction
  */
 
+import type { SecretState } from './secret.types';
+
 /**
  * OAuth2 client credentials (Client ID and secret from Google Cloud Console, "Desktop app"
  * client). The redirect URI is not configurable: each sign-in uses its own loopback
@@ -31,6 +33,11 @@ export interface GmailAuthStatus {
   isAuthorized: boolean;
   email?: string;
   expiryDate?: number;
+  /**
+   * The stored tokens: `unreadable` when they or the stored client credentials cannot be
+   * decrypted (then `isAuthorized` is false and the user signs in again).
+   */
+  secretState: SecretState;
 }
 
 /**

@@ -20,22 +20,11 @@ import type { MethodDef } from '@shared/contracts/define';
 import { NotifierChannel, SMTPPreset } from '@shared/types';
 import type { APIResponse } from '@shared/types';
 import { FakeIpcMain, fakeEvent, TEST_LOGS_DIR } from '@tests/utils/ipc-harness';
+import { containerSecrets, removeUserData } from '@tests/utils/fake-safe-storage';
 
 jest.mock('electron', () => jest.requireActual('@tests/utils/electron-mocks').electron());
 jest.mock('electron-updater', () =>
   jest.requireActual('@tests/utils/electron-mocks').electronUpdater()
-);
-// A store that keeps what is written, so reads really come back from it
-jest.mock('electron-store', () =>
-  jest.fn().mockImplementation(() => {
-    const data = new Map<string, unknown>();
-    return {
-      get: (key: string) => data.get(key),
-      set: (key: string, value: unknown) => data.set(key, value),
-      delete: (key: string) => data.delete(key),
-      clear: () => data.clear(),
-    };
-  })
 );
 jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }));
 // SMTP connections are recorded, never made (`notifiers:test`)
@@ -99,6 +88,7 @@ const PENDING_READS = new Set(['catalog:get', 'accounts:list']);
 
 describe('secrets never reach the renderer', () => {
   let container: AppContainer;
+  let userDataDir: string;
   let ipc: FakeIpcMain;
   let logLines: string[];
   let capture: winston.transport;
@@ -124,7 +114,14 @@ describe('secrets never reach the renderer', () => {
       if (transport !== capture) transport.silent = true;
     }
 
-    container = createContainer({ db: openDatabase(':memory:'), logsDir: TEST_LOGS_DIR });
+    // Gmail settings are really written (gmail-oauth.json in this userData), then read back
+    const secrets = containerSecrets();
+    userDataDir = secrets.userDataDir;
+    container = createContainer({
+      db: openDatabase(':memory:'),
+      logsDir: TEST_LOGS_DIR,
+      ...secrets,
+    });
     container.profile.ensureLocalProfile();
     ipc = new FakeIpcMain();
     registerIpcHandlers(container, { isTrustedSender: () => true, ipc });
@@ -132,6 +129,7 @@ describe('secrets never reach the renderer', () => {
 
   afterEach(() => {
     container.dispose();
+    removeUserData(userDataDir);
     logger.remove(capture);
     logger.level = levelBefore;
     for (const transport of logger.transports) transport.silent = false;
@@ -168,7 +166,7 @@ describe('secrets never reach the renderer', () => {
     // What the renderer gets instead
     await expect(call('auth:get-credentials')).resolves.toEqual({
       success: true,
-      data: { email: 'me@example.com', hasPassword: true },
+      data: { email: 'me@example.com', hasPassword: true, secretState: 'ok' },
     });
     await expect(call('gmail:get-credentials')).resolves.toEqual({
       success: true,

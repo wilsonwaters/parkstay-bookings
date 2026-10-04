@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod';
+import type { SecretStorageBackend } from '../types/secret.types';
 import { CHANNELS } from './channels';
 import type { Namespace } from './define';
 
@@ -16,6 +17,8 @@ export interface AppInfo {
   arch: string;
   userDataPath: string;
   logsPath: string;
+  /** Where stored secrets are encrypted: `local` means OS encryption is unavailable (weaker). */
+  secretStorage: { backend: SecretStorageBackend };
 }
 
 const C = CHANNELS.app;

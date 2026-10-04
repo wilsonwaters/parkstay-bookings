@@ -1,11 +1,12 @@
 /**
  * Notifier Repository
- * Handles CRUD operations for notifiers (the `notifiers` table) with encrypted config
+ * Handles CRUD operations for notifiers (the `notifiers` table). Each config is stored as a
+ * SecretVault envelope of its JSON. A config that cannot be decrypted reads with
+ * `secretState: 'unreadable'`, `status: 'error'` and an empty `config`, and stays stored
+ * unchanged until the user saves new settings.
  */
 
 import Database from 'better-sqlite3';
-import crypto from 'crypto';
-import { machineIdSync } from 'node-machine-id';
 import { BaseRepository } from './base.repository';
 import {
   Notifier,
@@ -14,12 +15,11 @@ import {
   NotifierStatus,
   NotificationDeliveryLog,
   NotificationDeliveryLogInput,
+  NOTIFIER_SECRET_UNREADABLE,
+  type SecretState,
 } from '@shared/types';
+import type { SecretVault } from '../../security/secret-vault';
 import { logger } from '../../utils/logger';
-
-// Legacy key-derivation inputs (v1.x). Stored configs were encrypted with them, so the
-// values must never change; P5 migrates the configs to the SecretVault.
-const NOTIFIER_CONFIG_SECRET = 'parkstay-notification-providers-v1';
 
 interface NotifierRow {
   id: number;
@@ -47,25 +47,35 @@ interface DeliveryLogRow {
 
 export class NotifierRepository extends BaseRepository<Notifier> {
   protected readonly tableName = 'notifiers';
-  private encryptionKey: Buffer | null = null;
-  private machineId: string;
 
-  constructor(db: Database.Database) {
+  constructor(
+    db: Database.Database,
+    private readonly vault: SecretVault
+  ) {
     super(db);
-    this.machineId = machineIdSync();
   }
 
   /**
-   * Map database row to Notifier model
+   * Map database row to Notifier model. The config is decrypted; a `local` envelope is
+   * re-encrypted to `os` when that is available.
    */
   protected mapRow(row: NotifierRow): Notifier {
+    const secret = this.vault.read(row.config, (envelope) => {
+      this.db
+        .prepare('UPDATE notifiers SET config = ? WHERE id = ? AND config = ?')
+        .run(envelope, row.id, row.config);
+    });
+
     let config: Record<string, unknown> = {};
-    try {
-      const decryptedConfig = this.decryptConfig(row.config);
-      config = JSON.parse(decryptedConfig);
-    } catch {
-      logger.warn(`Failed to decrypt config for notifier ${row.channel}`);
+    let secretState: SecretState = secret.state;
+    if (secret.state === 'ok') {
+      try {
+        config = JSON.parse(secret.value);
+      } catch {
+        secretState = 'unreadable';
+      }
     }
+    const unreadable = secretState === 'unreadable';
 
     return {
       id: row.id,
@@ -73,9 +83,10 @@ export class NotifierRepository extends BaseRepository<Notifier> {
       displayName: row.display_name,
       enabled: row.enabled === 1,
       config,
-      status: row.status as NotifierStatus,
+      secretState,
+      status: unreadable ? NotifierStatus.ERROR : (row.status as NotifierStatus),
       lastTestedAt: row.last_tested_at ? new Date(row.last_tested_at) : undefined,
-      lastError: row.last_error || undefined,
+      lastError: unreadable ? NOTIFIER_SECRET_UNREADABLE : row.last_error || undefined,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     };
@@ -94,7 +105,7 @@ export class NotifierRepository extends BaseRepository<Notifier> {
       }
 
       // Create new notifier
-      const encryptedConfig = this.encryptConfig(JSON.stringify(input.config));
+      const encryptedConfig = this.vault.encrypt(JSON.stringify(input.config));
 
       const stmt = this.db.prepare(`
         INSERT INTO notifiers (
@@ -142,7 +153,7 @@ export class NotifierRepository extends BaseRepository<Notifier> {
 
       if (input.config !== undefined) {
         updates.push('config = ?');
-        values.push(this.encryptConfig(JSON.stringify(input.config)));
+        values.push(this.vault.encrypt(JSON.stringify(input.config)));
         updates.push('status = ?');
         values.push(NotifierStatus.CONFIGURED);
       }
@@ -371,75 +382,6 @@ export class NotifierRepository extends BaseRepository<Notifier> {
     } catch (error) {
       logger.error('Error cleaning up delivery logs:', error);
       throw error;
-    }
-  }
-
-  /**
-   * Get encryption key
-   */
-  private getEncryptionKey(): Buffer {
-    if (this.encryptionKey) {
-      return this.encryptionKey;
-    }
-
-    this.encryptionKey = crypto.pbkdf2Sync(
-      this.machineId + NOTIFIER_CONFIG_SECRET,
-      'parkstay-provider-salt',
-      100000,
-      32,
-      'sha512'
-    );
-
-    return this.encryptionKey;
-  }
-
-  /**
-   * Encrypt config data
-   */
-  private encryptConfig(plaintext: string): string {
-    try {
-      const key = this.getEncryptionKey();
-      const iv = crypto.randomBytes(16);
-      const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-
-      let encrypted = cipher.update(plaintext, 'utf8', 'hex');
-      encrypted += cipher.final('hex');
-
-      const authTag = cipher.getAuthTag();
-
-      // Return format: iv:authTag:encrypted
-      return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
-    } catch (error) {
-      logger.error('Error encrypting config:', error);
-      throw new Error('Failed to encrypt configuration');
-    }
-  }
-
-  /**
-   * Decrypt config data
-   */
-  private decryptConfig(ciphertext: string): string {
-    try {
-      const [ivHex, authTagHex, encrypted] = ciphertext.split(':');
-
-      if (!ivHex || !authTagHex || !encrypted) {
-        throw new Error('Invalid encrypted format');
-      }
-
-      const key = this.getEncryptionKey();
-      const iv = Buffer.from(ivHex, 'hex');
-      const authTag = Buffer.from(authTagHex, 'hex');
-
-      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-      decipher.setAuthTag(authTag);
-
-      let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-      decrypted += decipher.final('utf8');
-
-      return decrypted;
-    } catch (error) {
-      logger.error('Error decrypting config:', error);
-      throw new Error('Failed to decrypt configuration');
     }
   }
 }
