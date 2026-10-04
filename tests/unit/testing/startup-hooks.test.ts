@@ -134,6 +134,8 @@ describe('test-only hooks at startup', () => {
 
     const userData = HOOK_VARS.WA_STAY_USER_DATA_DIR;
     expect(mockOrder).toEqual([
+      // The app's own userData folder (B2, replaced by B3), then the test override
+      'setPath userData /user-data/parkstay-bookings',
       `setPath userData ${userData}`,
       'requestSingleInstanceLock',
       'defaultSession.onBeforeRequest',
@@ -155,12 +157,18 @@ describe('test-only hooks at startup', () => {
 
     await launch();
 
-    expect(electron.app.setPath).not.toHaveBeenCalled();
+    // Only the app's own userData folder: the test override is ignored when packaged
+    expect(electron.app.setPath).toHaveBeenCalledTimes(1);
+    expect(electron.app.setPath).not.toHaveBeenCalledWith(
+      'userData',
+      HOOK_VARS.WA_STAY_USER_DATA_DIR
+    );
     expect(electron.session.defaultSession.webRequest.onBeforeRequest).not.toHaveBeenCalled();
     expect(electron.app.listenerCount('session-created')).toBe(0);
     expect(mockOrder).toEqual([
+      'setPath userData /user-data/parkstay-bookings',
       'requestSingleInstanceLock',
-      `openDatabase ${path.join('/user-data', 'parkstay.db')}`,
+      `openDatabase ${path.join('/user-data/parkstay-bookings', 'parkstay.db')}`,
       'createContainer',
     ]);
     expect(mockState.containerOptions?.fixtureMode).toBeUndefined();
