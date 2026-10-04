@@ -8,7 +8,12 @@
 
 import { z } from 'zod';
 import { assertTypeEquals } from '../utils/type-equality';
-import { CalendarDateSchema, type ProviderId } from './provider.types';
+import {
+  CalendarDateSchema,
+  type ProviderId,
+  type StayParams,
+  type StayQuery,
+} from './provider.types';
 
 /** A provider's location, by the provider's own id for it. */
 export interface LocationRef {
@@ -48,6 +53,19 @@ export interface StayInput {
   children?: number;
   infants?: number;
   concessions?: number;
+}
+
+/** A stored stay and its provider stay fields as the `StayQuery` a provider module takes. */
+export function toStayQuery(stay: Stay, params: StayParams = {}): StayQuery {
+  return {
+    arrival: stay.arrival,
+    departure: stay.departure,
+    adults: stay.adults,
+    children: stay.children,
+    infants: stay.infants,
+    concessions: stay.concessions,
+    params,
+  };
 }
 
 /** `${providerId}:${externalId}`, the location key (§2). Never throws, unlike `makeLocationKey`. */

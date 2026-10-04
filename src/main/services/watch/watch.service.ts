@@ -4,34 +4,47 @@ import {
   WatchUpdate,
   WatchExecutionResult,
   AvailabilityResult,
-  Stay,
+  type NightStatus,
+  type UnitAvailability,
 } from '@shared/types';
 import { WatchResult } from '@shared/types/common.types';
-import {
-  addDays,
-  compareDates,
-  eachNight,
-  isCalendarDate,
-  todayIn,
-} from '@shared/utils/calendar-date';
+import { toStayQuery } from '@shared/types/stay.types';
+import { addDays, compareDates, isCalendarDate, todayIn } from '@shared/utils/calendar-date';
 import { WatchRepository } from '../../database/repositories';
 import { PARKSTAY_PROVIDER_ID, parkstayManifest } from '../../providers/parkstay';
-import { ParkStayService } from '../parkstay/parkstay.service';
+import type { ProviderWith } from '../../providers/registry';
 import { NotificationService } from '../notification/notification.service';
 import { AppError } from '../../utils/app-error';
 import { logger } from '../../utils/logger';
 
 const log = logger.child({ module: 'watches' });
 
-/** Everyone in the party: ParkStay's availability search takes one guest count. */
-function partySize(stay: Stay): number {
-  return stay.adults + stay.children + stay.infants + stay.concessions;
-}
+/** The provider a watch runs on: one with availability. */
+export type WatchProvider = ProviderWith<'watches'>;
 
-/** The ParkStay gear type a watch filters on, if any (`stay_params.gearType`). */
+/** The gear type a watch filters on, if any (`stay_params.gearType`): shown as the site type. */
 function gearTypeOf(watch: Watch): string | undefined {
   const gearType = watch.stayParams.gearType;
   return typeof gearType === 'string' && gearType !== '' ? gearType : undefined;
+}
+
+/** A unit the watch wants: any unit, or one named by its id or name. */
+function isWanted(watch: Watch, unit: UnitAvailability): boolean {
+  return (
+    watch.unitIds.length === 0 ||
+    watch.unitIds.includes(unit.unitId) ||
+    watch.unitIds.includes(unit.unitName)
+  );
+}
+
+/** A night within the watch's price limit (a night without a price is not ruled out). */
+function withinPrice(watch: Watch, night: NightStatus): boolean {
+  return !watch.maxPrice || night.price === undefined || night.price <= watch.maxPrice;
+}
+
+/** A night the watch would take: available and within the price limit. */
+function isWantedNight(watch: Watch, night: NightStatus): boolean {
+  return night.state === 'available' && withinPrice(watch, night);
 }
 
 /**
@@ -40,16 +53,17 @@ function gearTypeOf(watch: Watch): string | undefined {
  */
 export class WatchService {
   private watchRepo: WatchRepository;
-  private parkStayService: ParkStayService;
+  private provider: WatchProvider;
   private notificationService: NotificationService;
 
+  /** `provider` is ParkStay from the registry until V4 resolves watches by provider. */
   constructor(
     watchRepo: WatchRepository,
-    parkStayService: ParkStayService,
+    provider: WatchProvider,
     notificationService: NotificationService
   ) {
     this.watchRepo = watchRepo;
-    this.parkStayService = parkStayService;
+    this.provider = provider;
     this.notificationService = notificationService;
   }
 
@@ -157,60 +171,33 @@ export class WatchService {
         };
       }
 
-      // Check availability via ParkStay API (the location is the campground)
-      const campgroundId = watch.location.externalId;
-      const siteType = gearTypeOf(watch);
-      const availabilityResult = await this.parkStayService.checkAvailability(campgroundId, {
-        campgroundId,
-        arrivalDate: arrival,
-        departureDate: departure,
-        numGuests: partySize(watch.stay),
-        siteType,
-      });
-
-      // Filter results based on preferences
-      let matchingSites = availabilityResult.sites.filter((site) =>
-        site.dates.every((date) => date.available && date.bookable)
+      // One availability call: every unit, night by night, with prices.
+      const result = await this.provider.availability.check(
+        watch.location.externalId,
+        toStayQuery(watch.stay, watch.stayParams)
       );
+      const units = result.units.filter((unit) => isWanted(watch, unit));
+      const siteType = gearTypeOf(watch) ?? '';
 
-      // Filter by preferred sites if specified
-      if (watch.unitIds.length > 0) {
-        matchingSites = matchingSites.filter(
-          (site) => watch.unitIds.includes(site.siteId) || watch.unitIds.includes(site.siteName)
-        );
-      }
-
-      // Filter by site type if specified
-      if (siteType) {
-        matchingSites = matchingSites.filter(
-          (site) => site.siteType.toLowerCase() === siteType.toLowerCase()
-        );
-      }
-
-      // Filter by max price if specified
-      if (watch.maxPrice) {
-        matchingSites = matchingSites.filter((site) =>
-          site.dates.every((date) => date.price <= watch.maxPrice!)
-        );
-      }
-
+      // Full matches: every night available and within the price limit.
+      const matchingSites = units.filter(
+        (unit) => unit.fullyAvailable && unit.nights.every((night) => withinPrice(watch, night))
+      );
       const found = matchingSites.length > 0;
 
-      // Map full-match results
-      const availability: AvailabilityResult[] = matchingSites.map((site) => ({
-        siteId: site.siteId,
-        siteName: site.siteName,
-        siteType: site.siteType,
+      const availability: AvailabilityResult[] = matchingSites.map((unit) => ({
+        siteId: unit.unitId,
+        siteName: unit.unitName,
+        siteType: unit.unitType ?? siteType,
         available: true,
-        price: site.dates[0]?.price || 0,
+        // The nightly price (the first night's; ParkStay prices a site the same each night).
+        price: unit.nights[0]?.price ?? 0,
         dates: { arrival, departure },
       }));
 
-      // Check for partial matches if no full match found and partial matching is enabled
-      let partialResults: AvailabilityResult[] = [];
-      if (!found && watch.allowPartialMatch) {
-        partialResults = await this.checkPartialAvailability(watch);
-      }
+      // Partial matches come from the same nights: no extra requests.
+      const partialResults =
+        !found && watch.allowPartialMatch ? this.partialMatches(watch, units, siteType) : [];
 
       // Determine overall result type
       let resultType: WatchResult;
@@ -238,7 +225,7 @@ export class WatchService {
 
       // Send notifications and handle deactivation
       if (found) {
-        await this.notificationService.notifyWatchFound(watch, matchingSites);
+        await this.notificationService.notifyWatchFound(watch, availability);
 
         // If auto-book is enabled, attempt to book
         if (watch.autoBook) {
@@ -288,101 +275,41 @@ export class WatchService {
   }
 
   /**
-   * Check for partial availability — iterates each night in the watch range individually,
-   * then groups consecutive available nights per site into blocks.
+   * Partial matches: per unit, each run of consecutive nights that are available (and within
+   * the price limit), as its own stay.
    */
-  private async checkPartialAvailability(watch: Watch): Promise<AvailabilityResult[]> {
-    // Map: siteId → { siteName, siteType, price, availableNights }
-    const siteAvailability = new Map<
-      string,
-      { siteName: string; siteType: string; price: number; availableNights: string[] }
-    >();
-
-    const campgroundId = watch.location.externalId;
-    const siteType = gearTypeOf(watch);
-
-    for (const night of eachNight(watch.stay.arrival, watch.stay.departure)) {
-      try {
-        const result = await this.parkStayService.checkAvailability(campgroundId, {
-          campgroundId,
-          arrivalDate: night,
-          departureDate: addDays(night, 1),
-          numGuests: partySize(watch.stay),
-          siteType,
-        });
-
-        let nightSites = result.sites.filter((site) =>
-          site.dates.every((date) => date.available && date.bookable)
-        );
-
-        if (watch.unitIds.length > 0) {
-          nightSites = nightSites.filter(
-            (site) => watch.unitIds.includes(site.siteId) || watch.unitIds.includes(site.siteName)
-          );
-        }
-
-        if (siteType) {
-          nightSites = nightSites.filter(
-            (site) => site.siteType.toLowerCase() === siteType.toLowerCase()
-          );
-        }
-
-        if (watch.maxPrice) {
-          nightSites = nightSites.filter((site) =>
-            site.dates.every((date) => date.price <= watch.maxPrice!)
-          );
-        }
-
-        for (const site of nightSites) {
-          if (!siteAvailability.has(site.siteId)) {
-            siteAvailability.set(site.siteId, {
-              siteName: site.siteName,
-              siteType: site.siteType,
-              price: site.dates[0]?.price || 0,
-              availableNights: [],
-            });
-          }
-          siteAvailability.get(site.siteId)!.availableNights.push(night);
-        }
-      } catch {
-        // Skip nights where the individual availability check fails
-      }
-    }
-
-    // Find consecutive blocks per site and build results
+  private partialMatches(
+    watch: Watch,
+    units: UnitAvailability[],
+    siteType: string
+  ): AvailabilityResult[] {
     const results: AvailabilityResult[] = [];
-
-    for (const [siteId, data] of siteAvailability) {
-      const nights = [...data.availableNights].sort(compareDates);
-      if (nights.length === 0) continue;
-
-      const pushRun = (first: string, last: string): void => {
+    for (const unit of units) {
+      let run: NightStatus[] = [];
+      const pushRun = (): void => {
+        if (run.length === 0) return;
         results.push({
-          siteId,
-          siteName: data.siteName,
-          siteType: data.siteType,
+          siteId: unit.unitId,
+          siteName: unit.unitName,
+          siteType: unit.unitType ?? siteType,
           available: true,
-          price: data.price,
-          dates: { arrival: first, departure: addDays(last, 1) },
+          price: run[0].price ?? 0,
+          dates: { arrival: run[0].date, departure: addDays(run[run.length - 1].date, 1) },
           partial: true,
         });
+        run = [];
       };
-
-      let runStart = nights[0];
-      let runEnd = nights[0];
-      for (const night of nights.slice(1)) {
-        if (night === addDays(runEnd, 1)) {
-          runEnd = night;
-        } else {
-          pushRun(runStart, runEnd);
-          runStart = night;
-          runEnd = night;
+      for (const night of unit.nights) {
+        const last = run[run.length - 1];
+        if (!isWantedNight(watch, night)) {
+          pushRun();
+          continue;
         }
+        if (last && night.date !== addDays(last.date, 1)) pushRun();
+        run.push(night);
       }
-      // Push the final run
-      pushRun(runStart, runEnd);
+      pushRun();
     }
-
     return results;
   }
 

@@ -255,10 +255,18 @@ describe('IPC through the container', () => {
     expect(mainWindow.sent).toEqual([]);
   });
 
-  it('queue and updater events reach only trusted webContents', () => {
+  it('queue gate and updater events reach only trusted webContents', async () => {
     const untrusted = fakeWebContents(7); // exists, but was never registered
 
-    container.queueService.emit('status', { type: 'session_active' });
+    // ParkStay's queue gate reports a failed check (net.request is not stubbed here).
+    const waiting = new AbortController();
+    const ensure = container.providers
+      .get('parkstay')
+      .access!.ensure({ signal: waiting.signal })
+      .catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    waiting.abort();
+    await ensure;
     autoUpdater.emit('update-available', { version: '2.0.0', releaseNotes: 'Notes' });
     autoUpdater.emit('download-progress', {
       percent: 40,
@@ -268,15 +276,22 @@ describe('IPC through the container', () => {
     });
 
     expect(mainWindow.sent).toEqual([
-      ['queue:status', { type: 'session_active' }],
+      [
+        'provider:access-status',
+        expect.objectContaining({ providerId: 'parkstay', state: 'error' }),
+      ],
       ['updater:available', { version: '2.0.0', releaseNotes: 'Notes' }],
       ['updater:progress', { percent: 40, bytesPerSecond: 10, transferred: 4, total: 10 }],
     ]);
+    // The queue session key never travels with a status.
+    expect(JSON.stringify(mainWindow.sent)).not.toMatch(/session_?key|sitequeuesession/i);
     expect(untrusted.sent).toEqual([]);
 
     // After the window closes, events are dropped without error
     mainWindow.destroy();
-    expect(() => container.queueService.emit('status', { type: 'status_changed' })).not.toThrow();
+    expect(() =>
+      autoUpdater.emit('update-available', { version: '2.0.1', releaseNotes: '' })
+    ).not.toThrow();
     expect(mainWindow.sent).toHaveLength(3);
   });
 });

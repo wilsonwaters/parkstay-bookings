@@ -15,7 +15,6 @@ import { registerNotificationsHandlers } from './handlers/notifications.handlers
 import { registerNotifiersHandlers } from './handlers/notifiers.handlers';
 import { registerParkStayHandlers } from './handlers/parkstay.handlers';
 import { registerProvidersHandlers } from './handlers/providers.handlers';
-import { registerQueueHandlers } from './handlers/queue.handlers';
 import { registerSettingsHandlers } from './handlers/settings.handlers';
 import { registerSnipesHandlers } from './handlers/snipes.handlers';
 import { registerUpdaterHandlers } from './handlers/updater.handlers';
@@ -49,7 +48,6 @@ export function registerIpcHandlers(
   registerAccountsHandlers(handle, container);
   registerAuthHandlers(handle, container);
   registerParkStayHandlers(handle, container);
-  registerQueueHandlers(handle, container);
 
   logger.info('IPC handlers registered');
 }

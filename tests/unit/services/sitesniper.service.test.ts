@@ -1,13 +1,21 @@
 /**
  * SiteSniperService unit tests.
  *
- * The repository, ParkStay, queue and notification dependencies are injected as
- * constructor fakes (no real database), so we exercise the service logic in isolation.
+ * The repository, the provider (availability, holds, release policy, access gate) and the
+ * notification service are constructor fakes (no database, no network), so the service's
+ * own logic is exercised. `tests/integration/sitesniper-parkstay.test.ts` runs it against the
+ * real ParkStay module and a fixture server.
  */
 
 import { SiteSnipe, SiteSnipeInput } from '@shared/types';
+import type { LocationAvailability, StayQuery } from '@shared/types/provider.types';
 import { SnipeReleaseMode, SnipeResult, SnipeStatus } from '@shared/types/common.types';
-import { SiteSniperService } from '@main/services/sitesniper/sitesniper.service';
+import {
+  SiteSniperService,
+  type SnipeProvider,
+} from '@main/services/sitesniper/sitesniper.service';
+import { parkstayManifest } from '@main/providers/parkstay';
+import { ProviderHttpError, type HoldResult } from '@main/providers/sdk';
 import type { SiteSniperRepository } from '@main/database/repositories';
 
 // Constructor fake for the repository.
@@ -77,18 +85,43 @@ function snipeInput(overrides: Partial<SiteSnipeInput> = {}): SiteSnipeInput {
   };
 }
 
-function availabilityView(sites: Array<{ siteId: string; allOpen: boolean }>) {
+/** The provider's answer for a stay: each unit free for both nights, or booked. */
+function availability(
+  units: Array<{ unitId: string; free: boolean }>,
+  release: LocationAvailability['release'] = { open: true }
+): LocationAvailability {
   return {
-    campgroundId: '34',
-    campgroundName: 'Osprey Bay',
-    bookingTimeOpen: true,
-    sites: sites.map((s) => ({ siteId: s.siteId, days: [], allOpen: s.allOpen })),
+    key: 'parkstay:34',
+    checkedAt: new Date().toISOString(),
+    release,
+    units: units.map(({ unitId, free }) => ({
+      unitId,
+      unitName: `Site ${unitId}`,
+      fullyAvailable: free,
+      nights: ['2026-07-19', '2026-07-20'].map((date) => ({
+        date,
+        state: free ? ('available' as const) : ('booked' as const),
+        price: 30,
+      })),
+      ...(free ? { total: 60 } : {}),
+    })),
   };
 }
 
+const held = (reference = '987654'): HoldResult => ({
+  ok: true,
+  reference,
+  expiresAt: new Date(Date.now() + 30 * 60_000),
+});
+
 describe('SiteSniperService', () => {
-  let parkStay: { getSiteAvailabilityView: jest.Mock; createBookingHold: jest.Mock };
-  let queue: any;
+  let provider: {
+    manifest: typeof parkstayManifest;
+    availability: { check: jest.Mock };
+    holds: { create: jest.Mock; paymentUrl: jest.Mock };
+    release: { computeReleaseAt: jest.Mock };
+    access: { ensure: jest.Mock };
+  };
   let notifications: { notifySnipeHeld: jest.Mock; notifySnipeBooked: jest.Mock };
   let service: SiteSniperService;
 
@@ -96,11 +129,18 @@ describe('SiteSniperService', () => {
     jest.clearAllMocks();
     jest.spyOn(console, 'error').mockImplementation(() => {});
 
-    parkStay = {
-      getSiteAvailabilityView: jest.fn(),
-      createBookingHold: jest.fn(),
+    provider = {
+      manifest: parkstayManifest,
+      availability: { check: jest.fn() },
+      holds: {
+        create: jest.fn(),
+        paymentUrl: jest.fn(() => 'https://parkstay.dbca.wa.gov.au/booking/'),
+      },
+      release: {
+        computeReleaseAt: jest.fn(async () => new Date('2026-01-19T18:00:00.000Z')),
+      },
+      access: { ensure: jest.fn() },
     };
-    queue = {};
     notifications = {
       notifySnipeHeld: jest.fn().mockResolvedValue(undefined),
       notifySnipeBooked: jest.fn().mockResolvedValue(undefined),
@@ -111,8 +151,7 @@ describe('SiteSniperService', () => {
 
     service = new SiteSniperService(
       mockRepo as unknown as SiteSniperRepository,
-      parkStay as any,
-      queue,
+      provider as unknown as SnipeProvider,
       notifications as any
     );
   });
@@ -125,28 +164,37 @@ describe('SiteSniperService', () => {
 
       expect(result.result).toBe(SnipeResult.ERROR);
       expect(result.success).toBe(false);
-      expect(parkStay.getSiteAvailabilityView).not.toHaveBeenCalled();
+      expect(provider.availability.check).not.toHaveBeenCalled();
     });
 
     it('records TOO_EARLY when no site is open and release is still in the future', async () => {
       const future = new Date(Date.now() + 24 * 60 * 60 * 1000);
       mockRepo.findById.mockReturnValue(makeSnipe({ releaseAt: future }));
-      parkStay.getSiteAvailabilityView.mockResolvedValue(
-        availabilityView([{ siteId: '136', allOpen: false }])
-      );
+      provider.availability.check.mockResolvedValue(availability([{ unitId: '136', free: false }]));
 
       const result = await service.execute(1);
 
       expect(result.result).toBe(SnipeResult.TOO_EARLY);
       expect(mockRepo.setResult).toHaveBeenCalledWith(1, SnipeResult.TOO_EARLY);
       expect(mockRepo.incrementAttempts).toHaveBeenCalledWith(1);
-      expect(parkStay.createBookingHold).not.toHaveBeenCalled();
+      expect(provider.holds.create).not.toHaveBeenCalled();
+    });
+
+    it('records TOO_EARLY when the provider says the dates are not released yet', async () => {
+      mockRepo.findById.mockReturnValue(
+        makeSnipe({ releaseMode: SnipeReleaseMode.CANCELLATION, releaseAt: undefined })
+      );
+      provider.availability.check.mockResolvedValue(
+        availability([{ unitId: '136', free: false }], { open: false })
+      );
+
+      expect((await service.execute(1)).result).toBe(SnipeResult.TOO_EARLY);
     });
 
     it('records UNAVAILABLE when no site is open and release has passed', async () => {
       const past = new Date(Date.now() - 24 * 60 * 60 * 1000);
       mockRepo.findById.mockReturnValue(makeSnipe({ releaseAt: past }));
-      parkStay.getSiteAvailabilityView.mockResolvedValue(availabilityView([]));
+      provider.availability.check.mockResolvedValue(availability([]));
 
       const result = await service.execute(1);
 
@@ -157,25 +205,28 @@ describe('SiteSniperService', () => {
     it('places a hold when a target site is open, then notifies and deactivates', async () => {
       const snipe = makeSnipe();
       mockRepo.findById.mockReturnValue(snipe);
-      parkStay.getSiteAvailabilityView.mockResolvedValue(
-        availabilityView([
-          { siteId: '999', allOpen: false },
-          { siteId: '136', allOpen: true },
+      provider.availability.check.mockResolvedValue(
+        availability([
+          { unitId: '137', free: false },
+          { unitId: '136', free: true },
         ])
       );
-      parkStay.createBookingHold.mockResolvedValue({ success: true, pk: '987654' });
+      provider.holds.create.mockResolvedValue(held());
 
       const result = await service.execute(1);
 
-      expect(parkStay.createBookingHold).toHaveBeenCalledWith(
-        expect.objectContaining({ campgroundId: '34', campsiteId: '136' }),
-        false
+      // Only the preferred units are asked about.
+      expect(provider.availability.check).toHaveBeenCalledWith('34', expect.any(Object), {
+        unitIds: ['136', '137'],
+      });
+      expect(provider.holds.create).toHaveBeenCalledWith(
+        expect.objectContaining({ externalId: '34', unitId: '136' })
       );
       expect(mockRepo.setHeld).toHaveBeenCalledWith(
         1,
         '987654',
         expect.any(Date),
-        expect.stringContaining('/booking/'),
+        'https://parkstay.dbca.wa.gov.au/booking/',
         '136'
       );
       expect(mockRepo.deactivate).toHaveBeenCalledWith(1);
@@ -188,12 +239,19 @@ describe('SiteSniperService', () => {
 
     it('picks the first open site when there are no target site ids', async () => {
       mockRepo.findById.mockReturnValue(makeSnipe({ unitIds: [] }));
-      parkStay.getSiteAvailabilityView.mockResolvedValue(
-        availabilityView([{ siteId: '500', allOpen: true }])
+      provider.availability.check.mockResolvedValue(
+        availability([
+          { unitId: '499', free: false },
+          { unitId: '500', free: true },
+        ])
       );
-      parkStay.createBookingHold.mockResolvedValue({ success: true, pk: '111' });
+      provider.holds.create.mockResolvedValue(held('111'));
 
       const result = await service.execute(1);
+
+      expect(provider.availability.check).toHaveBeenCalledWith('34', expect.any(Object), {
+        unitIds: undefined,
+      });
 
       expect(result.matchedSiteId).toBe('500');
       expect(result.held).toBe(true);
@@ -201,12 +259,11 @@ describe('SiteSniperService', () => {
 
     it('records UNAVAILABLE when the hold race is lost', async () => {
       mockRepo.findById.mockReturnValue(makeSnipe());
-      parkStay.getSiteAvailabilityView.mockResolvedValue(
-        availabilityView([{ siteId: '136', allOpen: true }])
-      );
-      parkStay.createBookingHold.mockResolvedValue({
-        success: false,
-        error: "Someone hit 'Book now' before you",
+      provider.availability.check.mockResolvedValue(availability([{ unitId: '136', free: true }]));
+      provider.holds.create.mockResolvedValue({
+        ok: false,
+        reason: 'taken',
+        message: "Someone hit 'Book now' before you",
       });
 
       const result = await service.execute(1);
@@ -223,10 +280,12 @@ describe('SiteSniperService', () => {
 
     it('records ERROR when a booking is already in progress', async () => {
       mockRepo.findById.mockReturnValue(makeSnipe());
-      parkStay.getSiteAvailabilityView.mockResolvedValue(
-        availabilityView([{ siteId: '136', allOpen: true }])
-      );
-      parkStay.createBookingHold.mockResolvedValue({ success: false, inProgress: true });
+      provider.availability.check.mockResolvedValue(availability([{ unitId: '136', free: true }]));
+      provider.holds.create.mockResolvedValue({
+        ok: false,
+        reason: 'in-progress',
+        message: 'You have an in-progress booking.',
+      });
 
       const result = await service.execute(1);
 
@@ -245,14 +304,12 @@ describe('SiteSniperService', () => {
           stay: { ...makeSnipe().stay, arrival: '2026-07-20', departure: '2026-07-22' },
         }),
       ]);
-      parkStay.getSiteAvailabilityView.mockResolvedValue(
-        availabilityView([{ siteId: '136', allOpen: true }])
-      );
+      provider.availability.check.mockResolvedValue(availability([{ unitId: '136', free: true }]));
 
       const result = await service.execute(1);
 
       expect(result.result).toBe(SnipeResult.ERROR);
-      expect(parkStay.createBookingHold).not.toHaveBeenCalled();
+      expect(provider.holds.create).not.toHaveBeenCalled();
       expect(mockRepo.setResult).toHaveBeenCalledWith(1, SnipeResult.ERROR, expect.any(String));
     });
 
@@ -264,12 +321,12 @@ describe('SiteSniperService', () => {
 
       expect(result.result).toBe(SnipeResult.EXPIRED);
       expect(mockRepo.deactivate).toHaveBeenCalledWith(1);
-      expect(parkStay.getSiteAvailabilityView).not.toHaveBeenCalled();
+      expect(provider.availability.check).not.toHaveBeenCalled();
     });
 
     it('returns ERROR (never throws) when the availability call throws', async () => {
       mockRepo.findById.mockReturnValue(makeSnipe());
-      parkStay.getSiteAvailabilityView.mockRejectedValue(new Error('network down'));
+      provider.availability.check.mockRejectedValue(new Error('network down'));
 
       const result = await service.execute(1);
 
@@ -284,20 +341,24 @@ describe('SiteSniperService', () => {
       const result = await service.execute(1);
 
       expect(result.result).toBe(SnipeResult.EXPIRED);
-      expect(parkStay.getSiteAvailabilityView).not.toHaveBeenCalled();
+      expect(provider.availability.check).not.toHaveBeenCalled();
     });
 
-    it('passes useQueue through to ParkStay calls when accessGateEnabled', async () => {
-      mockRepo.findById.mockReturnValue(makeSnipe({ accessGateEnabled: true }));
-      parkStay.getSiteAvailabilityView.mockResolvedValue(
-        availabilityView([{ siteId: '136', allOpen: true }])
+    it('records an HTTP 500 as an error, never as "unavailable"', async () => {
+      mockRepo.findById.mockReturnValue(makeSnipe());
+      provider.availability.check.mockRejectedValue(
+        new ProviderHttpError({ providerId: 'parkstay', status: 500, url: 'https://x/api/' })
       );
-      parkStay.createBookingHold.mockResolvedValue({ success: true, pk: '1' });
 
-      await service.execute(1);
+      const result = await service.execute(1);
 
-      expect(parkStay.getSiteAvailabilityView).toHaveBeenCalledWith('34', expect.any(Object), true);
-      expect(parkStay.createBookingHold).toHaveBeenCalledWith(expect.any(Object), true);
+      expect(result.result).toBe(SnipeResult.ERROR);
+      expect(result.error).toContain('HTTP 500');
+      expect(mockRepo.setResult).not.toHaveBeenCalledWith(1, SnipeResult.UNAVAILABLE);
+    });
+
+    it('hands the scheduler the provider’s access gate for queue warm-up', () => {
+      expect(service.getAccessGate()).toBe(provider.access);
     });
 
     it('maps the stay and the ParkStay stay fields onto the availability and hold calls', async () => {
@@ -314,36 +375,28 @@ describe('SiteSniperService', () => {
           stayParams: { gearType: 'campervan', numVehicles: 2, postcode: '6530' },
         })
       );
-      parkStay.getSiteAvailabilityView.mockResolvedValue(
-        availabilityView([{ siteId: '136', allOpen: true }])
-      );
-      parkStay.createBookingHold.mockResolvedValue({ success: true, pk: '1' });
+      provider.availability.check.mockResolvedValue(availability([{ unitId: '136', free: true }]));
+      provider.holds.create.mockResolvedValue(held('1'));
 
       await service.execute(1);
 
-      expect(parkStay.getSiteAvailabilityView).toHaveBeenCalledWith(
-        '34',
-        {
-          arrivalDate: '2026-07-19',
-          departureDate: '2026-07-21',
-          numAdult: 2,
-          numConcession: 1,
-          numChild: 1,
-          numInfant: 1,
-          gearType: 'campervan',
-        },
-        false
-      );
-      expect(parkStay.createBookingHold).toHaveBeenCalledWith(
-        expect.objectContaining({
-          campgroundId: '34',
-          arrivalDate: '2026-07-19',
-          departureDate: '2026-07-21',
-          numVehicle: 2,
-          postcode: '6530',
-        }),
-        false
-      );
+      const stay: StayQuery = {
+        arrival: '2026-07-19',
+        departure: '2026-07-21',
+        adults: 2,
+        children: 1,
+        infants: 1,
+        concessions: 1,
+        params: { gearType: 'campervan', numVehicles: 2, postcode: '6530' },
+      };
+      expect(provider.availability.check).toHaveBeenCalledWith('34', stay, {
+        unitIds: ['136', '137'],
+      });
+      expect(provider.holds.create).toHaveBeenCalledWith({
+        externalId: '34',
+        unitId: '136',
+        stay,
+      });
     });
 
     it('marks a snipe whose stored dates are not calendar dates in error, without polling', async () => {
@@ -355,25 +408,66 @@ describe('SiteSniperService', () => {
 
       expect(result.result).toBe(SnipeResult.ERROR);
       expect(result.error).toMatch(/not calendar dates/);
-      expect(parkStay.getSiteAvailabilityView).not.toHaveBeenCalled();
+      expect(provider.availability.check).not.toHaveBeenCalled();
       expect(mockRepo.setResult).toHaveBeenCalledWith(1, SnipeResult.ERROR, expect.any(String));
     });
   });
 
   describe('create', () => {
-    it('computes releaseAt for DAILY_ROLLOVER mode', async () => {
+    it("computes releaseAt for DAILY_ROLLOVER mode with the provider's release policy", async () => {
       const created = makeSnipe();
       mockRepo.create.mockReturnValue(created);
       mockRepo.findById.mockReturnValue(created);
 
       await service.create(1, snipeInput({ name: 'Daily' }));
 
+      expect(provider.release.computeReleaseAt).toHaveBeenCalledWith({
+        mode: 'daily_rollover',
+        externalId: '34',
+        stay: {
+          arrival: '2026-07-19',
+          departure: '2026-07-21',
+          adults: 2,
+          children: 0,
+          infants: 0,
+          concessions: 0,
+          params: { gearType: 'all', numVehicles: 1 },
+        },
+        now: expect.any(Date),
+      });
       const passedInput = mockRepo.create.mock.calls[0][1];
-      expect(passedInput.releaseAt).toBeInstanceOf(Date);
-      // 180 days before 2026-07-19 at 00:00 AWST → 2026-01-19T16:00:00Z
-      expect(passedInput.releaseAt.toISOString()).toBe('2026-01-19T16:00:00.000Z');
+      expect(passedInput.releaseAt.toISOString()).toBe('2026-01-19T18:00:00.000Z');
       // ParkStay's defaults for the stay fields the input left out
       expect(passedInput.stayParams).toEqual({ gearType: 'all', numVehicles: 1 });
+    });
+
+    it('recomputes releaseAt when an update changes the dates', async () => {
+      const updated = makeSnipe({ stay: { ...makeSnipe().stay, arrival: '2026-08-01' } });
+      mockRepo.update.mockReturnValue(updated);
+
+      await service.update(1, {
+        stay: { arrival: '2026-08-01', departure: '2026-08-03', adults: 2 },
+      });
+
+      expect(provider.release.computeReleaseAt).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mode: 'daily_rollover',
+          stay: expect.objectContaining({ arrival: '2026-08-01' }),
+        })
+      );
+      expect(mockRepo.update).toHaveBeenLastCalledWith(1, {
+        releaseAt: new Date('2026-01-19T18:00:00.000Z'),
+      });
+    });
+
+    it('arms the scheduler with the stored release (and none for cancellation)', () => {
+      const releaseAt = new Date('2026-01-19T18:00:00.000Z');
+      expect(service.computeReleaseAt(makeSnipe({ releaseAt }))).toBe(releaseAt);
+      expect(
+        service.computeReleaseAt(
+          makeSnipe({ releaseMode: SnipeReleaseMode.CANCELLATION, releaseAt })
+        )
+      ).toBeUndefined();
     });
 
     it('keeps the stay fields the input gives over the ParkStay defaults', async () => {

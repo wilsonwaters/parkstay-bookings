@@ -1,7 +1,8 @@
 /**
  * Composition root: every service is built once, with shared instances; nothing is a
  * singleton (two containers share nothing); dispose cuts the renderer off, stops the
- * scheduler, then destroys the queue service, then closes the database. The SecretVault is
+ * scheduler, disposes the providers (ParkStay's queue gate with them), then closes the
+ * database. Watches and snipes get the registry's ParkStay provider. The SecretVault is
  * shared by every consumer, including each provider's ScopedSecretVault, and building the
  * container on a fresh install does not touch `safeStorage` or read the machine id.
  */
@@ -20,8 +21,6 @@ import { OAuth2Handler } from '@main/services/gmail/oauth2-handler';
 import { NotificationDispatcher } from '@main/services/notification/notification-dispatcher';
 import { NotificationService } from '@main/services/notification/notification.service';
 import { SmtpEmailNotifier } from '@main/services/notification/notifiers/email-smtp.notifier';
-import { ParkStayService } from '@main/services/parkstay/parkstay.service';
-import { QueueService } from '@main/services/queue/queue.service';
 import { SiteSniperService } from '@main/services/sitesniper/sitesniper.service';
 import { AutoUpdaterService } from '@main/services/updater/auto-updater.service';
 import { ProviderRegistry } from '@main/providers/registry';
@@ -87,12 +86,6 @@ jest.mock('@main/services/notification/notification.service', () =>
 jest.mock('@main/services/notification/notifiers/email-smtp.notifier', () =>
   mockCountedModule('@main/services/notification/notifiers/email-smtp.notifier')
 );
-jest.mock('@main/services/parkstay/parkstay.service', () =>
-  mockCountedModule('@main/services/parkstay/parkstay.service')
-);
-jest.mock('@main/services/queue/queue.service', () =>
-  mockCountedModule('@main/services/queue/queue.service')
-);
 jest.mock('@main/services/sitesniper/sitesniper.service', () =>
   mockCountedModule('@main/services/sitesniper/sitesniper.service')
 );
@@ -125,7 +118,6 @@ const CONSTRUCTED_ONCE = {
   NotificationRepository: repositories.NotificationRepository,
   WatchRepository: repositories.WatchRepository,
   SiteSniperRepository: repositories.SiteSniperRepository,
-  QueueSessionRepository: repositories.QueueSessionRepository,
   ProviderStateRepository: repositories.ProviderStateRepository,
   ProviderAccountRepository: repositories.ProviderAccountRepository,
   LocationRepository: repositories.LocationRepository,
@@ -138,8 +130,6 @@ const CONSTRUCTED_ONCE = {
   NotificationDispatcher,
   NotificationService,
   SmtpEmailNotifier,
-  ParkStayService,
-  QueueService,
   SiteSniperService,
   AutoUpdaterService,
   WatchService,
@@ -185,15 +175,12 @@ describe('createContainer', () => {
 
     // The single instances are the ones injected into their dependants.
     const r = container.repositories;
-    expect(WatchService).toHaveBeenCalledWith(
-      r.watches,
-      container.parkStayService,
-      container.notificationService
-    );
+    // Watches and snipes run on the registry's ParkStay provider (V4 resolves them per watch).
+    const parkstay = container.providers.get('parkstay');
+    expect(WatchService).toHaveBeenCalledWith(r.watches, parkstay, container.notificationService);
     expect(SiteSniperService).toHaveBeenCalledWith(
       r.snipes,
-      container.parkStayService,
-      container.queueService,
+      parkstay,
       container.notificationService
     );
     expect(NotificationService).toHaveBeenCalledWith(
@@ -203,7 +190,6 @@ describe('createContainer', () => {
     );
     expect(AutoUpdaterService).toHaveBeenCalledWith(container.rendererEvents);
     expect(RendererEvents).toHaveBeenCalledWith(container.trustedWebContents);
-    expect(ParkStayService).toHaveBeenCalledWith(container.queueService);
     expect(JobScheduler).toHaveBeenCalledWith(container.watchService, container.siteSniperService);
     expect(GmailOTPService).toHaveBeenCalledWith(jest.mocked(OAuth2Handler).mock.results[0].value);
     expect(NotificationDispatcher).toHaveBeenCalledWith(r.notifiers, [
@@ -219,9 +205,9 @@ describe('createContainer', () => {
       expect.objectContaining({ vault, filePath: expect.stringMatching(/gmail-oauth\.json$/) })
     );
     expect(jest.mocked(createProviderContext).mock.calls[0][1].vault).toBe(vault);
-    expect(repositories.QueueSessionRepository).toHaveBeenCalledWith(r.providerState);
     expect(repositories.SqliteKeyValueStore).toHaveBeenCalledWith(r.providerState, 'parkstay');
-    expect(QueueService).toHaveBeenCalledWith(r.queueSessions);
+    // ParkStay's queue gate is the provider's, not a service of its own.
+    expect(container.siteSniperService.getAccessGate()).toBe(parkstay.access);
   });
 
   it('builds the vault lazily: a fresh install touches neither safeStorage nor the key file, nor reads the machine id', () => {
@@ -312,11 +298,12 @@ describe('createContainer', () => {
     expect(container.providers.list()).toEqual([]);
   });
 
-  it('dispose cuts the renderer off, stops the scheduler, destroys the queue service, then closes the database, once', () => {
+  it("dispose cuts the renderer off, stops the scheduler, disposes ParkStay's queue gate, then closes the database, once", () => {
     const { container, db } = build();
     const revoke = jest.spyOn(container.trustedWebContents, 'revokeAll');
     const stop = jest.spyOn(container.scheduler, 'stop');
-    const destroy = jest.spyOn(container.queueService, 'destroy');
+    const gate = container.providers.get('parkstay').access!;
+    const disposeGate = jest.spyOn(gate, 'dispose');
     const close = jest.spyOn(db, 'close');
 
     container.dispose();
@@ -324,13 +311,11 @@ describe('createContainer', () => {
 
     expect(revoke).toHaveBeenCalledTimes(1);
     expect(stop).toHaveBeenCalledTimes(1);
-    expect(destroy).toHaveBeenCalledTimes(1);
+    expect(disposeGate).toHaveBeenCalled();
     expect(revoke.mock.invocationCallOrder[0]).toBeLessThan(stop.mock.invocationCallOrder[0]);
     expect(close).toHaveBeenCalledTimes(1);
-    expect(stop.mock.invocationCallOrder[0]).toBeLessThan(destroy.mock.invocationCallOrder[0]);
-    expect(destroy.mock.invocationCallOrder[0]).toBeLessThan(close.mock.invocationCallOrder[0]);
+    expect(stop.mock.invocationCallOrder[0]).toBeLessThan(disposeGate.mock.invocationCallOrder[0]);
+    expect(disposeGate.mock.invocationCallOrder[0]).toBeLessThan(close.mock.invocationCallOrder[0]);
     expect(db.open).toBe(false);
-    // The container removed its own queue-status forwarder
-    expect(container.queueService.listenerCount('status')).toBe(0);
   });
 });

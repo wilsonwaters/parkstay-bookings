@@ -10,7 +10,6 @@ import type { Booking } from '../types/booking.types';
 import type { CatalogUpdatedEvent } from '../types/catalog.types';
 import type { AccessStatus, ProviderAccount } from '../types/provider.types';
 import type { Notification } from '../types/notification.types';
-import type { QueueStatusEvent } from '../types/queue.types';
 import type { SiteSnipe } from '../types/site-sniper.types';
 import type { Watch } from '../types/watch.types';
 import type { EventName } from './channels';
@@ -42,7 +41,6 @@ export interface EventPayloads {
   'catalog:updated': CatalogUpdatedEvent;
   /** A provider account's sign-in state changed. Emitted by V6. */
   'account:updated': ProviderAccount;
-  'queue:status': QueueStatusEvent;
 }
 
 // Every event name has exactly one payload type.

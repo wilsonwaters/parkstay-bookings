@@ -10,14 +10,9 @@
  *
  * Pass stubs per namespace to replace or add methods. Every method is a `jest.fn()`.
  */
-import type {
-  AppInfo,
-  EventName,
-  EventPayloads,
-  QueueStatusSnapshot,
-  WindowApi,
-} from '../../../src/shared/contracts';
+import type { AppInfo, EventName, EventPayloads, WindowApi } from '../../../src/shared/contracts';
 import type { APIResponse } from '../../../src/shared/types/api.types';
+import type { AccessStatus } from '../../../src/shared/types/provider.types';
 import { act } from '@testing-library/react';
 import { createMockWindowApi } from '../window-api';
 
@@ -67,34 +62,20 @@ export const APP_INFO: AppInfo = {
   logsPath: 'C:\\Users\\test\\AppData\\Roaming\\WA Stay\\logs',
 };
 
-export const IDLE_QUEUE: QueueStatusSnapshot = {
-  session: null,
-  isActive: false,
-  isExpired: false,
-  isWaiting: false,
-  estimatedWait: '',
-  expiryRemaining: '',
+/** ParkStay's queue gate while no snipe uses it: QueueStatus shows nothing. */
+export const IDLE_ACCESS: AccessStatus = {
+  providerId: 'parkstay',
+  state: 'idle',
+  updatedAt: '2026-10-02T10:00:00.000Z',
 };
 
-/** An active DBCA queue session, so QueueStatus shows its card. */
-export function activeQueue(): QueueStatusSnapshot {
-  const now = new Date('2026-10-02T10:00:00Z');
+/** An active DBCA queue session (`providers.accessStatus('parkstay')`), so QueueStatus shows its card. */
+export function activeAccess(): AccessStatus {
   return {
-    session: {
-      sessionKey: 'test-session',
-      status: 'Active',
-      position: 0,
-      estimatedWaitSeconds: 0,
-      expirySeconds: 900,
-      createdAt: now,
-      expiresAt: new Date(now.getTime() + 900_000),
-      lastCheckedAt: now,
-    },
-    isActive: true,
-    isExpired: false,
-    isWaiting: false,
-    estimatedWait: '',
-    expiryRemaining: '14:59',
+    providerId: 'parkstay',
+    state: 'active',
+    expiresAt: new Date(Date.now() + 900_000).toISOString(),
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -105,14 +86,16 @@ export type ApiStubs = Partial<Record<keyof WindowApi | string, Record<string, M
 function defaultStubs(): ApiStubs {
   const resolve = (value: unknown) => jest.fn().mockResolvedValue(value);
   return {
-    providers: { list: resolve(ok([PARKSTAY_MANIFEST])) },
+    providers: {
+      list: resolve(ok([PARKSTAY_MANIFEST])),
+      accessStatus: resolve(ok(IDLE_ACCESS)),
+    },
     app: {
       getInfo: resolve(ok(APP_INFO)),
       openLogsFolder: resolve(ok(true)),
       getAutoLaunch: resolve(ok(false)),
     },
     notifications: { list: resolve(ok([])) },
-    queue: { getStatus: resolve(ok(IDLE_QUEUE)) },
     // The legacy pages' first reads, so any route can be rendered.
     watches: { list: resolve(ok([])) },
     snipes: { list: resolve(ok([])) },

@@ -1,17 +1,13 @@
 /**
  * AvailabilityGrid Component
- * Displays campsite availability in a grid format (sites x dates)
- * Reusable for both watch results and booking searches
+ * Displays a watch's results (sites x dates). U1 replaces it with the provider's nights.
  */
 
 import React from 'react';
 import { format, eachDayOfInterval, parseISO } from 'date-fns';
-import { AvailabilityCheckResult } from '../../shared/types/api.types';
 import { AvailabilityResult } from '../../shared/types/watch.types';
 
 interface AvailabilityGridProps {
-  // Can accept either detailed API results or simplified watch results
-  availabilityData?: AvailabilityCheckResult;
   watchResults?: AvailabilityResult[];
   arrivalDate: Date | string;
   departureDate: Date | string;
@@ -21,7 +17,6 @@ interface AvailabilityGridProps {
 }
 
 const AvailabilityGrid: React.FC<AvailabilityGridProps> = ({
-  availabilityData,
   watchResults,
   arrivalDate,
   departureDate,
@@ -42,27 +37,14 @@ const AvailabilityGrid: React.FC<AvailabilityGridProps> = ({
     siteName: string;
     siteType: string;
     available: boolean;
+    /** The nightly price. */
     price?: number;
+    /** The price of the nights shown: the nightly price for each of them. */
+    total?: number;
     dateAvailability?: Map<string, { available: boolean; price: number; bookable: boolean }>;
   }[] = [];
 
-  if (availabilityData?.sites) {
-    // Detailed API data with per-date availability
-    availabilityData.sites.forEach((site) => {
-      const dateMap = new Map<string, { available: boolean; price: number; bookable: boolean }>();
-      site.dates?.forEach((d) => {
-        dateMap.set(d.date, { available: d.available, price: d.price, bookable: d.bookable });
-      });
-      sites.push({
-        siteId: site.siteId,
-        siteName: site.siteName,
-        siteType: site.siteType,
-        available: site.dates?.every((d) => d.available) ?? false,
-        price: site.dates?.reduce((sum, d) => sum + d.price, 0),
-        dateAvailability: dateMap,
-      });
-    });
-  } else if (watchResults) {
+  if (watchResults) {
     // Simplified watch results — each entry's `dates` describes the actual available
     // sub-range, which may be narrower than the watch's full range (partial matches).
     watchResults.forEach((result) => {
@@ -95,6 +77,7 @@ const AvailabilityGrid: React.FC<AvailabilityGridProps> = ({
         siteType: result.siteType,
         available: result.available,
         price: result.price,
+        total: [...dateMap.values()].reduce((sum, night) => sum + night.price, 0),
         dateAvailability: dateMap,
       });
     });
@@ -135,6 +118,8 @@ const AvailabilityGrid: React.FC<AvailabilityGridProps> = ({
 
   const availableSites = sites.filter((s) => s.available);
   const unavailableSites = sites.filter((s) => !s.available);
+  const prices = availableSites.map((s) => s.price ?? 0).filter((price) => price > 0);
+  const lowestPrice = prices.length > 0 ? Math.min(...prices) : undefined;
 
   return (
     <div className="space-y-4">
@@ -146,11 +131,11 @@ const AvailabilityGrid: React.FC<AvailabilityGridProps> = ({
           </span>
           <span className="text-gray-500 ml-2">of {sites.length} total</span>
         </div>
-        {availabilityData?.lowestPrice && (
+        {lowestPrice !== undefined && (
           <div className="text-right">
             <span className="text-sm text-gray-500">From</span>
             <span className="ml-2 text-lg font-semibold text-green-600">
-              ${availabilityData.lowestPrice.toFixed(2)}/night
+              ${lowestPrice.toFixed(2)}/night
             </span>
           </div>
         )}
@@ -235,7 +220,7 @@ const AvailabilityGrid: React.FC<AvailabilityGridProps> = ({
                         );
                       })}
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-right font-medium text-green-600">
-                      {site.price ? `$${site.price.toFixed(2)}` : '-'}
+                      {site.total ? `$${site.total.toFixed(2)}` : '-'}
                     </td>
                     {onSiteSelect && (
                       <td className="px-4 py-3 whitespace-nowrap text-center">

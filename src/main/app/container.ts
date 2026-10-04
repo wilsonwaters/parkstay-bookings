@@ -25,7 +25,6 @@ import {
   NotificationRepository,
   ProviderAccountRepository,
   ProviderStateRepository,
-  QueueSessionRepository,
   SettingsRepository,
   SiteSniperRepository,
   SqliteKeyValueStore,
@@ -39,8 +38,6 @@ import { OAuth2Handler } from '../services/gmail/oauth2-handler';
 import { NotificationDispatcher } from '../services/notification/notification-dispatcher';
 import { NotificationService } from '../services/notification/notification.service';
 import { SmtpEmailNotifier } from '../services/notification/notifiers/email-smtp.notifier';
-import { ParkStayService } from '../services/parkstay/parkstay.service';
-import { QueueService } from '../services/queue/queue.service';
 import { SiteSniperService } from '../services/sitesniper/sitesniper.service';
 import { AutoUpdaterService } from '../services/updater/auto-updater.service';
 import { WatchService } from '../services/watch/watch.service';
@@ -48,6 +45,7 @@ import { JobScheduler } from '../scheduler/job-scheduler';
 import { RendererEvents } from '../ipc/events';
 import { TrustedWebContents } from '../ipc/trusted-web-contents';
 import { registerBuiltInProviders } from '../providers';
+import { PARKSTAY_PROVIDER_ID } from '../providers/parkstay';
 import { ProviderRegistry } from '../providers/registry';
 import { createProviderContext, type ProviderContextDeps } from '../providers/sdk';
 import { ElectronSessionHttpClient } from '../providers/sdk/http-electron';
@@ -56,7 +54,6 @@ import { migrateLegacySecrets } from '../security/legacy-migration';
 import { FileLocalKeyStore, SecretVault, type SafeStorageLike } from '../security/secret-vault';
 import { FixtureHttpClient, type FixtureModeOptions } from '../testing';
 import { logger } from '../utils/logger';
-import type { QueueStatusEvent } from '@shared/types';
 import { getEmailLogoPath } from './paths';
 import { createLocalProfile, LocalProfile } from './profile';
 
@@ -68,7 +65,6 @@ export interface AppRepositories {
   readonly notifications: NotificationRepository;
   readonly watches: WatchRepository;
   readonly snipes: SiteSniperRepository;
-  readonly queueSessions: QueueSessionRepository;
   /** Each provider's key-value state (`provider_state`). */
   readonly providerState: ProviderStateRepository;
   readonly providerAccounts: ProviderAccountRepository;
@@ -90,8 +86,6 @@ export interface AppContainer {
   /** The accommodation providers (`providers/index.ts` lists the built-in ones). */
   readonly providers: ProviderRegistry;
   readonly notifierDispatcher: NotificationDispatcher;
-  readonly queueService: QueueService;
-  readonly parkStayService: ParkStayService;
   readonly authService: AuthService;
   readonly bookingService: BookingService;
   readonly notificationService: NotificationService;
@@ -102,8 +96,8 @@ export interface AppContainer {
   readonly scheduler: JobScheduler;
   /**
    * Cuts the renderer off (no webContents is trusted any more, so no invoke reaches a
-   * handler and no event is sent), stops the scheduler, starts disposing the providers,
-   * destroys the queue service and closes the database, all before it returns. The promise
+   * handler and no event is sent), stops the scheduler, starts disposing the providers (and
+   * with them ParkStay's queue gate) and closes the database, all before it returns. The promise
    * resolves once every provider is disposed and its browser closed (each browser gets at
    * most 5 s, then is killed); it never rejects. Safe to call twice.
    */
@@ -160,7 +154,6 @@ export function createContainer({
     notifications: new NotificationRepository(db),
     watches: new WatchRepository(db),
     snipes: new SiteSniperRepository(db),
-    queueSessions: new QueueSessionRepository(providerState),
     providerState,
     providerAccounts: new ProviderAccountRepository(db),
     locations: new LocationRepository(db),
@@ -202,11 +195,6 @@ export function createContainer({
       logoPath: getEmailLogoPath(),
     }),
   ]);
-  const queueService = new QueueService(repositories.queueSessions);
-  const forwardQueueStatus = (event: QueueStatusEvent): void =>
-    rendererEvents.emit('queue:status', event);
-  queueService.on('status', forwardQueueStatus);
-  const parkStayService = new ParkStayService(queueService);
   const authService = new AuthService(repositories.users, vault);
   const bookingService = new BookingService(repositories.bookings);
   const notificationService = new NotificationService(
@@ -214,11 +202,15 @@ export function createContainer({
     notifierDispatcher,
     rendererEvents
   );
-  const watchService = new WatchService(repositories.watches, parkStayService, notificationService);
+  // Watches and snipes run on ParkStay until V4 resolves them through the registry.
+  const watchService = new WatchService(
+    repositories.watches,
+    providers.require(PARKSTAY_PROVIDER_ID, 'watches'),
+    notificationService
+  );
   const siteSniperService = new SiteSniperService(
     repositories.snipes,
-    parkStayService,
-    queueService,
+    providers.require(PARKSTAY_PROVIDER_ID, 'snipes'),
     notificationService
   );
   const gmailService = new GmailOTPService(new OAuth2Handler({ vault, filePath: gmailStorePath }));
@@ -231,10 +223,9 @@ export function createContainer({
     // Nothing from the renderer may reach the database once it closes below.
     trustedWebContents.revokeAll();
     scheduler.stop();
-    // Never rejects; each provider's dispose (and browser close) starts before the database closes.
+    // Never rejects; each provider's dispose (its queue gate, its browser) starts before the
+    // database closes.
     disposed = providers.disposeAll();
-    queueService.off('status', forwardQueueStatus);
-    queueService.destroy();
     closeDatabase(db);
     return disposed;
   };
@@ -249,8 +240,6 @@ export function createContainer({
     profile,
     providers,
     notifierDispatcher,
-    queueService,
-    parkStayService,
     authService,
     bookingService,
     notificationService,

@@ -88,26 +88,3 @@ export interface SnipeExecutionResult {
   error?: string;
   checkedAt: Date;
 }
-
-// Parsed shape returned by ParkStayService.getSiteAvailabilityView
-export interface SiteDayStatus {
-  date: string; // YYYY-MM-DD
-  status: string; // 'open' | 'booked' | 'closed' | 'toofar' | 'tooearly' | 'pastdate' | ...
-}
-
-export interface SiteAvailabilityEntry {
-  siteId: string;
-  siteName?: string;
-  siteClassId?: string;
-  days: SiteDayStatus[];
-  allOpen: boolean; // true iff every night in the requested range === 'open'
-}
-
-export interface SiteAvailabilityView {
-  campgroundId: string;
-  campgroundName?: string;
-  releaseDate?: string;
-  bookingOpenDate?: string;
-  bookingTimeOpen: boolean;
-  sites: SiteAvailabilityEntry[];
-}

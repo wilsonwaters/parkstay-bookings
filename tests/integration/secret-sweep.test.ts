@@ -69,7 +69,7 @@ const READS: Array<[string, unknown]> = [
   ['app:get-info', undefined],
   ['app:get-auto-launch', undefined],
   ['updater:get-status', undefined],
-  ['queue:get-status', undefined],
+  ['providers:access-status', { providerId: 'parkstay' }],
   ['bookings:list', undefined],
   ['bookings:get', { id: 1 }],
   ['watches:list', undefined],

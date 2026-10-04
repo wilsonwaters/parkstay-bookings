@@ -1,10 +1,10 @@
 /**
- * WatchService Unit Tests
+ * WatchService Unit Tests. The provider is a stub with one availability call;
+ * `tests/integration/watch-parkstay.test.ts` runs a watch against the real ParkStay module.
  */
 
-import { WatchService } from '@main/services/watch/watch.service';
+import { WatchService, type WatchProvider } from '@main/services/watch/watch.service';
 import { WatchRepository } from '@main/database/repositories';
-import { ParkStayService } from '@main/services/parkstay/parkstay.service';
 import { NotificationService } from '@main/services/notification/notification.service';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
 import { UserRepository } from '@main/database/repositories/user.repository';
@@ -13,19 +13,45 @@ import { mockUserInput } from '@tests/fixtures/users';
 import { expectAsyncThrow } from '@tests/utils/test-helpers';
 import { WatchResult } from '@shared/types/common.types';
 import { AvailabilityResult } from '@shared/types';
-import { addDays, todayIn } from '@shared/utils/calendar-date';
+import type { LocationAvailability, NightState } from '@shared/types/provider.types';
+import { addDays, eachNight, todayIn } from '@shared/utils/calendar-date';
 
 /** The calendar date `days` days from today in Perth, where ParkStay's dates are. */
 const inDays = (days: number): string => addDays(todayIn('Australia/Perth'), days);
 
+/**
+ * The provider's answer for a stay: each unit's night states, in order, at `price` a night.
+ * A unit is fully available when every night is.
+ */
+function availability(
+  stay: { arrival: string; departure: string },
+  units: Record<string, NightState[]>,
+  price = 35
+): LocationAvailability {
+  const dates = eachNight(stay.arrival, stay.departure);
+  return {
+    key: 'parkstay:CG001',
+    checkedAt: new Date().toISOString(),
+    release: { open: true },
+    units: Object.entries(units).map(([unitId, states]) => ({
+      unitId,
+      unitName: `Site ${unitId}`,
+      nights: dates.map((date, i) => ({ date, state: states[i], price })),
+      fullyAvailable: states.every((state) => state === 'available'),
+    })),
+  };
+}
+
+const FREE: NightState[] = ['available', 'available', 'available', 'available'];
+const BOOKED: NightState[] = ['booked', 'booked', 'booked', 'booked'];
+
 // Mock the services
-jest.mock('@main/services/parkstay/parkstay.service');
 jest.mock('@main/services/notification/notification.service');
 
 describe('WatchService', () => {
   let dbHelper: TestDatabaseHelper;
   let watchService: WatchService;
-  let parkStayService: jest.Mocked<ParkStayService>;
+  let check: jest.Mock;
   let notificationService: jest.Mocked<NotificationService>;
   let testUserId: number;
 
@@ -38,13 +64,13 @@ describe('WatchService', () => {
     const user = userRepo.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag');
     testUserId = user.id;
 
-    // Create mocked services
-    parkStayService = new ParkStayService(null as any) as jest.Mocked<ParkStayService>;
+    // A stub provider and a mocked notification service
+    check = jest.fn();
     notificationService = new NotificationService(null as any) as jest.Mocked<NotificationService>;
 
     watchService = new WatchService(
       new WatchRepository(dbHelper.getDb()),
-      parkStayService,
+      { availability: { check } } as unknown as WatchProvider,
       notificationService
     );
   });
@@ -116,24 +142,11 @@ describe('WatchService', () => {
   });
 
   describe('execute', () => {
-    it('should execute watch and find availability', async () => {
+    it('should execute watch and find availability, with the real nightly price', async () => {
       const input = createMockWatchInput();
       const watch = await watchService.create(testUserId, input);
-
-      // Mock availability response with matches (siteType must match the watch fixture)
-      parkStayService.checkAvailability = jest.fn().mockResolvedValue({
-        available: true,
-        sites: [
-          {
-            siteId: 'SITE001',
-            siteName: 'Site 1',
-            siteType: 'Unpowered',
-            dates: [{ date: '2024-06-01', available: true, bookable: true, price: 35.0 }],
-          },
-        ],
-        totalAvailable: 1,
-        lowestPrice: 35.0,
-      });
+      // The fixture watch wants sites "Site 1"–"Site 3" for 4 nights, at most $50 a night.
+      check.mockResolvedValue(availability(watch.stay, { '1': FREE, '9': FREE }));
 
       notificationService.notifyWatchFound = jest.fn();
 
@@ -141,28 +154,50 @@ describe('WatchService', () => {
 
       expect(result.success).toBe(true);
       expect(result.found).toBe(true);
-      expect(result.availability).toBeDefined();
-      expect(result.availability!.length).toBeGreaterThan(0);
-      expect(notificationService.notifyWatchFound).toHaveBeenCalled();
+      expect(result.availability).toEqual([
+        {
+          siteId: '1',
+          siteName: 'Site 1',
+          siteType: 'Unpowered',
+          available: true,
+          price: 35,
+          dates: { arrival: watch.stay.arrival, departure: watch.stay.departure },
+        },
+      ]);
+      expect(notificationService.notifyWatchFound).toHaveBeenCalledWith(watch, result.availability);
     });
 
     it('should execute watch and handle no availability', async () => {
       const input = createMockWatchInput();
       const watch = await watchService.create(testUserId, input);
-
-      // Mock no availability
-      parkStayService.checkAvailability = jest.fn().mockResolvedValue({
-        available: false,
-        sites: [],
-        totalAvailable: 0,
-        lowestPrice: undefined,
-      });
+      check.mockResolvedValue(availability(watch.stay, { '1': BOOKED }));
 
       const result = await watchService.execute(watch.id);
 
       expect(result.success).toBe(true);
       expect(result.found).toBe(false);
       expect(notificationService.notifyWatchFound).not.toHaveBeenCalled();
+    });
+
+    it('leaves out sites over the price limit, night by night', async () => {
+      const watch = await watchService.create(testUserId, createMockWatchInput({ maxPrice: 30 }));
+      check.mockResolvedValue(availability(watch.stay, { '1': FREE }, 35));
+      expect((await watchService.execute(watch.id)).found).toBe(false);
+
+      check.mockResolvedValue(availability(watch.stay, { '1': FREE }, 30));
+      expect((await watchService.execute(watch.id)).found).toBe(true);
+    });
+
+    it('keeps only the units the watch names, by id or name', async () => {
+      const watch = await watchService.create(
+        testUserId,
+        createMockWatchInput({ unitIds: ['B', 'Site C'] })
+      );
+      check.mockResolvedValue(availability(watch.stay, { A: FREE, B: FREE, C: FREE }));
+
+      const result = await watchService.execute(watch.id);
+
+      expect(result.availability!.map((r) => r.siteId)).toEqual(['B', 'C']);
     });
 
     it('should deactivate watch if arrival date has passed', async () => {
@@ -185,12 +220,20 @@ describe('WatchService', () => {
       const updatedWatch = await watchService.get(watch.id);
       expect(updatedWatch?.isActive).toBe(false);
     });
+
+    it('records an error when the provider fails', async () => {
+      const watch = await watchService.create(testUserId, createMockWatchInput());
+      check.mockRejectedValue(new Error('HTTP 500'));
+
+      const result = await watchService.execute(watch.id);
+
+      expect(result.success).toBe(false);
+      expect((await watchService.get(watch.id))?.lastResult).toBe(WatchResult.ERROR);
+    });
   });
 
   describe('execute on the provider-aware watch', () => {
-    const noAvailability = { available: false, sites: [], totalAvailable: 0 };
-
-    it('maps the location, calendar dates, party and gear type onto the ParkStay call', async () => {
+    it('asks the provider for the location, calendar dates, party and stay fields', async () => {
       const watch = await watchService.create(
         testUserId,
         createMockWatchInput({
@@ -199,16 +242,18 @@ describe('WatchService', () => {
           stayParams: { parkId: '42', gearType: 'tent' },
         })
       );
-      parkStayService.checkAvailability = jest.fn().mockResolvedValue(noAvailability);
+      check.mockResolvedValue(availability(watch.stay, {}));
 
       await watchService.execute(watch.id);
 
-      expect(parkStayService.checkAvailability).toHaveBeenCalledWith('88', {
-        campgroundId: '88',
-        arrivalDate: inDays(20),
-        departureDate: inDays(23),
-        numGuests: 3,
-        siteType: 'tent',
+      expect(check).toHaveBeenCalledWith('88', {
+        arrival: inDays(20),
+        departure: inDays(23),
+        adults: 2,
+        children: 1,
+        infants: 0,
+        concessions: 0,
+        params: { parkId: '42', gearType: 'tent' },
       });
     });
 
@@ -218,51 +263,30 @@ describe('WatchService', () => {
         .getDb()
         .prepare("UPDATE watches SET arrival_date = 'garbage' WHERE id = ?")
         .run(watch.id);
-      parkStayService.checkAvailability = jest.fn();
 
       const result = await watchService.execute(watch.id);
 
       expect(result.success).toBe(false);
       expect(result.error?.message).toMatch(/not calendar dates/);
-      expect(parkStayService.checkAvailability).not.toHaveBeenCalled();
+      expect(check).not.toHaveBeenCalled();
       expect((await watchService.get(watch.id))?.lastResult).toBe(WatchResult.ERROR);
     });
   });
 
   describe('partial match', () => {
-    const noAvailability = {
-      available: false,
-      sites: [],
-      totalAvailable: 0,
-      lowestPrice: undefined,
-    };
-    const siteAvailable = (siteId = 'SITE001') => ({
-      available: true,
-      sites: [
-        {
-          siteId,
-          siteName: 'Site 1',
-          siteType: 'Unpowered',
-          dates: [{ date: '', available: true, bookable: true, price: 35.0 }],
-        },
-      ],
-      totalAvailable: 1,
-      lowestPrice: 35.0,
-    });
-
-    it('should not check partial availability when allowPartialMatch is false', async () => {
+    it('should not report partial availability when allowPartialMatch is false', async () => {
       const input = createMockWatchInput({ allowPartialMatch: false });
       const watch = await watchService.create(testUserId, input);
-
-      parkStayService.checkAvailability = jest.fn().mockResolvedValue(noAvailability);
+      check.mockResolvedValue(
+        availability(watch.stay, { '1': ['available', 'booked', 'available', 'available'] })
+      );
       notificationService.notifyWatchPartialFound = jest.fn();
 
       const result = await watchService.execute(watch.id);
 
       expect(result.success).toBe(true);
       expect(result.found).toBe(false);
-      // Only one call for the full range; no per-night calls
-      expect(parkStayService.checkAvailability).toHaveBeenCalledTimes(1);
+      expect(check).toHaveBeenCalledTimes(1);
       expect(notificationService.notifyWatchPartialFound).not.toHaveBeenCalled();
     });
 
@@ -272,9 +296,7 @@ describe('WatchService', () => {
         allowPartialMatch: true,
       });
       const watch = await watchService.create(testUserId, input);
-
-      // All calls return nothing
-      parkStayService.checkAvailability = jest.fn().mockResolvedValue(noAvailability);
+      check.mockResolvedValue(availability(watch.stay, { '1': ['booked', 'booked'] }));
       notificationService.notifyWatchPartialFound = jest.fn();
 
       const result = await watchService.execute(watch.id);
@@ -287,69 +309,50 @@ describe('WatchService', () => {
       expect(updatedWatch?.lastResult).toBe(WatchResult.NOT_FOUND);
     });
 
-    it('should call notifyWatchPartialFound and set PARTIAL_FOUND when a consecutive block is found', async () => {
+    it('finds consecutive blocks of nights in the one availability call and sets PARTIAL_FOUND', async () => {
       const input = createMockWatchInput({
-        stay: { arrival: inDays(30), departure: inDays(32), adults: 2 }, // 2 nights
+        stay: { arrival: inDays(30), departure: inDays(34), adults: 2 }, // 4 nights
         allowPartialMatch: true,
         notifyOnly: false,
       });
       const watch = await watchService.create(testUserId, input);
-
-      // Full range: not found; night 1: available; night 2: not available
-      parkStayService.checkAvailability = jest
-        .fn()
-        .mockResolvedValueOnce(noAvailability) // full range
-        .mockResolvedValueOnce(siteAvailable()) // night 1
-        .mockResolvedValueOnce(noAvailability); // night 2
-
+      check.mockResolvedValue(
+        availability(watch.stay, {
+          '1': ['available', 'booked', 'available', 'available'],
+          '2': BOOKED,
+        })
+      );
       notificationService.notifyWatchPartialFound = jest.fn();
 
       const result = await watchService.execute(watch.id);
 
       expect(result.success).toBe(true);
       expect(result.found).toBe(true);
+      // One request, not one per night.
+      expect(check).toHaveBeenCalledTimes(1);
       expect(notificationService.notifyWatchPartialFound).toHaveBeenCalledTimes(1);
 
       const partialArg = (notificationService.notifyWatchPartialFound as jest.Mock).mock
         .calls[0][1] as AvailabilityResult[];
-      expect(partialArg.length).toBeGreaterThan(0);
-      expect(partialArg[0].partial).toBe(true);
-      // Night 1 only: the block is a calendar-date stay of one night
-      expect(partialArg[0].dates).toEqual({ arrival: inDays(30), departure: inDays(31) });
-      expect(parkStayService.checkAvailability).toHaveBeenNthCalledWith(
-        2,
-        'CG001',
-        expect.objectContaining({ arrivalDate: inDays(30), departureDate: inDays(31) })
-      );
-      expect(parkStayService.checkAvailability).toHaveBeenNthCalledWith(
-        3,
-        'CG001',
-        expect.objectContaining({ arrivalDate: inDays(31), departureDate: inDays(32) })
-      );
+      expect(partialArg.map((r) => [r.siteId, r.dates, r.price, r.partial])).toEqual([
+        ['1', { arrival: inDays(30), departure: inDays(31) }, 35, true],
+        ['1', { arrival: inDays(32), departure: inDays(34) }, 35, true],
+      ]);
 
       const updatedWatch = await watchService.get(watch.id);
       expect(updatedWatch?.lastResult).toBe(WatchResult.PARTIAL_FOUND);
       expect(updatedWatch?.lastAvailability?.[0].dates).toEqual(partialArg[0].dates);
     });
 
-    it('should use full match path and not call checkPartialAvailability when full match is found', async () => {
+    it('should use the full match and not report partial blocks when a full match is found', async () => {
       const input = createMockWatchInput({ allowPartialMatch: true });
       const watch = await watchService.create(testUserId, input);
-
-      // Full range returns a match
-      parkStayService.checkAvailability = jest.fn().mockResolvedValue({
-        available: true,
-        sites: [
-          {
-            siteId: 'SITE001',
-            siteName: 'Site 1',
-            siteType: 'Unpowered',
-            dates: [{ date: '2024-06-01', available: true, bookable: true, price: 35.0 }],
-          },
-        ],
-        totalAvailable: 1,
-        lowestPrice: 35.0,
-      });
+      check.mockResolvedValue(
+        availability(watch.stay, {
+          '1': FREE,
+          '2': ['available', 'booked', 'available', 'available'],
+        })
+      );
 
       notificationService.notifyWatchFound = jest.fn();
       notificationService.notifyWatchPartialFound = jest.fn();
@@ -358,8 +361,7 @@ describe('WatchService', () => {
 
       expect(result.success).toBe(true);
       expect(result.found).toBe(true);
-      // Only one API call for the full range
-      expect(parkStayService.checkAvailability).toHaveBeenCalledTimes(1);
+      expect(check).toHaveBeenCalledTimes(1);
       expect(notificationService.notifyWatchFound).toHaveBeenCalledTimes(1);
       expect(notificationService.notifyWatchPartialFound).not.toHaveBeenCalled();
 

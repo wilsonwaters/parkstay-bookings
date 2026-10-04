@@ -37,12 +37,15 @@ import {
   NotificationRepository,
   ProviderAccountRepository,
   ProviderStateRepository,
-  QueueSessionRepository,
   SiteSniperRepository,
   UserRepository,
   WatchRepository,
 } from '@main/database/repositories';
 import { createLocalProfile } from '@main/app/profile';
+import {
+  QUEUE_SESSION_KEY,
+  type StoredQueueSession,
+} from '@main/providers/parkstay/queue/access-gate';
 import { decryptLegacyNotifierConfig } from '@main/security/legacy-decryptors';
 import { LocationSummary } from '@shared/types';
 import { isCalendarDate } from '@shared/utils/calendar-date';
@@ -612,18 +615,18 @@ describe.each<FixtureName>(['v5-release-1.2.0', 'v6-branch'])(
         sessionKey: 'FIXTURESESSIONKEY00000000000000000000000000000000000',
       });
 
-      // P2's QueueSessionRepository, repointed, reads the fixture session back
-      const session = new QueueSessionRepository(new ProviderStateRepository(db)).get();
-      expect(session).toMatchObject({
+      // The shape the ParkStay access gate reads back (`StoredQueueSession`)
+      const session = queueSession(db);
+      expect(session?.value).toEqual({
         sessionKey: 'FIXTURESESSIONKEY00000000000000000000000000000000000',
         status: 'Active',
         position: 0,
         estimatedWaitSeconds: 0,
         expirySeconds: 600,
-      });
-      expect(session?.expiresAt.toISOString()).toBe('2025-11-06T04:10:00.000Z');
-      expect(session?.createdAt.toISOString()).toBe('2025-11-06T04:00:00.000Z');
-      expect(session?.lastCheckedAt.toISOString()).toBe('2025-11-06T04:00:00.000Z');
+        expiresAt: '2025-11-06T04:10:00.000Z',
+        createdAt: '2025-11-06T04:00:00.000Z',
+      } satisfies StoredQueueSession);
+      expect(session?.updatedAt.toISOString()).toBe('2025-11-06T04:00:00.000Z');
     });
 
     it('labels notifications about a watch, snipe or booking ParkStay, and no others', () => {
@@ -709,6 +712,14 @@ describe.each<FixtureName>(['v5-release-1.2.0', 'v6-branch'])(
     });
   }
 );
+
+/** The DBCA queue session as migration v8 stores it for the ParkStay access gate. */
+function queueSession(db: Database.Database) {
+  return new ProviderStateRepository(db).getEntry<StoredQueueSession>(
+    'parkstay',
+    QUEUE_SESSION_KEY
+  );
+}
 
 describe('migration v8 of the v6 fixture snipes', () => {
   let db: Database.Database;
@@ -836,10 +847,7 @@ describe('migration v8 of a fresh v7 database', () => {
     expect(
       db.prepare('SELECT provider_id, display_name, email FROM provider_accounts').all()
     ).toEqual([{ provider_id: 'parkstay', display_name: null, email: null }]);
-    expect(new QueueSessionRepository(new ProviderStateRepository(db)).get()).toMatchObject({
-      sessionKey: 'V7SESSION',
-      position: 12,
-    });
+    expect(queueSession(db)?.value).toMatchObject({ sessionKey: 'V7SESSION', position: 12 });
   });
 });
 
@@ -1263,7 +1271,7 @@ describe('migration v8 edge cases', () => {
     const expired = loadFixture('v5-release-1.2.0');
     try {
       runMigrations(expired);
-      expect(new QueueSessionRepository(new ProviderStateRepository(expired)).get()).toMatchObject({
+      expect(queueSession(expired)?.value).toMatchObject({
         sessionKey: 'FIXTURESESSIONKEY00000000000000000000000000000000000',
       });
     } finally {

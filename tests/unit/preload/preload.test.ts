@@ -130,11 +130,7 @@ describe('preload window.api', () => {
     await api.notifiers.test(NotifierChannel.EMAIL_SMTP);
     await api.settings.set('launchOnStartup', true);
     await api.gmail.setCredentials({ clientId: 'client-id', clientSecret: 'client-secret' });
-    await api.parkstay.checkAvailability('34', {
-      arrivalDate: '2026/12/01',
-      departureDate: '2026/12/03',
-      numGuests: 2,
-    });
+    await api.parkstay.searchCampgrounds('karri');
 
     expect(ipcRenderer.invoke.mock.calls).toEqual([
       ['watches:list', undefined],
@@ -151,13 +147,7 @@ describe('preload window.api', () => {
       ['notifiers:test', { channel: 'email_smtp' }],
       ['settings:set', { key: 'launchOnStartup', value: true }],
       ['gmail:set-credentials', { clientId: 'client-id', clientSecret: 'client-secret' }],
-      [
-        'parkstay:check-availability',
-        {
-          campgroundId: '34',
-          params: { arrivalDate: '2026/12/01', departureDate: '2026/12/03', numGuests: 2 },
-        },
-      ],
+      ['parkstay:search-campgrounds', { query: 'karri' }],
     ]);
     expect(JSON.stringify(ipcRenderer.invoke.mock.calls)).not.toContain('userId');
   });
@@ -170,17 +160,17 @@ describe('preload window.api', () => {
     it('two subscribers to one event: unsubscribing one leaves the other receiving', () => {
       const first = jest.fn();
       const second = jest.fn();
-      const unsubscribeFirst = api.events.on('queue:status', first);
-      api.events.on('queue:status', second);
+      const unsubscribeFirst = api.events.on('provider:access-status', first);
+      api.events.on('provider:access-status', second);
 
-      receive('queue:status', { type: 'status_changed' });
+      receive('provider:access-status', { providerId: 'parkstay', state: 'waiting' });
       unsubscribeFirst();
-      receive('queue:status', { type: 'session_active' });
+      receive('provider:access-status', { providerId: 'parkstay', state: 'active' });
 
-      expect(first.mock.calls).toEqual([[{ type: 'status_changed' }]]);
+      expect(first.mock.calls).toEqual([[{ providerId: 'parkstay', state: 'waiting' }]]);
       expect(second.mock.calls).toEqual([
-        [{ type: 'status_changed' }],
-        [{ type: 'session_active' }],
+        [{ providerId: 'parkstay', state: 'waiting' }],
+        [{ providerId: 'parkstay', state: 'active' }],
       ]);
     });
 
@@ -214,9 +204,9 @@ describe('preload window.api', () => {
         transferred: 1,
         total: 2,
       });
-      expect(() => api.events.on('watches:list' as unknown as 'queue:status', jest.fn())).toThrow(
-        'Unknown event: watches:list'
-      );
+      expect(() =>
+        api.events.on('watches:list' as unknown as 'provider:access-status', jest.fn())
+      ).toThrow('Unknown event: watches:list');
       expect(ipcRenderer.listenerCount('watches:list')).toBe(0);
     });
   });

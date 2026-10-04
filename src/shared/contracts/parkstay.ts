@@ -1,23 +1,18 @@
 /**
- * `parkstay`: transitional direct ParkStay access, ported as it was. V3 moves ParkStay
- * behind the provider registry and the `catalog` namespace.
+ * `parkstay`: transitional. The legacy watch and snipe forms pick a campground from this list,
+ * which main serves from the ParkStay provider's catalogue (campgrounds only, never parks or
+ * promo areas). V5 moves the forms to `catalog.search` and retires the namespace.
  */
 
 import { z } from 'zod';
-import type { AvailabilityCheckResult, CampgroundSearchResult } from '../types/api.types';
+import type { CampgroundSearchResult } from '../types/api.types';
 import { CHANNELS } from './channels';
 import type { Namespace } from './define';
-
-export interface AvailabilityParams {
-  arrivalDate: string;
-  departureDate: string;
-  numGuests: number;
-  siteType?: string;
-}
 
 const C = CHANNELS.parkstay;
 
 export const parkstay = {
+  /** Campgrounds whose name contains `query` (two characters or more; otherwise every one). */
   searchCampgrounds: {
     channel: C.searchCampgrounds,
     request: z.object({ query: z.string() }),
@@ -29,19 +24,5 @@ export const parkstay = {
     request: z.void(),
     args: {} as [],
     response: {} as CampgroundSearchResult[],
-  },
-  checkAvailability: {
-    channel: C.checkAvailability,
-    request: z.object({
-      campgroundId: z.string().min(1),
-      params: z.object({
-        arrivalDate: z.string(),
-        departureDate: z.string(),
-        numGuests: z.number().int().positive(),
-        siteType: z.string().optional(),
-      }),
-    }),
-    args: {} as [campgroundId: string, params: AvailabilityParams],
-    response: {} as AvailabilityCheckResult,
   },
 } satisfies Namespace;

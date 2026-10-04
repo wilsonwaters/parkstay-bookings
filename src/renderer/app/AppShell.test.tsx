@@ -1,5 +1,5 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
-import { activeQueue, createMockApi, fail, ok } from '@tests/utils/renderer/createMockApi';
+import { activeAccess, createMockApi, fail, ok } from '@tests/utils/renderer/createMockApi';
 import { currentRoute, getBanners, renderWithApp } from '@tests/utils/renderer/renderWithApp';
 import { NotificationType } from '../../shared/types';
 
@@ -349,8 +349,10 @@ describe('App shell', () => {
   describe('tray', () => {
     it('stacks a toast, the update card and queue status in that order in one container', async () => {
       const mock = createMockApi({
-        providers: { list: jest.fn().mockResolvedValue(fail('Registry offline', 'NOT_FOUND')) },
-        queue: { getStatus: jest.fn().mockResolvedValue(ok(activeQueue())) },
+        providers: {
+          list: jest.fn().mockResolvedValue(fail('Registry offline', 'NOT_FOUND')),
+          accessStatus: jest.fn().mockResolvedValue(ok(activeAccess())),
+        },
       });
       renderWithApp({ api: mock });
       const toast = await screen.findByRole('alert');

@@ -102,16 +102,23 @@ describe('providers / catalog / accounts over IPC', () => {
       expect(session.fromPartition).toHaveBeenCalledWith('persist:provider-parkstay');
     });
 
-    it("providers.accessStatus('parkstay') is unsupported (no gate)", async () => {
+    it("providers.accessStatus('parkstay') is idle while no snipe uses the DBCA queue", async () => {
       const response = await call<AccessStatus>('providers:access-status', {
         providerId: 'parkstay',
       });
 
       expect(response).toMatchObject({
         success: true,
-        data: { providerId: 'parkstay', state: 'unsupported' },
+        data: { providerId: 'parkstay', state: 'idle' },
       });
       expect(Number.isNaN(Date.parse(response.data!.updatedAt))).toBe(false);
+      // Position, ETA, expiry and state only: never the queue session key.
+      expect(Object.keys(response.data!).sort()).toEqual(['providerId', 'state', 'updatedAt']);
+    });
+
+    it('the transitional queue namespace is gone', async () => {
+      expect(ipc.registrations.filter((c) => c.startsWith('queue:'))).toEqual([]);
+      expect(ipc.registrations).not.toContain('parkstay:check-availability');
     });
 
     it("providers.accessStatus('nope') fails with UNKNOWN_PROVIDER", async () => {

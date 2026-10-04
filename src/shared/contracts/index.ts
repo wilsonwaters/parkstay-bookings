@@ -21,7 +21,6 @@ import { notifications } from './notifications';
 import { notifiers } from './notifiers';
 import { parkstay } from './parkstay';
 import { providers } from './providers';
-import { queue } from './queue';
 import { settings } from './settings';
 import { snipes } from './snipes';
 import { updater } from './updater';
@@ -42,7 +41,6 @@ export const contract = {
   accounts,
   auth,
   parkstay,
-  queue,
 } as const;
 
 export type Contract = typeof contract;
@@ -75,8 +73,6 @@ export type {
 export type { EventPayload, EventPayloads, EventsApi, EventSink, UpdateProgress } from './events';
 export type { AppInfo } from './app';
 export type { UpdateStatus } from './updater';
-export type { QueueStatusSnapshot } from './queue';
-export type { AvailabilityParams } from './parkstay';
 export type { CatalogAvailabilityOptions } from './catalog';
 export { SETTING_KEYS } from './settings';
 export type { SettingDefinition, SettingKey, SettingValue } from './settings';

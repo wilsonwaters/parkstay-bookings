@@ -153,14 +153,6 @@ const api: WindowApi = {
   parkstay: bind('parkstay', {
     searchCampgrounds: (query) => ({ query }),
     getAllCampgrounds: none,
-    checkAvailability: (campgroundId, params) => ({ campgroundId, params }),
-  }),
-
-  queue: bind('queue', {
-    check: none,
-    wait: none,
-    getStatus: none,
-    clear: none,
   }),
 
   events: {

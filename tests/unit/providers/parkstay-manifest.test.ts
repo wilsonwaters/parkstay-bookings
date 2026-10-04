@@ -1,6 +1,6 @@
 /**
- * The manifest-only ParkStay entry: a valid manifest with every capability off, the
- * campground link, and an AA brand colour for the white monogram.
+ * The ParkStay manifest: identity, the capabilities V3's modules back, the stay fields and
+ * release modes, and an AA brand colour for the white monogram.
  */
 
 import { parkstayFactory, parkstayManifest } from '@main/providers/parkstay';
@@ -9,7 +9,7 @@ import { ProviderManifestSchema } from '@shared/types/provider.types';
 import { contrastRatio } from '../../../src/renderer/styles/contrast';
 import { createTestProviderContext } from '@tests/utils/fake-provider';
 
-describe('ParkStay provider (manifest only)', () => {
+describe('ParkStay provider manifest', () => {
   it('has a valid manifest with the agreed identity', () => {
     expect(ProviderManifestSchema.safeParse(parkstayManifest).success).toBe(true);
     expect(parkstayManifest).toMatchObject({
@@ -35,31 +35,87 @@ describe('ParkStay provider (manifest only)', () => {
     });
   });
 
-  it('turns every capability off, needs no account, and has a full catalogue mode', () => {
-    const { account, catalogMode, ...flags } = parkstayManifest.capabilities;
-    expect(account).toBe('none');
-    expect(catalogMode).toBe('full');
-    expect(Object.values(flags)).toHaveLength(8);
-    expect(Object.values(flags).every((on) => on === false)).toBe(true);
+  it('offers catalogue, availability, bulk availability, watches, snipes, holds and the queue gate; no booking import; no account yet', () => {
+    expect(parkstayManifest.capabilities).toEqual({
+      catalog: true,
+      catalogMode: 'full',
+      availability: true,
+      bulkAvailability: true,
+      watches: true,
+      snipes: true,
+      holds: true,
+      bookingImport: false,
+      accessGate: true,
+      account: 'none',
+    });
+  });
+
+  it('describes its stay fields: gear type, vehicles and postcode', () => {
+    expect(parkstayManifest.stayFields).toEqual([
+      expect.objectContaining({
+        key: 'gearType',
+        type: 'select',
+        default: 'all',
+        options: [
+          { value: 'all', label: 'Any' },
+          { value: 'tent', label: 'Tent' },
+          { value: 'campervan', label: 'Campervan' },
+          { value: 'caravan', label: 'Caravan' },
+        ],
+        appliesTo: ['watch', 'snipe'],
+      }),
+      expect.objectContaining({
+        key: 'numVehicles',
+        type: 'number',
+        min: 0,
+        max: 5,
+        default: 1,
+        appliesTo: ['snipe', 'hold'],
+      }),
+      expect.objectContaining({
+        key: 'postcode',
+        type: 'text',
+        pattern: '^\\d{4}$',
+        appliesTo: ['snipe', 'hold'],
+      }),
+    ]);
+    expect(new RegExp(parkstayManifest.stayFields![2].pattern!).test('6000')).toBe(true);
+    expect(new RegExp(parkstayManifest.stayFields![2].pattern!).test('600')).toBe(false);
+  });
+
+  it('describes daily rollover, scheduled and cancellation releases; only cancellation skips the queue', () => {
+    expect(parkstayManifest.releaseModes?.map((m) => [m.id, m.usesAccessGate])).toEqual([
+      ['daily_rollover', true],
+      ['scheduled', true],
+      ['cancellation', false],
+    ]);
   });
 
   it('uses a brand colour a white monogram passes WCAG AA on', () => {
     expect(contrastRatio(parkstayManifest.brand.color, '#FFFFFF')).toBeGreaterThanOrEqual(4.5);
   });
 
-  it('registers with only links and links each campground to its search page', () => {
+  it('registers with every module its capabilities need, and links each campground to its search page', () => {
     const registry = new ProviderRegistry();
     const provider = registry.register(parkstayFactory, createTestProviderContext);
 
     expect(provider.links.location('20')).toBe(
       'https://parkstay.dbca.wa.gov.au/search-availability/campground/?site_id=20'
     );
-    expect(provider.links.location('a&b')).toBe(
-      'https://parkstay.dbca.wa.gov.au/search-availability/campground/?site_id=a%26b'
-    );
-    expect(provider.links.booking('20')).toBeNull();
-    expect(Object.keys(provider).sort()).toEqual(['links', 'manifest']);
+    expect(Object.keys(provider).sort()).toEqual([
+      'access',
+      'availability',
+      'catalog',
+      'dispose',
+      'holds',
+      'links',
+      'manifest',
+      'release',
+    ]);
     expect(provider.manifest).toEqual(parkstayManifest);
     expect(Object.isFrozen(provider.manifest.capabilities)).toBe(true);
+    // No request is made until something asks.
+    expect(provider.access!.status().state).toBe('idle');
+    provider.access!.dispose();
   });
 });

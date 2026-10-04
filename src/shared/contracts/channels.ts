@@ -102,18 +102,11 @@ export const CHANNELS = {
     signOut: 'accounts:sign-out',
     openSignInLink: 'accounts:open-sign-in-link',
   },
-  // Transitional: V3 moves ParkStay behind the provider registry and the catalog namespace.
+  // Transitional: the legacy watch and snipe forms' campground pickers, served from the ParkStay
+  // provider's catalogue. V5 moves the forms to `catalog.search` and retires it.
   parkstay: {
     searchCampgrounds: 'parkstay:search-campgrounds',
     getAllCampgrounds: 'parkstay:get-all-campgrounds',
-    checkAvailability: 'parkstay:check-availability',
-  },
-  // Transitional: V3 replaces it with the provider access gate.
-  queue: {
-    check: 'queue:check',
-    wait: 'queue:wait',
-    getStatus: 'queue:get-status',
-    clear: 'queue:clear',
   },
 } as const;
 
@@ -136,8 +129,6 @@ export const EVENT_NAMES = [
   'provider:access-status',
   'catalog:updated',
   'account:updated',
-  // Transitional: V3 replaces it with `provider:access-status`.
-  'queue:status',
 ] as const;
 
 export type EventName = (typeof EVENT_NAMES)[number];

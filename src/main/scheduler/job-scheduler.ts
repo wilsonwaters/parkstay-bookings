@@ -24,6 +24,8 @@ interface SnipeTimers {
   pollInterval?: NodeJS.Timeout; // tight-poll cadence during the snipe window
   stopTimer?: NodeJS.Timeout; // fires at (releaseAt + windowDuration) to give up
   rearmTimer?: NodeJS.Timeout; // long-timer-safe re-arm for far-future releases
+  accessWait?: AbortController; // cancels a warm-up waiting in the provider's queue
+  releaseAccess?: () => void; // this snipe's hold on the queue keep-alive, released once
 }
 
 // setTimeout is only reliable up to ~24.8 days (2^31-1 ms). For anything further
@@ -232,15 +234,28 @@ export class JobScheduler {
       return;
     }
 
-    if (snipe.accessGateEnabled) {
+    const gate = snipe.accessGateEnabled ? this.siteSniperService.getAccessGate() : undefined;
+    if (gate) {
       this.siteSniperService.setStatus(snipe.id, SnipeStatus.QUEUEING);
-      const queue = this.siteSniperService.getQueueService();
+      const wait = new AbortController();
+      timers.accessWait = wait;
       try {
-        await queue.waitForActive();
-        // Legitimate session refresh only — see QueueService.startKeepAlive.
-        queue.startKeepAlive();
+        // Waiting in the queue is pointless once the snipe window has closed.
+        const maxWaitMs = Math.max(releaseAt.getTime() + snipe.windowDurationMs - Date.now(), 0);
+        await gate.ensure({ signal: wait.signal, maxWaitMs });
+        // Keeps the queue session fresh (the ParkStay page's own refresh, nothing more) until
+        // this snipe stops; the gate keeps refreshing while any snipe holds it.
+        timers.releaseAccess ??= gate.holdOpen();
       } catch (error) {
+        if (wait.signal.aborted) return; // unscheduled while waiting
         log.error(`Snipe ${snipe.id} queue warm-up failed:`, error);
+      } finally {
+        timers.accessWait = undefined;
+      }
+      if (this.snipeTimers.get(key) !== timers) {
+        // Unscheduled while waiting: let go of the queue.
+        timers.releaseAccess?.();
+        return;
       }
     }
 
@@ -287,19 +302,14 @@ export class JobScheduler {
       const current = await this.siteSniperService.get(snipe.id);
       const done =
         result.held || result.result === SnipeResult.BOOKED || !current || !current.isActive;
-      if (done) {
-        if (snipe.accessGateEnabled) {
-          this.siteSniperService.getQueueService().stopKeepAlive();
-        }
-        this.unscheduleSnipe(snipe.id);
-      }
+      if (done) this.unscheduleSnipe(snipe.id);
     } catch (error) {
       log.error(`Error executing snipe ${snipe.id}:`, error);
     }
   }
 
   /**
-   * Window expired without a hold: mark expired, deactivate, stop keepalive.
+   * Window expired without a hold: mark expired, deactivate, and let go of the queue.
    */
   private async stopSnipeWindow(snipe: SiteSnipe): Promise<void> {
     const current = await this.siteSniperService.get(snipe.id);
@@ -311,9 +321,6 @@ export class JobScheduler {
     ) {
       this.siteSniperService.setStatus(snipe.id, SnipeStatus.EXPIRED);
       await this.siteSniperService.deactivate(snipe.id);
-    }
-    if (snipe.accessGateEnabled) {
-      this.siteSniperService.getQueueService().stopKeepAlive();
     }
     this.unscheduleSnipe(snipe.id);
   }
@@ -328,6 +335,9 @@ export class JobScheduler {
     if (timers.stopTimer) clearTimeout(timers.stopTimer);
     if (timers.rearmTimer) clearTimeout(timers.rearmTimer);
     if (timers.pollInterval) clearInterval(timers.pollInterval);
+    timers.accessWait?.abort();
+    timers.releaseAccess?.();
+    timers.releaseAccess = undefined;
   }
 
   /**

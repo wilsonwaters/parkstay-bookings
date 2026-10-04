@@ -3,19 +3,20 @@ import {
   SiteSnipeInput,
   SiteSnipeUpdate,
   SnipeExecutionResult,
-  SiteAvailabilityEntry,
   Stay,
   StayParams,
+  type LocationAvailability,
+  type StayInput,
+  type UnitAvailability,
 } from '@shared/types';
 import { SnipeResult, SnipeReleaseMode, SnipeStatus } from '@shared/types/common.types';
-import { PARKSTAY_BASE_URL, BOOKING_HOLD_MINUTES } from '@shared/constants';
+import { toStayQuery } from '@shared/types/stay.types';
 import { compareDates, isCalendarDate } from '@shared/utils/calendar-date';
 import { SiteSniperRepository } from '../../database/repositories';
 import { PARKSTAY_PROVIDER_ID } from '../../providers/parkstay';
-import { ParkStayService } from '../parkstay/parkstay.service';
-import { QueueService } from '../queue/queue.service';
+import type { ProviderWith } from '../../providers/registry';
+import type { AccessGate } from '../../providers/sdk/provider';
 import { NotificationService } from '../notification/notification.service';
-import { computeDailyRolloverReleaseAt } from './release-timing';
 import { AppError } from '../../utils/app-error';
 import { logger } from '../../utils/logger';
 
@@ -24,19 +25,27 @@ const log = logger.child({ module: 'sitesniper' });
 /** ParkStay's defaults for the stay fields a snipe leaves out. */
 const PARKSTAY_SNIPE_DEFAULTS: StayParams = { gearType: 'all', numVehicles: 1 };
 
-/** UTC midnight of a calendar date: the `Date` the release-timing helpers read by its UTC Y/M/D. */
-function utcMidnight(date: string): Date {
-  return new Date(`${date}T00:00:00.000Z`);
+/** The provider a snipe runs on: availability, holds and a release policy (and maybe a queue). */
+export type SnipeProvider = ProviderWith<'snipes'>;
+
+/** A stay input with the party counts it leaves out set to 0. */
+function fullStay(stay: StayInput): Stay {
+  return {
+    arrival: stay.arrival,
+    departure: stay.departure,
+    adults: stay.adults,
+    children: stay.children ?? 0,
+    infants: stay.infants ?? 0,
+    concessions: stay.concessions ?? 0,
+  };
 }
 
-function stringParam(params: StayParams, key: string): string | undefined {
-  const value = params[key];
-  return typeof value === 'string' && value !== '' ? value : undefined;
-}
-
-function numberParam(params: StayParams, key: string): number | undefined {
-  const value = params[key];
-  return typeof value === 'number' ? value : undefined;
+/** One poll's units for the log: `3 available/available`, at most 20 of them. */
+function describeUnits(units: UnitAvailability[]): string {
+  const shown = units
+    .slice(0, 20)
+    .map((u) => `${u.unitName || u.unitId} ${u.nights.map((n) => n.state).join('/') || '-'}`);
+  return shown.join(', ') + (units.length > 20 ? `, … ${units.length - 20} more` : '');
 }
 
 /** Throws when a stored stay's dates are not calendar dates, so the attempt is marked in error. */
@@ -59,19 +68,17 @@ function assertCalendarDates(stay: Stay): void {
  */
 export class SiteSniperService {
   private repo: SiteSniperRepository;
-  private parkStayService: ParkStayService;
-  private queueService: QueueService;
+  private provider: SnipeProvider;
   private notificationService: NotificationService;
 
+  /** `provider` is ParkStay from the registry until V4 resolves snipes by provider. */
   constructor(
     repo: SiteSniperRepository,
-    parkStayService: ParkStayService,
-    queueService: QueueService,
+    provider: SnipeProvider,
     notificationService: NotificationService
   ) {
     this.repo = repo;
-    this.parkStayService = parkStayService;
-    this.queueService = queueService;
+    this.provider = provider;
     this.notificationService = notificationService;
   }
 
@@ -102,7 +109,12 @@ export class SiteSniperService {
     };
 
     if (input.releaseMode === SnipeReleaseMode.DAILY_ROLLOVER) {
-      prepared.releaseAt = computeDailyRolloverReleaseAt(utcMidnight(arrival), new Date());
+      prepared.releaseAt = await this.releaseAtFor(
+        input.location.externalId,
+        fullStay(input.stay),
+        prepared.stayParams ?? {},
+        input.releaseMode
+      );
     } else if (input.releaseMode === SnipeReleaseMode.CANCELLATION) {
       prepared.releaseAt = undefined;
     }
@@ -141,7 +153,12 @@ export class SiteSniperService {
     const datesOrModeChanged = updates.stay !== undefined || updates.releaseMode !== undefined;
 
     if (datesOrModeChanged && snipe.releaseMode === SnipeReleaseMode.DAILY_ROLLOVER) {
-      const releaseAt = computeDailyRolloverReleaseAt(utcMidnight(snipe.stay.arrival), new Date());
+      const releaseAt = await this.releaseAtFor(
+        snipe.location.externalId,
+        snipe.stay,
+        snipe.stayParams,
+        snipe.releaseMode
+      );
       snipe = this.repo.update(id, { releaseAt });
     }
 
@@ -214,37 +231,25 @@ export class SiteSniperService {
 
       // A row whose dates could not be read as calendar dates is marked in error, not run.
       assertCalendarDates(snipe.stay);
-      const { stay, stayParams } = snipe;
-      // The location is the ParkStay campground.
-      const campgroundId = snipe.location.externalId;
+      // The location is the provider's (ParkStay: the campground).
+      const externalId = snipe.location.externalId;
+      const stay = toStayQuery(snipe.stay, snipe.stayParams);
 
-      // Poll availability.
-      const view = await this.parkStayService.getSiteAvailabilityView(
-        campgroundId,
-        {
-          arrivalDate: stay.arrival,
-          departureDate: stay.departure,
-          numAdult: stay.adults,
-          numConcession: stay.concessions,
-          numChild: stay.children,
-          numInfant: stay.infants,
-          gearType: stringParam(stayParams, 'gearType'),
-        },
-        snipe.accessGateEnabled
+      // Poll availability: the preferred units, or every unit.
+      const availability = await this.provider.availability.check(externalId, stay, {
+        unitIds: snipe.unitIds.length > 0 ? snipe.unitIds : undefined,
+      });
+      const matched = availability.units.find((unit) => unit.fullyAvailable);
+      log.info(
+        `Snipe ${snipeId} poll: ${availability.units.length} unit(s), ` +
+          `${matched ? `unit ${matched.unitId} free` : 'none free'} — ${describeUnits(availability.units)}`
       );
-
-      // Determine matching site.
-      let matched: SiteAvailabilityEntry | undefined;
-      if (snipe.unitIds.length > 0) {
-        matched = view.sites.find((s) => snipe.unitIds.includes(s.siteId) && s.allOpen);
-      } else {
-        matched = view.sites.find((s) => s.allOpen);
-      }
 
       if (!matched) {
         this.repo.incrementAttempts(snipeId);
-        const beforeRelease = snipe.releaseAt ? checkedAt < snipe.releaseAt : false;
-        const result = beforeRelease ? SnipeResult.TOO_EARLY : SnipeResult.UNAVAILABLE;
+        const result = this.beforeRelease(snipe, availability, checkedAt)
+          ? SnipeResult.TOO_EARLY
+          : SnipeResult.UNAVAILABLE;
         this.repo.setResult(snipeId, result);
         this.repo.updateCheckTimestamps(snipeId, checkedAt, this.nextCheckFor(snipe, checkedAt));
         return { snipeId, success: true, result, held: false, checkedAt };
@@ -262,38 +267,22 @@ export class SiteSniperService {
           success: false,
           result: SnipeResult.ERROR,
           held: false,
-          matchedSiteId: matched.siteId,
+          matchedSiteId: matched.unitId,
           error: message,
           checkedAt,
         };
       }
 
       // Attempt the hold.
-      const hold = await this.parkStayService.createBookingHold(
-        {
-          campgroundId,
-          campsiteId: matched.siteId,
-          campsiteClassId: matched.siteClassId,
-          arrivalDate: stay.arrival,
-          departureDate: stay.departure,
-          numAdult: stay.adults,
-          numConcession: stay.concessions,
-          numChild: stay.children,
-          numInfant: stay.infants,
-          numVehicle: numberParam(stayParams, 'numVehicles'),
-          postcode: stringParam(stayParams, 'postcode'),
-        },
-        snipe.accessGateEnabled
-      );
+      const hold = await this.provider.holds.create({ externalId, unitId: matched.unitId, stay });
 
       this.repo.incrementAttempts(snipeId);
 
-      if (hold.success && hold.pk) {
-        const heldExpiresAt = new Date(checkedAt.getTime() + BOOKING_HOLD_MINUTES * 60 * 1000);
-        // We cannot know the exact BPOINT payment URL without the ledger step, so
-        // link the user to the booking page to complete payment within the window.
-        const paymentUrl = `${PARKSTAY_BASE_URL}/booking/`;
-        this.repo.setHeld(snipeId, hold.pk, heldExpiresAt, paymentUrl, matched.siteId);
+      if (hold.ok) {
+        // Payment is a human step, on the provider's site, within the hold.
+        const paymentUrl = this.provider.holds.paymentUrl(hold);
+        const unitId = hold.unitId ?? matched.unitId;
+        this.repo.setHeld(snipeId, hold.reference, hold.expiresAt, paymentUrl, unitId);
         this.repo.deactivate(snipeId); // job done — hold placed
         const updated = this.repo.findById(snipeId)!;
         await this.notificationService.notifySnipeHeld(updated);
@@ -302,38 +291,40 @@ export class SiteSniperService {
           success: true,
           result: SnipeResult.HELD,
           held: true,
-          holdReference: hold.pk,
+          holdReference: hold.reference,
           paymentUrl,
-          matchedSiteId: matched.siteId,
+          matchedSiteId: unitId,
           checkedAt,
         };
       }
 
-      if (hold.inProgress) {
-        // Transient: a stale booking is already in the session.
-        const message = hold.error || 'A booking is already in progress';
-        this.repo.setResult(snipeId, SnipeResult.ERROR, message);
+      if (hold.reason === 'taken') {
+        // Race lost: the site went between the check and the hold. Try again next tick.
+        const message = hold.message || 'Site was taken before the hold could be placed';
+        this.repo.setResult(snipeId, SnipeResult.UNAVAILABLE, message);
+        this.repo.updateCheckTimestamps(snipeId, checkedAt, this.nextCheckFor(snipe, checkedAt));
         return {
           snipeId,
-          success: false,
-          result: SnipeResult.ERROR,
+          success: true,
+          result: SnipeResult.UNAVAILABLE,
           held: false,
-          matchedSiteId: matched.siteId,
+          matchedSiteId: matched.unitId,
           error: message,
           checkedAt,
         };
       }
 
-      // Race lost or server re-validation failed.
-      const message = hold.error || 'Site was taken before the hold could be placed';
-      this.repo.setResult(snipeId, SnipeResult.UNAVAILABLE, message);
-      this.repo.updateCheckTimestamps(snipeId, checkedAt, this.nextCheckFor(snipe, checkedAt));
+      // In progress (a stale booking in the session), closed for bookings, or refused.
+      const message =
+        hold.message ||
+        (hold.reason === 'in-progress' ? 'A booking is already in progress' : 'Hold failed');
+      this.repo.setResult(snipeId, SnipeResult.ERROR, message);
       return {
         snipeId,
-        success: true,
-        result: SnipeResult.UNAVAILABLE,
+        success: false,
+        result: SnipeResult.ERROR,
         held: false,
-        matchedSiteId: matched.siteId,
+        matchedSiteId: matched.unitId,
         error: message,
         checkedAt,
       };
@@ -410,17 +401,13 @@ export class SiteSniperService {
   }
 
   /**
-   * Compute the release instant for a snipe (delegates pure timing to release-timing).
-   * Returns undefined for CANCELLATION mode (no fixed release).
+   * The release instant the scheduler arms a snipe for: the one the provider's release
+   * policy computed when the snipe was saved (daily rollover), or the time the person set
+   * (scheduled). Undefined for CANCELLATION mode (no fixed release).
    */
   computeReleaseAt(snipe: SiteSnipe): Date | undefined {
-    if (snipe.releaseMode === SnipeReleaseMode.DAILY_ROLLOVER) {
-      return computeDailyRolloverReleaseAt(utcMidnight(snipe.stay.arrival), new Date());
-    }
-    if (snipe.releaseMode === SnipeReleaseMode.SCHEDULED) {
-      return snipe.releaseAt;
-    }
-    return undefined;
+    if (snipe.releaseMode === SnipeReleaseMode.CANCELLATION) return undefined;
+    return snipe.releaseAt;
   }
 
   /**
@@ -431,13 +418,36 @@ export class SiteSniperService {
   }
 
   /**
-   * Access to the underlying QueueService (used by the scheduler for warm-up).
+   * The provider's access gate (ParkStay: the DBCA queue), which the scheduler waits in
+   * before a release when a snipe asks for it. Undefined when the provider has none.
    */
-  getQueueService(): QueueService {
-    return this.queueService;
+  getAccessGate(): AccessGate | undefined {
+    return this.provider.manifest.capabilities.accessGate ? this.provider.access : undefined;
   }
 
   // ---- internal helpers -------------------------------------------------------
+
+  /** The provider's release instant for a stay, or undefined when it has none (cancellation). */
+  private async releaseAtFor(
+    externalId: string,
+    stay: Stay,
+    stayParams: StayParams,
+    mode: SnipeReleaseMode
+  ): Promise<Date | undefined> {
+    const at = await this.provider.release.computeReleaseAt({
+      mode,
+      externalId,
+      stay: toStayQuery(stay, stayParams),
+      now: new Date(),
+    });
+    return at ?? undefined;
+  }
+
+  /** Before the release: the snipe's own release time, or the provider says the dates are not open. */
+  private beforeRelease(snipe: SiteSnipe, availability: LocationAvailability, now: Date): boolean {
+    if (snipe.releaseAt && now < snipe.releaseAt) return true;
+    return availability.release?.open === false;
+  }
 
   private nextCheckFor(snipe: SiteSnipe, from: Date): Date | undefined {
     if (snipe.releaseMode === SnipeReleaseMode.CANCELLATION) {

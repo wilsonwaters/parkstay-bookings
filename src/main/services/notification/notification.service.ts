@@ -6,7 +6,6 @@ import {
   AvailabilityResult,
 } from '@shared/types';
 import { NotificationType, RelatedType } from '@shared/types/common.types';
-import { BOOKING_HOLD_MINUTES } from '@shared/constants';
 import { isCalendarDate, nightsBetween } from '@shared/utils/calendar-date';
 import { NotificationRepository } from '../../database/repositories';
 import { NotificationDispatcher } from './notification-dispatcher';
@@ -155,7 +154,12 @@ export class NotificationService {
     const arrival = formatCalendarDate(snipe.stay.arrival);
     const departure = formatCalendarDate(snipe.stay.departure);
     const where = snipe.location.name || snipe.location.externalId;
-    const message = `Site held at ${where} for ${arrival}–${departure}. Complete payment within ${BOOKING_HOLD_MINUTES} minutes.`;
+    // The provider sets how long a hold lasts (ParkStay: 30 minutes).
+    const minutesLeft = snipe.holdExpiresAt
+      ? Math.max(1, Math.round((snipe.holdExpiresAt.getTime() - Date.now()) / 60_000))
+      : undefined;
+    const deadline = minutesLeft ? ` within ${minutesLeft} minutes` : ' before the hold expires';
+    const message = `Site held at ${where} for ${arrival}–${departure}. Complete payment${deadline}.`;
 
     await this.notify(
       {

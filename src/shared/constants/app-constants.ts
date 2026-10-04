@@ -7,10 +7,6 @@ export const APP_REPO_URL = 'https://github.com/wilsonwaters/wa-stay';
 export const APP_ISSUES_URL = `${APP_REPO_URL}/issues`;
 export const APP_VERSION = '1.0.0';
 
-// ParkStay API
-export const PARKSTAY_BASE_URL = 'https://parkstay.dbca.wa.gov.au';
-export const PARKSTAY_API_BASE_URL = 'https://parkstay.dbca.wa.gov.au/api';
-
 // Booking windows
 export const BOOKING_WINDOW_DAYS = 180; // 180-day booking window
 export const REBOOK_ADVANCE_DAYS_MIN = 21; // Start checking 21 days before 180-day threshold
@@ -37,7 +33,6 @@ export const DEFAULT_SNIPE_LEAD_TIME_SECONDS = 120;
 export const DEFAULT_SNIPE_WINDOW_MS = 900000; // 15 min
 export const CANCELLATION_POLL_MIN_MS = 3000; // politeness floor for continuous cancellation polling
 export const NINGALOO_RELEASE_HOUR_AWST = 10; // 10:00 AWST first Tuesday (subject to change per DBCA)
-export const BOOKING_HOLD_MINUTES = 30; // create_booking temp hold
 
 // Limits
 export const MAX_CONCURRENT_WATCHES = 10;
@@ -67,11 +62,3 @@ export const MAX_NOTIFICATIONS_PER_USER = 1000;
 
 // Currency
 export const DEFAULT_CURRENCY = 'AUD';
-
-// Queue System
-export const QUEUE_API_BASE_URL = 'https://queue.dbca.wa.gov.au';
-export const QUEUE_GROUP = 'parkstayv2';
-export const QUEUE_POLL_INTERVAL_MS = 5000; // 5 seconds (matches official client)
-export const QUEUE_SESSION_REFRESH_BUFFER_MS = 120000; // Refresh 2 minutes before expiry
-export const QUEUE_MAX_RETRIES = 3;
-export const QUEUE_RETRY_DELAY_MS = 2000;

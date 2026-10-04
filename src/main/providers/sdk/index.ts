@@ -18,3 +18,4 @@ export * from './net-errors';
 export * from './manifest';
 export * from './concurrency';
 export * from './user-agent';
+export * from './html';
