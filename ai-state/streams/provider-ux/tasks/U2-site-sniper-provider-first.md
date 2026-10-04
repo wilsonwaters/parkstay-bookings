@@ -155,3 +155,7 @@ M. This size assumes U1's `StepFlow`, `ProviderPicker`, `LocationCombobox` and `
 - **Timeline order.** The order follows the state machine in tech-review (summary item 5): ARMED → QUEUEING → WAITING_RELEASE → SNIPING → HELD/EXPIRED.
 - **Compliance copy.** DBCA-specific wording ("one account per person, one booking per night") must come from provider data, not renderer constants. Until the manifest carries it, use the generic notice. If no V-stream field appears, raise this with OQ1.
 - **Primitives.** If D2 has no `Disclosure` or `RadioCard`, add them to `components/ui/` with tests in this task.
+
+## Orchestrator addendum (2026-10-04, from the V6 design review; architecture-notes §12.32)
+- ParkStay declares `account: 'optional'`: arming a snipe never requires sign-in. Replace any blocking "connect" prompt with a non-blocking hint for optional providers ("Connect ParkStay before the release so checkout is quicker"), with a Connect button that calls `accounts.signIn`. Keep the blocking prompt only for providers that declare `required-for-holds`/`required` (tested with FakeProvider).
+- A HELD snipe's primary action is "Pay now" (`snipes.openPayment`), which may show ParkStay's own sign-in inside the payment window. `HOLD_EXPIRED` gets its own copy.
