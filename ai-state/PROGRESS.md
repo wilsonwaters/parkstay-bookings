@@ -9,7 +9,8 @@ Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task spe
 - **V5** (#23) Location catalogue service: implemented (live sync 169 locations, FTS5 search + facets, offline relaunch serves the cache, `parkstay` IPC namespace retired); rebased onto the feature branch (gate green, 2188 tests); review running, lane Y. Flagged: ParkStay `getLocation` downloads the 1.2 MB campground map on a cold detail request.
 - **E1** (#32) Explore screen: lane R.
 - **V4** (#22) Core services and scheduler: design approved (decisions in architecture-notes §12.31; V6 addendum for watch-hold columns and payment); implementing, lane W.
-- Next: V6 design starts once the V4 design is approved (it builds on `core/snipes` and `core/bookings`); then P7, U1, U3, U5 after V4; E2/E3 after E1 (E3 also after V5); U2/U4 after V6; Q2 last.
+- **V6** (#24) Provider accounts and sign-in: design phase (L task; designs against the approved V4 design), lane A.
+- Next: P7, U1, U3, U5 after V4; E2/E3 after E1 (E3 also after V5); U2/U4 after V6; Q2 last.
 
 ## Completed
 - **V3** (#21) ParkStay provider module: review APPROVE; merged. Follow-up merged (`c649534`): the gate reports `idle` when unheld, a negative cache for a missing release time, a warning on an empty bulk response. Known, deliberately left: `toofar` labelling of nights past the horizon; the unit id for class-listed campgrounds is one free site id (watches filter locally by id or name since V4). Migrated daily-rollover `releaseAt` recompute is in V4.
