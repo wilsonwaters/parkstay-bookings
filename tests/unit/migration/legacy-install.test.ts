@@ -30,6 +30,7 @@ import {
   type LegacyInstallDeps,
   type MigrationFs,
 } from '@main/migration/legacy-install';
+import { LATEST_SCHEMA_VERSION } from '@main/database/connection';
 import { NotificationType } from '@shared/types/common.types';
 import type { FixtureName } from '@tests/fixtures/db/constants';
 import {
@@ -693,16 +694,17 @@ describe('migrateLegacyInstall', () => {
   it('a legacy schema newer than this build is copied anyway, with a warning', async () => {
     writeLegacyDatabase(install.paths.legacyDbPath, 'v6-branch');
     const db = new Database(install.paths.legacyDbPath);
-    db.exec('INSERT INTO migrations (version) VALUES (9)');
+    const newer = LATEST_SCHEMA_VERSION + 1;
+    db.prepare('INSERT INTO migrations (version) VALUES (?)').run(newer);
     db.close();
     const deps = recordedDeps();
 
     await expect(migrateLegacyInstall(install.paths, deps)).resolves.toMatchObject({
       outcome: 'migrated',
-      sourceSchemaVersion: 9,
+      sourceSchemaVersion: newer,
     });
     expect(deps.lines).toContain(
-      'warn: legacy-install: the legacy database is at schema v9, newer than this build (v8); it is copied but cannot be opened by this build'
+      `warn: legacy-install: the legacy database is at schema v${newer}, newer than this build (v${LATEST_SCHEMA_VERSION}); it is copied but cannot be opened by this build`
     );
   });
 

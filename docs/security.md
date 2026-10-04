@@ -10,7 +10,6 @@ The app keeps these secrets on disk:
 
 | Secret | Where it is stored |
 | --- | --- |
-| ParkStay password | `users.encrypted_password` in `<userData>/parkstay.db` |
 | Email (SMTP) notifier settings, including the app password | `notifiers.config` in the database |
 | Gmail OAuth client ID, client secret and tokens | `<userData>/gmail-oauth.json` |
 | Provider secrets (`ProviderContext.secrets`) | the provider's own state, under `secret:<key>` (\*) |
@@ -18,6 +17,12 @@ The app keeps these secrets on disk:
 (\*) Provider state is held in memory for now, so provider secrets last only until the app
 quits. They are written to disk, still as vault envelopes, once V2 stores provider state in
 the `provider_state` table.
+
+Provider sign-in (ParkStay) stores no secret of the app's: the person signs in on the
+provider's own page in an app window, and the session cookies stay in the provider's
+session partition (`<userData>/Partitions/provider-<id>`), shared with the provider's HTTP
+client. `provider_accounts` holds only the sign-in state, email and name. See
+[Provider sign-in and payment windows](#provider-sign-in-and-payment-windows).
 
 Every one of them is encrypted by the **SecretVault** (`src/main/security/secret-vault.ts`)
 and stored as a versioned envelope:
@@ -107,7 +112,7 @@ obfuscation, not protection:
 
 | Secret | v1.x scheme |
 | --- | --- |
-| ParkStay password | AES-256-GCM, key `PBKDF2(machineId + app constant, constant salt)`, stored as hex in three columns |
+| ParkStay password | AES-256-GCM, key `PBKDF2(machineId + app constant, constant salt)`, stored as hex in three columns. Not migrated: see below |
 | Notifier config | The same scheme with other constants, stored as `iv:authTag:ciphertext` |
 | `gmail-oauth.json` | electron-store's AES-256-CBC with a hard-coded `encryptionKey` |
 
@@ -120,7 +125,6 @@ after the database migrations and before anything reads a secret. It:
 - decrypts each new envelope and compares it with the plaintext before it replaces the
   legacy value, which is the only copy. If they differ, the item is left as it is and
   counted as `failed`;
-- clears the legacy `users` key, IV and auth-tag columns to `''`;
 - rewrites `gmail-oauth.json` atomically and durably (a temp file, fsynced, then a rename,
   then an fsync of the folder where the platform supports it) as
   `{ "format": 2, "credentials": "<envelope>", "tokens": "<envelope>" }`, with mode `0600`;
@@ -131,8 +135,14 @@ after the database migrations and before anything reads a secret. It:
 
 A legacy value that cannot be decrypted is left exactly as it is and counted as `failed`.
 This happens, for example, when the database came from another machine, whose machine id
-differs. The next start tries again. An empty legacy password or notifier config migrates
-as "nothing stored".
+differs. The next start tries again. An empty legacy notifier config migrates as "nothing
+stored".
+
+The v1.x ParkStay password is not migrated. ParkStay never used it (sign-in is now the
+in-app window), so database migration v9 drops its `users` columns before
+`migrateLegacySecrets` runs, and then rewrites the database file (VACUUM, then a WAL
+truncate) so the old ciphertext is not left in free pages. Only the email is kept, as the
+ParkStay account's hint. The v1.x data folder, kept as the backup, still holds it.
 
 #### The legacy data folder is the backup of the pre-vault secrets
 
@@ -183,7 +193,6 @@ user saving a new one. What the user sees:
 
 | Secret | When unreadable |
 | --- | --- |
-| ParkStay password | `auth.getCredentials()` returns `hasPassword: false, secretState: 'unreadable'`. Enter the password again. |
 | Email notifier | The notifier shows `secretState: 'unreadable'`, status `error` and "Saved password could not be decrypted; re-enter it". Nothing is sent through it, and the skip is logged once. Saving the email settings again fixes it. |
 | Gmail | The status is `{ isAuthorized: false, secretState: 'unreadable' }`. Enter the client credentials again if they are unreadable, and sign in again for unreadable tokens. A `gmail-oauth.json` that cannot be parsed at all is moved aside to `gmail-oauth.json.corrupt-<timestamp>` before it is replaced. |
 
@@ -201,3 +210,25 @@ and a warning is logged that secrets saved under the earlier key cannot be read.
   driven by `_electron.launch` uses the `local` backend on Linux. To exercise `os` on
   Linux, start Electron directly with `--password-store=gnome-libsecret` in a session that
   has an unlocked GNOME Keyring.
+
+## Provider sign-in and payment windows
+
+A provider's sign-in window (and, with holds, its payment window) shows the provider's own
+pages, so it gets nothing of the app (`src/main/app/provider-windows.ts`):
+
+- It runs on the provider's session partition, `persist:provider-<id>`, sandboxed, with
+  context isolation, no Node integration, web security on, no `<webview>`, and no script of
+  the app injected. Its webContents is never a trusted IPC sender.
+- Top-level navigations and main-frame redirects may only go to the provider's allow-list
+  (ParkStay: its own site, the DBCA SSO gateway, Azure AD B2C and the DBCA queue). Anything
+  else is cancelled and logged by origin only; a sign-in window opens it in the system
+  browser instead. Sub-frames are not restricted (payment pages use them).
+- Every permission request and check is refused, certificate errors are rejected, and no
+  client certificate or HTTP credentials are offered.
+- The pages keep their own Content-Security-Policy: the app never changes their headers.
+- The window title shows the host it is on, since there is no address bar.
+- Logs never carry a sign-in link's token, a cookie or the provider's profile.
+
+Signing out clears the partition (cookies, storage, HTTP auth cache) and nothing else: the
+local profile, watches, snipes and bookings stay. It is refused while a snipe or hold needs
+the session.

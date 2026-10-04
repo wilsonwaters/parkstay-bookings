@@ -78,28 +78,16 @@ describe('secret storage backend', () => {
       expect(info.data?.secretStorage).toEqual({ backend: 'local' });
       expect(fs.existsSync(keyFile)).toBe(false); // created only when a secret is saved
 
-      await call('auth:store-credentials', { email: 'me@example.com', password: 'local-Passw0rd' });
       await call('gmail:set-credentials', { clientId: 'id', clientSecret: 'local-client-secret' });
 
       expect(fs.statSync(keyFile).size).toBe(32);
       if (process.platform !== 'win32') {
         expect(fs.statSync(keyFile).mode & 0o777).toBe(0o600);
       }
-      const row = container.db.prepare('SELECT encrypted_password FROM users').get() as {
-        encrypted_password: string;
-      };
-      expect(row.encrypted_password).toMatch(/^vault:v1:local:/);
       expect(fs.readFileSync(path.join(userDataDir, 'gmail-oauth.json'), 'utf8')).toMatch(
         /"credentials": "vault:v1:local:/
       );
 
-      await expect(call('auth:get-credentials')).resolves.toEqual({
-        success: true,
-        data: { email: 'me@example.com', hasPassword: true, secretState: 'ok' },
-      });
-      await expect(container.authService.getCredentials()).resolves.toMatchObject({
-        password: 'local-Passw0rd',
-      });
       await expect(call('gmail:get-credentials')).resolves.toEqual({
         success: true,
         data: { clientId: 'id', hasClientSecret: true },

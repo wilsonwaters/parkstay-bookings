@@ -9,7 +9,8 @@ import type Database from 'better-sqlite3';
 import { Writable } from 'stream';
 import winston from 'winston';
 import { openDatabase } from '@main/database/connection';
-import { SiteSniperRepository, UserRepository } from '@main/database/repositories';
+import { SiteSniperRepository } from '@main/database/repositories';
+import { insertUser } from '@tests/utils/database-helper';
 import { NightGuard } from '@main/core/holds/night-guard';
 import { SiteSniperService } from '@main/core/snipes/snipe.service';
 import { WatchRepository } from '@main/database/repositories';
@@ -62,7 +63,7 @@ describe('SiteSniperService on ParkStay (fixture server)', () => {
     server.overrides.clear();
     server.createBooking = { status: 200, body: parkStayFixture('create-booking-success.json') };
     db = openDatabase(':memory:');
-    userId = new UserRepository(db).create('me@example.com', 'x', 'x', 'x', 'x').id;
+    userId = insertUser(db, 'me@example.com').id;
     repo = new SiteSniperRepository(db);
     parkstay = createTestParkStay(server);
     notifications = { notifySnipeHeld: jest.fn().mockResolvedValue(undefined) };

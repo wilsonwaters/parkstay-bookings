@@ -6,7 +6,8 @@
 
 import type Database from 'better-sqlite3';
 import { openDatabase } from '@main/database/connection';
-import { UserRepository, WatchRepository } from '@main/database/repositories';
+import { WatchRepository } from '@main/database/repositories';
+import { insertUser } from '@tests/utils/database-helper';
 import { NightGuard } from '@main/core/holds/night-guard';
 import { WatchService } from '@main/core/watches/watch.service';
 import { SiteSniperRepository } from '@main/database/repositories';
@@ -54,7 +55,7 @@ describe('WatchService on ParkStay (fixture server)', () => {
     server.requests.length = 0;
     server.views.clear();
     db = openDatabase(':memory:');
-    userId = new UserRepository(db).create('me@example.com', 'x', 'x', 'x', 'x').id;
+    userId = insertUser(db, 'me@example.com').id;
     notifications = {
       notifyWatchFound: jest.fn().mockResolvedValue(undefined),
       notifyWatchPartialFound: jest.fn().mockResolvedValue(undefined),

@@ -6,12 +6,11 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
-import { TestDatabaseHelper } from '@tests/utils/database-helper';
+import { insertUser, TestDatabaseHelper } from '@tests/utils/database-helper';
 import {
   BookingRepository,
   NotificationRepository,
   SiteSniperRepository,
-  UserRepository,
   WatchRepository,
 } from '@main/database/repositories';
 import { mockUserInput, mockUserInput2 } from '@tests/fixtures/users';
@@ -28,9 +27,8 @@ describe('parameterised repository SQL', () => {
   beforeEach(async () => {
     dbHelper = new TestDatabaseHelper('parameterised-sql');
     db = await dbHelper.setup();
-    const users = new UserRepository(db);
-    userId = users.create(mockUserInput.email, 'enc').id;
-    otherUserId = users.create(mockUserInput2.email, 'enc').id;
+    userId = insertUser(db, mockUserInput.email).id;
+    otherUserId = insertUser(db, mockUserInput2.email).id;
   });
 
   afterEach(async () => {

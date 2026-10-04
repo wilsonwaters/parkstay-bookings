@@ -13,12 +13,13 @@
  * the plaintext (`vault.encryptVerified`) before it replaces it. One that does not read back
  * leaves the item unchanged and counts it as `failed`.
  *
- * - `users`: the envelope goes in `encrypted_password`; `encryption_iv`,
- *   `encryption_auth_tag` and `encryption_key` become `''` (the columns are NOT NULL).
  * - `notifiers.config`: replaced by the envelope.
  * - `gmail-oauth.json`: rewritten as format 2 (`gmail-secret-file.ts`).
  *
- * An empty legacy password or notifier config migrates to `''`, which reads as `missing`.
+ * The v1.x ParkStay password (`users`) is not migrated: ParkStay never used it, and migration
+ * v9 drops its columns before this runs (architecture-notes §12.32).
+ *
+ * An empty legacy notifier config migrates to `''`, which reads as `missing`.
  */
 
 import type Database from 'better-sqlite3';
@@ -28,11 +29,7 @@ import {
   writeGmailSecretFile,
   type GmailSecretFileV2,
 } from './gmail-secret-file';
-import {
-  decryptLegacyGmailStore,
-  decryptLegacyNotifierConfig,
-  decryptLegacyUserPassword,
-} from './legacy-decryptors';
+import { decryptLegacyGmailStore, decryptLegacyNotifierConfig } from './legacy-decryptors';
 import { SecretVaultNotReadyError, type SecretVault } from './secret-vault';
 
 export interface MigrateLegacySecretsOptions {
@@ -56,14 +53,6 @@ export interface LegacyMigrationResult {
   failed: number;
 }
 
-interface UserRow {
-  id: number;
-  encrypted_password: string;
-  encryption_key: string;
-  encryption_iv: string;
-  encryption_auth_tag: string;
-}
-
 interface NotifierRow {
   id: number;
   channel: string;
@@ -85,18 +74,6 @@ export function migrateLegacySecrets({
   let cachedMachineId: string | undefined;
   const getMachineId = (): string => (cachedMachineId ??= machineId());
 
-  // Since v8 the credential columns are nullable; NULL (no credentials) reads as ''.
-  const users = db
-    .prepare(
-      `SELECT id, COALESCE(encrypted_password, '') AS encrypted_password,
-         COALESCE(encryption_key, '') AS encryption_key,
-         COALESCE(encryption_iv, '') AS encryption_iv,
-         COALESCE(encryption_auth_tag, '') AS encryption_auth_tag
-       FROM users`
-    )
-    .all() as UserRow[];
-  for (const row of users) count(attempt(`users row ${row.id}`, () => migrateUser(row)));
-
   const notifiers = db.prepare('SELECT id, channel, config FROM notifiers').all() as NotifierRow[];
   for (const row of notifiers) {
     count(attempt(`notifier ${row.channel}`, () => migrateNotifier(row)));
@@ -108,36 +85,6 @@ export function migrateLegacySecrets({
     `Legacy secrets: ${result.migrated} migrated, ${result.current} current, ${result.failed} failed`
   );
   return result;
-
-  function migrateUser(row: UserRow): Outcome {
-    if (vault.isEnvelope(row.encrypted_password)) return 'current';
-
-    const legacyColumns = [row.encryption_key, row.encryption_iv, row.encryption_auth_tag];
-    let envelope = '';
-    if (row.encrypted_password === '') {
-      // Nothing stored, or a legacy empty password (empty GCM ciphertext): `missing`
-      if (legacyColumns.every((value) => value === '')) return 'current';
-    } else {
-      const password = decryptLegacyUserPassword(
-        {
-          encrypted: row.encrypted_password,
-          iv: row.encryption_iv,
-          authTag: row.encryption_auth_tag,
-        },
-        getMachineId()
-      );
-      envelope = password === '' ? '' : vault.encryptVerified(password);
-    }
-
-    db.transaction(() => {
-      db.prepare(
-        `UPDATE users
-         SET encrypted_password = ?, encryption_iv = '', encryption_auth_tag = '', encryption_key = ''
-         WHERE id = ? AND encrypted_password = ?`
-      ).run(envelope, row.id, row.encrypted_password);
-    })();
-    return 'migrated';
-  }
 
   function migrateNotifier(row: NotifierRow): Outcome {
     if (row.config === '' || vault.isEnvelope(row.config)) return 'current';

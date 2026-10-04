@@ -2,10 +2,10 @@
  * Secrets never cross to the renderer (architecture-notes §4, §7; tech-review #5).
  *
  * A container on an in-memory database with every handler registered, plus FakeProvider so
- * the catalogue's availability reads return real data: seed a ParkStay password, a Gmail
- * client secret and an SMTP password through IPC, invoke every read channel, and check that
- * none of the seeded strings is in any response or in any log line (captured at debug
- * level). Also: saving SMTP settings without a password keeps the stored one only for the
+ * the catalogue's availability reads return real data: seed a ParkStay account with a session
+ * cookie in its partition, a sign-in link carrying a token (pasted through IPC), a Gmail
+ * client secret and an SMTP password, invoke every read channel, and check that none of the
+ * seeded strings is in any response or in any log line (captured at debug level). Also: saving SMTP settings without a password keeps the stored one only for the
  * same server and account (so `notifiers:test` cannot send it elsewhere), and the Gmail
  * inbox channels are gone.
  */
@@ -41,10 +41,14 @@ jest.mock('nodemailer', () => ({
   },
 }));
 
-const PASSWORD = 'Sweep-ParkStay-Passw0rd!';
 const CLIENT_SECRET = 'GOCSPX-sweep-client-secret-7f3a';
 const SMTP_PASS = 'sweep-smtp-app-password-q9z';
-const SECRETS = [PASSWORD, CLIENT_SECRET, SMTP_PASS];
+/** A ParkStay session cookie in the provider partition. */
+const SESSION_COOKIE = 'SWEEP-SESSION-COOKIE-4c1d';
+/** The token of a pasted sign-in (magic) link. */
+const MAGIC_TOKEN = 'SWEEP-MAGIC-TOKEN-88ab';
+const SECRETS = [CLIENT_SECRET, SMTP_PASS, SESSION_COOKIE, MAGIC_TOKEN];
+const SIGN_IN_LINK = `https://dbcab2c.b2clogin.com/dbcab2c.onmicrosoft.com/oauth2/v2.0/authorize?token=${MAGIC_TOKEN}`;
 
 const STAY = { arrival: '2026-11-10', departure: '2026-11-12', adults: 2 };
 
@@ -65,8 +69,9 @@ const SMTP_CONFIG = {
  * FakeProvider.
  */
 const READS: Array<[string, unknown]> = [
-  ['auth:get-credentials', undefined],
-  ['auth:validate-session', undefined],
+  ['accounts:list', undefined],
+  // ParkStay's /api/profile check: no network in tests, so the stored account answers
+  ['accounts:status', { providerId: 'parkstay' }],
   ['gmail:get-credentials', undefined],
   ['gmail:check-auth-status', undefined],
   ['notifiers:list', undefined],
@@ -91,12 +96,6 @@ const READS: Array<[string, unknown]> = [
   ['catalog:availability', { stay: STAY }],
   ['catalog:check-location', { key: 'fake:1', stay: STAY }],
 ];
-
-/**
- * Read channels whose handlers are still typed NOT_IMPLEMENTED stubs (V1). V6 (accounts)
- * moves them into READS when it implements them.
- */
-const PENDING_READS = new Set(['accounts:list', 'accounts:status']);
 
 /** Methods whose names look like reads but are actions. */
 const NOT_READS = new Set([
@@ -180,11 +179,37 @@ describe('secrets never reach the renderer', () => {
     );
   }
 
+  /** A signed-in ParkStay account, whose session cookie is in the provider partition. */
+  function seedAccount(): void {
+    container.repositories.providerAccounts.upsert({
+      providerId: 'parkstay',
+      status: 'signed-in',
+      email: 'me@example.com',
+      displayName: 'Sweep Person',
+    });
+    const { session } = jest.requireMock('electron') as {
+      session: { fromPartition(partition: string): { cookies: { get: jest.Mock } } };
+    };
+    session.fromPartition('persist:provider-parkstay').cookies.get.mockResolvedValue([
+      {
+        name: 'sessionid',
+        value: SESSION_COOKIE,
+        domain: 'parkstay.dbca.wa.gov.au',
+        path: '/',
+        secure: true,
+        httpOnly: true,
+        session: true,
+      },
+    ]);
+  }
+
   async function seed(): Promise<unknown[]> {
     seedCatalogue();
+    seedAccount();
     await container.catalogService.sync('fake');
     return [
-      await call('auth:store-credentials', { email: 'me@example.com', password: PASSWORD }),
+      // A pasted sign-in link: main loads it in the sign-in window, never logs its token
+      await call('accounts:open-sign-in-link', { providerId: 'parkstay', url: SIGN_IN_LINK }),
       await call('gmail:set-credentials', { clientId: 'client-123', clientSecret: CLIENT_SECRET }),
       await call('notifiers:configure', {
         channel: NotifierChannel.EMAIL_SMTP,
@@ -235,10 +260,20 @@ describe('secrets never reach the renderer', () => {
       expect(logs).not.toContain(secret);
     }
 
-    // What the renderer gets instead
-    await expect(call('auth:get-credentials')).resolves.toEqual({
+    // What the renderer gets instead: the account's status, email and name, nothing else
+    await expect(call('accounts:list')).resolves.toEqual({
       success: true,
-      data: { email: 'me@example.com', hasPassword: true, secretState: 'ok' },
+      data: [
+        // FakeProvider's account is optional too, never checked
+        { providerId: 'fake', requirement: 'optional', status: 'unknown' },
+        {
+          providerId: 'parkstay',
+          requirement: 'optional',
+          status: 'signed-in',
+          email: 'me@example.com',
+          displayName: 'Sweep Person',
+        },
+      ],
     });
     await expect(call('gmail:get-credentials')).resolves.toEqual({
       success: true,
@@ -253,10 +288,11 @@ describe('secrets never reach the renderer', () => {
     });
     expect((notifier.data?.config as { auth: object }).auth).not.toHaveProperty('pass');
 
-    // The secrets are still stored for the main process to use
-    await expect(container.authService.getCredentials()).resolves.toMatchObject({
-      password: PASSWORD,
-    });
+    // The sign-in link did reach its window, and the session cookie its partition
+    const { BrowserWindow } = jest.requireMock('electron') as {
+      BrowserWindow: { instances: Array<{ loadURL: jest.Mock }> };
+    };
+    expect(BrowserWindow.instances.at(-1)?.loadURL).toHaveBeenCalledWith(SIGN_IN_LINK);
   });
 
   it('the sweep covers every get/list/search/status/availability/check channel', () => {
@@ -269,11 +305,14 @@ describe('secrets never reach the renderer', () => {
       .map(([, def]) => def.channel)
       .filter((channel) => !NOT_READS.has(channel));
 
-    expect(reads.filter((channel) => !swept.has(channel) && !PENDING_READS.has(channel))).toEqual(
-      []
-    );
+    expect(reads.filter((channel) => !swept.has(channel))).toEqual([]);
     expect(reads).toEqual(
-      expect.arrayContaining(['catalog:availability', 'catalog:check-location'])
+      expect.arrayContaining([
+        'catalog:availability',
+        'catalog:check-location',
+        'accounts:list',
+        'accounts:status',
+      ])
     );
   });
 

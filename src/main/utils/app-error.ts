@@ -11,6 +11,7 @@ const DEFAULT_MESSAGES: Record<ApiErrorCode, string> = {
   PROVIDER_ERROR: 'The provider could not be reached',
   ACCESS_GATE: 'Waiting in the provider queue',
   AUTH_REQUIRED: 'Sign in to the provider first',
+  ACCOUNT_BUSY: 'The provider account is in use by a snipe or hold',
   NOT_IMPLEMENTED: 'Not available yet',
 };
 

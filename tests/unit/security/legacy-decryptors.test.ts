@@ -1,7 +1,8 @@
 /**
- * The v1.x decryptors recover the fixture plaintexts: P2's `users` and notifier rows (machine
- * id `fixture-machine-id`) and a `gmail-oauth.json` written in this test by the installed
+ * The v1.x decryptors recover the fixture plaintexts: P2's notifier row (machine id
+ * `fixture-machine-id`) and a `gmail-oauth.json` written in this test by the installed
  * conf@10.2.0 with the legacy key. Wrong keys and malformed input throw LegacyDecryptError.
+ * The v1.x ParkStay password is never decrypted: migration v9 drops it (§12.32).
  */
 
 import fs from 'fs';
@@ -9,15 +10,10 @@ import type Database from 'better-sqlite3';
 import {
   decryptLegacyGmailStore,
   decryptLegacyNotifierConfig,
-  decryptLegacyUserPassword,
   legacyMachineId,
   LegacyDecryptError,
 } from '@main/security/legacy-decryptors';
-import {
-  FIXTURE_MACHINE_ID,
-  FIXTURE_SMTP_PASSWORD,
-  FIXTURE_USER_PASSWORD,
-} from '@tests/fixtures/db/constants';
+import { FIXTURE_MACHINE_ID, FIXTURE_SMTP_PASSWORD } from '@tests/fixtures/db/constants';
 import { disposeFixture, loadFixture } from '@tests/utils/database-helper';
 import { removeUserData, tempUserData } from '@tests/utils/fake-safe-storage';
 import {
@@ -38,40 +34,18 @@ const FIXTURE_NOTIFIER_CONFIG = {
   toEmail: 'fixture.user@example.com',
 };
 
-interface UserRow {
-  encrypted_password: string;
-  encryption_iv: string;
-  encryption_auth_tag: string;
-}
-
 describe('legacy decryptors', () => {
   let db: Database.Database;
-  let user: UserRow;
   let notifierConfig: string;
 
   beforeAll(() => {
     db = loadFixture('v5-release-1.2.0');
-    user = db
-      .prepare('SELECT encrypted_password, encryption_iv, encryption_auth_tag FROM users')
-      .get() as UserRow;
     notifierConfig = (
       db.prepare('SELECT config FROM notification_providers').get() as { config: string }
     ).config;
   });
 
   afterAll(() => disposeFixture(db));
-
-  const legacyUser = (row: UserRow) => ({
-    encrypted: row.encrypted_password,
-    iv: row.encryption_iv,
-    authTag: row.encryption_auth_tag,
-  });
-
-  it('auth: recovers the fixture ParkStay password with the fixture machine id', () => {
-    expect(decryptLegacyUserPassword(legacyUser(user), FIXTURE_MACHINE_ID)).toBe(
-      FIXTURE_USER_PASSWORD
-    );
-  });
 
   it('notifier: recovers the fixture SMTP config (iv:authTag:ciphertext)', () => {
     expect(notifierConfig).toMatch(/^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]+$/);
@@ -99,9 +73,6 @@ describe('legacy decryptors', () => {
   });
 
   it('wrong key: another machine id, or a store written with another key, throws', () => {
-    expect(() => decryptLegacyUserPassword(legacyUser(user), 'another-machine')).toThrow(
-      LegacyDecryptError
-    );
     expect(() => decryptLegacyNotifierConfig(notifierConfig, 'another-machine')).toThrow(
       LegacyDecryptError
     );
@@ -128,12 +99,6 @@ describe('legacy decryptors', () => {
         LegacyDecryptError
       );
     }
-    expect(() =>
-      decryptLegacyUserPassword({ encrypted: 'zz', iv: 'xx', authTag: 'yy' }, FIXTURE_MACHINE_ID)
-    ).toThrow(LegacyDecryptError);
-    expect(() =>
-      decryptLegacyUserPassword({ ...legacyUser(user), iv: '' }, FIXTURE_MACHINE_ID)
-    ).toThrow(LegacyDecryptError);
 
     const truncated = Buffer.concat([Buffer.alloc(16, 1), Buffer.from(':'), Buffer.alloc(5)]);
     expect(() => decryptLegacyGmailStore(truncated)).toThrow(LegacyDecryptError);

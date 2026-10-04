@@ -10,7 +10,6 @@
 
 import { accounts } from './accounts';
 import { app } from './app';
-import { auth } from './auth';
 import { bookings } from './bookings';
 import { catalog } from './catalog';
 import type { Channels } from './channels';
@@ -38,7 +37,6 @@ export const contract = {
   providers,
   catalog,
   accounts,
-  auth,
 } as const;
 
 export type Contract = typeof contract;

@@ -9,6 +9,8 @@ import fs from 'fs';
 import os from 'os';
 import type { FixtureName } from '@tests/fixtures/db/constants';
 import { openDatabase } from '@main/database/connection';
+import { UserRepository } from '@main/database/repositories/user.repository';
+import type { User } from '@shared/types';
 
 export class TestDatabaseHelper {
   private db: Database.Database | null = null;
@@ -172,4 +174,21 @@ export function loadFixture(name: FixtureName): Database.Database {
 export function disposeFixture(db: Database.Database): void {
   if (db.open) db.close();
   fs.rmSync(path.dirname(db.name), { recursive: true, force: true });
+}
+
+/**
+ * Inserts a `users` row (a profile: email, names, phone) and returns it. The app keeps one
+ * local profile and never creates others; tests use this for ownership and isolation cases.
+ */
+export function insertUser(
+  db: Database.Database,
+  email: string,
+  profile: { firstName?: string; lastName?: string; phone?: string } = {}
+): User {
+  const { lastInsertRowid } = db
+    .prepare('INSERT INTO users (email, first_name, last_name, phone) VALUES (?, ?, ?, ?)')
+    .run(email, profile.firstName ?? null, profile.lastName ?? null, profile.phone ?? null);
+  const user = new UserRepository(db).findById(Number(lastInsertRowid));
+  if (!user) throw new Error('insertUser: the row was not created');
+  return user;
 }

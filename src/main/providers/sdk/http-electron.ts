@@ -14,8 +14,11 @@
  * default policy Chromium cancels a request whose cross-origin Referer carries a path
  * (`ERR_BLOCKED_BY_CLIENT`).
  *
- * The partition's user agent is set once, to the desktop Chrome user agent, so API calls
- * and the windows present the same browser.
+ * The partition presents the Chrome version Electron really runs (`process.versions.chrome`):
+ * its user agent is set once, and every request's `User-Agent` and `sec-ch-ua` headers are
+ * rewritten to that version, whatever the provider put there. API calls and the provider's
+ * windows therefore present one browser whose user agent agrees with Chromium's own client
+ * hints (architecture-notes §12.32).
  *
  * This is the only file under `providers/` that imports `electron`. Build it after the app
  * is ready (`session.fromPartition` needs `ready`).
@@ -32,7 +35,7 @@ import {
   type HopResponse,
   type HttpCookie,
 } from './http';
-import { CHROME_USER_AGENT } from './user-agent';
+import { chromeBrands, chromeUserAgent, runtimeChromeMajor } from './user-agent';
 
 export function providerPartition(providerId: ProviderId): string {
   return `persist:provider-${providerId}`;
@@ -105,23 +108,39 @@ class ElectronCookieStore implements CookieStore {
 
 export interface ElectronSessionHttpClientOptions {
   providerId: ProviderId;
-  /** Defaults to the desktop Chrome user agent. Never a library default. */
-  userAgent?: string;
+  /** The Chrome major version to present. Defaults to the one Electron runs. */
+  chromeMajor?: string;
 }
 
 export class ElectronSessionHttpClient extends BaseHttpClient {
   readonly providerId: ProviderId;
   readonly partition: string;
   readonly cookies: CookieStore;
+  /** The desktop Chrome user agent this partition presents. */
+  readonly userAgent: string;
+  private readonly brands: string;
   private readonly ses: Session;
 
-  constructor({ providerId, userAgent = CHROME_USER_AGENT }: ElectronSessionHttpClientOptions) {
+  constructor({
+    providerId,
+    chromeMajor = runtimeChromeMajor(),
+  }: ElectronSessionHttpClientOptions) {
     super();
     this.providerId = providerId;
     this.partition = providerPartition(providerId);
+    this.userAgent = chromeUserAgent(chromeMajor);
+    this.brands = chromeBrands(chromeMajor);
     this.ses = session.fromPartition(this.partition);
-    this.ses.setUserAgent(userAgent);
+    this.ses.setUserAgent(this.userAgent);
     this.cookies = new ElectronCookieStore(this.ses);
+  }
+
+  /** The hop's headers, with the partition's own `User-Agent` and (when sent) `sec-ch-ua`. */
+  private identityHeaders(headers: Headers): Record<string, string> {
+    const out = Object.fromEntries(headers.entries());
+    out['user-agent'] = this.userAgent;
+    if ('sec-ch-ua' in out) out['sec-ch-ua'] = this.brands;
+    return out;
   }
 
   protected send(hop: HopRequest): Promise<HopResponse> {
@@ -143,7 +162,7 @@ export class ElectronSessionHttpClient extends BaseHttpClient {
         session: this.ses,
         credentials: 'include',
         redirect: 'manual',
-        headers: Object.fromEntries(hop.headers.entries()),
+        headers: this.identityHeaders(hop.headers),
         ...(hop.headers.has('referer') ? { referrerPolicy: 'unsafe-url' } : {}),
       });
 

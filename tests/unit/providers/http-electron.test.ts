@@ -8,8 +8,12 @@
 import { EventEmitter } from 'events';
 import { ElectronSessionHttpClient, providerPartition } from '@main/providers/sdk/http-electron';
 import {
+  CHROME_MAJOR_VERSION,
   CHROME_USER_AGENT,
+  chromeBrands,
+  chromeUserAgent,
   isAbortError,
+  runtimeChromeMajor,
   ProviderHttpError,
   ProviderTimeoutError,
 } from '@main/providers/sdk';
@@ -123,9 +127,37 @@ describe('ElectronSessionHttpClient', () => {
       .getJson('https://parkstay.dbca.wa.gov.au/api/b');
 
     expect(ses.setUserAgent).toHaveBeenCalledTimes(1);
+    // Outside Electron there is no process.versions.chrome: the fixed version is used
     expect(ses.setUserAgent).toHaveBeenCalledWith(CHROME_USER_AGENT);
+    expect(client.userAgent).toBe(CHROME_USER_AGENT);
     expect(CHROME_USER_AGENT).toMatch(/Chrome\/\d+/);
     expect(CHROME_USER_AGENT).not.toMatch(/axios|python|curl|java|httpclient|electron/i);
+  });
+
+  it("presents the Chromium version Electron runs, rewriting a provider's User-Agent and sec-ch-ua", async () => {
+    const requests = script(json({ ok: true }));
+    const client = new ElectronSessionHttpClient({ providerId: 'parkstay', chromeMajor: '120' });
+
+    await client.getJson('https://parkstay.dbca.wa.gov.au/api/a', {
+      headers: {
+        'User-Agent': CHROME_USER_AGENT,
+        'sec-ch-ua': chromeBrands('131'),
+        'sec-ch-ua-platform': '"Windows"',
+      },
+    });
+
+    expect(client.userAgent).toBe(chromeUserAgent('120'));
+    expect(ses.setUserAgent).toHaveBeenCalledWith(chromeUserAgent('120'));
+    expect(requests[0].options.headers).toMatchObject({
+      'user-agent': chromeUserAgent('120'),
+      'sec-ch-ua': chromeBrands('120'),
+      'sec-ch-ua-platform': '"Windows"',
+    });
+  });
+
+  it('reads the Chromium major version from process.versions', () => {
+    expect(runtimeChromeMajor({ chrome: '120.0.6099.291' })).toBe('120');
+    expect(runtimeChromeMajor({})).toBe(CHROME_MAJOR_VERSION);
   });
 
   it("sends each hop with net.request on the session: credentials 'include', redirect 'manual'", async () => {

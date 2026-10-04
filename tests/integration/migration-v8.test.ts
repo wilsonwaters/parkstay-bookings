@@ -53,6 +53,18 @@ import { logger } from '@main/utils/logger';
 
 jest.mock('node-machine-id', () => ({ machineIdSync: () => FIXTURE_MACHINE_ID }));
 
+/**
+ * A new database file migrated to v8 the way `openDatabase` opens one (foreign keys on, WAL).
+ * These tests pin v8: v9 (V6) has its own upgrade test (`migration-v9.test.ts`).
+ */
+function openV8(file: string): Database.Database {
+  const db = new Database(file);
+  db.pragma('foreign_keys = ON');
+  db.pragma('journal_mode = WAL');
+  runMigrations(db, 8);
+  return db;
+}
+
 type Row = Record<string, unknown>;
 type Snapshot = Record<string, Row[]>;
 
@@ -462,7 +474,7 @@ describe.each<FixtureName>(['v5-release-1.2.0', 'v6-branch'])(
       db = loadFixture(fixture);
       seedExtraRows(db, FIXTURE_VERSION[fixture]);
       before = snapshot(db);
-      runMigrations(db);
+      runMigrations(db, 8);
     });
 
     afterEach(() => {
@@ -477,7 +489,7 @@ describe.each<FixtureName>(['v5-release-1.2.0', 'v6-branch'])(
       expect(before.queue_session).toHaveLength(1);
 
       expect(version(db)).toBe(8);
-      expect(LATEST_SCHEMA_VERSION).toBe(8);
+      expect(LATEST_SCHEMA_VERSION).toBeGreaterThanOrEqual(8);
       expect(tables(db)).toEqual(V8_TABLES);
       expect(snapshot(db)).toEqual(expectedAfterV8(expectedAfterV7(before)));
     });
@@ -506,7 +518,7 @@ describe.each<FixtureName>(['v5-release-1.2.0', 'v6-branch'])(
       const schema = normalisedSchema(db);
       const data = snapshot(db);
 
-      expect(() => runMigrations(db)).not.toThrow();
+      expect(() => runMigrations(db, 8)).not.toThrow();
       expect(version(db)).toBe(8);
       expect(normalisedSchema(db)).toEqual(schema);
       expect(snapshot(db)).toEqual(data);
@@ -729,7 +741,7 @@ describe('migration v8 of the v6 fixture snipes', () => {
     db = loadFixture('v6-branch');
     seedExtraRows(db, 6);
     before = snapshot(db);
-    runMigrations(db);
+    runMigrations(db, 8);
   });
 
   afterEach(() => disposeFixture(db));
@@ -817,7 +829,7 @@ describe('migration v8 of a fresh v7 database', () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-stay-v8-'));
     db = freshV7(path.join(tmpDir, 'v7.db'));
     before = snapshot(db);
-    runMigrations(db);
+    runMigrations(db, 8);
   });
 
   afterEach(() => {
@@ -863,9 +875,9 @@ describe('migration v8 on a fresh install', () => {
   });
 
   it('creates exactly the local profile row (id 1, no credentials) and no account', () => {
-    const db = openDatabase(path.join(tmpDir, 'fresh.db'));
+    const db = openV8(path.join(tmpDir, 'fresh.db'));
     try {
-      expect(version(db)).toBe(LATEST_SCHEMA_VERSION);
+      expect(version(db)).toBe(8);
       expect(tables(db)).toEqual(V8_TABLES);
       expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
       expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
@@ -891,14 +903,14 @@ describe('migration v8 on a fresh install', () => {
   });
 
   it('produces the same normalised schema as the migrated v5, v6 and fresh-v7 databases', () => {
-    const fresh = openDatabase(path.join(tmpDir, 'fresh.db'));
+    const fresh = openV8(path.join(tmpDir, 'fresh.db'));
     const v5 = loadFixture('v5-release-1.2.0');
     const v6 = loadFixture('v6-branch');
     const v7 = freshV7(path.join(tmpDir, 'v7.db'));
     try {
-      runMigrations(v5);
-      runMigrations(v6);
-      runMigrations(v7);
+      runMigrations(v5, 8);
+      runMigrations(v6, 8);
+      runMigrations(v7, 8);
 
       const expected = normalisedSchema(fresh);
       expect(expected.length).toBeGreaterThan(50);
@@ -931,7 +943,7 @@ describe('migration v8 atomicity', () => {
 
       let thrown: unknown;
       try {
-        runMigrations(db);
+        runMigrations(db, 8);
       } catch (error) {
         thrown = error;
       }
@@ -949,7 +961,7 @@ describe('migration v8 atomicity', () => {
 
       // The next start resumes from v7
       db.exec('DROP TABLE bookings_v8');
-      runMigrations(db);
+      runMigrations(db, 8);
       expect(version(db)).toBe(8);
     } finally {
       disposeFixture(db);
@@ -966,7 +978,7 @@ describe('migration v8 atomicity', () => {
         UPDATE sqlite_sequence SET seq = 70 WHERE name = 'bookings';
       `);
 
-      runMigrations(db);
+      runMigrations(db, 8);
 
       const seq = (name: string) =>
         (db.prepare('SELECT seq FROM sqlite_sequence WHERE name = ?').get(name) as { seq: number })
@@ -982,7 +994,7 @@ describe('migration v8 atomicity', () => {
   it('recreates the indexes and update_*_timestamp triggers of the rebuilt tables', () => {
     const db = loadFixture('v5-release-1.2.0');
     try {
-      runMigrations(db);
+      runMigrations(db, 8);
       const names = (type: string) =>
         (
           db.prepare('SELECT name FROM sqlite_master WHERE type = ? ORDER BY name').all(type) as {
@@ -1183,7 +1195,7 @@ describe('migration v8 edge cases', () => {
     `);
     const warn = jest.spyOn(logger, 'warn');
 
-    runMigrations(db);
+    runMigrations(db, 8);
 
     expect(db.prepare('SELECT id, arrival_date, departure_date FROM watches').all()).toEqual([
       { id: 1, arrival_date: '2026-04-03', departure_date: '' },
@@ -1201,7 +1213,7 @@ describe('migration v8 edge cases', () => {
       UPDATE watches SET preferred_sites = 'Site 1, Site 2' WHERE id = 2;
       UPDATE site_snipes SET target_site_ids = NULL WHERE id = 1;
     `);
-    runMigrations(db);
+    runMigrations(db, 8);
 
     expect(db.prepare('SELECT id, unit_ids FROM watches').all()).toEqual([
       { id: 1, unit_ids: '[]' },
@@ -1221,7 +1233,7 @@ describe('migration v8 edge cases', () => {
     db.exec('DELETE FROM users');
     expect(count(db, 'watches')).toBe(0);
 
-    runMigrations(db);
+    runMigrations(db, 8);
 
     expect(count(db, 'provider_accounts')).toBe(0);
     expect(db.prepare('SELECT id, email, encrypted_password FROM users').all()).toEqual([
@@ -1239,7 +1251,7 @@ describe('migration v8 edge cases', () => {
     `);
     const warn = jest.spyOn(logger, 'warn');
 
-    runMigrations(db);
+    runMigrations(db, 8);
 
     expect(db.prepare('SELECT provider_id, email FROM provider_accounts').all()).toEqual([
       { provider_id: 'parkstay', email: 'fixture.user@example.com' },
@@ -1253,7 +1265,7 @@ describe('migration v8 edge cases', () => {
   it('gives an account with no name a NULL display name', () => {
     db.exec("UPDATE users SET first_name = NULL, last_name = '  '");
 
-    runMigrations(db);
+    runMigrations(db, 8);
 
     expect(db.prepare('SELECT display_name, email FROM provider_accounts').get()).toEqual({
       display_name: null,
@@ -1263,14 +1275,14 @@ describe('migration v8 edge cases', () => {
 
   it('skips an empty queue_session, and still migrates an expired session', () => {
     db.exec('DELETE FROM queue_session');
-    runMigrations(db);
+    runMigrations(db, 8);
     expect(count(db, 'provider_state')).toBe(0);
     expect(tables(db)).not.toContain('queue_session');
 
     // The fixture session expired in 2025; V3 discards it, v8 still moves it.
     const expired = loadFixture('v5-release-1.2.0');
     try {
-      runMigrations(expired);
+      runMigrations(expired, 8);
       expect(queueSession(expired)?.value).toMatchObject({
         sessionKey: 'FIXTURESESSIONKEY00000000000000000000000000000000000',
       });
@@ -1283,7 +1295,7 @@ describe('migration v8 edge cases', () => {
     runMigrations(db, 7);
     db.exec('DROP TABLE queue_session');
 
-    runMigrations(db);
+    runMigrations(db, 8);
 
     expect(version(db)).toBe(8);
     expect(count(db, 'provider_state')).toBe(0);
@@ -1302,7 +1314,7 @@ describe('migration v8 edge cases', () => {
       INSERT INTO provider_state (provider_id, key, value) VALUES ('fake', 'cursor', '"abc"');
     `);
 
-    runMigrations(db);
+    runMigrations(db, 8);
 
     expect(version(db)).toBe(8);
     expect(
@@ -1324,7 +1336,7 @@ describe('migration v8 edge cases', () => {
     db.exec(sql);
     const warn = jest.spyOn(logger, 'warn');
 
-    runMigrations(db);
+    runMigrations(db, 8);
 
     expect(version(db)).toBe(8);
     expect(db.prepare('SELECT user_id, updated_at FROM watches WHERE id = 2').get()).toEqual({

@@ -7,7 +7,6 @@ import type { AppContainer } from '../app/container';
 import { createHandle, IpcMainLike, SenderGuard } from './handle';
 import { registerAccountsHandlers } from './handlers/accounts.handlers';
 import { registerAppHandlers } from './handlers/app.handlers';
-import { registerAuthHandlers } from './handlers/auth.handlers';
 import { registerBookingsHandlers } from './handlers/bookings.handlers';
 import { registerCatalogHandlers } from './handlers/catalog.handlers';
 import { registerGmailHandlers } from './handlers/gmail.handlers';
@@ -45,7 +44,6 @@ export function registerIpcHandlers(
   registerProvidersHandlers(handle, container);
   registerCatalogHandlers(handle, container);
   registerAccountsHandlers(handle, container);
-  registerAuthHandlers(handle, container);
 
   logger.info('IPC handlers registered');
 }

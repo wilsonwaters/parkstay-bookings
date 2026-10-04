@@ -13,7 +13,8 @@ describe('app shell flow', () => {
 
     // Starts on Explore, with no login gate.
     expect(await screen.findByRole('heading', { level: 1, name: 'Explore' })).toBeInTheDocument();
-    expect(mock.api.auth.validateSession).not.toHaveBeenCalled();
+    expect(mock.api.accounts.signIn).not.toHaveBeenCalled();
+    expect(mock.api.accounts.status).not.toHaveBeenCalled();
     const nav = screen.getByRole('navigation', { name: 'Primary' });
 
     // Watches through the nav: the legacy page loads its data inside the shell.
@@ -52,6 +53,9 @@ describe('app shell flow', () => {
     // The frame never changed underneath.
     expect(getBanners()).toHaveLength(1);
     expect(screen.getAllByRole('main')).toHaveLength(1);
-    expect(mock.api.auth.validateSession).not.toHaveBeenCalled();
+    // Settings shows the stored ParkStay account; nothing asks anyone to sign in
+    expect(mock.api.accounts.list).toHaveBeenCalled();
+    expect(mock.api.accounts.signIn).not.toHaveBeenCalled();
+    expect(mock.api.accounts.status).not.toHaveBeenCalled();
   });
 });

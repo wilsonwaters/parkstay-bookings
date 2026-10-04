@@ -1,23 +1,26 @@
 /**
- * `accounts` handlers. Provider accounts and sign-in windows are not built yet (V6), so every
- * method validates its request and then answers `NOT_IMPLEMENTED`.
+ * `accounts` handlers: the person's account with each provider (`ProviderAccountService`).
+ * Responses carry the account's status, email and name only; never a cookie or token.
+ *
+ * - `list`: every provider with sign-in, from the stored rows (no network);
+ * - `status`: asks the provider (cached for 60 s);
+ * - `signIn`: opens the in-app sign-in window and answers when sign-in is confirmed or the
+ *   window closes;
+ * - `signOut`: `ACCOUNT_BUSY` while a snipe or hold needs the session;
+ * - `openSignInLink`: loads a pasted sign-in link, which must be on the provider's sign-in
+ *   origins (`VALIDATION` otherwise).
  */
 
 import { contract } from '@shared/contracts';
 import type { AppContainer } from '../../app/container';
-import { AppError } from '../../utils/app-error';
 import type { Handle } from '../handle';
 
-const notYet = (): never => {
-  throw new AppError('NOT_IMPLEMENTED', 'Provider accounts are not available yet');
-};
-
-export function registerAccountsHandlers(handle: Handle, _c: AppContainer): void {
+export function registerAccountsHandlers(handle: Handle, c: AppContainer): void {
   const api = contract.accounts;
 
-  handle(api.list, notYet);
-  handle(api.status, notYet);
-  handle(api.signIn, notYet);
-  handle(api.signOut, notYet);
-  handle(api.openSignInLink, notYet);
+  handle(api.list, () => c.accounts.list());
+  handle(api.status, ({ providerId }) => c.accounts.status(providerId));
+  handle(api.signIn, ({ providerId }) => c.accounts.signIn(providerId));
+  handle(api.signOut, ({ providerId }) => c.accounts.signOut(providerId));
+  handle(api.openSignInLink, ({ providerId, url }) => c.accounts.openSignInLink(providerId, url));
 }

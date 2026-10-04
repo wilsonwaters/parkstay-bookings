@@ -14,7 +14,6 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import {
-  CHROME_USER_AGENT,
   isAbortError,
   MAX_REDIRECTS,
   ProviderHttpError,
@@ -25,6 +24,8 @@ import {
 
 export interface TransportCaseContext {
   client: HttpClient;
+  /** The user agent the client presents (the Electron partition's follows its Chromium). */
+  userAgent: string;
   /** Origin A, e.g. `http://127.0.0.1:41234`. */
   base: string;
   /** Origin B: another port, so another origin. */
@@ -313,9 +314,13 @@ export const HTTP_TRANSPORT_CASES: readonly TransportCase[] = [
   },
   {
     name: 'sends the desktop Chrome user agent',
-    async run({ client, base }) {
+    async run({ client, base, userAgent }) {
       const echo = await client.getJson<Echo>(`${base}/echo`);
-      assert.equal(echo.userAgent, CHROME_USER_AGENT);
+      assert.equal(echo.userAgent, userAgent);
+      assert.match(
+        userAgent,
+        /^Mozilla\/5\.0 \(Windows NT 10\.0; Win64; x64\).* Chrome\/\d+\.0\.0\.0 Safari/
+      );
     },
   },
   {

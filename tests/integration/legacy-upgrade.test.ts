@@ -1,17 +1,17 @@
 /**
  * The upgrade path from a v1.x install, end to end: the first-run copy
  * (`migrateLegacyInstall`), then the app's own startup on the copy (`openDatabase` runs the
- * v6/v7/v8 migrations; `createContainer` migrates the legacy secrets into the vault).
+ * v6 to v9 migrations; `createContainer` migrates the legacy secrets into the vault).
  *
- * - From the v5 fixture (the released v1.2.0) and the v6 fixture: the copy reaches schema
- *   v8 with every watch, snipe, booking, notification, notifier and setting, every watch,
- *   snipe and booking on `provider_id = 'parkstay'`, the encrypted columns byte-identical
- *   and no foreign-key violation. The legacy database and `gmail-oauth.json` keep their
+ * - From the v5 fixture (the released v1.2.0) and the v6 fixture: the copy reaches the latest
+ *   schema with every watch, snipe, booking, notification, notifier and setting, every watch,
+ *   snipe and booking on `provider_id = 'parkstay'`, the notifier ciphertext byte-identical,
+ *   the never-used ParkStay password dropped (its email kept on the ParkStay account, v9,
+ *   §12.32) and no foreign-key violation. The legacy database and `gmail-oauth.json` keep their
  *   sha256 and no legacy file is deleted.
  * - A transaction committed only in the legacy `-wal` (never checkpointed) reaches
  *   `wa-stay.db`, from the legacy folder and from the installer's snapshot (§12.12).
- * - First start: the copied v1.2.0 secrets (ParkStay password, SMTP config, Gmail file)
- *   become vault envelopes in the WA Stay data folder, while the legacy folder keeps the
+ * - First start: the copied v1.2.0 secrets (SMTP config, Gmail file) become vault envelopes in the WA Stay data folder, while the legacy folder keeps the
  *   pre-vault originals as the backup.
  * - Exactly one "Your data has moved to WA Stay" notice after the copy, none on later starts.
  *   A start that crashes after the copy, before the follow-ups, leaves them to the next one.
@@ -39,7 +39,6 @@ import { NotifierChannel } from '@shared/types';
 import {
   FIXTURE_MACHINE_ID,
   FIXTURE_SMTP_PASSWORD,
-  FIXTURE_USER_PASSWORD,
   type FixtureName,
 } from '@tests/fixtures/db/constants';
 import { FakeSafeStorage } from '@tests/utils/fake-safe-storage';
@@ -114,14 +113,14 @@ function all(db: Database.Database, sql: string): Row[] {
 }
 
 const SECRET_SQL = {
-  users:
-    'SELECT id, encrypted_password, encryption_key, encryption_iv, encryption_auth_tag FROM users ORDER BY id',
+  legacyUsers: 'SELECT id, email, first_name, last_name, phone FROM users ORDER BY id',
+  users: 'SELECT id, email, first_name, last_name, phone FROM users ORDER BY id',
   legacyNotifiers: 'SELECT id, config FROM notification_providers ORDER BY id',
   notifiers: 'SELECT id, config FROM notifiers ORDER BY id',
 };
 
 describe.each(FIXTURES)('upgrading a %s install', (fixture, sourceVersion) => {
-  it('reaches v8 with every row, provider ids, byte-identical secrets and no foreign-key violation', async () => {
+  it('reaches the latest schema with every row, provider ids, byte-identical secrets and no foreign-key violation', async () => {
     writeLegacyDatabase(install.paths.legacyDbPath, fixture);
     const gmail = writeLegacyGmailStore(install.paths.legacyUserData);
     const legacyDbHash = sha256(install.paths.legacyDbPath);
@@ -129,7 +128,7 @@ describe.each(FIXTURES)('upgrading a %s install', (fixture, sourceVersion) => {
     const before = fingerprint(install.paths.legacyUserData);
     const legacy = withDatabase(install.paths.legacyDbPath, (db) => ({
       counts: KEPT_TABLES.map(([table]) => count(db, table)),
-      users: all(db, SECRET_SQL.users),
+      users: all(db, SECRET_SQL.legacyUsers),
       notifiers: all(db, SECRET_SQL.legacyNotifiers),
     }));
 
@@ -140,10 +139,9 @@ describe.each(FIXTURES)('upgrading a %s install', (fixture, sourceVersion) => {
     // The app's startup: open (and migrate) the copy
     const db = openDatabase(install.paths.dbPath);
     try {
-      expect(LATEST_SCHEMA_VERSION).toBe(8);
       expect(
         (db.prepare('SELECT MAX(version) AS v FROM migrations').get() as { v: number }).v
-      ).toBe(8);
+      ).toBe(LATEST_SCHEMA_VERSION);
       expect(KEPT_TABLES.map(([, table]) => count(db, table))).toEqual(legacy.counts);
       expect(legacy.counts[0]).toBeGreaterThan(0); // not vacuous
       for (const table of ['watches', 'site_snipes', 'bookings']) {
@@ -151,7 +149,14 @@ describe.each(FIXTURES)('upgrading a %s install', (fixture, sourceVersion) => {
           count(db, table) > 0 ? [{ provider_id: 'parkstay' }] : []
         );
       }
+      // The profile is kept; the ParkStay password is gone, its email is the account's hint
       expect(all(db, SECRET_SQL.users)).toEqual(legacy.users);
+      expect(
+        all(db, "SELECT name FROM pragma_table_info('users') WHERE name LIKE 'encrypt%'")
+      ).toEqual([]);
+      expect(all(db, 'SELECT provider_id, status, email FROM provider_accounts')).toEqual([
+        { provider_id: 'parkstay', status: 'unknown', email: 'fixture.user@example.com' },
+      ]);
       expect(all(db, SECRET_SQL.notifiers)).toEqual(legacy.notifiers);
       expect(db.pragma('foreign_key_check')).toEqual([]);
     } finally {
@@ -218,14 +223,10 @@ describe('the first start after the copy', () => {
     });
     try {
       const { db, vault } = container;
-      await expect(container.authService.getCredentials()).resolves.toEqual({
-        email: 'fixture.user@example.com',
-        password: FIXTURE_USER_PASSWORD,
-      });
-      expect(
-        (db.prepare('SELECT encrypted_password FROM users WHERE id = 1').get() as Row)
-          .encrypted_password
-      ).toMatch(/^vault:v1:os:/);
+      // The ParkStay "password" is not carried over (v9): connect ParkStay once instead
+      expect(container.accounts.list()).toEqual([
+        expect.objectContaining({ providerId: 'parkstay', email: 'fixture.user@example.com' }),
+      ]);
       const notifier = new NotifierRepository(db, vault).findByChannel(NotifierChannel.EMAIL_SMTP);
       expect(notifier).toMatchObject({ secretState: 'ok' });
       expect(notifier?.config).toMatchObject({ auth: { pass: FIXTURE_SMTP_PASSWORD } });

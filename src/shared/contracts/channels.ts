@@ -7,14 +7,6 @@
  */
 
 export const CHANNELS = {
-  // Transitional: V6 replaces it with per-provider accounts.
-  auth: {
-    storeCredentials: 'auth:store-credentials',
-    getCredentials: 'auth:get-credentials',
-    updateCredentials: 'auth:update-credentials',
-    deleteCredentials: 'auth:delete-credentials',
-    validateSession: 'auth:validate-session',
-  },
   bookings: {
     list: 'bookings:list',
     get: 'bookings:get',

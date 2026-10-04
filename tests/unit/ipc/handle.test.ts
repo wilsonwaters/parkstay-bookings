@@ -113,6 +113,24 @@ describe('handle()', () => {
       expect(fn).not.toHaveBeenCalled();
     });
 
+    it('a provider sign-in or payment window is FORBIDDEN, even registered as trusted', async () => {
+      const fn = jest.fn();
+      const event = fakeEvent();
+      createHandle({
+        isTrustedSender: createSenderGuard({
+          isTrustedWebContents: () => true,
+          isAppUrl: () => true,
+          isProviderWindow: (sender) => sender === event.sender,
+        }),
+        ipc,
+      })(contract.watches.list, fn);
+
+      await expect(ipc.invoke('watches:list', event)).resolves.toMatchObject({
+        code: 'FORBIDDEN',
+      });
+      expect(fn).not.toHaveBeenCalled();
+    });
+
     it('a guard that throws (frame disposed mid-check) is FORBIDDEN, not a crash', async () => {
       const fn = jest.fn();
       createHandle({
@@ -257,15 +275,15 @@ describe('handle()', () => {
       expect(logged()).not.toContain('me@example.com');
     });
 
-    it('logs no payload values for auth and gmail failures either', async () => {
-      register(contract.auth.storeCredentials, () => {
+    it('logs no payload values for accounts and gmail failures either', async () => {
+      register(contract.accounts.openSignInLink, () => {
         throw new Error('disk full');
       });
       register(contract.gmail.setCredentials, jest.fn());
 
-      await ipc.invoke('auth:store-credentials', fakeEvent(), {
-        email: 'me@example.com',
-        password: SECRET,
+      await ipc.invoke('accounts:open-sign-in-link', fakeEvent(), {
+        providerId: 'parkstay',
+        url: `https://dbcab2c.b2clogin.com/link?token=${SECRET}&email=me@example.com`,
       });
       await ipc.invoke('gmail:set-credentials', fakeEvent(), {
         clientId: 'client-id',
@@ -273,7 +291,7 @@ describe('handle()', () => {
         extra: SECRET,
       });
 
-      expect(logged()).toContain('auth:store-credentials');
+      expect(logged()).toContain('accounts:open-sign-in-link');
       expect(logged()).toContain('gmail:set-credentials');
       expect(logged()).not.toContain(SECRET);
       expect(logged()).not.toContain('me@example.com');

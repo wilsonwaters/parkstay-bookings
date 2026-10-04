@@ -3,23 +3,30 @@
  * exist and nothing may delete it. Every watch, booking, snipe and notification has
  * `user_id ... ON DELETE CASCADE`, so deleting the row wipes all of the user's data.
  *
- * Migration v8 seeds the profile row with no credentials (platform open question 1),
- * `AuthService.deleteCredentials` (Logout) clears only the credential fields (P3), and
- * startup creates the profile row when the table is empty (`ensureLocalProfile`).
+ * Migration v8 seeds the profile row (platform open question 1), v9 leaves it the profile
+ * only (no credential columns), startup creates it when the table is empty
+ * (`ensureLocalProfile`), and a provider sign-out clears only the provider's session
+ * partition and account row (V6).
  */
 
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { TestDatabaseHelper } from '@tests/utils/database-helper';
-import { UserRepository, WatchRepository } from '@main/database/repositories';
-import { AuthService } from '@main/services/auth/AuthService';
+import {
+  ProviderAccountRepository,
+  UserRepository,
+  WatchRepository,
+} from '@main/database/repositories';
 import { createLocalProfile } from '@main/app/profile';
-import { mockUserInput } from '@tests/fixtures/users';
+import { ProviderAccountService } from '@main/core/accounts/provider-account.service';
+import { ProviderRegistry } from '@main/providers/registry';
+import {
+  createFakeProvider,
+  createMemoryLogger,
+  createTestProviderContext,
+} from '@tests/utils/fake-provider';
 import { createMockWatchInput } from '@tests/fixtures/watches';
-import { testVault } from '@tests/utils/fake-safe-storage';
-
-const { vault } = testVault();
 
 describe('local profile row', () => {
   let dbHelper: TestDatabaseHelper;
@@ -34,57 +41,57 @@ describe('local profile row', () => {
     await dbHelper.teardown();
   });
 
-  test('survives credential deletion (Logout), together with its data', async () => {
-    const users = new UserRepository(db);
-    const auth = new AuthService(users, vault);
-    const profile = await auth.storeCredentials(mockUserInput);
-    const watch = new WatchRepository(db).create(profile.id, createMockWatchInput());
-
-    await auth.deleteCredentials();
-
-    expect(users.findById(profile.id)).not.toBeNull();
-    expect(new WatchRepository(db).findById(watch.id)).not.toBeNull();
-  });
-
-  test('exists on a fresh install, as id 1 with NULL credentials, and startup keeps it', () => {
+  test('exists on a fresh install, as id 1 with no email and no credential columns, and startup keeps it', () => {
     const users = new UserRepository(db);
     expect(db.prepare('SELECT * FROM users').all()).toEqual([
-      expect.objectContaining({
-        id: 1,
-        email: null,
-        encrypted_password: null,
-        encryption_key: null,
-        encryption_iv: null,
-        encryption_auth_tag: null,
-      }),
+      expect.objectContaining({ id: 1, email: null }),
     ]);
+    expect(
+      (db.prepare('SELECT name FROM pragma_table_info(?)').all('users') as { name: string }[]).map(
+        (c) => c.name
+      )
+    ).toEqual(['id', 'email', 'first_name', 'last_name', 'phone', 'created_at', 'updated_at']);
 
     expect(createLocalProfile(users).ensureLocalProfile()).toBe(1);
 
-    expect(users.findAll()).toEqual([
-      expect.objectContaining({ id: 1, email: '', encryptedPassword: '' }),
-    ]);
-    const auth = new AuthService(users, vault);
-    expect(auth.hasStoredCredentials()).toBe(false);
-    expect(auth.getCredentialStatus()).toBeNull();
+    expect(users.findAll()).toEqual([expect.objectContaining({ id: 1, email: '' })]);
   });
 
-  test('a NULL-email profile takes credentials on sign-in and clears them back to NULL', async () => {
+  test('ensureLocalProfile creates id 1 when the table is empty', () => {
+    db.exec('DELETE FROM users');
     const users = new UserRepository(db);
-    const auth = new AuthService(users, vault);
 
-    const signedIn = await auth.storeCredentials(mockUserInput);
-    expect(signedIn.id).toBe(1);
-    expect(auth.getCredentialStatus()).toMatchObject({
-      email: mockUserInput.email,
-      hasPassword: true,
+    expect(createLocalProfile(users).ensureLocalProfile()).toBe(1);
+    expect(createLocalProfile(users).ensureLocalProfile()).toBe(1);
+    expect(users.findAll().map((u) => u.id)).toEqual([1]);
+  });
+
+  test('a provider sign-out clears only its session: the profile row and its data stay', async () => {
+    const users = new UserRepository(db);
+    const userId = createLocalProfile(users).ensureLocalProfile();
+    const watch = new WatchRepository(db).create(userId, createMockWatchInput());
+    const registry = new ProviderRegistry();
+    const fake = createFakeProvider({ id: 'parkstay' });
+    registry.register(fake.factory, (manifest) => createTestProviderContext(manifest));
+    const sessions = {
+      clear: jest.fn(async () => undefined),
+      flush: jest.fn(async () => undefined),
+    };
+    const accounts = new ProviderAccountService({
+      providers: registry,
+      accounts: new ProviderAccountRepository(db),
+      windows: { open: jest.fn(), find: jest.fn(), closeAll: jest.fn() },
+      sessions,
+      events: { emit: jest.fn() },
+      isBusy: () => false,
+      logger: createMemoryLogger(),
     });
 
-    await auth.deleteCredentials();
-    expect(db.prepare('SELECT id, email, encrypted_password FROM users').all()).toEqual([
-      { id: 1, email: null, encrypted_password: null },
-    ]);
-    expect(auth.getCredentialStatus()).toBeNull();
+    await expect(accounts.signOut('parkstay')).resolves.toMatchObject({ status: 'signed-out' });
+
+    expect(sessions.clear).toHaveBeenCalledTimes(1);
+    expect(users.findAll().map((u) => u.id)).toEqual([userId]);
+    expect(new WatchRepository(db).findById(watch.id)).not.toBeNull();
   });
 
   test('no main-process code deletes users rows (§12.22)', () => {
@@ -107,18 +114,5 @@ describe('local profile row', () => {
     visit(path.resolve(__dirname, '../../src/main'));
 
     expect(offenders).toEqual([]);
-  });
-
-  test('a fresh-install profile survives sign-in and Logout with its data', async () => {
-    const users = new UserRepository(db);
-    const userId = createLocalProfile(users).ensureLocalProfile();
-    const auth = new AuthService(users, vault);
-    const watch = new WatchRepository(db).create(userId, createMockWatchInput());
-
-    await auth.storeCredentials(mockUserInput);
-    await auth.deleteCredentials();
-
-    expect(users.findAll().map((u) => u.id)).toEqual([userId]);
-    expect(new WatchRepository(db).findById(watch.id)).not.toBeNull();
   });
 });

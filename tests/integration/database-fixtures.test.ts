@@ -6,6 +6,7 @@
  * dumps replay faithfully, including the broken v6 foreign key, before any migration runs.
  */
 
+import crypto from 'crypto';
 import Database from 'better-sqlite3';
 import { loadFixture, disposeFixture } from '@tests/utils/database-helper';
 import {
@@ -14,7 +15,27 @@ import {
   V5_ROW_COUNTS,
   V6_ROW_COUNTS,
 } from '@tests/fixtures/db/constants';
-import { decryptLegacyUserPassword } from '@main/security/legacy-decryptors';
+
+/**
+ * Decrypts the fixture's v1.x ParkStay password (AES-256-GCM, the v1.2.0 `AuthService` key).
+ * The app no longer can (migration v9 drops the columns), so the fixture check does it here.
+ */
+function decryptFixturePassword(row: Record<string, string>): string {
+  const key = crypto.pbkdf2Sync(
+    FIXTURE_MACHINE_ID + 'parkstay-bookings-v1-secret', // legacy-name-ok: the v1.x key
+    'parkstay-salt',
+    100000,
+    32,
+    'sha512'
+  );
+  const decipher = crypto.createDecipheriv(
+    'aes-256-gcm',
+    key,
+    Buffer.from(row.encryption_iv, 'hex')
+  );
+  decipher.setAuthTag(Buffer.from(row.encryption_auth_tag, 'hex'));
+  return decipher.update(row.encrypted_password, 'hex', 'utf8') + decipher.final('utf8');
+}
 
 function rowCounts(db: Database.Database, tables: string[]): Record<string, number> {
   return Object.fromEntries(
@@ -63,16 +84,7 @@ describe('schema fixtures', () => {
         .prepare('SELECT email, encrypted_password, encryption_iv, encryption_auth_tag FROM users')
         .get() as Record<string, string>;
       expect(row.email).toBe('fixture.user@example.com');
-      expect(
-        decryptLegacyUserPassword(
-          {
-            encrypted: row.encrypted_password,
-            iv: row.encryption_iv,
-            authTag: row.encryption_auth_tag,
-          },
-          FIXTURE_MACHINE_ID
-        )
-      ).toBe(FIXTURE_USER_PASSWORD);
+      expect(decryptFixturePassword(row)).toBe(FIXTURE_USER_PASSWORD);
     });
   });
 

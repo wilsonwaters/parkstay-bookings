@@ -1,18 +1,16 @@
 /**
- * Decryptors for the three v1.x secret schemes, used only by `migrateLegacySecrets` to read
- * each legacy ciphertext once before it is re-encrypted with the SecretVault. They decrypt
- * and never encrypt.
+ * Decryptors for the v1.x secret schemes, used only by `migrateLegacySecrets` to read each
+ * legacy ciphertext once before it is re-encrypted with the SecretVault. They decrypt and
+ * never encrypt.
  *
  * The algorithms and constants are exact copies of the v1.x code. legacy: never change.
  * Any difference makes existing users' stored secrets unreadable.
  *
- * 1. ParkStay password (`users`): AES-256-GCM, hex `encrypted_password`, `encryption_iv` and
- *    `encryption_auth_tag` columns, key `PBKDF2(machineId + AUTH_APP_SECRET, 'parkstay-salt',
- *    100000, 32, sha512)` (v1.x `AuthService`).
- * 2. Notifier config (`notifiers.config`): the same with `'parkstay-notification-providers-v1'`
- *    and `'parkstay-provider-salt'`, stored as hex `iv:authTag:ciphertext` (v1.x
- *    notification-provider repository).
- * 3. Gmail OAuth store (`gmail-oauth.json`): electron-store 8.2.0 / conf 10.2.0 with the
+ * 1. Notifier config (`notifiers.config`): AES-256-GCM with key
+ *    `PBKDF2(machineId + 'parkstay-notification-providers-v1', 'parkstay-provider-salt',
+ *    100000, 32, sha512)`, stored as hex `iv:authTag:ciphertext` (v1.x notification-provider
+ *    repository).
+ * 2. Gmail OAuth store (`gmail-oauth.json`): electron-store 8.2.0 / conf 10.2.0 with the
  *    hard-coded `encryptionKey` below: `IV (16 bytes) + ':' + AES-256-CBC`, key
  *    `PBKDF2(encryptionKey, iv.toString(), 10000, 32, sha512)` (conf `_encryptData`/`_write`).
  *
@@ -23,9 +21,6 @@
 import crypto from 'crypto';
 import { machineIdSync } from 'node-machine-id';
 
-// legacy: never change — existing data depends on it (v1.x AuthService)
-const AUTH_APP_SECRET = 'parkstay-bookings-v1-secret'; // legacy-name-ok: decrypts v1.x data
-const AUTH_SALT = 'parkstay-salt';
 // legacy: never change (v1.x notification-provider repository)
 const NOTIFIER_CONFIG_SECRET = 'parkstay-notification-providers-v1';
 const NOTIFIER_SALT = 'parkstay-provider-salt';
@@ -48,13 +43,6 @@ export class LegacyDecryptError extends Error {
 /** The machine id the v1.x key derivation used (node-machine-id's hashed id). */
 export function legacyMachineId(): string {
   return machineIdSync();
-}
-
-/** The v1.x `users` password columns. */
-export interface LegacyUserPassword {
-  encrypted: string;
-  iv: string;
-  authTag: string;
 }
 
 /** A v1.x notifier config ciphertext: hex `iv:authTag:ciphertext`. */
@@ -87,16 +75,6 @@ function decryptGcm(key: Buffer, ivHex: string, authTagHex: string, encryptedHex
   } catch {
     throw new LegacyDecryptError('The legacy ciphertext could not be decrypted');
   }
-}
-
-/** Decrypts a v1.x `users` password. Throws `LegacyDecryptError`. */
-export function decryptLegacyUserPassword(data: LegacyUserPassword, machineId: string): string {
-  return decryptGcm(
-    gcmKey(machineId, AUTH_APP_SECRET, AUTH_SALT),
-    data.iv,
-    data.authTag,
-    data.encrypted
-  );
 }
 
 /** Decrypts a v1.x notifier config (`iv:authTag:ciphertext`). Throws `LegacyDecryptError`. */

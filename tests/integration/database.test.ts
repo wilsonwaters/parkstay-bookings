@@ -3,7 +3,7 @@
  * Tests database connection, repositories, and data persistence
  */
 
-import { TestDatabaseHelper } from '@tests/utils/database-helper';
+import { insertUser, TestDatabaseHelper } from '@tests/utils/database-helper';
 import { UserRepository } from '@main/database/repositories/user.repository';
 import { BookingRepository } from '@main/database/repositories/booking.repository';
 import { WatchRepository } from '@main/database/repositories';
@@ -76,7 +76,7 @@ describe('Database Integration', () => {
       const bookingRepo = new BookingRepository(db);
 
       // Create user and booking
-      const user = userRepo.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag');
+      const user = insertUser(db, mockUserInput.email);
       const bookingInput = createMockBookingInput();
       const booking = bookingRepo.create(user.id, bookingInput);
 
@@ -96,13 +96,12 @@ describe('Database Integration', () => {
 
     it('should handle complex watch-booking-notification flow', async () => {
       const db = dbHelper.getDb();
-      const userRepo = new UserRepository(db);
       const bookingRepo = new BookingRepository(db);
       const watchRepo = new WatchRepository(db);
       const notifRepo = new NotificationRepository(db);
 
       // Create user
-      const user = userRepo.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag');
+      const user = insertUser(db, mockUserInput.email);
 
       // Create booking
       const bookingInput = createMockBookingInput();
@@ -133,11 +132,10 @@ describe('Database Integration', () => {
 
     it('should handle Site Sniper workflow', async () => {
       const db = dbHelper.getDb();
-      const userRepo = new UserRepository(db);
       const snipeRepo = new SiteSniperRepository(db);
 
       // Create user
-      const user = userRepo.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag');
+      const user = insertUser(db, mockUserInput.email);
 
       // Create site snipe
       const snipeInput = createMockSiteSnipeInput();
@@ -164,12 +162,12 @@ describe('Database Integration', () => {
       const db = dbHelper.getDb();
       const userRepo = new UserRepository(db);
 
-      const user = userRepo.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag');
+      const user = insertUser(db, mockUserInput.email);
 
       // Attempt transaction that should fail
       try {
         db.transaction(() => {
-          userRepo.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag'); // Duplicate email
+          insertUser(db, mockUserInput.email); // Duplicate email
         })();
       } catch (error) {
         // Expected to fail
@@ -205,10 +203,9 @@ describe('Database Integration', () => {
   describe('Performance', () => {
     it('should handle bulk inserts efficiently', async () => {
       const db = dbHelper.getDb();
-      const userRepo = new UserRepository(db);
       const bookingRepo = new BookingRepository(db);
 
-      const user = userRepo.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag');
+      const user = insertUser(db, mockUserInput.email);
 
       const startTime = Date.now();
       const count = 100;
@@ -231,10 +228,9 @@ describe('Database Integration', () => {
 
     it('should handle bulk reads efficiently', async () => {
       const db = dbHelper.getDb();
-      const userRepo = new UserRepository(db);
       const bookingRepo = new BookingRepository(db);
 
-      const user = userRepo.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag');
+      const user = insertUser(db, mockUserInput.email);
 
       // Create 100 bookings
       for (let i = 0; i < 100; i++) {

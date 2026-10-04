@@ -1,7 +1,8 @@
 /**
- * The `providers` and `accounts` namespaces through P3's harness: a real container (with the
- * built-in ParkStay provider), every handler registered through handle(), and invokes from
- * the trusted fake renderer. `catalog` has its own suite (`catalog.test.ts`).
+ * The `providers` namespace (and the `accounts` payload validation) through P3's harness: a
+ * real container (with the built-in ParkStay provider), every handler registered through
+ * handle(), and invokes from the trusted fake renderer. `catalog` and `accounts` have their
+ * own suites (`catalog.test.ts`, `accounts-ipc.test.ts`).
  */
 
 import { EventEmitter } from 'events';
@@ -137,23 +138,11 @@ describe('providers / accounts over IPC', () => {
       });
     });
 
-    it('accounts.* validates, then answers NOT_IMPLEMENTED until accounts land', async () => {
-      for (const [channel, payload] of [
-        ['accounts:list', undefined],
-        ['accounts:status', { providerId: 'parkstay' }],
-        ['accounts:sign-in', { providerId: 'parkstay' }],
-        ['accounts:sign-out', { providerId: 'parkstay' }],
-        [
-          'accounts:open-sign-in-link',
-          { providerId: 'parkstay', url: 'https://dbcab2c.b2clogin.com/x' },
-        ],
-      ] as Array<[string, unknown]>) {
-        expect([channel, (await call(channel, payload)).code]).toEqual([
-          channel,
-          'NOT_IMPLEMENTED',
-        ]);
-      }
-
+    it('accounts.* validates its payload before the account service sees it', async () => {
+      expect(await call('accounts:status', { providerId: 'Not A Provider' })).toMatchObject({
+        code: 'VALIDATION',
+        issues: ['providerId'],
+      });
       expect(
         await call('accounts:open-sign-in-link', {
           providerId: 'parkstay',

@@ -17,7 +17,9 @@
  * - `accessStates`: the states the access gate steps through on `ensure()`;
  * - `availability`: a state per unit for every night, or a list of nights (state and price);
  *   `setAvailability` changes it later;
- * - `scriptHold(...results)`: the next `holds.create` calls answer these.
+ * - `scriptHold(...results)`: the next `holds.create` calls answer these;
+ * - `account` / `setAccount(state)`: what `auth.isSignedIn` answers; `auth` replaces its
+ *   sign-in URL, origins or completion pages.
  *
  * Every async method honours its `AbortSignal` and rejects with an `AbortError`.
  */
@@ -36,6 +38,7 @@ import {
   createProviderContext,
   type AccessGate,
   type AccommodationProvider,
+  type BrowserSessionAuth,
   type CatalogModule,
   type ExternalBooking,
   type HoldResult,
@@ -105,8 +108,12 @@ export interface FakeProviderOptions {
    * default to `u1` (available) and `u2` (booked).
    */
   availability?: Record<string, Record<string, FakeUnitNights>>;
-  /** The signed-in state `auth.isSignedIn` reports. */
+  /** The signed-in state `auth.isSignedIn` reports (`setAccount` changes it). */
   account?: AccountStatus['state'];
+  /** Replaces parts of the `browser-session` auth (sign-in URL, origins, completion pages). */
+  auth?: Partial<
+    Pick<BrowserSessionAuth, 'signInUrl' | 'allowedOrigins' | 'completionUrlPatterns'>
+  >;
   accessStates?: AccessState[];
   bookings?: ExternalBooking[];
   delayMs?: number;
@@ -129,6 +136,8 @@ export interface FakeProvider extends AccommodationProvider {
   peakInFlight(module: FakeModule): number;
   /** How many `holdOpen()` releases are outstanding. */
   readonly holdCount: number;
+  /** What `auth.isSignedIn` reports from now on. */
+  setAccount(state: AccountStatus['state']): void;
   readonly disposed: boolean;
 }
 
@@ -186,7 +195,7 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
   const id = options.id ?? 'fake';
   const capabilities: ProviderCapabilities = { ...ALL_ON, ...options.capabilities };
   const seeds = options.locations ?? DEFAULT_LOCATIONS;
-  const accountState = options.account ?? 'signed-in';
+  let accountState: AccountStatus['state'] = options.account ?? 'signed-in';
   const accessStates = options.accessStates ?? ['waiting', 'active'];
   const bookings = options.bookings ?? [];
   const failures = new Map<FakeModule, Error>();
@@ -467,6 +476,9 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
     get holdCount() {
       return holdCount;
     },
+    setAccount(state) {
+      accountState = state;
+    },
     get disposed() {
       return disposed;
     },
@@ -589,6 +601,7 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
             signInUrl: `https://${id}.example/sign-in`,
             allowedOrigins: [`https://${id}.example`],
             completionUrlPatterns: [`https://${id}.example/signed-in*`],
+            ...options.auth,
             async isSignedIn(_http, signal) {
               await enter('auth', 'isSignedIn', [], signal);
               return accountState === 'signed-in'

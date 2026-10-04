@@ -19,7 +19,8 @@ describe('App shell', () => {
       expect(currentRoute()).toBe('/');
       expect(screen.queryByRole('button', { name: /log ?in|sign in|log ?out/i })).toBeNull();
       expect(screen.queryByLabelText(/password/i)).toBeNull();
-      expect(mock?.api.auth.validateSession).not.toHaveBeenCalled();
+      expect(mock?.api.accounts.signIn).not.toHaveBeenCalled();
+      expect(mock?.api.accounts.status).not.toHaveBeenCalled();
     });
 
     it('renders a deep link straight into its page on cold start', async () => {

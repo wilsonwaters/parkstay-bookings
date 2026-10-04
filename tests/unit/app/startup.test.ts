@@ -98,6 +98,10 @@ jest.mock('@main/app/container', () => ({
       trustedWebContents: { isTrusted: () => true },
       scheduler: { start: () => mockOrder.push('scheduler.start') },
       catalogService: { start: () => mockOrder.push('catalogService.start') },
+      accounts: { startRefresh: () => mockOrder.push('accounts.startRefresh') },
+      providerWindows: {
+        attachMainWindow: () => mockOrder.push('providerWindows.attachMainWindow'),
+      },
       autoUpdater: { scheduleUpdateCheck: jest.fn() },
       notificationService: { notifyError: mockContainer.notifyError },
       repositories: {
@@ -208,8 +212,12 @@ describe('main process startup', () => {
       'registerIpcHandlers',
       'scheduler.start',
       'createMainWindow',
+      // Provider sign-in and payment windows sit above the main window
+      'providerWindows.attachMainWindow',
       // The catalogue's automatic sync starts once the window exists (it then waits 5 s)
       'catalogService.start',
+      // So does the quiet check of accounts not checked for 6 h
+      'accounts.startRefresh',
     ]);
     expect(mockCrashPolicy.markReady).toHaveBeenCalledTimes(1);
     expect(mockCrashPolicy.failStartup).not.toHaveBeenCalled();

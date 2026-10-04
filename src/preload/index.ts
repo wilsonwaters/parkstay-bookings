@@ -140,14 +140,6 @@ const api: WindowApi = {
     openSignInLink: (providerId, url) => ({ providerId, url }),
   }),
 
-  auth: bind('auth', {
-    storeCredentials: (credentials) => credentials,
-    getCredentials: none,
-    updateCredentials: (email, newPassword) => ({ email, newPassword }),
-    deleteCredentials: none,
-    validateSession: none,
-  }),
-
   events: {
     on<E extends EventName>(name: E, callback: (payload: EventPayloads[E]) => void): () => void {
       if (!isEventName(name)) {

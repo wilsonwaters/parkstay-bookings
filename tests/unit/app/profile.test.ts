@@ -55,8 +55,7 @@ describe('local profile', () => {
   it('keeps an existing profile, even one that is not id 1, and resolves the first users.id', () => {
     db.exec('DELETE FROM users');
     db.prepare(
-      `INSERT INTO users (id, email, encrypted_password, encryption_key, encryption_iv, encryption_auth_tag, first_name)
-       VALUES (7, 'me@example.com', 'enc', 'key', 'iv', 'tag', 'Kept')`
+      `INSERT INTO users (id, email, first_name) VALUES (7, 'me@example.com', 'Kept')`
     ).run();
     const profile = createLocalProfile(users);
 

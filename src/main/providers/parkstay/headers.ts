@@ -10,13 +10,13 @@
  * `net::ERR_INVALID_ARGUMENT`; checked in Electron 28).
  */
 
-import { CHROME_MAJOR_VERSION, CHROME_USER_AGENT } from '../sdk/user-agent';
+import { CHROME_MAJOR_VERSION, CHROME_USER_AGENT, chromeBrands } from '../sdk/user-agent';
 import { PARKSTAY_BASE_URL } from './constants';
 
 const BROWSER_HEADERS: Record<string, string> = {
   'User-Agent': CHROME_USER_AGENT,
   'Accept-Language': 'en-AU,en;q=0.9,en-US;q=0.8',
-  'sec-ch-ua': `"Google Chrome";v="${CHROME_MAJOR_VERSION}", "Chromium";v="${CHROME_MAJOR_VERSION}", "Not_A Brand";v="24"`,
+  'sec-ch-ua': chromeBrands(CHROME_MAJOR_VERSION),
   'sec-ch-ua-mobile': '?0',
   'sec-ch-ua-platform': '"Windows"',
   Accept: 'application/json, text/plain, */*',

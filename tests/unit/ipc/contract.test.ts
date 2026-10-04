@@ -144,6 +144,14 @@ describe('IPC contract', () => {
     );
   });
 
+  it('has no transitional auth namespace: ParkStay sign-in is accounts.* (V6)', () => {
+    expect(Object.keys(contract)).not.toContain('auth');
+    expect(Object.keys(CHANNELS)).not.toContain('auth');
+    expect(Object.keys(contract.accounts).sort()).toEqual(
+      ['list', 'openSignInLink', 'signIn', 'signOut', 'status'].sort()
+    );
+  });
+
   describe('registration', () => {
     let container: AppContainer;
     let ipc: FakeIpcMain;
