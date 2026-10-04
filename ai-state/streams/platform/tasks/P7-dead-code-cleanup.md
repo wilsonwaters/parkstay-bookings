@@ -113,3 +113,7 @@ M. This was S in `streams.md`. It includes a migration, the cleanup wiring and f
 - Run the dead-code sweep with `npm run type-check`; `noUnusedLocals` is already on. Use `grep -rnw` for exported symbols that tsc cannot flag.
 - Check `git log --oneline -- <file>` before deleting a root doc that might have been edited recently by another stream. As of 2026-10-02 none had been edited.
 - Commit deletions separately from code changes so the review diff stays readable.
+
+## Orchestrator addendum (2026-10-04, from P5)
+- [ ] Remove the now-unused `electron-store` dependency (P5 moved Gmail secrets to the vault). Confirm nothing imports it, then update package.json and the lockfile.
+- [ ] Hand stale docs that describe the old AES-256-GCM / electron-store secret scheme to Q2: CLAUDE.md, README.md, docs/installation.md, docs/gmail-otp-setup.md and GMAIL-INTEGRATION-SUMMARY.md.
