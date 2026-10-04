@@ -1,0 +1,319 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
+import { Search, X } from 'lucide-react';
+import type { BoundingBox, LocationSummary } from '../../../../shared/types/catalog.types';
+import { LocationPhoto } from '../../../components/LocationCard';
+import { areaLine, hasMapLocation, placesLabel } from '../../../components/locationFormat';
+import {
+  Button,
+  IconButton,
+  ProviderBadge,
+  Spinner,
+  Switch,
+  useOverlay,
+} from '../../../components/ui';
+import { buttonClassName } from '../../../components/ui/Button';
+import { ROUTES } from '../../../app/routes';
+import { useHighlightStore } from '../state/highlight';
+import { createMapboxController } from './mapboxController';
+import type { MapCamera, MapController, MapViewState } from './types';
+import { readMapTokens } from './waPalette';
+
+export interface FitRequest {
+  id: number;
+  bbox: BoundingBox;
+  maxZoom?: number;
+}
+
+export interface FlyRequest {
+  id: number;
+  lng: number;
+  lat: number;
+}
+
+export interface MapViewProps {
+  token: string;
+  /** The places to draw: the results, before any map-area narrowing. */
+  items: readonly LocationSummary[];
+  /** Any catalogue place by key (a selection may be outside the results). */
+  lookup: (key: string) => LocationSummary | undefined;
+  /** Where to start (from the URL); WA when null. */
+  initialCamera: MapCamera | null;
+  selectedKey: string | null;
+  follow: boolean;
+  /** The map pane is on screen (below 1024 px it can be hidden behind the list). */
+  shown: boolean;
+  fitRequest: FitRequest | null;
+  flyRequest: FlyRequest | null;
+  /** Every time the map stops moving. */
+  onView: (view: MapViewState) => void;
+  /** A pin, a listed place or nothing (empty map, Escape, close) was chosen. */
+  onSelect: (key: string | null) => void;
+  onFollowChange: (follow: boolean) => void;
+  /** "Search this area": narrow the list to `bbox`. */
+  onSearchArea: (bbox: BoundingBox) => void;
+  /** The map could not load, or stopped working; Explore falls back to the list. */
+  onFailed: (error: Error) => void;
+}
+
+/** The key set, as one string, so the map's data is replaced only when it really changes. */
+function keySignature(items: readonly LocationSummary[]): string {
+  return items.map((item) => item.key).join('\n');
+}
+
+/**
+ * The Mapbox map of the results: clustered pins with name pills, hover kept in step with the
+ * list, a preview for the selected place, "Search as I move the map" and "Search this area".
+ * Lazy: its chunk and mapbox-gl load only when the map is shown.
+ */
+export default function MapView({
+  token,
+  items,
+  lookup,
+  initialCamera,
+  selectedKey,
+  follow,
+  shown,
+  fitRequest,
+  flyRequest,
+  onView,
+  onSelect,
+  onFollowChange,
+  onSearchArea,
+  onFailed,
+}: MapViewProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [controller, setController] = useState<MapController | null>(null);
+  const highlight = useHighlightStore();
+
+  // The latest callbacks and values, for map events.
+  const latest = useRef({ onView, onSelect, onFailed, follow, lookup });
+  latest.current = { onView, onSelect, onFailed, follow, lookup };
+
+  // ---- Create once (StrictMode's second mount gets a fresh one; cleanup destroys) --------
+  const initialCameraRef = useRef(initialCamera);
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+    const abort = new AbortController();
+    let created: MapController | null = null;
+    createMapboxController({
+      container,
+      token,
+      camera: initialCameraRef.current,
+      tokens: readMapTokens(),
+      signal: abort.signal,
+      onFatalError: (error) => latest.current.onFailed(error),
+    }).then(
+      (instance) => {
+        if (abort.signal.aborted) {
+          instance.destroy();
+          return;
+        }
+        created = instance;
+        setController(instance);
+        latest.current.onView(instance.getView());
+      },
+      (error: Error) => {
+        if (!abort.signal.aborted) latest.current.onFailed(error);
+      }
+    );
+    return () => {
+      abort.abort();
+      created?.destroy();
+      setController(null);
+    };
+  }, [token]);
+
+  // ---- Data, hover and selection ---------------------------------------------------------
+  const signature = useMemo(() => keySignature(items), [items]);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  useEffect(() => {
+    controller?.setData(itemsRef.current);
+  }, [controller, signature]);
+
+  useEffect(() => {
+    if (!controller) return undefined;
+    controller.setHovered(highlight.get());
+    const unsubscribe = highlight.subscribe(() => controller.setHovered(highlight.get()));
+    const unhover = controller.onFeatureHover((key) => highlight.set(key));
+    return () => {
+      unsubscribe();
+      unhover();
+    };
+  }, [controller, highlight]);
+
+  useEffect(() => {
+    controller?.setSelected(selectedKey);
+  }, [controller, selectedKey]);
+
+  // ---- Camera ---------------------------------------------------------------------------
+  const [areaChanged, setAreaChanged] = useState(false);
+  useEffect(() => {
+    if (!controller) return undefined;
+    return controller.onMoveEnd((view) => {
+      latest.current.onView(view);
+      if (view.userInitiated && !latest.current.follow) setAreaChanged(true);
+    });
+  }, [controller]);
+  useEffect(() => setAreaChanged(false), [follow]);
+
+  useEffect(() => {
+    if (controller && fitRequest) {
+      controller.fitBounds(fitRequest.bbox, { maxZoom: fitRequest.maxZoom });
+      setAreaChanged(false);
+    }
+  }, [controller, fitRequest]);
+
+  useEffect(() => {
+    if (controller && flyRequest) controller.flyTo({ lng: flyRequest.lng, lat: flyRequest.lat });
+  }, [controller, flyRequest]);
+
+  // Shown again after being hidden behind the list: fit the canvas to its box.
+  useEffect(() => {
+    if (controller && shown) controller.resize();
+  }, [controller, shown]);
+
+  // ---- Clicks, the preview and the list of places on one spot -----------------------------
+  const [spot, setSpot] = useState<{ keys: string[]; lng: number; lat: number } | null>(null);
+  useEffect(() => {
+    if (!controller) return undefined;
+    return controller.onFeatureClick((click) => {
+      if (click.type === 'location') {
+        setSpot(null);
+        latest.current.onSelect(click.key);
+      } else if (click.type === 'locations') {
+        setSpot({ keys: click.keys, lng: click.lng, lat: click.lat });
+      } else {
+        setSpot(null);
+        latest.current.onSelect(null);
+      }
+    });
+  }, [controller]);
+
+  const selected = selectedKey ? lookup(selectedKey) : undefined;
+  const preview = selected && hasMapLocation(selected) ? selected : undefined;
+  const popupOpen = Boolean(controller && (spot || preview));
+
+  const popupElement = useMemo(() => document.createElement('div'), []);
+  const popupRef = useRef<HTMLElement>(popupElement);
+  useEffect(() => {
+    if (!controller) return;
+    if (spot) controller.showPopup({ lng: spot.lng, lat: spot.lat }, popupElement);
+    else if (preview) controller.showPopup({ lng: preview.lng, lat: preview.lat }, popupElement);
+    else controller.hidePopup();
+  }, [controller, spot, preview, popupElement]);
+
+  const closePopup = () => {
+    if (spot) setSpot(null);
+    else onSelect(null);
+  };
+  // Escape closes the preview (or the list), unless a popover above it takes Escape first.
+  useOverlay({ open: popupOpen, modal: false, elementRef: popupRef, onEscape: closePopup });
+
+  const spotPlaces = spot
+    ? spot.keys.map((key) => lookup(key)).filter((p): p is LocationSummary => Boolean(p))
+    : [];
+
+  return (
+    <div className="relative h-full w-full isolate">
+      {/* mapbox-gl.css makes the container `position: relative`, so it is sized, not inset. */}
+      <div ref={containerRef} className="ws-map h-full w-full bg-canvas" />
+
+      {!controller && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <Spinner label="Loading map" />
+        </div>
+      )}
+
+      <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-3">
+        <div className="pointer-events-auto rounded-full bg-surface py-2 pl-4 pr-3 shadow-pill">
+          <Switch
+            label="Search as I move the map"
+            checked={follow}
+            onChange={(event) => onFollowChange(event.target.checked)}
+          />
+        </div>
+        {!follow && areaChanged && controller && (
+          <Button
+            variant="secondary"
+            size="sm"
+            leadingIcon={<Search size={16} aria-hidden="true" />}
+            className="pointer-events-auto !rounded-full shadow-pill"
+            onClick={() => {
+              setAreaChanged(false);
+              onSearchArea(controller.getView().bbox);
+            }}
+          >
+            Search this area
+          </Button>
+        )}
+        {/* The zoom buttons sit top-right, in the map. */}
+        <span aria-hidden="true" className="w-10 shrink-0" />
+      </div>
+
+      {createPortal(
+        spot ? (
+          <div role="group" aria-label={placesLabel(spotPlaces.length)} className="w-72 p-2">
+            <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-1">
+              <p className="text-sm font-semibold text-fg">{placesLabel(spotPlaces.length)} here</p>
+              <IconButton
+                label="Close list"
+                icon={<X size={16} />}
+                size="sm"
+                onClick={() => setSpot(null)}
+              />
+            </div>
+            <ul role="list" className="max-h-64 overflow-y-auto">
+              {spotPlaces.map((place) => (
+                <li key={place.key}>
+                  <button
+                    type="button"
+                    className="flex w-full flex-col items-start rounded-md px-2 py-2 text-left hover:bg-surface-subtle"
+                    onClick={() => {
+                      setSpot(null);
+                      onSelect(place.key);
+                    }}
+                  >
+                    <span className="text-sm font-semibold text-fg">{place.name}</span>
+                    <span className="text-xs text-fg-secondary">{areaLine(place)}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : preview ? (
+          <div role="group" aria-label={preview.name} className="relative w-72">
+            <LocationPhoto location={preview} className="aspect-[16/9] rounded-t-lg" />
+            <IconButton
+              label="Close preview"
+              icon={<X size={16} />}
+              size="sm"
+              variant="secondary"
+              onClick={() => onSelect(null)}
+              className="absolute right-2 top-2 !rounded-full !border-0 shadow-pill"
+            />
+            <div className="flex flex-col gap-1 p-3">
+              <p className="text-base font-semibold text-fg">{preview.name}</p>
+              {areaLine(preview) && (
+                <p className="text-sm text-fg-secondary">{areaLine(preview)}</p>
+              )}
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <ProviderBadge providerId={preview.providerId} variant="compact" size="sm" />
+                <Link
+                  to={ROUTES.placeDetail(preview.providerId, preview.externalId)}
+                  className={buttonClassName({ variant: 'secondary', size: 'sm' })}
+                >
+                  View details
+                </Link>
+              </div>
+            </div>
+          </div>
+        ) : null,
+        popupElement
+      )}
+    </div>
+  );
+}
