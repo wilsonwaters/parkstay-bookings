@@ -1,19 +1,21 @@
 /**
  * @jest-environment node
  *
- * The app is WA Stay. The legacy names (WA ParkStay Bookings, ParkStay Bookings and the
- * `parkstay-bookings` package/folder name) may appear in source, installer, build and CI files
- * only on a line marked `legacy-name-ok`: an identifier existing installs depend on (the v1.x
- * data folder, an encryption constant) or a legacy item the installer cleans up. JSON cannot
- * carry the marker, so package.json and electron-builder.json must have none at all.
+ * The app is WA Stay. The legacy names (WA ParkStay Bookings, ParkStay Bookings, the
+ * `parkstay-bookings` package/folder name and the v1.x database file `parkstay.db`) may appear
+ * in source, installer, build and CI files only on a line marked `legacy-name-ok`: an
+ * identifier existing installs depend on (the v1.x data folder and database, an encryption
+ * constant) or a legacy item the installer cleans up. JSON cannot carry the marker, so
+ * package.json and electron-builder.json must have none at all.
  *
- * "ParkStay" on its own names the provider and is not checked.
+ * "ParkStay" on its own names the provider and is not checked, nor is the DBCA host
+ * `parkstay.dbca.wa.gov.au`.
  */
 import fs from 'fs';
 import path from 'path';
 
 const ROOT = path.resolve(__dirname, '../../..');
-const LEGACY_NAME = /WA ParkStay|ParkStay Bookings|parkstay-bookings/i;
+const LEGACY_NAME = /WA ParkStay|ParkStay Bookings|parkstay-bookings|parkstay\.db\b/i;
 const MARKER = 'legacy-name-ok';
 
 /** Every file under `dir` (relative to the repo root) whose name matches `pattern`. */
@@ -71,6 +73,11 @@ describe('branding guard', () => {
     expect(SCANNED.flatMap((file) => unmarkedLegacyLines(file))).toEqual([]);
   });
 
+  it('connection.ts never names a database file: the caller passes <userData>/wa-stay.db', () => {
+    const connection = fs.readFileSync(path.join(ROOT, 'src/main/database/connection.ts'), 'utf8');
+    expect(connection).not.toMatch(/parkstay\.db\b|wa-stay\.db/);
+  });
+
   it('accepts the marker on a line, except in JSON files', () => {
     const content =
       'ok\r\nconst dir = "parkstay-bookings"; // legacy-name-ok\r\nWA ParkStay Bookings';
@@ -90,6 +97,9 @@ describe('branding guard', () => {
       'ParkStay Bookings App',
       '%APPDATA%\\parkstay-bookings',
       'github.com/wilsonwaters/parkstay-bookings',
+      'parkstay.db',
+      "path.join(userData, 'parkstay.db')",
+      'parkstay.db-wal',
     ]) {
       expect(text).toMatch(LEGACY_NAME);
     }
@@ -97,7 +107,8 @@ describe('branding guard', () => {
       'ParkStay',
       'View on ParkStay',
       "QUEUE_GROUP = 'parkstayv2'",
-      'parkstay.db',
+      'https://parkstay.dbca.wa.gov.au/api',
+      'wa-stay.db',
     ]) {
       expect(text).not.toMatch(LEGACY_NAME);
     }
