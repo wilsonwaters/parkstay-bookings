@@ -9,8 +9,11 @@ Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task spe
 - **V5 follow-up** (#23): wider secret sweep (`catalog:availability`, `catalog:check-location`), 60 s negative cache for access-gate/timeout availability errors, faster retry while a catalogue is empty, future `syncedAt` counts as stale. Lane Y.
 - **E1** (#32) Explore screen: lane R.
 - **V4** (#22) Core services and scheduler: design approved (decisions in architecture-notes §12.31; V6 addendum for watch-hold columns and payment); implementing, lane W.
-- **V6** (#24) Provider accounts and sign-in: design phase (L task; designs against the approved V4 design), lane A.
+- **V6** (#24) Provider accounts and sign-in: design approved (§12.32: ParkStay sign-in is optional because DBCA holds work signed out and sessions last 1 h; payment window allows sign-in; legacy password dropped with secure delete). Phase 1 (V4-free: windows, account service, v9, auth removal) implementing in lane A; phase 2 (hold payment) after V4 merges.
 - Next: P7, U1, U3, U5 after V4; E2/E3 after E1; U2/U4 after V6; Q2 last.
+
+## Notes
+- 2026-10-04 ~10:30 UTC: an account usage limit stopped all agents; resumed at 10:55 from their saved lanes (pre-rebase work pinned as `backup/e1-pre-rebase` and `backup/v4-pre-rebase`, local only).
 
 ## Completed
 - **V5** (#23) Location catalogue service: review APPROVE (all 13 criteria met; ~70-input FTS5 fuzz with no throws; FTS integrity checked; perf 34–53 ms; quit mid-sync leaves no write). Merged (`9010679`). Accepted risk: the first cold detail per session re-fetches ParkStay's campground_map (~64 KB gzip), tracked for E2.
