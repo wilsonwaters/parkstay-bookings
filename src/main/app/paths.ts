@@ -1,11 +1,129 @@
 /**
  * Where the app's files are on disk.
  *
- * B3 adds the user-data paths (the WA Stay data folder and the legacy one) here.
+ * - The data folder (userData) is `<appData>/WA Stay`, with the database `wa-stay.db`.
+ *   `configureAppPaths` pins it before `ready` (architecture-notes §6, §12.23): the
+ *   single-instance lock, the log files, the vault's key and the providers' browser profiles
+ *   all live there.
+ * - v1.x kept its data in `<appData>/parkstay-bookings` (legacy-name-ok), and the v2
+ *   installer may have snapshotted it into `<userData>/legacy-snapshot` (§12.12). The
+ *   first-run migration (`migration/legacy-install.ts`) copies from one of them and writes
+ *   `migration.json`.
+ * - The icons the window, notifications and emails show.
  */
 
 import { app } from 'electron';
 import path from 'path';
+import {
+  applyTestEnvHooks,
+  resolveTestHooks,
+  type TestEnv,
+  type TestHooks,
+  type TestHooksApp,
+} from '../testing/env';
+
+/** The data folder's name under appData. Existing data depends on it: never change it. */
+export const DATA_FOLDER_NAME = 'WA Stay';
+/** The database file in the data folder. */
+export const DATABASE_FILE_NAME = 'wa-stay.db';
+/** The v1.x data folder (package.json `name` in v1.x). Never written to. */
+export const LEGACY_DATA_FOLDER_NAME = 'parkstay-bookings'; // legacy-name-ok
+/** The v1.x database file, in the legacy folder and in the installer's snapshot. */
+export const LEGACY_DATABASE_FILE_NAME = 'parkstay.db'; // legacy-name-ok
+/** The Gmail OAuth file, the same name in both folders (v1.x electron-store `name`). */
+export const GMAIL_STORE_FILE_NAME = 'gmail-oauth.json';
+/** Where the v2 installer copies the legacy data before the v1 uninstaller runs (B2). */
+export const LEGACY_SNAPSHOT_FOLDER_NAME = 'legacy-snapshot';
+/** What the first-run migration did (`migration/legacy-install.ts`). */
+export const MIGRATION_MARKER_FILE_NAME = 'migration.json';
+
+export interface AppPaths {
+  /** The data folder: `<appData>/WA Stay`, or `WA_STAY_USER_DATA_DIR` (from source only). */
+  readonly userData: string;
+  /** `<userData>/wa-stay.db`. */
+  readonly dbPath: string;
+  /**
+   * The v1.x data folder, `<appData>/parkstay-bookings` (legacy-name-ok), or
+   * `WA_STAY_LEGACY_DATA_DIR`. Null when userData is overridden without a legacy override:
+   * tests never read a real profile.
+   */
+  readonly legacyUserData: string | null;
+  /** `<legacyUserData>/parkstay.db` (legacy-name-ok), or null with `legacyUserData`. */
+  readonly legacyDbPath: string | null;
+  /** `<userData>/legacy-snapshot`, written by the installer. */
+  readonly snapshotDir: string;
+  /** `<userData>/migration.json`. */
+  readonly markerPath: string;
+}
+
+export interface ResolveAppPathsOptions {
+  /** `app.getPath('appData')`. */
+  appData: string;
+  /** `process.env`: the test hooks (§12.14) are read from it, only when unpackaged. */
+  env: TestEnv;
+  isPackaged: boolean;
+  /** Resolves relative hook paths. Defaults to `process.cwd()`. */
+  cwd?: string;
+  /** `path.win32` or `path.posix`; defaults to this platform's. */
+  pathApi?: path.PlatformPath;
+}
+
+/**
+ * The data paths, from appData and (when unpackaged) the test hooks. Pure: it neither reads
+ * the disk nor changes the app. A portable build uses the same folders: only the executable
+ * is extracted to a temp folder.
+ */
+export function resolveAppPaths({
+  appData,
+  env,
+  isPackaged,
+  cwd = process.cwd(),
+  pathApi = path,
+}: ResolveAppPathsOptions): AppPaths {
+  const hooks = resolveTestHooks({ env, isPackaged, cwd });
+  const userData = hooks.userDataDir ?? pathApi.join(appData, DATA_FOLDER_NAME);
+  const legacyUserData =
+    hooks.legacyDataDir === undefined
+      ? pathApi.join(appData, LEGACY_DATA_FOLDER_NAME)
+      : hooks.legacyDataDir;
+
+  return {
+    userData,
+    dbPath: pathApi.join(userData, DATABASE_FILE_NAME),
+    legacyUserData,
+    legacyDbPath: legacyUserData ? pathApi.join(legacyUserData, LEGACY_DATABASE_FILE_NAME) : null,
+    snapshotDir: pathApi.join(userData, LEGACY_SNAPSHOT_FOLDER_NAME),
+    markerPath: pathApi.join(userData, MIGRATION_MARKER_FILE_NAME),
+  };
+}
+
+/** The part of Electron's `app` `configureAppPaths` uses. */
+export interface PathsApp extends TestHooksApp {
+  getPath(name: 'appData'): string;
+}
+
+export interface ConfiguredPaths {
+  readonly paths: AppPaths;
+  /** The test-only hooks in effect (none when packaged), for fixture mode. */
+  readonly testHooks: TestHooks;
+}
+
+/**
+ * Pins userData to `<appData>/WA Stay`, then applies the test-only override
+ * (`applyTestEnvHooks`, from source only), and returns the data paths that result. Call it
+ * before `ready` and before anything reads userData: the single-instance lock lives there.
+ */
+export function configureAppPaths(
+  electronApp: PathsApp,
+  env: TestEnv = process.env,
+  cwd: string = process.cwd()
+): ConfiguredPaths {
+  const appData = electronApp.getPath('appData');
+  electronApp.setPath('userData', path.join(appData, DATA_FOLDER_NAME));
+  const testHooks = applyTestEnvHooks(electronApp, env, cwd);
+  const paths = resolveAppPaths({ appData, env, isPackaged: electronApp.isPackaged, cwd });
+  return { paths, testHooks };
+}
 
 export interface AppLocation {
   /** `app.isPackaged`. */

@@ -3,44 +3,48 @@
  *
  * The order matters:
  * 1. The crash policy is installed first, so a failed start shows an error box and exits.
- * 2. userData is pinned before anything uses it (the single-instance lock lives there).
- * 3. The single-instance lock is taken before any database or scheduler work. A second
- *    instance hands over to the first (which brings its window to the front) and quits.
- * 4. After `ready`: log files under userData, the database, the container, the IPC handlers,
- *    the scheduler and the main window. From then on errors are logged and survived.
+ * 2. `bootstrapShell`: userData becomes `<appData>/WA Stay` before anything uses it, then
+ *    the AppUserModelId (Windows), then the single-instance lock, which lives in userData.
+ *    The lock is taken before any database or scheduler work. A second instance hands over
+ *    to the first (which brings its window to the front) and quits.
+ * 3. After `ready`: log files under userData, the first-run copy of a v1.x install
+ *    (`migration/legacy-install.ts`), the database, the container, the IPC handlers, the
+ *    scheduler and the main window. From then on errors are logged and survived.
  *
  * The container's SecretVault uses `safeStorage`, whose Windows key lives in userData's
- * `Local State`: the final userData path must be set before `ready` (B3), and any legacy
- * data folder copied before `createContainer` (architecture-notes §12.23).
+ * `Local State`: the final userData path is set before `ready`, and the legacy data is
+ * copied before `createContainer` (architecture-notes §12.23).
  */
 
 import { app, BrowserWindow, dialog, safeStorage, session } from 'electron';
 import path from 'path';
 import { openDatabase } from './database/connection';
+import { bootstrapShell } from './app/bootstrap';
 import { createContainer, AppContainer } from './app/container';
 import { installCrashPolicy } from './app/crash-policy';
+import { currentLaunchTarget, replaceLegacyLoginItems } from './app/login-item';
 import { createMainWindow, denyWebviews } from './app/main-window';
 import { getBrandIconPath } from './app/paths';
 import { installQuitHold } from './app/quit-hold';
 import { createAppUrlMatcher, resolveRendererEntry } from './app/renderer-entry';
-import { acquireSingleInstance, HIDDEN_ARG } from './app/single-instance';
+import { HIDDEN_ARG } from './app/single-instance';
 import { registerIpcHandlers } from './ipc';
 import { createSenderGuard } from './ipc/sender-guard';
-import { applyTestEnvHooks, startFixtureMode } from './testing';
+import {
+  createLegacyInstallDeps,
+  finishLegacyInstall,
+  migrateLegacyInstall,
+} from './migration/legacy-install';
+import { startFixtureMode } from './testing';
 import { initFileLogging, logger } from './utils/logger';
 
 const crashPolicy = installCrashPolicy({ process, app, dialog, log: logger });
 
-// The package is now `wa-stay`, so Electron's default userData would be <appData>/WA Stay and
-// v1.x data would be left behind: keep the v1.x folder until B3 moves the data.
-// B3 replaces this
-app.setPath('userData', path.join(app.getPath('appData'), 'parkstay-bookings')); // legacy-name-ok
-
-// Test-only hooks (architecture-notes §12.14), ignored when packaged. The last change to
-// userData before the single-instance lock, which lives there.
-const testHooks = applyTestEnvHooks(app);
-
-const instance = acquireSingleInstance(app, {
+// userData (<appData>/WA Stay, then the test-only override when running from source), the
+// AppUserModelId, then the single-instance lock
+const { paths, testHooks, instance } = bootstrapShell(app, {
+  platform: process.platform,
+  execPath: process.execPath,
   log: logger,
   // e.g. macOS after the window was closed; during startup the request waits for the window
   requestWindow: () => {
@@ -103,33 +107,53 @@ function createWindow(startHidden: boolean): void {
  * Initialize logging, database and services, then open the window
  */
 async function start(): Promise<void> {
-  const userData = app.getPath('userData');
-  const logsDir = initFileLogging(path.join(userData, 'logs'));
+  const logsDir = initFileLogging(path.join(paths.userData, 'logs'));
   logger.info('Initializing application...');
 
   // Test-only network-free mode (WA_STAY_E2E_FIXTURES_DIR), before anything can send a request
   const fixtureMode = startFixtureMode(testHooks, {
     app,
     session,
-    userDataDir: userData,
+    userDataDir: paths.userData,
     log: logger,
   });
 
-  // Open and migrate the database (B3 moves it to the WA Stay data folder)
-  const db = openDatabase(path.join(userData, 'parkstay.db'));
+  // First start after an upgrade from v1.x: copy its data into the WA Stay data folder
+  const migration = await migrateLegacyInstall(
+    paths,
+    createLegacyInstallDeps({ dialog, appVersion: app.getVersion() })
+  );
+  if (migration.outcome === 'quit') {
+    logger.info('Quitting: the legacy data could not be copied');
+    app.quit();
+    return;
+  }
+
+  // Open and migrate the database
+  const db = openDatabase(paths.dbPath);
 
   // Build every service once, then make sure the local profile row exists
   // Builds the SecretVault and migrates v1.x secrets into it: its first use of safeStorage
   const ready = createContainer({
     db,
     logsDir,
-    userDataDir: userData,
+    userDataDir: paths.userData,
     safeStorage,
     isReady: () => app.isReady(),
     fixtureMode,
   });
   container = ready;
   ready.profile.ensureLocalProfile();
+
+  // After a copy made in this start: the welcome notice and launch at login under WA Stay
+  finishLegacyInstall(migration, {
+    notifications: ready.repositories.notifications,
+    userId: ready.profile.requireUserId(),
+    launchOnStartup: ready.repositories.settings.getValue<boolean>('launchOnStartup') === true,
+    replaceLoginItems: (launchOnStartup) =>
+      replaceLegacyLoginItems(launchOnStartup, { ...currentLaunchTarget(), log: logger }),
+    logger,
+  });
 
   const trusted = ready.trustedWebContents;
   registerIpcHandlers(ready, {

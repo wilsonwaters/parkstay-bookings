@@ -1,8 +1,10 @@
 /**
- * How `src/main/index.ts` applies the test-only hooks: the userData override before the
- * single-instance lock (which lives in userData), fixture mode after `ready` and before the
- * container, which then serves providers from fixtures. A packaged app does none of it, even
- * with every variable set.
+ * How `src/main/index.ts` applies the test-only hooks: the userData override after the app's
+ * own data folder (`<appData>/WA Stay`) and before the single-instance lock (which lives in
+ * userData), fixture mode after `ready` and before the container, which then serves
+ * providers from fixtures. With the override and no `WA_STAY_LEGACY_DATA_DIR`, the legacy
+ * install migration has no legacy source, so a test never reads a real profile. A packaged
+ * app does none of it, even with every variable set.
  */
 
 import { EventEmitter } from 'events';
@@ -29,6 +31,7 @@ jest.mock('electron', () => {
       mockState.userData = value;
     }),
     isReady: jest.fn(() => true),
+    getVersion: jest.fn(() => '2.0.0'),
     getLoginItemSettings: jest.fn(() => ({ wasOpenedAsHidden: false })),
     quit: jest.fn(),
     exit: jest.fn(),
@@ -71,6 +74,7 @@ jest.mock('@main/app/container', () => ({
     mockState.containerOptions = options;
     return {
       profile: { ensureLocalProfile: jest.fn(), requireUserId: () => 1 },
+      repositories: { notifications: {}, settings: { getValue: () => null } },
       trustedWebContents: { isTrusted: () => true },
       scheduler: { start: jest.fn() },
       autoUpdater: { scheduleUpdateCheck: jest.fn() },
@@ -78,6 +82,20 @@ jest.mock('@main/app/container', () => ({
       dispose: jest.fn(),
     };
   }),
+}));
+
+jest.mock('@main/migration/legacy-install', () => ({
+  createLegacyInstallDeps: jest.fn(() => ({})),
+  migrateLegacyInstall: jest.fn(async (paths: { dbPath: string; legacyDbPath: string | null }) => {
+    mockOrder.push(`migrateLegacyInstall ${paths.dbPath} (legacy source ${paths.legacyDbPath})`);
+    return { outcome: 'fresh-install' };
+  }),
+  finishLegacyInstall: jest.fn(),
+}));
+
+jest.mock('@main/app/login-item', () => ({
+  currentLaunchTarget: jest.fn(),
+  replaceLegacyLoginItems: jest.fn(),
 }));
 
 jest.mock('@main/ipc', () => ({ registerIpcHandlers: jest.fn() }));
@@ -134,12 +152,14 @@ describe('test-only hooks at startup', () => {
 
     const userData = HOOK_VARS.WA_STAY_USER_DATA_DIR;
     expect(mockOrder).toEqual([
-      // The app's own userData folder (B2, replaced by B3), then the test override
-      'setPath userData /user-data/parkstay-bookings',
+      // The app's own userData folder, then the test override
+      `setPath userData ${path.join('/user-data', 'WA Stay')}`,
       `setPath userData ${userData}`,
       'requestSingleInstanceLock',
       'defaultSession.onBeforeRequest',
-      `openDatabase ${path.join(userData, 'parkstay.db')}`,
+      // No WA_STAY_LEGACY_DATA_DIR: the migration has no legacy source
+      `migrateLegacyInstall ${path.join(userData, 'wa-stay.db')} (legacy source null)`,
+      `openDatabase ${path.join(userData, 'wa-stay.db')}`,
       'createContainer',
     ]);
     expect(electron.app.listenerCount('session-created')).toBe(1);
@@ -166,9 +186,10 @@ describe('test-only hooks at startup', () => {
     expect(electron.session.defaultSession.webRequest.onBeforeRequest).not.toHaveBeenCalled();
     expect(electron.app.listenerCount('session-created')).toBe(0);
     expect(mockOrder).toEqual([
-      'setPath userData /user-data/parkstay-bookings',
+      `setPath userData ${path.join('/user-data', 'WA Stay')}`,
       'requestSingleInstanceLock',
-      `openDatabase ${path.join('/user-data/parkstay-bookings', 'parkstay.db')}`,
+      `migrateLegacyInstall ${path.join('/user-data', 'WA Stay', 'wa-stay.db')} (legacy source ${path.join('/user-data', 'parkstay-bookings', 'parkstay.db')})`,
+      `openDatabase ${path.join('/user-data', 'WA Stay', 'wa-stay.db')}`,
       'createContainer',
     ]);
     expect(mockState.containerOptions?.fixtureMode).toBeUndefined();

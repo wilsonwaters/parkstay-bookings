@@ -7,6 +7,7 @@ import fs from 'fs';
 import os from 'os';
 import { contract, SETTING_KEYS } from '@shared/contracts';
 import type { AppContainer } from '../../app/container';
+import { setLaunchAtLogin } from '../../app/login-item';
 import { logger } from '../../utils/logger';
 import type { Handle } from '../handle';
 
@@ -46,15 +47,7 @@ export function registerAppHandlers(handle: Handle, c: AppContainer): void {
       );
     }
 
-    if (process.platform === 'darwin') {
-      app.setLoginItemSettings({ openAtLogin: enabled, openAsHidden: enabled });
-    } else {
-      app.setLoginItemSettings({
-        openAtLogin: enabled,
-        path: process.execPath,
-        args: enabled ? ['--hidden'] : [],
-      });
-    }
+    setLaunchAtLogin(enabled);
 
     const { valueType, category } = SETTING_KEYS.launchOnStartup;
     settings.set('launchOnStartup', enabled, valueType, category);

@@ -38,9 +38,6 @@ export const NINGALOO_RELEASE_HOUR_AWST = 10; // 10:00 AWST first Tuesday (subje
 export const MAX_CONCURRENT_WATCHES = 10;
 export const MAX_GUESTS = 50;
 
-// Database
-export const DB_NAME = 'parkstay.db';
-
 // Retry configuration
 export const MAX_RETRIES = 3;
 export const INITIAL_RETRY_DELAY_MS = 1000;

@@ -1,10 +1,12 @@
 /**
- * Startup order in `src/main/index.ts`: the crash policy first, then userData (kept on the
- * v1.x folder until B3), then the single-instance lock, and only in the instance that holds it, after `ready`, the log files, the database,
- * the container, IPC, the scheduler and the window. A losing instance quits without
- * touching the database; a failed start goes to the crash policy. A quit hides the window
- * and disposes the container once; after that, errors no longer notify (the database is
- * closed).
+ * Startup order in `src/main/index.ts`: the crash policy first, then userData (the WA Stay
+ * data folder), the AppUserModelId (Windows) and the single-instance lock, and only in the
+ * instance that holds it, after `ready`: the log files, the legacy install migration, the
+ * database (`wa-stay.db`), the container, the migration's follow-ups (welcome notice, launch
+ * at login), IPC, the scheduler and the window. A losing instance quits without touching the
+ * database; a migration the user quits starts nothing; a failed start goes to the crash
+ * policy. A quit hides the window and disposes the container once; after that, errors no
+ * longer notify (the database is closed).
  */
 
 import { EventEmitter } from 'events';
@@ -13,6 +15,9 @@ import path from 'path';
 const mockOrder: string[] = [];
 const mockState = {
   hasLock: true,
+  migrationOutcome: 'migrated' as string,
+  launchOnStartup: true as boolean | null,
+  finishOptions: null as null | Record<string, unknown>,
   openDatabaseError: null as Error | null,
   containerOptions: null as null | Record<string, unknown>,
   windowIcon: undefined as string | undefined,
@@ -42,6 +47,8 @@ jest.mock('electron', () => {
     getAppPath: jest.fn(() => '/repo'),
     isReady: jest.fn(() => true),
     getLoginItemSettings: jest.fn(() => ({ wasOpenedAsHidden: false })),
+    getVersion: jest.fn(() => '2.0.0'),
+    setAppUserModelId: jest.fn((id: string) => mockOrder.push(`setAppUserModelId ${id}`)),
     quit: jest.fn(),
     exit: jest.fn(),
   });
@@ -92,8 +99,34 @@ jest.mock('@main/app/container', () => ({
       scheduler: { start: () => mockOrder.push('scheduler.start') },
       autoUpdater: { scheduleUpdateCheck: jest.fn() },
       notificationService: { notifyError: mockContainer.notifyError },
+      repositories: {
+        notifications: { name: 'notifications-repository' },
+        settings: {
+          getValue: (key: string) => (key === 'launchOnStartup' ? mockState.launchOnStartup : null),
+        },
+      },
       dispose: mockContainer.dispose,
     };
+  }),
+}));
+
+jest.mock('@main/migration/legacy-install', () => ({
+  createLegacyInstallDeps: jest.fn(() => ({ name: 'legacy-install-deps' })),
+  migrateLegacyInstall: jest.fn(async (paths: { dbPath: string }) => {
+    mockOrder.push(`migrateLegacyInstall ${paths.dbPath}`);
+    return { outcome: mockState.migrationOutcome, sourceDir: '/app-data/parkstay-bookings' };
+  }),
+  finishLegacyInstall: jest.fn((result: { outcome: string }, options: Record<string, unknown>) => {
+    mockOrder.push(`finishLegacyInstall ${result.outcome}`);
+    mockState.finishOptions = options;
+  }),
+}));
+
+jest.mock('@main/app/login-item', () => ({
+  currentLaunchTarget: jest.fn(() => ({ platform: 'win32' })),
+  replaceLegacyLoginItems: jest.fn((launchOnStartup: boolean) => {
+    mockOrder.push(`replaceLegacyLoginItems ${launchOnStartup}`);
+    return { removed: [], registered: launchOnStartup };
   }),
 }));
 
@@ -123,8 +156,10 @@ jest.mock('@main/app/main-window', () => {
   };
 });
 
-/** The v1.x data folder: the package rename must not move userData before B3 migrates it. */
-const LEGACY_USER_DATA = path.join('/app-data', 'parkstay-bookings');
+/** The WA Stay data folder under appData. */
+const USER_DATA = path.join('/app-data', 'WA Stay');
+/** Electron defines setAppUserModelId only on Windows, and the shell calls it only there. */
+const AUMID_STEP = process.platform === 'win32' ? [`setAppUserModelId ${process.execPath}`] : [];
 
 const { app } = jest.requireMock('electron') as { app: EventEmitter & { quit: jest.Mock } };
 
@@ -143,6 +178,9 @@ beforeEach(() => {
   mockContainer.dispose.mockClear();
   mockContainer.notifyError.mockClear();
   mockState.hasLock = true;
+  mockState.migrationOutcome = 'migrated';
+  mockState.launchOnStartup = true;
+  mockState.finishOptions = null;
   mockState.openDatabaseError = null;
   mockState.containerOptions = null;
   mockCrashPolicy.markReady.mockClear();
@@ -157,12 +195,15 @@ describe('main process startup', () => {
 
     expect(mockOrder).toEqual([
       'installCrashPolicy',
-      `setPath userData ${LEGACY_USER_DATA}`,
+      `setPath userData ${USER_DATA}`,
+      ...AUMID_STEP,
       'requestSingleInstanceLock',
-      `initFileLogging ${path.join('/user-data', 'logs')}`,
-      `openDatabase ${path.join('/user-data', 'parkstay.db')}`,
+      `initFileLogging ${path.join(USER_DATA, 'logs')}`,
+      `migrateLegacyInstall ${path.join(USER_DATA, 'wa-stay.db')}`,
+      `openDatabase ${path.join(USER_DATA, 'wa-stay.db')}`,
       'createContainer',
       'ensureLocalProfile',
+      'finishLegacyInstall migrated',
       'registerIpcHandlers',
       'scheduler.start',
       'createMainWindow',
@@ -191,8 +232,8 @@ describe('main process startup', () => {
       isReady: () => boolean;
     };
     expect(options).toMatchObject({
-      userDataDir: '/user-data',
-      logsDir: path.join('/user-data', 'logs'),
+      userDataDir: USER_DATA,
+      logsDir: path.join(USER_DATA, 'logs'),
       safeStorage: { name: 'electron-safeStorage' },
     });
     expect(options.isReady()).toBe(true); // app.isReady()
@@ -205,11 +246,51 @@ describe('main process startup', () => {
 
     expect(mockOrder).toEqual([
       'installCrashPolicy',
-      `setPath userData ${LEGACY_USER_DATA}`,
+      `setPath userData ${USER_DATA}`,
+      ...AUMID_STEP,
       'requestSingleInstanceLock',
     ]);
     expect(app.quit).toHaveBeenCalledTimes(1);
     expect(app.listenerCount('window-all-closed')).toBe(0);
+  });
+
+  it("hands the migration's follow-ups the local profile, the notifications and the migrated launch-at-login setting", async () => {
+    await launch();
+
+    const options = mockState.finishOptions as Record<string, unknown> & {
+      replaceLoginItems: (launchOnStartup: boolean) => unknown;
+    };
+    expect(options).toMatchObject({
+      notifications: { name: 'notifications-repository' },
+      userId: 1,
+      launchOnStartup: true,
+    });
+    mockOrder.length = 0;
+    options.replaceLoginItems(true);
+    expect(mockOrder).toEqual(['replaceLegacyLoginItems true']);
+  });
+
+  it.each<[boolean | null, boolean]>([
+    [false, false],
+    [null, false],
+  ])('launchOnStartup %s is passed on as %s', async (stored, passed) => {
+    mockState.launchOnStartup = stored;
+
+    await launch();
+
+    expect(mockState.finishOptions).toMatchObject({ launchOnStartup: passed });
+  });
+
+  it('the user quits after a failed copy: the app quits without opening the database', async () => {
+    mockState.migrationOutcome = 'quit';
+
+    await launch();
+
+    expect(mockOrder).not.toContain(`openDatabase ${path.join(USER_DATA, 'wa-stay.db')}`);
+    expect(mockOrder).not.toContain('createContainer');
+    expect(app.quit).toHaveBeenCalledTimes(1);
+    expect(mockCrashPolicy.markReady).not.toHaveBeenCalled();
+    expect(mockCrashPolicy.failStartup).not.toHaveBeenCalled();
   });
 
   it('a quit hides the window, then disposes the container once and holds the quit', async () => {
