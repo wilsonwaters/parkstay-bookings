@@ -134,6 +134,25 @@ This happens, for example, when the database came from another machine, whose ma
 differs. The next start tries again. An empty legacy password or notifier config migrates
 as "nothing stored".
 
+#### The legacy data folder is the backup of the pre-vault secrets
+
+On the first start after an upgrade, the legacy install migration
+(`src/main/migration/legacy-install.ts`) copies the v1.x database and `gmail-oauth.json`
+from `%APPDATA%\parkstay-bookings` (or, if the v1.x uninstaller deleted that folder, from the
+installer's `%APPDATA%\WA Stay\legacy-snapshot`) into the WA Stay data folder. The secret
+migration above then re-encrypts **only the copies**. The legacy folder and the snapshot
+keep the v1.x originals, so they are the only backup of the secrets as v1.x stored them:
+
+- The app never deletes or modifies either folder. The source database is opened
+  read-only and backed up with SQLite's online backup; `gmail-oauth.json` is copied byte for
+  byte. Opening the database read-only may leave SQLite's empty `-wal`/`-shm` sidecars
+  beside it.
+- `migration.json` in the WA Stay data folder records what was copied, from where, and the
+  source schema version. A failed copy shows the folder that keeps the old data.
+- Only the user removes them: uninstalling with "delete your WA Stay data" removes the
+  WA Stay folder (the snapshot is inside it), and asks again, default No, before deleting
+  the legacy folder.
+
 ### What "unreadable" means
 
 Every stored secret has a state (`SecretState`):
