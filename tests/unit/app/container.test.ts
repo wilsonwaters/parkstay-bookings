@@ -25,6 +25,7 @@ import { SiteSniperService } from '@main/services/sitesniper/sitesniper.service'
 import { AutoUpdaterService } from '@main/services/updater/auto-updater.service';
 import { ProviderRegistry } from '@main/providers/registry';
 import { WatchService } from '@main/services/watch/watch.service';
+import { LocationCatalogService } from '@main/core/catalog/location-catalog.service';
 import { JobScheduler } from '@main/scheduler/job-scheduler';
 import { RendererEvents } from '@main/ipc/events';
 import { TrustedWebContents } from '@main/ipc/trusted-web-contents';
@@ -33,6 +34,8 @@ import { SecretVault } from '@main/security/secret-vault';
 import { TEST_LOGS_DIR } from '@tests/utils/ipc-harness';
 import { containerSecrets, FakeSafeStorage, removeUserData } from '@tests/utils/fake-safe-storage';
 import { testManifest } from '@tests/utils/fake-provider';
+import { SnipeStatus } from '@shared/types/common.types';
+import { createMockSiteSnipeInput } from '@tests/fixtures/site-sniper';
 
 jest.mock('electron', () => ({
   app: { getAppPath: () => '/app', getPath: () => '/tmp', isPackaged: false },
@@ -98,6 +101,9 @@ jest.mock('@main/services/watch/watch.service', () =>
 jest.mock('@main/scheduler/job-scheduler', () =>
   mockCountedModule('@main/scheduler/job-scheduler')
 );
+jest.mock('@main/core/catalog/location-catalog.service', () =>
+  mockCountedModule('@main/core/catalog/location-catalog.service')
+);
 jest.mock('@main/ipc/events', () => mockCountedModule('@main/ipc/events'));
 jest.mock('@main/ipc/trusted-web-contents', () =>
   mockCountedModule('@main/ipc/trusted-web-contents')
@@ -133,6 +139,7 @@ const CONSTRUCTED_ONCE = {
   SiteSniperService,
   AutoUpdaterService,
   WatchService,
+  LocationCatalogService,
   JobScheduler,
   RendererEvents,
   TrustedWebContents,
@@ -189,6 +196,20 @@ describe('createContainer', () => {
       container.rendererEvents
     );
     expect(AutoUpdaterService).toHaveBeenCalledWith(container.rendererEvents);
+    // The catalogue reads the registry, caches in locations and provider_state, and announces
+    // syncs on the renderer events bus
+    expect(LocationCatalogService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        registry: container.providers,
+        locations: r.locations,
+        providerState: r.providerState,
+        events: container.rendererEvents,
+        isReleaseInProgress: expect.any(Function),
+      })
+    );
+    expect(jest.mocked(LocationCatalogService).mock.results[0].value).toBe(
+      container.catalogService
+    );
     expect(RendererEvents).toHaveBeenCalledWith(container.trustedWebContents);
     expect(JobScheduler).toHaveBeenCalledWith(container.watchService, container.siteSniperService);
     expect(GmailOTPService).toHaveBeenCalledWith(jest.mocked(OAuth2Handler).mock.results[0].value);
@@ -285,6 +306,23 @@ describe('createContainer', () => {
     expect(options?.providerName?.('not-a-provider')).toBeUndefined();
   });
 
+  it('the catalogue waits for its automatic sync while a snipe of that provider is queueing or sniping', () => {
+    const { container } = build();
+    const userId = container.profile.ensureLocalProfile();
+    const [{ isReleaseInProgress }] = jest.mocked(LocationCatalogService).mock.calls[0];
+    const snipes = container.repositories.snipes;
+    const snipe = snipes.create(userId, createMockSiteSnipeInput({ providerId: 'parkstay' }));
+
+    expect(isReleaseInProgress?.('parkstay')).toBe(false);
+    snipes.updateStatus(snipe.id, SnipeStatus.QUEUEING);
+    expect(isReleaseInProgress?.('parkstay')).toBe(true);
+    expect(isReleaseInProgress?.('other')).toBe(false);
+    snipes.updateStatus(snipe.id, SnipeStatus.SNIPING);
+    expect(isReleaseInProgress?.('parkstay')).toBe(true);
+    snipes.updateStatus(snipe.id, SnipeStatus.HELD);
+    expect(isReleaseInProgress?.('parkstay')).toBe(false);
+  });
+
   it('dispose disposes the providers before the database closes', () => {
     const { container, db } = build();
     const disposeAll = jest.spyOn(container.providers, 'disposeAll');
@@ -302,6 +340,7 @@ describe('createContainer', () => {
     const { container, db } = build();
     const revoke = jest.spyOn(container.trustedWebContents, 'revokeAll');
     const stop = jest.spyOn(container.scheduler, 'stop');
+    const stopCatalog = jest.spyOn(container.catalogService, 'stop');
     const gate = container.providers.get('parkstay').access!;
     const disposeGate = jest.spyOn(gate, 'dispose');
     const close = jest.spyOn(db, 'close');
@@ -315,6 +354,9 @@ describe('createContainer', () => {
     expect(revoke.mock.invocationCallOrder[0]).toBeLessThan(stop.mock.invocationCallOrder[0]);
     expect(close).toHaveBeenCalledTimes(1);
     expect(stop.mock.invocationCallOrder[0]).toBeLessThan(disposeGate.mock.invocationCallOrder[0]);
+    // A catalogue sync in flight is aborted before the database closes
+    expect(stopCatalog).toHaveBeenCalledTimes(1);
+    expect(stopCatalog.mock.invocationCallOrder[0]).toBeLessThan(close.mock.invocationCallOrder[0]);
     expect(disposeGate.mock.invocationCallOrder[0]).toBeLessThan(close.mock.invocationCallOrder[0]);
     expect(db.open).toBe(false);
   });

@@ -54,8 +54,8 @@ const SMTP_CONFIG = {
 };
 
 /**
- * Every read channel and its payload. Only ParkStay's (network, no secrets) are left out;
- * a test below fails if a new get/list/status method is not added here.
+ * Every read channel and its payload; a test below fails if a new get/list/status method is
+ * not added here. The catalogue reads are answered from the seeded cache, never the network.
  */
 const READS: Array<[string, unknown]> = [
   ['auth:get-credentials', undefined],
@@ -78,13 +78,16 @@ const READS: Array<[string, unknown]> = [
   ['snipes:get', { id: 1 }],
   ['notifications:list', { limit: 50 }],
   ['providers:list', undefined],
+  ['catalog:search', { text: 'sweep', limit: 50 }],
+  ['catalog:get', { key: 'parkstay:20' }],
+  ['catalog:status', undefined],
 ];
 
 /**
- * Read channels whose handlers are still typed NOT_IMPLEMENTED stubs (V1). V5 (catalog) and
- * V6 (accounts) move them into READS when they implement them.
+ * Read channels whose handlers are still typed NOT_IMPLEMENTED stubs (V1). V6 (accounts)
+ * moves them into READS when it implements them.
  */
-const PENDING_READS = new Set(['catalog:get', 'accounts:list']);
+const PENDING_READS = new Set(['accounts:list']);
 
 describe('secrets never reach the renderer', () => {
   let container: AppContainer;
@@ -135,7 +138,34 @@ describe('secrets never reach the renderer', () => {
     for (const transport of logger.transports) transport.silent = false;
   });
 
+  /** A cached ParkStay location with a fresh detail, so `catalog:get` reads the cache. */
+  function seedCatalogue(): void {
+    const now = new Date();
+    const location = {
+      key: 'parkstay:20',
+      providerId: 'parkstay',
+      externalId: '20',
+      name: 'Sweep Bay',
+      kind: 'campground' as const,
+      bookingMode: 'online' as const,
+      lat: -22.247,
+      lng: 113.84,
+      area: { name: 'Cape Range National Park', region: 'Pilbara' },
+      imageUrls: [],
+      amenities: ['Toilet'],
+    };
+    const { locations } = container.repositories;
+    locations.upsertMany('parkstay', [location], now);
+    locations.setDetail(
+      'parkstay',
+      '20',
+      { ...location, descriptionHtml: '<p>Red cliffs</p>', units: [] },
+      now
+    );
+  }
+
   async function seed(): Promise<unknown[]> {
+    seedCatalogue();
     return [
       await call('auth:store-credentials', { email: 'me@example.com', password: PASSWORD }),
       await call('gmail:set-credentials', { clientId: 'client-123', clientSecret: CLIENT_SECRET }),
@@ -154,6 +184,15 @@ describe('secrets never reach the renderer', () => {
 
     // The seeding worked and every read succeeded (a failing read would prove nothing)
     expect(responses.filter((response) => !(response as APIResponse).success)).toEqual([]);
+    // The catalogue reads returned the seeded location
+    expect(await call('catalog:get', { key: 'parkstay:20' })).toMatchObject({
+      success: true,
+      data: { key: 'parkstay:20', name: 'Sweep Bay', descriptionHtml: '<p>Red cliffs</p>' },
+    });
+    expect(await call('catalog:search', { text: 'sweep' })).toMatchObject({
+      success: true,
+      data: { total: 1, items: [{ key: 'parkstay:20' }] },
+    });
 
     const serialised = JSON.stringify(responses);
     const logs = logLines.join('\n');
@@ -187,11 +226,10 @@ describe('secrets never reach the renderer', () => {
     });
   });
 
-  it('the sweep covers every get/list/status channel outside ParkStay', () => {
+  it('the sweep covers every get/list/status channel', () => {
     const swept = new Set(READS.map(([channel]) => channel));
-    const reads = Object.entries(contract)
-      .filter(([namespace]) => namespace !== 'parkstay')
-      .flatMap(([, methods]) => Object.entries(methods as Record<string, MethodDef>))
+    const reads = Object.values(contract)
+      .flatMap((methods) => Object.entries(methods as Record<string, MethodDef>))
       .filter(([method]) => /^(get|list|validate)/.test(method) || method === 'checkAuthStatus')
       .map(([, def]) => def.channel);
 

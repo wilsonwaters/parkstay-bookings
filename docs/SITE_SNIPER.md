@@ -93,7 +93,7 @@ const snipe = await window.api.siteSniper.create(userId, {
 | Field | Meaning |
 | --- | --- |
 | `name` | Label for the snipe |
-| `campgroundId` / `campgroundName` | Target campground (search via `window.api.parkstay.searchCampgrounds`) |
+| `campgroundId` / `campgroundName` | Target campground (search via `window.api.catalog.search({ providerIds: ['parkstay'], text })`) |
 | `targetSiteIds` | Preferred site ids; empty means any available site |
 | `siteType` | ParkStay `gear_type` filter |
 | `arrivalDate` / `departureDate` | Desired stay (every night must be `open` to place a hold) |

@@ -19,7 +19,6 @@ import type { EventsApi } from './events';
 import { gmail } from './gmail';
 import { notifications } from './notifications';
 import { notifiers } from './notifiers';
-import { parkstay } from './parkstay';
 import { providers } from './providers';
 import { settings } from './settings';
 import { snipes } from './snipes';
@@ -40,7 +39,6 @@ export const contract = {
   catalog,
   accounts,
   auth,
-  parkstay,
 } as const;
 
 export type Contract = typeof contract;

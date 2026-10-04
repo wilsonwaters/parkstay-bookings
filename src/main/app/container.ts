@@ -17,6 +17,8 @@
 import path from 'path';
 import type Database from 'better-sqlite3';
 import { app } from 'electron';
+import { SnipeStatus } from '@shared/types/common.types';
+import { LocationCatalogService } from '../core/catalog/location-catalog.service';
 import { closeDatabase } from '../database/connection';
 import {
   BookingRepository,
@@ -85,6 +87,8 @@ export interface AppContainer {
   readonly profile: LocalProfile;
   /** The accommodation providers (`providers/index.ts` lists the built-in ones). */
   readonly providers: ProviderRegistry;
+  /** Every provider's locations: sync, search, detail and availability (`catalog.*`). */
+  readonly catalogService: LocationCatalogService;
   readonly notifierDispatcher: NotificationDispatcher;
   readonly authService: AuthService;
   readonly bookingService: BookingService;
@@ -96,8 +100,9 @@ export interface AppContainer {
   readonly scheduler: JobScheduler;
   /**
    * Cuts the renderer off (no webContents is trusted any more, so no invoke reaches a
-   * handler and no event is sent), stops the scheduler, starts disposing the providers (and
-   * with them ParkStay's queue gate) and closes the database, all before it returns. The promise
+   * handler and no event is sent), stops the scheduler and the catalogue service (aborting
+   * any sync in flight), starts disposing the providers (and with them ParkStay's queue
+   * gate) and closes the database, all before it returns. The promise
    * resolves once every provider is disposed and its browser closed (each browser gets at
    * most 5 s, then is killed); it never rejects. Safe to call twice.
    */
@@ -189,6 +194,23 @@ export function createContainer({
     logger,
   });
 
+  const catalogService = new LocationCatalogService({
+    registry: providers,
+    locations: repositories.locations,
+    providerState,
+    events: rendererEvents,
+    logger,
+    // A catalogue fetch must not compete with a release in progress.
+    isReleaseInProgress: (providerId) =>
+      repositories.snipes
+        .findActive()
+        .some(
+          (snipe) =>
+            snipe.providerId === providerId &&
+            (snipe.status === SnipeStatus.QUEUEING || snipe.status === SnipeStatus.SNIPING)
+        ),
+  });
+
   const notifierDispatcher = new NotificationDispatcher(repositories.notifiers, [
     new SmtpEmailNotifier({
       providerName: (id) => providers.tryGet(id)?.manifest.shortName,
@@ -223,6 +245,8 @@ export function createContainer({
     // Nothing from the renderer may reach the database once it closes below.
     trustedWebContents.revokeAll();
     scheduler.stop();
+    // Aborts a catalogue sync in flight, so it writes nothing once the database closes.
+    catalogService.stop();
     // Never rejects; each provider's dispose (its queue gate, its browser) starts before the
     // database closes.
     disposed = providers.disposeAll();
@@ -239,6 +263,7 @@ export function createContainer({
     rendererEvents,
     profile,
     providers,
+    catalogService,
     notifierDispatcher,
     authService,
     bookingService,

@@ -150,11 +150,6 @@ const api: WindowApi = {
     validateSession: none,
   }),
 
-  parkstay: bind('parkstay', {
-    searchCampgrounds: (query) => ({ query }),
-    getAllCampgrounds: none,
-  }),
-
   events: {
     on<E extends EventName>(name: E, callback: (payload: EventPayloads[E]) => void): () => void {
       if (!isEventName(name)) {

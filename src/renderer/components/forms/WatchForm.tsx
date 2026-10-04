@@ -7,15 +7,23 @@ import { useForm } from 'react-hook-form';
 import React, { useState, useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { watchSchema, WatchSchemaType } from '../../../shared/schemas/watch.schema';
-import { Watch } from '../../../shared/types';
+import { LocationSummary, Watch } from '../../../shared/types';
 import { watchToFormValues } from './legacy-mapping';
 
 interface Campground {
-  id: number;
+  id: string;
   name: string;
   type: string;
   coordinates?: [number, number];
 }
+
+/** A catalogue location as this picker lists it. */
+const toCampground = (location: LocationSummary): Campground => ({
+  id: location.externalId,
+  name: location.name,
+  type: 'Campground',
+  coordinates: [location.lng, location.lat],
+});
 
 interface WatchFormProps {
   initialData?: Partial<Watch>;
@@ -73,9 +81,10 @@ const WatchForm: React.FC<WatchFormProps> = ({
   const autoBook = watch('autoBook');
   const campgroundName = watch('campgroundName');
 
-  // Load all campgrounds on mount
+  // Load all campgrounds on mount, and again whenever the catalogue syncs
   useEffect(() => {
     loadCampgrounds();
+    return window.api.events.on('catalog:updated', () => loadCampgrounds());
   }, []);
 
   // Filter campgrounds when search query changes
@@ -94,10 +103,9 @@ const WatchForm: React.FC<WatchFormProps> = ({
     try {
       setIsLoadingCampgrounds(true);
       setCampgroundError(null);
-      const response = await window.api.parkstay.getAllCampgrounds();
+      const response = await window.api.catalog.search({ providerIds: ['parkstay'], limit: 5000 });
       if (response.success && response.data) {
-        // ParkStay ids arrive as strings; this form's local Campground type predates the contract
-        setAllCampgrounds(response.data as unknown as Campground[]);
+        setAllCampgrounds(response.data.items.map(toCampground));
       } else {
         setCampgroundError(response.error || 'Failed to load campgrounds');
       }

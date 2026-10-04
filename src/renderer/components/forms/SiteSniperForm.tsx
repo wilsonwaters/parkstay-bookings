@@ -8,14 +8,21 @@ import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { siteSnipeSchema, SiteSnipeSchemaType } from '../../../shared/schemas/site-sniper.schema';
-import { SiteSnipe, SnipeReleaseMode } from '../../../shared/types';
+import { LocationSummary, SiteSnipe, SnipeReleaseMode } from '../../../shared/types';
 import { snipeToFormValues } from './legacy-mapping';
 
 interface Campground {
-  id: number;
+  id: string;
   name: string;
   type?: string;
 }
+
+/** A catalogue location as this picker lists it. */
+const toCampground = (location: LocationSummary): Campground => ({
+  id: location.externalId,
+  name: location.name,
+  type: 'Campground',
+});
 
 interface SiteSniperFormProps {
   initialData?: Partial<SiteSnipe>;
@@ -141,11 +148,14 @@ const SiteSniperForm: React.FC<SiteSniperFormProps> = ({
       try {
         setIsSearching(true);
         setCampgroundError(null);
-        const response = await window.api.parkstay.searchCampgrounds(campgroundSearchQuery.trim());
+        const response = await window.api.catalog.search({
+          providerIds: ['parkstay'],
+          text: campgroundSearchQuery.trim(),
+          limit: 5000,
+        });
         if (cancelled) return;
         if (response.success && response.data) {
-          // ParkStay ids arrive as strings; this form's local Campground type predates the contract
-          setSearchResults(response.data.slice(0, 10) as unknown as Campground[]);
+          setSearchResults(response.data.items.slice(0, 10).map(toCampground));
         } else {
           setCampgroundError(response.error || 'Failed to search campgrounds');
         }

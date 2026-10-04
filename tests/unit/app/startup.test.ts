@@ -97,6 +97,7 @@ jest.mock('@main/app/container', () => ({
       },
       trustedWebContents: { isTrusted: () => true },
       scheduler: { start: () => mockOrder.push('scheduler.start') },
+      catalogService: { start: () => mockOrder.push('catalogService.start') },
       autoUpdater: { scheduleUpdateCheck: jest.fn() },
       notificationService: { notifyError: mockContainer.notifyError },
       repositories: {
@@ -207,6 +208,8 @@ describe('main process startup', () => {
       'registerIpcHandlers',
       'scheduler.start',
       'createMainWindow',
+      // The catalogue's automatic sync starts once the window exists (it then waits 5 s)
+      'catalogService.start',
     ]);
     expect(mockCrashPolicy.markReady).toHaveBeenCalledTimes(1);
     expect(mockCrashPolicy.failStartup).not.toHaveBeenCalled();

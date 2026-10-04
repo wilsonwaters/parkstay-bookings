@@ -130,7 +130,6 @@ describe('preload window.api', () => {
     await api.notifiers.test(NotifierChannel.EMAIL_SMTP);
     await api.settings.set('launchOnStartup', true);
     await api.gmail.setCredentials({ clientId: 'client-id', clientSecret: 'client-secret' });
-    await api.parkstay.searchCampgrounds('karri');
 
     expect(ipcRenderer.invoke.mock.calls).toEqual([
       ['watches:list', undefined],
@@ -147,7 +146,6 @@ describe('preload window.api', () => {
       ['notifiers:test', { channel: 'email_smtp' }],
       ['settings:set', { key: 'launchOnStartup', value: true }],
       ['gmail:set-credentials', { clientId: 'client-id', clientSecret: 'client-secret' }],
-      ['parkstay:search-campgrounds', { query: 'karri' }],
     ]);
     expect(JSON.stringify(ipcRenderer.invoke.mock.calls)).not.toContain('userId');
   });

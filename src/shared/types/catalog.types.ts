@@ -141,9 +141,14 @@ const finite = z.number().finite();
 const longitude = finite.min(-180).max(180);
 const latitude = finite.min(-90).max(90);
 
+/**
+ * `[west, south, east, north]`. West must not be east of east: WA never spans the
+ * antimeridian, so a box that wraps it is a mistake, not a request.
+ */
 export const BoundingBoxSchema = z
   .tuple([longitude, latitude, longitude, latitude])
-  .refine(([, south, , north]) => south <= north, 'South must not be north of north');
+  .refine(([, south, , north]) => south <= north, 'South must not be north of north')
+  .refine(([west, , east]) => west <= east, 'West must not be east of east');
 assertTypeEquals<z.input<typeof BoundingBoxSchema>, BoundingBox>(true);
 assertTypeEquals<z.output<typeof BoundingBoxSchema>, BoundingBox>(true);
 

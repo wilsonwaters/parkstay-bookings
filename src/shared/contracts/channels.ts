@@ -102,12 +102,6 @@ export const CHANNELS = {
     signOut: 'accounts:sign-out',
     openSignInLink: 'accounts:open-sign-in-link',
   },
-  // Transitional: the legacy watch and snipe forms' campground pickers, served from the ParkStay
-  // provider's catalogue. V5 moves the forms to `catalog.search` and retires it.
-  parkstay: {
-    searchCampgrounds: 'parkstay:search-campgrounds',
-    getAllCampgrounds: 'parkstay:get-all-campgrounds',
-  },
 } as const;
 
 export type Channels = typeof CHANNELS;

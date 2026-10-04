@@ -13,7 +13,6 @@ import { registerCatalogHandlers } from './handlers/catalog.handlers';
 import { registerGmailHandlers } from './handlers/gmail.handlers';
 import { registerNotificationsHandlers } from './handlers/notifications.handlers';
 import { registerNotifiersHandlers } from './handlers/notifiers.handlers';
-import { registerParkStayHandlers } from './handlers/parkstay.handlers';
 import { registerProvidersHandlers } from './handlers/providers.handlers';
 import { registerSettingsHandlers } from './handlers/settings.handlers';
 import { registerSnipesHandlers } from './handlers/snipes.handlers';
@@ -47,7 +46,6 @@ export function registerIpcHandlers(
   registerCatalogHandlers(handle, container);
   registerAccountsHandlers(handle, container);
   registerAuthHandlers(handle, container);
-  registerParkStayHandlers(handle, container);
 
   logger.info('IPC handlers registered');
 }

@@ -47,6 +47,7 @@ npm run dist:win     # Package Windows installer
 src/
 ├── main/           # Electron main process (Node.js)
 │   ├── app/        # Composition root (container.ts), local profile, renderer entry/origin
+│   ├── core/       # Provider-agnostic domain services (catalog/: LocationCatalogService)
 │   ├── database/   # SQLite connection, migrations, repositories
 │   ├── providers/  # Provider SDK (sdk/), ProviderRegistry, built-in providers (parkstay/)
 │   ├── services/   # Business logic (auth, booking, watch, sitesniper, gmail, notification)
@@ -109,6 +110,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 | WatchService | `src/main/services/watch/watch.service.ts` | Availability monitoring |
 | SiteSniperService | `src/main/services/sitesniper/sitesniper.service.ts` | Site Sniper — auto-holds a high-demand site the instant it is released (daily rollover / scheduled / cancellation modes) |
 | ProviderRegistry | `src/main/providers/registry.ts` | Accommodation providers behind the SDK in `providers/sdk/` (manifests, capability checks); built-ins listed in `providers/index.ts` |
+| LocationCatalogService | `src/main/core/catalog/location-catalog.service.ts` | Every provider's locations (`catalog.*`): 24 h catalogue sync into `locations` (single-flight, per-provider failure isolation, `catalog:updated`), FTS5 search with filters and facets, 6 h detail cache with stale fallback, bulk and per-location availability caches |
 | ParkStay provider | `src/main/providers/parkstay/` | The ParkStay (DBCA) module: catalogue, availability (YYYY/MM/DD dates, per-night prices), DBCA queue access gate (`queue/`), release policy, `create_booking` holds, links. Watches and snipes use it through the registry |
 | NotificationService | `src/main/services/notification/notification.service.ts` | Desktop/in-app notifications |
 | NotificationDispatcher | `src/main/services/notification/notification-dispatcher.ts` | External notifiers (email) |
@@ -126,7 +128,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 
 ## IPC Pattern
 
-- **Contract** in `src/shared/contracts/` is the single source of truth: one file per namespace (`bookings`, `watches`, `snipes`, `notifications`, `notifiers`, `gmail`, `settings`, `app`, `updater`, `providers`, `catalog`, `accounts`, plus the transitional `auth` and `parkstay` (the legacy forms' campground pickers, served from the provider catalogue)), and `index.ts` exports `contract` and `type WindowApi`. The DBCA queue state reaches the renderer only as `providers.accessStatus(id)` / `provider:access-status`. Each method declares a `channel` (`<namespace>:<kebab-method>`), a zod `request` schema (one object payload, or `z.void()`), the preload's positional `args` and the `response` type
+- **Contract** in `src/shared/contracts/` is the single source of truth: one file per namespace (`bookings`, `watches`, `snipes`, `notifications`, `notifiers`, `gmail`, `settings`, `app`, `updater`, `providers`, `catalog`, `accounts`, plus the transitional `auth`), and `index.ts` exports `contract` and `type WindowApi`. The DBCA queue state reaches the renderer only as `providers.accessStatus(id)` / `provider:access-status`. Each method declares a `channel` (`<namespace>:<kebab-method>`), a zod `request` schema (one object payload, or `z.void()`), the preload's positional `args` and the `response` type
 - Channel and event names live in the zod-free `contracts/channels.ts`, the only contract module the preload loads at runtime. Event payloads are in `contracts/events.ts`
 - `src/main/ipc/handle.ts`: `handle(def, fn)` is the only caller of `ipcMain.handle`. It checks the sender (a trusted webContents, its top frame, on the app origin — `ipc/sender-guard.ts`, `app/renderer-entry.ts`), parses the payload with the method's schema, and returns `APIResponse`: `{ success: true, data }` or `{ success: false, code, error }` with `code` `VALIDATION` (plus `issues` paths), `FORBIDDEN`, `NO_PROFILE`, `NOT_FOUND`, `INTERNAL` or `NOT_IMPLEMENTED`, and for provider errors (`main/providers/sdk/errors.ts` `toApiError`) `CAPABILITY`, `UNKNOWN_PROVIDER`, `PROVIDER_ERROR`, `ACCESS_GATE` or `AUTH_REQUIRED`. Throw `AppError(code)` (`main/utils/app-error.ts`) for a specific code. Logs never include payload values
 - Handlers in `src/main/ipc/handlers/`, one file per namespace (`watches.handlers.ts`, …), each `registerXHandlers(handle, container)`; `registerIpcHandlers(container, { isTrustedSender })` in `ipc/index.ts` registers them all

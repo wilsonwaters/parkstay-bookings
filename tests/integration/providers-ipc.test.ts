@@ -1,7 +1,7 @@
 /**
- * The `providers`, `catalog` and `accounts` namespaces through P3's harness: a real container
- * (with the built-in ParkStay provider), every handler registered through handle(), and
- * invokes from the trusted fake renderer.
+ * The `providers` and `accounts` namespaces through P3's harness: a real container (with the
+ * built-in ParkStay provider), every handler registered through handle(), and invokes from
+ * the trusted fake renderer. `catalog` has its own suite (`catalog.test.ts`).
  */
 
 import { EventEmitter } from 'events';
@@ -42,7 +42,7 @@ jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }))
 const { autoUpdater } = jest.requireMock('electron-updater') as { autoUpdater: EventEmitter };
 const { session } = jest.requireMock('electron') as { session: { fromPartition: jest.Mock } };
 
-describe('providers / catalog / accounts over IPC', () => {
+describe('providers / accounts over IPC', () => {
   let container: AppContainer;
   let ipc: FakeIpcMain;
   let mainWindow: FakeWebContents;
@@ -135,43 +135,6 @@ describe('providers / catalog / accounts over IPC', () => {
         code: 'VALIDATION',
         issues: ['providerId'],
       });
-    });
-
-    it('catalog.* validates, then answers NOT_IMPLEMENTED until the catalogue lands', async () => {
-      const stay = { arrival: '2026-11-10', departure: '2026-11-12', adults: 1 };
-      const valid: Array<[string, unknown]> = [
-        ['catalog:search', { text: 'karri', limit: 50 }],
-        ['catalog:get', { key: 'parkstay:20' }],
-        ['catalog:availability', { stay, providerIds: ['parkstay'] }],
-        ['catalog:check-location', { key: 'parkstay:20', stay }],
-        ['catalog:refresh', {}],
-        ['catalog:status', undefined],
-      ];
-      for (const [channel, payload] of valid) {
-        expect([channel, await call(channel, payload)]).toEqual([
-          channel,
-          {
-            success: false,
-            code: 'NOT_IMPLEMENTED',
-            error: 'The location catalogue is not available yet',
-          },
-        ]);
-      }
-
-      expect(await call('catalog:search', { limit: 0 })).toMatchObject({
-        code: 'VALIDATION',
-        issues: ['limit'],
-      });
-      expect(await call('catalog:get', { key: 'nokey' })).toMatchObject({
-        code: 'VALIDATION',
-        issues: ['key'],
-      });
-      expect(
-        await call('catalog:check-location', {
-          key: 'parkstay:20',
-          stay: { ...stay, departure: stay.arrival },
-        })
-      ).toMatchObject({ code: 'VALIDATION', issues: ['stay.departure'] });
     });
 
     it('accounts.* validates, then answers NOT_IMPLEMENTED until accounts land', async () => {

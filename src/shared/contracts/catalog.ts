@@ -1,9 +1,7 @@
 /**
- * `catalog`: locations from every catalogue provider (search, detail, availability).
- * Syncs arrive as `catalog:updated` events.
- *
- * The handlers answer `NOT_IMPLEMENTED` until the catalogue service lands (V5); the request
- * schemas are already enforced.
+ * `catalog`: locations from every catalogue provider (search, detail, availability), served
+ * by the location catalogue service (`main/core/catalog`). Syncs arrive as `catalog:updated`
+ * events.
  */
 
 import { z } from 'zod';

@@ -13,7 +13,7 @@ One folder per provider id, each with a `manifest.json` and the response files i
 http/
 └── parkstay/
     ├── manifest.json
-    └── campground_map.json      # (added with E1's Explore journey)
+    └── campground_map.json      # the catalogue the app syncs 5 s after launch (V5)
 ```
 
 A provider with no folder, or no routes, answers every request with an error.
@@ -60,10 +60,11 @@ test attaches that log as `unexpected-requests`, which lists exactly the routes 
 - Test data only. Nothing under `tests/` is packaged (`electron-builder.json` ships `dist/`),
   and the app always fetches ParkStay data and images live at runtime (brief O8). Image URLs in
   a fixture are never loaded: the network guard cancels them, and the app shows its fallback.
-- **ParkStay** (`parkstay/`): no routes yet; the app makes no ParkStay request on the pages the
-  suite visits today. E1 adds the catalogue, trimmed from the public `GET /api/campground_map/`
-  response probed on 2026-10-02 (`ai-state/research/parkstay-api-review.md`), with whatever
-  else the Explore first load requests.
+- **ParkStay** (`parkstay/`): the catalogue, because the app syncs it 5 s after the window is
+  up (V5). `campground_map.json` is the trimmed public `GET /api/campground_map/` sample probed
+  on 2026-10-02 that the Jest suite uses (`tests/fixtures/parkstay/`, 6 campgrounds covering
+  `campground_type` 0, 1, 2 and 4 in 4 regions). E1 extends it for the Explore journey, with
+  whatever else the Explore first load requests.
 
 ## Refreshing a fixture
 

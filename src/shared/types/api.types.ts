@@ -1,19 +1,5 @@
 // Types for the main ↔ renderer API.
 
-/** A campground as the legacy forms' pickers read it (the transitional `parkstay` namespace). */
-export interface CampgroundSearchResult {
-  id: string;
-  name: string;
-  parkId?: string;
-  parkName?: string;
-  region?: string;
-  description?: string;
-  facilities?: string[];
-  imageUrl?: string;
-  type?: string; // Campground type from GeoJSON
-  coordinates?: [number, number]; // [longitude, latitude] from GeoJSON
-}
-
 /**
  * Why an IPC call failed. Set on every `success: false` response from `ipc/handle.ts`.
  * - VALIDATION: the request payload failed its contract schema (or a service rule); `issues` lists the paths.
