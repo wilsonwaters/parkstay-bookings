@@ -1,8 +1,9 @@
 /**
  * `LocationCatalogService` with FakeProvider and fake2 on a real (in-memory) database:
- * freshness and TTLs, empty-result protection, single-flight, automatic sync timing and the
- * release guard, stop, detail fallbacks and sanitising, summary derivation, and the key and
- * bbox filtering of bulk availability.
+ * freshness and TTLs (a future timestamp is stale), empty-result protection, single-flight,
+ * automatic sync timing, the release guard and the empty-cache retries, stop, detail
+ * fallbacks and sanitising, summary derivation, the key and bbox filtering of bulk
+ * availability, and the 60 s cache of queue and timeout errors.
  */
 
 import type Database from 'better-sqlite3';
@@ -179,6 +180,26 @@ describe('freshness and TTLs', () => {
     await s.catalog.checkLocation('fake:2', STAY);
     expect(callsTo(s.fake, 'check')).toBe(3);
   });
+
+  it('a syncedAt or a detail fetchedAt in the future (the clock was set back) is stale', async () => {
+    const s = setup();
+    await s.catalog.sync('fake');
+    await s.catalog.get('fake:1');
+    expect(s.catalog.status().providers[0]).toMatchObject({ providerId: 'fake', stale: false });
+
+    advance(s, -60_000);
+
+    expect(s.catalog.status().providers[0]).toMatchObject({ providerId: 'fake', stale: true });
+    await s.catalog.sync('fake');
+    expect(callsTo(s.fake, 'listLocations')).toBe(2);
+    expect(s.catalog.status().providers[0]).toMatchObject({
+      stale: false,
+      syncedAt: s.clock.now.toISOString(),
+    });
+    const detail = await s.catalog.get('fake:1');
+    expect(callsTo(s.fake, 'getLocation')).toBe(2);
+    expect(detail.fetchedAt).toBe(s.clock.now.toISOString());
+  });
 });
 
 describe('empty-result protection', () => {
@@ -347,6 +368,105 @@ describe('automatic sync (start)', () => {
     s.catalog.stop();
     await jest.advanceTimersByTimeAsync(2 * HOUR);
     expect(callsTo(s.fake, 'listLocations') + callsTo(s.fake2, 'listLocations')).toBe(0);
+  });
+});
+
+describe('automatic sync while a catalogue is empty (first launch offline)', () => {
+  const offline = (): ProviderHttpError =>
+    new ProviderHttpError({ providerId: 'fake', status: 503, url: 'https://fake.example/x' });
+
+  /** Advances the fake timers to `ms` after the test's start. */
+  function timeline(): (ms: number) => Promise<void> {
+    let elapsed = 0;
+    return async (ms) => {
+      await jest.advanceTimersByTimeAsync(ms - elapsed);
+      elapsed = ms;
+    };
+  }
+
+  it('retries a failed sync after 1, 2 and 5 min, then only on the hourly re-check: no loop', async () => {
+    jest.useFakeTimers();
+    const s = setup();
+    const list = jest.spyOn(s.fake.catalog!, 'listLocations').mockRejectedValue(offline());
+    const until = timeline();
+
+    s.catalog.start();
+    await until(5_050);
+    expect(list).toHaveBeenCalledTimes(1);
+    // fake2 synced and has rows: no retries for it
+    expect(callsTo(s.fake2, 'listLocations')).toBe(1);
+
+    // 1 min after the first attempt, then 2 min after that, then 5 min after that
+    const expected: Array<[number, number]> = [
+      [64_999, 1],
+      [65_050, 2],
+      [184_999, 2],
+      [185_050, 3],
+      [484_999, 3],
+      [485_050, 4],
+      // Nothing more until the hourly re-check (5 s + 1 h)
+      [HOUR + 4_999, 4],
+      [HOUR + 5_050, 5],
+      // ... and the backoff does not start over after it
+      [HOUR + 15 * 60_000, 5],
+      [2 * HOUR + 4_999, 5],
+      [2 * HOUR + 5_050, 6],
+    ];
+    for (const [ms, calls] of expected) {
+      await until(ms);
+      expect([ms, list.mock.calls.length]).toEqual([ms, calls]);
+    }
+    expect(callsTo(s.fake2, 'listLocations')).toBe(1);
+    expect(s.catalog.status().providers[0]).toMatchObject({
+      count: 0,
+      lastError: expect.any(String),
+    });
+  });
+
+  it('stops retrying once rows exist, and behaves as before from then on', async () => {
+    jest.useFakeTimers();
+    const s = setup();
+    s.fake.failNext('catalog', offline());
+    const until = timeline();
+
+    s.catalog.start();
+    await until(5_050);
+    expect(callsTo(s.fake, 'listLocations')).toBe(1);
+    expect(s.locations.countByProvider().fake).toBeUndefined();
+
+    // The 1 min retry succeeds
+    await until(65_050);
+    expect(callsTo(s.fake, 'listLocations')).toBe(2);
+    expect(s.locations.countByProvider().fake).toBe(3);
+
+    // Stale again from here on, yet no 2 or 5 min retry: only the hourly re-check syncs it
+    advance(s, HOUR);
+    await until(HOUR + 4_999);
+    expect(callsTo(s.fake, 'listLocations')).toBe(2);
+    await until(HOUR + 5_050);
+    expect(callsTo(s.fake, 'listLocations')).toBe(3);
+  });
+
+  it('a provider waiting for a release still gets its retries, and stop() cancels a pending one', async () => {
+    jest.useFakeTimers();
+    const s = setup();
+    s.releasing.add('fake');
+    const until = timeline();
+
+    s.catalog.start();
+    await until(5_050);
+    expect(callsTo(s.fake, 'listLocations')).toBe(0);
+
+    // The release is over by the 1 min retry
+    s.releasing.clear();
+    await until(65_050);
+    expect(callsTo(s.fake, 'listLocations')).toBe(1);
+    expect(s.locations.countByProvider().fake).toBe(3);
+
+    // Empty and failing again on another catalogue: stop() drops its pending retry
+    s.catalog.stop();
+    await until(2 * HOUR);
+    expect(callsTo(s.fake, 'listLocations')).toBe(1);
   });
 });
 
@@ -573,10 +693,83 @@ describe('bulk availability filtering and errors', () => {
       { providerId: 'fake2', code: 'timeout', message: 'fake2: no answer within 20 ms' },
     ]);
 
-    // Failures are not cached
+    // Queue and timeout errors are reused for 60 s; then both providers are asked again
     s.fake2.delayMs = 0;
+    advance(s, 60_000);
     const retried = await s.catalog.availability({ ...STAY, adults: 1 });
     expect(retried.errors).toEqual([]);
     expect(retried.entries).toHaveLength(5);
+  });
+});
+
+describe('the 60 s cache of queue and timeout errors', () => {
+  it('reuses an access-gate or timeout error for 60 s per provider and stay, asking nothing', async () => {
+    const s = setup();
+    await s.catalog.sync();
+    jest.useFakeTimers();
+    /** Moves the service's clock and the timers together. */
+    const tick = async (ms: number): Promise<void> => {
+      advance(s, ms);
+      await jest.advanceTimersByTimeAsync(ms);
+    };
+    /** A call that may reach a provider: the fake answers after a 0 ms timer. */
+    const ask = async (...args: Parameters<LocationCatalogService['availability']>) => {
+      const pending = s.catalog.availability(...args);
+      await jest.advanceTimersByTimeAsync(0);
+      return pending;
+    };
+    s.fake.failNext('availability', new AccessGateError('fake', 'waiting'));
+    s.fake2.delayMs = 60_000;
+
+    const first = s.catalog.availability(STAY);
+    await tick(20_000);
+    const failed = await first;
+    expect(failed).toEqual({
+      entries: [],
+      errors: [
+        { providerId: 'fake', code: 'access-gate', message: 'fake: the queue is waiting' },
+        { providerId: 'fake2', code: 'timeout', message: 'fake2: no answer within 20 s' },
+      ],
+    });
+    expect([callsTo(s.fake, 'search'), callsTo(s.fake2, 'search')]).toEqual([1, 1]);
+
+    // Map pans for the next minute get the cached error entries, without a request
+    s.fake2.delayMs = 0;
+    for (const ms of [1, 30_000, 29_998]) {
+      await tick(ms);
+      expect(await ask(STAY)).toEqual(failed);
+    }
+    expect(await ask(STAY, { bbox: [116, -34, 117, -33] })).toEqual(failed);
+    expect([callsTo(s.fake, 'search'), callsTo(s.fake2, 'search')]).toEqual([1, 1]);
+
+    // Another stay is another question
+    const other = await ask({ ...STAY, adults: 3 });
+    expect(other.errors).toEqual([]);
+    expect([callsTo(s.fake, 'search'), callsTo(s.fake2, 'search')]).toEqual([2, 2]);
+
+    // 60 s on, both are asked again, and the answers replace the errors
+    await tick(1);
+    const fresh = await ask(STAY);
+    expect(fresh.errors).toEqual([]);
+    expect(fresh.entries).toHaveLength(5);
+    expect([callsTo(s.fake, 'search'), callsTo(s.fake2, 'search')]).toEqual([3, 3]);
+  });
+
+  it('other errors are not cached: the next call asks again', async () => {
+    const s = setup();
+    await s.catalog.sync();
+    s.fake.failNext(
+      'availability',
+      new ProviderHttpError({ providerId: 'fake', status: 503, url: 'https://fake.example/x' })
+    );
+
+    const failed = await s.catalog.availability(STAY, { providerIds: ['fake'] });
+    expect(failed.errors).toEqual([
+      { providerId: 'fake', code: 'http', message: 'fake: HTTP 503 from https://fake.example/x' },
+    ]);
+    const retried = await s.catalog.availability(STAY, { providerIds: ['fake'] });
+    expect(retried.errors).toEqual([]);
+    expect(retried.entries).toHaveLength(3);
+    expect(callsTo(s.fake, 'search')).toBe(2);
   });
 });

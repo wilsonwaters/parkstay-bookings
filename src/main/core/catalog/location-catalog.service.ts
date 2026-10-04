@@ -14,10 +14,14 @@
  *   comes back marked `stale`.
  * - **Availability** fans out to every `bulkAvailability` provider (5 min cache) and reports
  *   each provider's failure separately. It never waits in a provider's queue: a gated
- *   provider answers with an `access-gate` error entry at once.
+ *   provider answers with an `access-gate` error entry at once, and that error (or a
+ *   `timeout`) is reused for 60 s per stay, so map pans during a queue ask nothing.
  * - **Automatic sync** (`start`) begins 5 s after the window is up and re-checks hourly,
  *   only for stale providers, and never while one of the provider's snipes is queueing or
- *   sniping (a 1.2 MB fetch must not compete with a release). Manual refresh always runs.
+ *   sniping (a 1.2 MB fetch must not compete with a release). While a provider has no cached
+ *   locations at all (a first launch offline), a failed automatic sync is retried after
+ *   1, 2 and 5 minutes before the hourly schedule takes over. Manual refresh always runs.
+ * - **Freshness.** A timestamp in the future (the clock was set back) counts as stale.
  *
  * `catalogMode: 'search'` providers cannot list every location, so they are not synced:
  * they are the hook for providers that are searched by map area (`catalog.searchArea`,
@@ -85,8 +89,15 @@ export interface CatalogTimings {
   detailTtlMs: number;
   /** How long a provider's bulk availability for a stay is reused. */
   bulkTtlMs: number;
+  /** How long a provider's `access-gate` or `timeout` error for a stay is reused. */
+  bulkErrorTtlMs: number;
   /** How long a location's availability for a stay is reused. */
   checkTtlMs: number;
+  /**
+   * While a provider has no cached locations, the waits before retrying a failed automatic
+   * sync, one after another; then only the hourly re-check.
+   */
+  emptyRetryMs: readonly number[];
 }
 
 export const DEFAULT_CATALOG_TIMINGS: Readonly<CatalogTimings> = Object.freeze({
@@ -97,7 +108,9 @@ export const DEFAULT_CATALOG_TIMINGS: Readonly<CatalogTimings> = Object.freeze({
   availabilityTimeoutMs: 20_000,
   detailTtlMs: 6 * 3_600_000,
   bulkTtlMs: 5 * 60_000,
+  bulkErrorTtlMs: 60_000,
   checkTtlMs: 60_000,
+  emptyRetryMs: Object.freeze([60_000, 2 * 60_000, 5 * 60_000]),
 });
 
 export interface SyncOptions {
@@ -148,11 +161,17 @@ export class LocationCatalogService {
   private started = false;
   private startTimer?: ReturnType<typeof setTimeout>;
   private recheckTimer?: ReturnType<typeof setInterval>;
+  /** Pending empty-cache retries, at most one per provider. */
+  private readonly retryTimers = new Map<ProviderId, ReturnType<typeof setTimeout>>();
+  /** Empty-cache retries used per provider; never reset, so they run once per launch. */
+  private readonly retriesUsed = new Map<ProviderId, number>();
 
   private readonly syncs = new Map<ProviderId, Promise<void>>();
   private readonly details = new Map<string, Promise<LocationDetail>>();
   private readonly bulk = new Map<string, Promise<BulkAvailabilityEntry[]>>();
   private readonly bulkCache = new Map<string, Cached<BulkAvailabilityEntry[]>>();
+  /** `access-gate` and `timeout` failures of bulk availability, by provider and stay. */
+  private readonly bulkErrorCache = new Map<string, Cached<unknown>>();
   private readonly checks = new Map<string, Promise<LocationAvailability>>();
   private readonly checkCache = new Map<string, Cached<LocationAvailability>>();
 
@@ -173,7 +192,9 @@ export class LocationCatalogService {
 
   /**
    * Starts automatic sync: stale providers sync `startDelayMs` (5 s) from now, then every
-   * `recheckMs` (hourly). Call it once the main window is up. Safe to call twice.
+   * `recheckMs` (hourly). A provider still without any cached location after an automatic
+   * attempt is retried after each of `emptyRetryMs` (1, 2, 5 min) in turn. Call it once the
+   * main window is up. Safe to call twice.
    */
   start(): void {
     if (this.started || this.stopped) return;
@@ -194,6 +215,8 @@ export class LocationCatalogService {
     if (this.recheckTimer) clearInterval(this.recheckTimer);
     this.startTimer = undefined;
     this.recheckTimer = undefined;
+    for (const timer of this.retryTimers.values()) clearTimeout(timer);
+    this.retryTimers.clear();
     this.lifetime.abort();
   }
 
@@ -242,21 +265,52 @@ export class LocationCatalogService {
     return { providers };
   }
 
-  /** The automatic sync: stale providers only, and none that is mid-release. */
-  private autoSync(): void {
+  /**
+   * The automatic sync: stale providers only (or just `only`), and none that is mid-release.
+   * Each attempt, made or waiting, is followed by `retryWhileEmpty`.
+   */
+  private autoSync(only?: AccommodationProvider): void {
     if (this.stopped) return;
-    const due = this.catalogProviders().filter((provider) => {
+    const stale = (only ? [only] : this.catalogProviders()).filter(
+      (provider) =>
+        this.syncableMode(provider) && !this.isFresh(provider, this.syncState(provider.manifest.id))
+    );
+    for (const provider of stale) {
       const id = provider.manifest.id;
-      if (!this.syncableMode(provider) || this.isFresh(provider, this.syncState(id))) {
-        return false;
-      }
       if (this.isReleaseInProgress(id)) {
         this.logger.info(`Catalogue sync for ${id} waits: one of its snipes is in a release`);
-        return false;
+        this.retryWhileEmpty(provider);
+        continue;
       }
-      return true;
-    });
-    for (const provider of due) void this.syncProvider(provider, false);
+      void this.syncProvider(provider, false).then(() => this.retryWhileEmpty(provider));
+    }
+  }
+
+  /**
+   * After an automatic attempt: while the provider has no cached location and is still not
+   * fresh (a first launch offline), schedules the next of `emptyRetryMs`. Bounded, one timer
+   * per provider, and a no-op once rows exist, so it can never become a request loop.
+   */
+  private retryWhileEmpty(provider: AccommodationProvider): void {
+    const id = provider.manifest.id;
+    if (this.stopped || this.retryTimers.has(id) || this.hasRows(id)) return;
+    if (this.isFresh(provider, this.syncState(id))) return;
+    const used = this.retriesUsed.get(id) ?? 0;
+    const delay = this.timings.emptyRetryMs[used];
+    if (delay === undefined) return;
+    this.retriesUsed.set(id, used + 1);
+    this.logger.info(`Catalogue of ${id} is empty; retrying in ${Math.round(delay / 1000)} s`);
+    this.retryTimers.set(
+      id,
+      setTimeout(() => {
+        this.retryTimers.delete(id);
+        if (!this.hasRows(id)) this.autoSync(provider);
+      }, delay)
+    );
+  }
+
+  private hasRows(id: ProviderId): boolean {
+    return (this.locations.countByProvider()[id] ?? 0) > 0;
   }
 
   private syncProvider(provider: AccommodationProvider, force: boolean): Promise<void> {
@@ -312,9 +366,18 @@ export class LocationCatalogService {
 
   private isFresh(provider: AccommodationProvider, state: CatalogSyncState | undefined): boolean {
     const syncedAt = state?.syncedAt ? Date.parse(state.syncedAt) : NaN;
-    if (!Number.isFinite(syncedAt)) return false;
     const ttlMs = providerLimits(provider.manifest).catalogTtlHours * 3_600_000;
-    return this.clock().getTime() - syncedAt < ttlMs;
+    return this.within(syncedAt, ttlMs);
+  }
+
+  /**
+   * Whether something from `at` (epoch ms) is under `ttlMs` old. A time in the future (the
+   * clock was set back) or an invalid one is not.
+   */
+  private within(at: number, ttlMs: number): boolean {
+    if (!Number.isFinite(at)) return false;
+    const age = this.clock().getTime() - at;
+    return age >= 0 && age < ttlMs;
   }
 
   private syncState(id: ProviderId): CatalogSyncState | undefined {
@@ -352,7 +415,7 @@ export class LocationCatalogService {
     }
 
     const cached = this.locations.getDetail(providerId, externalId);
-    if (cached && this.clock().getTime() - cached.fetchedAt.getTime() < this.timings.detailTtlMs) {
+    if (cached && this.within(cached.fetchedAt.getTime(), this.timings.detailTtlMs)) {
       return { ...cached.detail, fetchedAt: cached.fetchedAt.toISOString() };
     }
 
@@ -417,7 +480,8 @@ export class LocationCatalogService {
    * Bulk availability for `stay` from every `bulkAvailability` provider (or those in
    * `providerIds`; unknown ids are ignored), in parallel. Entries are limited to locations in
    * the catalogue, and to `bbox` when given. A provider that fails is listed in `errors`
-   * while the others still answer. Each provider's answer is reused for 5 minutes per stay.
+   * while the others still answer. Each provider's answer is reused for 5 minutes per stay,
+   * and its `access-gate` or `timeout` error for 60 s.
    */
   async availability(
     stay: StayQuery,
@@ -457,16 +521,23 @@ export class LocationCatalogService {
     return result;
   }
 
-  /** One provider's bulk availability for a stay: cached, single-flight, with a deadline. */
+  /**
+   * One provider's bulk availability for a stay: cached, single-flight, with a deadline. An
+   * `access-gate` or `timeout` failure is cached too (for `bulkErrorTtlMs`), so while a
+   * queue is up the provider is not asked again for every map pan.
+   */
   private bulkFor(
     providerId: ProviderId,
     search: (signal: AbortSignal) => Promise<BulkAvailabilityEntry[]>,
     stayKey: string
   ): Promise<BulkAvailabilityEntry[]> {
     const key = `${providerId}|${stayKey}`;
-    const now = this.clock().getTime();
     const hit = this.bulkCache.get(key);
-    if (hit && now - hit.at < this.timings.bulkTtlMs) return Promise.resolve(hit.value);
+    if (hit && this.within(hit.at, this.timings.bulkTtlMs)) return Promise.resolve(hit.value);
+    const failed = this.bulkErrorCache.get(key);
+    if (failed && this.within(failed.at, this.timings.bulkErrorTtlMs)) {
+      return Promise.reject(failed.value);
+    }
     const running = this.bulk.get(key);
     if (running) return running;
 
@@ -476,11 +547,21 @@ export class LocationCatalogService {
       this.lifetime.signal,
       search
     )
-      .then((entries) => {
-        // Keyed by the stay it answers, so a stay that changed meanwhile is never filled.
-        this.remember(this.bulkCache, key, entries, this.timings.bulkTtlMs);
-        return entries;
-      })
+      .then(
+        (entries) => {
+          // Keyed by the stay it answers, so a stay that changed meanwhile is never filled.
+          this.bulkErrorCache.delete(key);
+          this.remember(this.bulkCache, key, entries, this.timings.bulkTtlMs);
+          return entries;
+        },
+        (error: unknown) => {
+          const code = catalogErrorCode(error);
+          if (!this.stopped && (code === 'access-gate' || code === 'timeout')) {
+            this.remember(this.bulkErrorCache, key, error, this.timings.bulkErrorTtlMs);
+          }
+          throw error;
+        }
+      )
       .finally(() => this.bulk.delete(key));
     this.bulk.set(key, run);
     return run;
@@ -496,9 +577,7 @@ export class LocationCatalogService {
     const provider = this.registry.require(providerId, 'availability');
     const cacheKey = `${makeLocationKey(providerId, externalId)}|${stayCacheKey(stay)}`;
     const hit = this.checkCache.get(cacheKey);
-    if (hit && this.clock().getTime() - hit.at < this.timings.checkTtlMs) {
-      return Promise.resolve(hit.value);
-    }
+    if (hit && this.within(hit.at, this.timings.checkTtlMs)) return Promise.resolve(hit.value);
     const running = this.checks.get(cacheKey);
     if (running) return running;
 
@@ -519,9 +598,8 @@ export class LocationCatalogService {
 
   /** Caches `value` and drops entries that have expired, so the caches stay small. */
   private remember<T>(cache: Map<string, Cached<T>>, key: string, value: T, ttlMs: number): void {
-    const now = this.clock().getTime();
-    for (const [k, entry] of cache) if (now - entry.at >= ttlMs) cache.delete(k);
-    cache.set(key, { at: now, value });
+    for (const [k, entry] of cache) if (!this.within(entry.at, ttlMs)) cache.delete(k);
+    cache.set(key, { at: this.clock().getTime(), value });
   }
 }
 

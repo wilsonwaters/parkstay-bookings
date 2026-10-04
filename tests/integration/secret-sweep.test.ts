@@ -1,12 +1,13 @@
 /**
  * Secrets never cross to the renderer (architecture-notes §4, §7; tech-review #5).
  *
- * A container on an in-memory database with every handler registered: seed a ParkStay
- * password, a Gmail client secret and an SMTP password through IPC, invoke every read
- * channel, and check that none of the seeded strings is in any response or in any log line
- * (captured at debug level). Also: saving SMTP settings without a password keeps the stored
- * one only for the same server and account (so `notifiers:test` cannot send it elsewhere),
- * and the Gmail inbox channels are gone.
+ * A container on an in-memory database with every handler registered, plus FakeProvider so
+ * the catalogue's availability reads return real data: seed a ParkStay password, a Gmail
+ * client secret and an SMTP password through IPC, invoke every read channel, and check that
+ * none of the seeded strings is in any response or in any log line (captured at debug
+ * level). Also: saving SMTP settings without a password keeps the stored one only for the
+ * same server and account (so `notifiers:test` cannot send it elsewhere), and the Gmail
+ * inbox channels are gone.
  */
 
 import { Writable } from 'stream';
@@ -20,6 +21,7 @@ import type { MethodDef } from '@shared/contracts/define';
 import { NotifierChannel, SMTPPreset } from '@shared/types';
 import type { APIResponse } from '@shared/types';
 import { FakeIpcMain, fakeEvent, TEST_LOGS_DIR } from '@tests/utils/ipc-harness';
+import { createFakeProvider, createTestProviderContext } from '@tests/utils/fake-provider';
 import { containerSecrets, removeUserData } from '@tests/utils/fake-safe-storage';
 
 jest.mock('electron', () => jest.requireActual('@tests/utils/electron-mocks').electron());
@@ -44,6 +46,8 @@ const CLIENT_SECRET = 'GOCSPX-sweep-client-secret-7f3a';
 const SMTP_PASS = 'sweep-smtp-app-password-q9z';
 const SECRETS = [PASSWORD, CLIENT_SECRET, SMTP_PASS];
 
+const STAY = { arrival: '2026-11-10', departure: '2026-11-12', adults: 2 };
+
 const SMTP_CONFIG = {
   preset: SMTPPreset.GMAIL,
   host: 'smtp.gmail.com',
@@ -54,8 +58,11 @@ const SMTP_CONFIG = {
 };
 
 /**
- * Every read channel and its payload; a test below fails if a new get/list/status method is
- * not added here. The catalogue reads are answered from the seeded cache, never the network.
+ * Every read channel and its payload; a test below fails if a new get/list/search/status/
+ * availability/check method is not added here. The catalogue's search and get are answered
+ * from the seeded cache; its availability fans out to FakeProvider (entries) and the
+ * container's ParkStay (an error entry: no network in tests), and its location check asks
+ * FakeProvider.
  */
 const READS: Array<[string, unknown]> = [
   ['auth:get-credentials', undefined],
@@ -81,13 +88,21 @@ const READS: Array<[string, unknown]> = [
   ['catalog:search', { text: 'sweep', limit: 50 }],
   ['catalog:get', { key: 'parkstay:20' }],
   ['catalog:status', undefined],
+  ['catalog:availability', { stay: STAY }],
+  ['catalog:check-location', { key: 'fake:1', stay: STAY }],
 ];
 
 /**
  * Read channels whose handlers are still typed NOT_IMPLEMENTED stubs (V1). V6 (accounts)
  * moves them into READS when it implements them.
  */
-const PENDING_READS = new Set(['accounts:list']);
+const PENDING_READS = new Set(['accounts:list', 'accounts:status']);
+
+/** Methods whose names look like reads but are actions. */
+const NOT_READS = new Set([
+  // Asks GitHub for a new release
+  'updater:check-for-updates',
+]);
 
 describe('secrets never reach the renderer', () => {
   let container: AppContainer;
@@ -126,6 +141,7 @@ describe('secrets never reach the renderer', () => {
       ...secrets,
     });
     container.profile.ensureLocalProfile();
+    container.providers.register(createFakeProvider().factory, createTestProviderContext);
     ipc = new FakeIpcMain();
     registerIpcHandlers(container, { isTrustedSender: () => true, ipc });
   });
@@ -166,6 +182,7 @@ describe('secrets never reach the renderer', () => {
 
   async function seed(): Promise<unknown[]> {
     seedCatalogue();
+    await container.catalogService.sync('fake');
     return [
       await call('auth:store-credentials', { email: 'me@example.com', password: PASSWORD }),
       await call('gmail:set-credentials', { clientId: 'client-123', clientSecret: CLIENT_SECRET }),
@@ -192,6 +209,22 @@ describe('secrets never reach the renderer', () => {
     expect(await call('catalog:search', { text: 'sweep' })).toMatchObject({
       success: true,
       data: { total: 1, items: [{ key: 'parkstay:20' }] },
+    });
+    // The availability reads returned FakeProvider's data
+    expect(await call('catalog:availability', { stay: STAY })).toMatchObject({
+      success: true,
+      data: {
+        entries: [
+          { key: 'fake:1', availableUnits: 1, bookableUnits: 2 },
+          { key: 'fake:2', availableUnits: 1, bookableUnits: 2 },
+          { key: 'fake:area:3', availableUnits: 1, bookableUnits: 2 },
+        ],
+        errors: [{ providerId: 'parkstay' }],
+      },
+    });
+    expect(await call('catalog:check-location', { key: 'fake:1', stay: STAY })).toMatchObject({
+      success: true,
+      data: { key: 'fake:1', units: [{ unitId: 'u1' }, { unitId: 'u2' }] },
     });
 
     const serialised = JSON.stringify(responses);
@@ -226,15 +259,21 @@ describe('secrets never reach the renderer', () => {
     });
   });
 
-  it('the sweep covers every get/list/status channel', () => {
+  it('the sweep covers every get/list/search/status/availability/check channel', () => {
     const swept = new Set(READS.map(([channel]) => channel));
     const reads = Object.values(contract)
       .flatMap((methods) => Object.entries(methods as Record<string, MethodDef>))
-      .filter(([method]) => /^(get|list|validate)/.test(method) || method === 'checkAuthStatus')
-      .map(([, def]) => def.channel);
+      .filter(([method]) =>
+        /^(get|list|validate|search|status|availability|check)|Status$/.test(method)
+      )
+      .map(([, def]) => def.channel)
+      .filter((channel) => !NOT_READS.has(channel));
 
     expect(reads.filter((channel) => !swept.has(channel) && !PENDING_READS.has(channel))).toEqual(
       []
+    );
+    expect(reads).toEqual(
+      expect.arrayContaining(['catalog:availability', 'catalog:check-location'])
     );
   });
 
