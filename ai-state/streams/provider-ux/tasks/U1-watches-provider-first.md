@@ -167,3 +167,4 @@ L. Cross-concern: a new create-flow pattern, shared domain components, and four 
 - [ ] Clears the legacy axe colour-contrast failure on /watches (legacy `bg-yellow-500 text-white` Edit button at `features/watches/legacy/index.tsx:226`) by replacing the legacy page. axe reports 0 critical/serious on /watches with data.
 - [ ] Removes `features/watches/legacy/*` entries from the token-guard and API-boundary legacy allow-lists.
 - [ ] Create-watch route is `/watches/new` with the §12.10 prefill query (supersedes any `/watches/create` wording in this spec).
+- [ ] Fixes the two legacy WatchForm bugs reported by V2 (also on base): the form won't submit with no site type ticked, and an empty max price fails with NaN. Both must work in the rebuilt flow, with tests.
