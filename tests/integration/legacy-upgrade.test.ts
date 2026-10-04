@@ -14,6 +14,7 @@
  *   become vault envelopes in the WA Stay data folder, while the legacy folder keeps the
  *   pre-vault originals as the backup.
  * - Exactly one "Your data has moved to WA Stay" notice after the copy, none on later starts.
+ *   A start that crashes after the copy, before the follow-ups, leaves them to the next one.
  */
 
 import Database from 'better-sqlite3';
@@ -244,31 +245,39 @@ describe('the first start after the copy', () => {
     expect(parseGmailSecretFile(fs.readFileSync(legacyGmail))).toBeNull();
   });
 
+  const replaceLoginItems = jest.fn();
+
+  /**
+   * One start: migration, database, local profile, the migration's follow-ups. `crash`
+   * stops it where `openDatabase`/`createContainer` could fail, after the copy.
+   */
+  const start = async ({ crash = false } = {}) => {
+    const result = await migrateLegacyInstall(install.paths, recordedDeps());
+    if (crash) return null;
+    const db = openDatabase(install.paths.dbPath);
+    try {
+      const profile = createLocalProfile(new UserRepository(db));
+      profile.ensureLocalProfile();
+      finishLegacyInstall(result, {
+        notifications: new NotificationRepository(db),
+        userId: profile.requireUserId(),
+        launchOnStartup: new SettingsRepository(db).getValue<boolean>('launchOnStartup') === true,
+        replaceLoginItems,
+        markerPath: install.paths.markerPath,
+        logger: { warn: jest.fn() },
+      });
+      return db
+        .prepare('SELECT type, title, message FROM notifications WHERE title = ?')
+        .all(WELCOME_NOTICE_TITLE);
+    } finally {
+      closeDatabase(db);
+    }
+  };
+
+  beforeEach(() => replaceLoginItems.mockReset());
+
   it('adds exactly one welcome notice after the copy, and none on later starts', async () => {
     writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
-    const replaceLoginItems = jest.fn();
-
-    /** One start: migration, database, local profile, the migration's follow-ups. */
-    const start = async () => {
-      const result = await migrateLegacyInstall(install.paths, recordedDeps());
-      const db = openDatabase(install.paths.dbPath);
-      try {
-        const profile = createLocalProfile(new UserRepository(db));
-        profile.ensureLocalProfile();
-        finishLegacyInstall(result, {
-          notifications: new NotificationRepository(db),
-          userId: profile.requireUserId(),
-          launchOnStartup: new SettingsRepository(db).getValue<boolean>('launchOnStartup') === true,
-          replaceLoginItems,
-          logger: { warn: jest.fn() },
-        });
-        return db
-          .prepare('SELECT type, title, message FROM notifications WHERE title = ?')
-          .all(WELCOME_NOTICE_TITLE);
-      } finally {
-        closeDatabase(db);
-      }
-    };
 
     const first = await start();
     expect(first).toEqual([
@@ -283,6 +292,25 @@ describe('the first start after the copy', () => {
     expect(replaceLoginItems).toHaveBeenCalledWith(true);
 
     expect(await start()).toHaveLength(1);
+    expect(await start()).toHaveLength(1);
+    expect(replaceLoginItems).toHaveBeenCalledTimes(1);
+  });
+
+  it('a start that crashes after the copy: the next start adds the notice and replaces the login items, once', async () => {
+    writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
+
+    expect(await start({ crash: true })).toBeNull();
+    expect(replaceLoginItems).not.toHaveBeenCalled();
+
+    expect(await start()).toEqual([
+      expect.objectContaining({
+        title: WELCOME_NOTICE_TITLE,
+        message: expect.stringContaining(install.paths.legacyUserData),
+      }),
+    ]);
+    expect(replaceLoginItems).toHaveBeenCalledTimes(1);
+    expect(replaceLoginItems).toHaveBeenCalledWith(true);
+
     expect(await start()).toHaveLength(1);
     expect(replaceLoginItems).toHaveBeenCalledTimes(1);
   });

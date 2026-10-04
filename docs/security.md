@@ -149,6 +149,9 @@ keep the v1.x originals, so they are the only backup of the secrets as v1.x stor
   beside it.
 - `migration.json` in the WA Stay data folder records what was copied, from where, and the
   source schema version. A failed copy shows the folder that keeps the old data.
+- A source SQLite cannot open in place is first copied to `.legacy-staging` in the WA Stay
+  data folder. That copy holds the pre-vault secrets too: it is removed once the backup is
+  done and, if a crash left it behind, at the next start.
 - Only the user removes them: uninstalling with "delete your WA Stay data" removes the
   WA Stay folder (the snapshot is inside it), and asks again, default No, before deleting
   the legacy folder.

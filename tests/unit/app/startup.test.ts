@@ -264,6 +264,7 @@ describe('main process startup', () => {
       notifications: { name: 'notifications-repository' },
       userId: 1,
       launchOnStartup: true,
+      markerPath: path.join(USER_DATA, 'migration.json'),
     });
     mockOrder.length = 0;
     options.replaceLoginItems(true);

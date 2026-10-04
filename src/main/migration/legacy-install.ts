@@ -25,8 +25,8 @@
  *
  * | status | meaning | next start |
  * | --- | --- | --- |
- * | `in-progress` | a copy started and did not finish (crash or kill) | copies again |
- * | `complete` | copied | nothing |
+ * | `in-progress` | a copy started and did not finish (crash or kill) | sets aside any `wa-stay.db`, then copies again |
+ * | `complete` | copied | the follow-ups still `pending`, if any |
  * | `failed` | the copy failed and the user chose Quit | tries again |
  * | `declined` | the copy failed and the user chose "Start fresh" | nothing |
  * | `skipped` | `wa-stay.db` already existed, so nothing was copied over it | nothing |
@@ -35,6 +35,16 @@
  * The copy is written to `wa-stay.db.migrating`, checked, then renamed into place, so
  * `wa-stay.db` is either absent or complete. Logs carry paths, sizes, schema versions and
  * error codes, never row data or secrets.
+ *
+ * **A database in the data folder is never deleted.** A start that goes on to open
+ * `wa-stay.db` without a finished copy (`fresh-install`, `declined`) first replaces or
+ * removes a non-final marker, so a later start never takes the user's database for an
+ * unfinished copy. If that fails too, the redo moves whatever is at `wa-stay.db` aside to
+ * `wa-stay.db.before-legacy-<time>` instead of deleting it.
+ *
+ * The follow-ups of a copy (the welcome notice and launch at login under WA Stay,
+ * `finishLegacyInstall`) are `pending` in the `complete` marker until each succeeds, so a
+ * start that crashes after the copy leaves them to the next one.
  */
 
 import Database from 'better-sqlite3';
@@ -48,14 +58,29 @@ import { logger as appLogger } from '../utils/logger';
 
 export type MigrationStatus = 'in-progress' | 'complete' | 'failed' | 'declined' | 'skipped';
 
+/** What a copy leaves to do once the database is open (`finishLegacyInstall`). */
+export type FollowUp = 'welcome' | 'loginItems';
+
+/** In the order they run. */
+export const FOLLOW_UPS: readonly FollowUp[] = ['welcome', 'loginItems'];
+
 /** Statuses after which the migration never runs again. */
 const FINAL_STATUSES: readonly MigrationStatus[] = ['complete', 'declined', 'skipped'];
 
 /** Where the data came from: the live legacy folder or the installer's snapshot. */
 export type SourceKind = 'legacy' | 'snapshot';
 
-/** Why a copy failed, as shown to the user and recorded in the marker. */
-export type FailureKind = 'locked' | 'corrupt' | 'disk-full' | 'unreadable' | 'error';
+/**
+ * Why a copy failed, as shown to the user and recorded in the marker. `unreadable` is the
+ * source (the old data folder), `unwritable` the WA Stay data folder.
+ */
+export type FailureKind =
+  | 'locked'
+  | 'corrupt'
+  | 'disk-full'
+  | 'unreadable'
+  | 'unwritable'
+  | 'error';
 
 export interface MigrationMarker {
   version: 1;
@@ -71,6 +96,8 @@ export interface MigrationMarker {
   migratedAt?: string;
   /** `complete`: the source files copied. */
   copied?: string[];
+  /** `complete`: the copy's follow-ups, each `pending` until it has succeeded once. */
+  followUps?: Partial<Record<FollowUp, 'pending' | 'done'>>;
   /** `failed`, `declined`: why the copy failed. `skipped`: `target-exists`. */
   reason?: FailureKind | 'target-exists';
   /** `failed`: the error code or message (never data). */
@@ -83,7 +110,7 @@ export interface MigrationMarker {
 }
 
 export type LegacyInstallOutcome =
-  /** The marker says it already ran (`complete`, `declined` or `skipped`). */
+  /** The marker says it already ran (`complete`, `declined` or `skipped`); follow-ups may be pending. */
   | 'already-done'
   /** No legacy data: nothing was written. */
   | 'fresh-install'
@@ -102,6 +129,8 @@ export interface LegacyInstallResult {
   sourceDir?: string;
   sourceKind?: SourceKind;
   sourceSchemaVersion?: number;
+  /** The copy's follow-ups not done yet: all of them after `migrated`, then those that failed. */
+  pendingFollowUps?: FollowUp[];
 }
 
 /** What the user is asked after a failed copy. */
@@ -123,7 +152,6 @@ export type MigrationFs = Pick<
   | 'existsSync'
   | 'fsyncSync'
   | 'mkdirSync'
-  | 'mkdtempSync'
   | 'openSync'
   | 'readFileSync'
   | 'renameSync'
@@ -176,13 +204,28 @@ const BACKUP_PAGES_PER_STEP = 100;
 /** A copy that takes longer than this logs its progress at this interval. */
 const PROGRESS_LOG_INTERVAL_MS = 2000;
 
-const FAILURE_MESSAGES: Record<FailureKind, string> = {
-  locked:
+/** SQLite's sidecars of a database file, and the file itself (`''`). */
+const DATABASE_SUFFIXES = ['', '-wal', '-shm', '-journal'] as const;
+
+/**
+ * Where a source SQLite cannot open in place is copied first (in the data folder). It holds
+ * a copy of the legacy database, pre-vault secrets included: removed after the copy, and
+ * at the start of every run in case a killed copy left it.
+ */
+export const STAGING_DIR_NAME = '.legacy-staging';
+
+/** A database a redo found at `wa-stay.db` moves to `wa-stay.db<this><time>`. */
+export const SET_ASIDE_INFIX = '.before-legacy-';
+
+const FAILURE_MESSAGES: Record<FailureKind, (paths: LegacyInstallPaths) => string> = {
+  locked: () =>
     'The old database is in use by another program. Close WA ParkStay Bookings if it is running, then choose Retry.', // legacy-name-ok
-  corrupt: 'The old database is damaged, so it could not be copied.',
-  'disk-full': 'There is not enough free disk space to copy your data.',
-  unreadable: 'The old data folder could not be read.',
-  error: 'Your data could not be copied.',
+  corrupt: () => 'The old database is damaged, so it could not be copied.',
+  'disk-full': () => 'There is not enough free disk space to copy your data.',
+  unreadable: () => 'The old data folder could not be read.',
+  unwritable: ({ userData }) =>
+    `WA Stay could not write to its data folder, ${userData}. Check that the folder is not read-only or in use by another program, then choose Retry.`,
+  error: () => 'Your data could not be copied.',
 };
 
 /** A failure the migration recognised itself (a check that did not pass). */
@@ -219,27 +262,45 @@ export async function migrateLegacyInstall(
 ): Promise<LegacyInstallResult> {
   const { fs: files, logger: log } = deps;
 
-  const marker = readMarker(paths.markerPath, deps);
+  removeStagingDir(paths, deps);
+
+  const marker = readMarker(paths.markerPath, files, log);
   if (marker && FINAL_STATUSES.includes(marker.status)) {
-    log.info(`legacy-install: already done (${marker.status}); outcome already-done`);
-    return { outcome: 'already-done' };
+    const pending = pendingFollowUps(marker);
+    if (pending.length === 0) {
+      log.info(`legacy-install: already done (${marker.status}); outcome already-done`);
+      return { outcome: 'already-done' };
+    }
+    log.info(
+      `legacy-install: already done (${marker.status}); outcome already-done, follow-ups pending: ${pending.join(', ')}`
+    );
+    return {
+      outcome: 'already-done',
+      sourceDir: marker.source,
+      sourceKind: marker.sourceKind,
+      pendingFollowUps: pending,
+    };
   }
 
   const tempPath = `${paths.dbPath}.migrating`;
-  removeDatabaseFiles(tempPath, files);
-
   const source = chooseSource(paths, files);
   if (!source) {
+    try {
+      removeDatabaseFiles(tempPath, files);
+    } catch (error) {
+      log.warn(`legacy-install: could not remove ${tempPath}: ${errorDetail(error)}`);
+    }
+    // The app now opens wa-stay.db as the user's own: an unfinished copy's marker must go
+    if (marker) settleMarker(paths, deps, null);
     log.info('legacy-install: no legacy data found; outcome fresh-install');
     return { outcome: 'fresh-install' };
   }
   const kept = { sourceDir: source.dir, sourceKind: source.kind };
 
-  if (marker?.status === 'in-progress') {
-    // A previous start crashed during the copy: anything it left in the data folder is its
-    // own unfinished copy, so copy again from scratch.
+  // A previous start stopped during the copy (or its marker could not be updated after)
+  const redo = marker?.status === 'in-progress';
+  if (redo) {
     log.warn('legacy-install: a previous copy did not finish; copying again');
-    removeDatabaseFiles(paths.dbPath, files);
   } else if (files.existsSync(paths.dbPath)) {
     writeMarkerQuietly(paths, deps, {
       ...markerBase(deps, source),
@@ -258,10 +319,15 @@ export async function migrateLegacyInstall(
     const started = deps.clock();
     const created: string[] = [];
     try {
-      writeMarker(paths, deps, {
-        ...markerBase(deps, source),
-        status: 'in-progress',
-        startedAt: started.toISOString(),
+      onTarget(() => {
+        // What a killed copy left: its temp copy, and whatever is at wa-stay.db (kept)
+        removeDatabaseFiles(tempPath, files);
+        if (redo) setAsideDatabase(paths, deps);
+        writeMarker(paths.markerPath, files, {
+          ...markerBase(deps, source),
+          status: 'in-progress',
+          startedAt: started.toISOString(),
+        });
       });
       log.info(`legacy-install: copying the ${source.kind} data from ${source.dir}`);
 
@@ -269,19 +335,27 @@ export async function migrateLegacyInstall(
       const copied = [LEGACY_DATABASE_FILE_NAME];
       if (copyGmailStore(source, paths, deps, created)) copied.push(GMAIL_STORE_FILE_NAME);
 
-      writeMarker(paths, deps, {
-        ...markerBase(deps, source),
-        status: 'complete',
-        startedAt: started.toISOString(),
-        sourceSchemaVersion: database.schemaVersion,
-        migratedAt: deps.clock().toISOString(),
-        copied,
-      });
+      onTarget(() =>
+        writeMarker(paths.markerPath, files, {
+          ...markerBase(deps, source),
+          status: 'complete',
+          startedAt: started.toISOString(),
+          sourceSchemaVersion: database.schemaVersion,
+          migratedAt: deps.clock().toISOString(),
+          copied,
+          followUps: { welcome: 'pending', loginItems: 'pending' },
+        })
+      );
       const ms = deps.clock().getTime() - started.getTime();
       log.info(
         `legacy-install: outcome migrated from ${source.kind} ${source.dir}: schema v${database.schemaVersion}, ${database.bytes} bytes, ${ms} ms (${copied.join(', ')})`
       );
-      return { outcome: 'migrated', ...kept, sourceSchemaVersion: database.schemaVersion };
+      return {
+        outcome: 'migrated',
+        ...kept,
+        sourceSchemaVersion: database.schemaVersion,
+        pendingFollowUps: [...FOLLOW_UPS],
+      };
     } catch (error) {
       // Undo this attempt: the temp copy and anything it put in place. The source is
       // untouched. Best effort: the user is asked either way.
@@ -308,14 +382,15 @@ export async function migrateLegacyInstall(
 
       const choice = await deps.prompt({
         reason,
-        message: FAILURE_MESSAGES[reason],
+        message: FAILURE_MESSAGES[reason](paths),
         keptDir: source.dir,
       });
       log.info(`legacy-install: the user chose ${choice}`);
       if (choice === 'retry') continue;
       if (choice === 'quit') return { outcome: 'quit', ...kept };
 
-      writeMarkerQuietly(paths, deps, {
+      // The app now opens a new wa-stay.db: no in-progress marker may outlive this start
+      settleMarker(paths, deps, {
         ...markerBase(deps, source),
         status: 'declined',
         reason,
@@ -349,7 +424,7 @@ function chooseSource(paths: LegacyInstallPaths, files: MigrationFs): Source | n
 /**
  * Backs the source up to `<dbPath>.migrating`, checks the copy and renames it into place.
  * A locked source is retried (`LOCK_RETRY_DELAYS_MS`). A source SQLite cannot open where it
- * is (a read-only folder with a `-wal` but no `-shm`) is copied to a staging folder in the
+ * is (a read-only folder with a `-wal` but no `-shm`) is copied to the staging folder in the
  * data folder first and backed up from there.
  */
 async function copyDatabase(
@@ -360,11 +435,12 @@ async function copyDatabase(
 ): Promise<CopiedDatabase> {
   const { fs: files, logger: log } = deps;
   const tempPath = `${paths.dbPath}.migrating`;
+  const stagingDir = path.join(paths.userData, STAGING_DIR_NAME);
   const sleep = deps.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
-  files.mkdirSync(paths.userData, { recursive: true });
+  onTarget(() => files.mkdirSync(paths.userData, { recursive: true }));
 
   let from = source.dbPath;
-  let stagingDir: string | null = null;
+  let staged = false;
   let retries = 0;
   try {
     for (;;) {
@@ -372,7 +448,7 @@ async function copyDatabase(
         await backupSource(from, tempPath, deps);
         break;
       } catch (error) {
-        removeDatabaseFiles(tempPath, files);
+        onTarget(() => removeDatabaseFiles(tempPath, files));
         const reason = classify(error);
         if (reason === 'locked' && retries < LOCK_RETRY_DELAYS_MS.length) {
           const delay = LOCK_RETRY_DELAYS_MS[retries];
@@ -383,8 +459,12 @@ async function copyDatabase(
           await sleep(delay);
           continue;
         }
-        if (isCantOpen(error) && stagingDir === null) {
-          stagingDir = files.mkdtempSync(path.join(paths.userData, '.legacy-staging-'));
+        if (isCantOpen(error) && !staged) {
+          staged = true;
+          onTarget(() => {
+            files.rmSync(stagingDir, { recursive: true, force: true });
+            files.mkdirSync(stagingDir, { mode: 0o700 });
+          });
           from = stageSource(source.dbPath, stagingDir, files);
           log.warn(
             `legacy-install: SQLite could not open ${source.dbPath} in place (${errorDetail(error)}); copying it from a staging folder`
@@ -395,15 +475,23 @@ async function copyDatabase(
       }
     }
   } finally {
-    if (stagingDir !== null) files.rmSync(stagingDir, { recursive: true, force: true });
+    if (staged) onTarget(() => files.rmSync(stagingDir, { recursive: true, force: true }));
   }
 
-  const schemaVersion = verifyCopy(tempPath, deps);
-  // Sidecars of an absent database are stray: SQLite would replay a stray -wal into the copy
-  removeDatabaseFiles(paths.dbPath, files);
-  files.renameSync(tempPath, paths.dbPath);
-  created.push(paths.dbPath);
-  return { schemaVersion, bytes: files.statSync(paths.dbPath).size };
+  return onTarget(() => {
+    const schemaVersion = verifyCopy(tempPath, deps);
+    // wa-stay.db is absent here (checked before the copy, or set aside). If one appeared
+    // anyway, it is the user's: stop rather than replace it.
+    if (files.existsSync(paths.dbPath)) {
+      throw new LegacyInstallError('error', `${paths.dbPath} appeared during the copy`, 'EEXIST');
+    }
+    // Sidecars of an absent database are stray: SQLite would replay a stray -wal into the
+    // copy.
+    removeDatabaseFiles(paths.dbPath, files);
+    files.renameSync(tempPath, paths.dbPath);
+    created.push(paths.dbPath);
+    return { schemaVersion, bytes: files.statSync(paths.dbPath).size };
+  });
 }
 
 /** Opens the source read-only, checks it and backs it up to `target`. */
@@ -508,7 +596,7 @@ function copyGmailStore(
 
   const to = path.join(paths.userData, GMAIL_STORE_FILE_NAME);
   if (files.existsSync(to)) {
-    const same = files.readFileSync(to).equals(files.readFileSync(from));
+    const same = onTarget(() => files.readFileSync(to)).equals(files.readFileSync(from));
     if (!same) {
       deps.logger.warn(
         `legacy-install: ${GMAIL_STORE_FILE_NAME} already exists in the data folder; kept it`
@@ -518,20 +606,74 @@ function copyGmailStore(
   }
   const temp = `${to}.migrating`;
   files.copyFileSync(from, temp);
-  files.renameSync(temp, to);
+  onTarget(() => files.renameSync(temp, to));
   created.push(to);
   return true;
 }
 
 /** Removes a database file and its SQLite sidecars, if present. */
 function removeDatabaseFiles(file: string, files: MigrationFs): void {
-  for (const suffix of ['', '-wal', '-shm', '-journal']) {
+  for (const suffix of DATABASE_SUFFIXES) {
     files.rmSync(`${file}${suffix}`, { force: true });
   }
 }
 
-function readMarker(markerPath: string, deps: LegacyInstallDeps): MigrationMarker | null {
+/**
+ * The redo's first step: whatever is at `wa-stay.db` moves to
+ * `wa-stay.db.before-legacy-<time>`, with its sidecars, and is never deleted. It is usually
+ * this migration's own copy, renamed into place just before a crash, but a stale
+ * `in-progress` marker can also sit next to a database the user has been using. The
+ * sidecars move first, so a crash part-way leaves a `wa-stay.db` SQLite reads on its own.
+ */
+function setAsideDatabase(paths: LegacyInstallPaths, deps: LegacyInstallDeps): void {
   const { fs: files } = deps;
+  const present = DATABASE_SUFFIXES.filter((suffix) =>
+    files.existsSync(`${paths.dbPath}${suffix}`)
+  );
+  if (present.length === 0) return;
+
+  const stamp = deps.clock().toISOString().replace(/[:.]/g, '-');
+  const base = `${paths.dbPath}${SET_ASIDE_INFIX}${stamp}`;
+  let aside = base;
+  for (
+    let n = 1;
+    DATABASE_SUFFIXES.some((suffix) => files.existsSync(`${aside}${suffix}`));
+    n += 1
+  ) {
+    aside = `${base}-${n}`;
+  }
+  // The database file last
+  for (const suffix of [...present.filter(Boolean), ...present.filter((suffix) => !suffix)]) {
+    files.renameSync(`${paths.dbPath}${suffix}`, `${aside}${suffix}`);
+  }
+  deps.logger.warn(
+    `legacy-install: moved ${paths.dbPath} aside to ${aside} before copying again; it is kept, not deleted`
+  );
+}
+
+/** Removes the staging folder a killed copy may have left (it holds legacy secrets). Best effort. */
+function removeStagingDir(paths: LegacyInstallPaths, deps: LegacyInstallDeps): void {
+  const dir = path.join(paths.userData, STAGING_DIR_NAME);
+  if (!deps.fs.existsSync(dir)) return;
+  try {
+    deps.fs.rmSync(dir, { recursive: true, force: true });
+    deps.logger.warn(`legacy-install: removed ${dir}, left by a copy that did not finish`);
+  } catch (error) {
+    deps.logger.warn(`legacy-install: could not remove ${dir}: ${errorDetail(error)}`);
+  }
+}
+
+/** The `complete` marker's follow-ups that are not done, in order. */
+function pendingFollowUps(marker: MigrationMarker): FollowUp[] {
+  if (marker.status !== 'complete' || !marker.followUps) return [];
+  return FOLLOW_UPS.filter((followUp) => marker.followUps?.[followUp] !== 'done');
+}
+
+function readMarker(
+  markerPath: string,
+  files: MigrationFs,
+  log: Pick<LegacyInstallDeps['logger'], 'warn'>
+): MigrationMarker | null {
   if (!files.existsSync(markerPath)) return null;
   try {
     const parsed = JSON.parse(files.readFileSync(markerPath, 'utf8')) as Partial<MigrationMarker>;
@@ -541,15 +683,14 @@ function readMarker(markerPath: string, deps: LegacyInstallDeps): MigrationMarke
   } catch {
     // Damaged: treated as absent below
   }
-  deps.logger.warn(`legacy-install: ${markerPath} is unreadable; treating it as absent`);
+  log.warn(`legacy-install: ${markerPath} is unreadable; treating it as absent`);
   return null;
 }
 
 /** Writes the marker atomically: a temp file, fsynced, then renamed over it. */
-function writeMarker(paths: LegacyInstallPaths, deps: LegacyInstallDeps, marker: MigrationMarker) {
-  const { fs: files } = deps;
-  files.mkdirSync(path.dirname(paths.markerPath), { recursive: true });
-  const temp = `${paths.markerPath}.tmp`;
+function writeMarker(markerPath: string, files: MigrationFs, marker: MigrationMarker): void {
+  files.mkdirSync(path.dirname(markerPath), { recursive: true });
+  const temp = `${markerPath}.tmp`;
   try {
     const fd = files.openSync(temp, 'w');
     try {
@@ -558,7 +699,7 @@ function writeMarker(paths: LegacyInstallPaths, deps: LegacyInstallDeps, marker:
     } finally {
       files.closeSync(fd);
     }
-    files.renameSync(temp, paths.markerPath);
+    files.renameSync(temp, markerPath);
   } catch (error) {
     files.rmSync(temp, { force: true });
     throw error;
@@ -570,12 +711,38 @@ function writeMarkerQuietly(
   paths: LegacyInstallPaths,
   deps: LegacyInstallDeps,
   marker: MigrationMarker
-): void {
+): boolean {
   try {
-    writeMarker(paths, deps, marker);
+    writeMarker(paths.markerPath, deps.fs, marker);
+    return true;
   } catch (error) {
     deps.logger.warn(
       `legacy-install: could not write ${paths.markerPath} (${marker.status}): ${errorDetail(error)}`
+    );
+    return false;
+  }
+}
+
+/**
+ * Before the app opens `wa-stay.db` without a finished copy (`fresh-install`, `declined`):
+ * writes `replacement`, or (with none, or when that write fails) removes the marker, so no
+ * `in-progress` marker outlives this start. Best effort: if both fail, the next start's redo
+ * still sets that database aside rather than deleting it.
+ */
+function settleMarker(
+  paths: LegacyInstallPaths,
+  deps: LegacyInstallDeps,
+  replacement: MigrationMarker | null
+): void {
+  if (replacement && writeMarkerQuietly(paths, deps, replacement)) return;
+  try {
+    deps.fs.rmSync(paths.markerPath, { force: true });
+    deps.logger.warn(
+      `legacy-install: removed ${paths.markerPath}, left by a copy that did not finish`
+    );
+  } catch (error) {
+    deps.logger.warn(
+      `legacy-install: could not remove ${paths.markerPath}: ${errorDetail(error)}; a later copy moves ${paths.dbPath} aside first`
     );
   }
 }
@@ -594,6 +761,37 @@ function errorDetail(error: unknown): string {
 
 function isCantOpen(error: unknown): boolean {
   return errorCode(error).startsWith('SQLITE_CANTOPEN');
+}
+
+/**
+ * Runs a step that writes the WA Stay data folder. Its failure is reported as that folder's
+ * (`unwritable`, naming it), not as the old data folder's (`unreadable`).
+ */
+function onTarget<T>(step: () => T): T {
+  try {
+    return step();
+  } catch (error) {
+    if (error instanceof LegacyInstallError) throw error;
+    const code = errorCode(error) || undefined;
+    throw new LegacyInstallError(classifyTarget(error), errorDetail(error), code);
+  }
+}
+
+/** A data-folder failure: full, damaged copy, blocked (read-only, denied, in use) or other. */
+function classifyTarget(error: unknown): FailureKind {
+  const kind = classify(error);
+  if (kind === 'disk-full' || kind === 'corrupt') return kind;
+  const code = errorCode(error);
+  if (
+    kind === 'unreadable' ||
+    kind === 'locked' ||
+    code === 'EROFS' ||
+    code === 'EBUSY' ||
+    code.startsWith('SQLITE_READONLY')
+  ) {
+    return 'unwritable';
+  }
+  return 'error';
 }
 
 function classify(error: unknown): FailureKind {
@@ -684,39 +882,74 @@ export interface FinishLegacyInstallDeps {
   launchOnStartup: boolean;
   /** Replaces the v1.x launch-at-login entry (`app/login-item.ts`). */
   replaceLoginItems: (launchOnStartup: boolean) => unknown;
+  /** `<userData>/migration.json`: each follow-up is marked `done` there once it succeeds. */
+  markerPath: string;
+  /** Defaults to Node's `fs`. */
+  fs?: MigrationFs;
   logger: { warn(message: string): unknown };
 }
 
+const FOLLOW_UP_NAMES: Record<FollowUp, string> = {
+  welcome: 'add the welcome notice',
+  loginItems: 're-register launch at login',
+};
+
 /**
- * The follow-ups of a copy made in this start, once the database is open: one in-app
- * notice saying where the old data is kept, and launch at login re-registered under the
- * new identity. After any other outcome (including every later start) it does nothing.
- * Neither step stops the app starting.
+ * The follow-ups of a copy, once the database is open: one in-app notice saying where the
+ * old data is kept, and launch at login re-registered under the new identity. Each runs
+ * while `pendingFollowUps` lists it: after the copy, and on every later start until it has
+ * succeeded (a start that crashed after the copy, or a step that failed). Neither step
+ * stops the app starting.
  */
 export function finishLegacyInstall(
   result: LegacyInstallResult,
   deps: FinishLegacyInstallDeps
 ): void {
-  if (result.outcome !== 'migrated' || !result.sourceDir) return;
+  const files = deps.fs ?? fs;
+  const steps: Record<FollowUp, () => unknown> = {
+    welcome: () =>
+      deps.notifications.create({
+        userId: deps.userId,
+        type: NotificationType.INFO,
+        title: WELCOME_NOTICE_TITLE,
+        message:
+          'Your watches, bookings, settings and connections were copied from WA ParkStay Bookings. ' + // legacy-name-ok
+          `The old data is kept, unchanged, as a backup in ${result.sourceDir ?? 'the old data folder'}`,
+      }),
+    loginItems: () => deps.replaceLoginItems(deps.launchOnStartup),
+  };
 
+  for (const followUp of FOLLOW_UPS) {
+    if (!result.pendingFollowUps?.includes(followUp)) continue;
+    try {
+      steps[followUp]();
+    } catch (error) {
+      deps.logger.warn(
+        `legacy-install: could not ${FOLLOW_UP_NAMES[followUp]}: ${errorDetail(error)}; the next start tries again`
+      );
+      continue;
+    }
+    markFollowUpDone(followUp, deps.markerPath, files, deps.logger);
+  }
+}
+
+/** Records one follow-up as done in the `complete` marker. Best effort: else it runs again. */
+function markFollowUpDone(
+  followUp: FollowUp,
+  markerPath: string,
+  files: MigrationFs,
+  log: FinishLegacyInstallDeps['logger']
+): void {
   try {
-    deps.notifications.create({
-      userId: deps.userId,
-      type: NotificationType.INFO,
-      title: WELCOME_NOTICE_TITLE,
-      message:
-        'Your watches, bookings, settings and connections were copied from WA ParkStay Bookings. ' + // legacy-name-ok
-        `The old data is kept, unchanged, as a backup in ${result.sourceDir}`,
+    const marker = readMarker(markerPath, files, log);
+    if (marker?.status !== 'complete') return;
+    writeMarker(markerPath, files, {
+      ...marker,
+      followUps: { ...marker.followUps, [followUp]: 'done' },
     });
   } catch (error) {
-    deps.logger.warn(`legacy-install: could not add the welcome notice: ${errorDetail(error)}`);
-  }
-
-  try {
-    deps.replaceLoginItems(deps.launchOnStartup);
-  } catch (error) {
-    deps.logger.warn(
-      `legacy-install: could not re-register launch at login: ${errorDetail(error)}`
+    log.warn(
+      `legacy-install: could not record "${FOLLOW_UP_NAMES[followUp]}" as done in ${markerPath}: ${errorDetail(error)}; the next start does it again`
     );
   }
 }

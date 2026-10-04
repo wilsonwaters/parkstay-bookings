@@ -9,7 +9,9 @@
  * already complete / declined / skipped, target exists, a stale `in-progress` copy, a locked
  * source (retried, then asked), a corrupt source (Start fresh), ENOSPC, a source SQLite
  * cannot open in place, and a schema newer than this build. The legacy folder and the
- * snapshot are never changed. `finishLegacyInstall` and the production prompt are below.
+ * snapshot are never changed, and a database in the data folder is never deleted (a stale
+ * marker is cleared, or the database is set aside). Data-folder failures name that folder.
+ * `finishLegacyInstall` (follow-ups retried until done) and the production prompt are below.
  */
 
 import Database from 'better-sqlite3';
@@ -18,10 +20,13 @@ import path from 'path';
 import {
   dialogPrompt,
   finishLegacyInstall,
+  FOLLOW_UPS,
   LOCK_RETRY_DELAYS_MS,
   migrateLegacyInstall,
   SOURCE_OPEN_OPTIONS,
+  STAGING_DIR_NAME,
   WELCOME_NOTICE_TITLE,
+  type FollowUp,
   type LegacyInstallDeps,
   type MigrationFs,
 } from '@main/migration/legacy-install';
@@ -102,6 +107,30 @@ function errorWithCode(code: string, message: string): Error {
   return Object.assign(new Error(message), { code });
 }
 
+/** `wa-stay.db.before-legacy-<ISO time, ':' and '.' as '-'>`, plus `-<n>` when taken. */
+const SET_ASIDE_NAME =
+  /^wa-stay\.db\.before-legacy-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z(-\d+)?$/;
+
+function writeInProgressMarker(): void {
+  fs.mkdirSync(install.paths.userData, { recursive: true });
+  fs.writeFileSync(
+    install.paths.markerPath,
+    JSON.stringify({ version: 1, status: 'in-progress', appVersion: '2.0.0' })
+  );
+}
+
+/** What the app does after `fresh-install` or `declined`: opens wa-stay.db, and the user works. */
+function userWorksInNewDatabase(): string {
+  const db = new Database(install.paths.dbPath);
+  try {
+    db.pragma('journal_mode = WAL');
+    db.exec("CREATE TABLE user_work (v TEXT); INSERT INTO user_work VALUES ('precious')");
+  } finally {
+    db.close();
+  }
+  return sha256(install.paths.dbPath);
+}
+
 describe('migrateLegacyInstall', () => {
   it('fresh install: no legacy folder and no snapshot, so nothing is written (no marker)', async () => {
     const deps = recordedDeps();
@@ -133,6 +162,7 @@ describe('migrateLegacyInstall', () => {
         sourceDir: legacyDir(),
         sourceKind: 'legacy',
         sourceSchemaVersion: version,
+        pendingFollowUps: ['welcome', 'loginItems'],
       });
 
       // A checked copy at the source's version; the app's migrations run when it is opened
@@ -153,6 +183,7 @@ describe('migrateLegacyInstall', () => {
         sourceSchemaVersion: version,
         migratedAt: ISO_DATE,
         copied: ['parkstay.db'],
+        followUps: { welcome: 'pending', loginItems: 'pending' },
       });
       expectUnchanged(legacyDir(), before);
       expect(deps.prompts).toEqual([]);
@@ -201,6 +232,7 @@ describe('migrateLegacyInstall', () => {
       sourceDir: install.paths.snapshotDir,
       sourceKind: 'snapshot',
       sourceSchemaVersion: 5,
+      pendingFollowUps: ['welcome', 'loginItems'],
     });
 
     expect(dataFolderFiles()).toEqual(['gmail-oauth.json', 'legacy-snapshot', 'wa-stay.db']);
@@ -249,7 +281,7 @@ describe('migrateLegacyInstall', () => {
     }
   );
 
-  it('a second start after a copy is already-done and leaves wa-stay.db alone', async () => {
+  it('a second start after a copy is already-done (its follow-ups still pending) and leaves wa-stay.db alone', async () => {
     writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
     await migrateLegacyInstall(install.paths, recordedDeps());
     const copy = sha256(install.paths.dbPath);
@@ -258,11 +290,18 @@ describe('migrateLegacyInstall', () => {
     fs.rmSync(install.paths.legacyDbPath);
     writeLegacyDatabase(install.paths.legacyDbPath, 'v6-branch');
 
-    await expect(migrateLegacyInstall(install.paths, recordedDeps())).resolves.toEqual({
+    const deps = recordedDeps();
+    await expect(migrateLegacyInstall(install.paths, deps)).resolves.toEqual({
       outcome: 'already-done',
+      sourceDir: legacyDir(),
+      sourceKind: 'legacy',
+      pendingFollowUps: ['welcome', 'loginItems'],
     });
     expect(sha256(install.paths.dbPath)).toBe(copy);
     expect(fs.readFileSync(install.paths.markerPath, 'utf8')).toBe(marker);
+    expect(deps.lines).toEqual([
+      'info: legacy-install: already done (complete); outcome already-done, follow-ups pending: welcome, loginItems',
+    ]);
   });
 
   it('target exists (both present, e.g. a dev build): never overwrites wa-stay.db, marks skipped and logs both paths', async () => {
@@ -297,7 +336,7 @@ describe('migrateLegacyInstall', () => {
     });
   });
 
-  it('stale in-progress (killed mid-copy): the .migrating files are cleaned up and the copy is redone', async () => {
+  it('stale in-progress (killed mid-copy): the .migrating files are cleaned up, wa-stay.db is set aside (never deleted) and the copy is redone', async () => {
     writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
     fs.mkdirSync(install.paths.userData, { recursive: true });
     fs.writeFileSync(
@@ -316,11 +355,18 @@ describe('migrateLegacyInstall', () => {
       sourceSchemaVersion: 5,
     });
 
-    expect(dataFolderFiles()).toEqual(['wa-stay.db']);
+    const files = dataFolderFiles();
+    expect(files).toEqual(['wa-stay.db', expect.stringMatching(SET_ASIDE_NAME)]);
+    expect(fs.readFileSync(path.join(install.paths.userData, files[1]), 'utf8')).toBe(
+      'an earlier, unfinished copy'
+    );
     expect(watchCount(install.paths.dbPath)).toBe(2);
     expect(readMarker(install)).toMatchObject({ status: 'complete' });
     expect(deps.lines).toContain(
       'warn: legacy-install: a previous copy did not finish; copying again'
+    );
+    expect(deps.lines).toContain(
+      `warn: legacy-install: moved ${install.paths.dbPath} aside to ${path.join(install.paths.userData, files[1])} before copying again; it is kept, not deleted`
     );
   });
 
@@ -619,7 +665,7 @@ describe('migrateLegacyInstall', () => {
 
     const staged = opened[1];
     expect(path.dirname(path.dirname(staged))).toBe(install.paths.userData);
-    expect(path.basename(path.dirname(staged))).toMatch(/^\.legacy-staging-/);
+    expect(path.basename(path.dirname(staged))).toBe('.legacy-staging');
     expect(fs.existsSync(path.dirname(staged))).toBe(false); // removed afterwards
     expect(dataFolderFiles()).toEqual(['wa-stay.db']);
     expect(
@@ -712,21 +758,366 @@ describe('migrateLegacyInstall', () => {
   });
 });
 
+describe('a database in the data folder is never deleted (stale in-progress marker)', () => {
+  it('killed mid-copy, then the source is gone: fresh-install removes the marker, so the database the app then uses survives the source coming back', async () => {
+    writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
+    writeInProgressMarker();
+    fs.writeFileSync(`${install.paths.dbPath}.migrating`, 'half a database');
+    fs.renameSync(legacyDir(), `${legacyDir()}.away`);
+    const deps = recordedDeps();
+
+    await expect(migrateLegacyInstall(install.paths, deps)).resolves.toEqual({
+      outcome: 'fresh-install',
+    });
+    expect(fs.existsSync(install.paths.markerPath)).toBe(false);
+    expect(dataFolderFiles()).toEqual([]);
+    expect(deps.lines).toContain(
+      `warn: legacy-install: removed ${install.paths.markerPath}, left by a copy that did not finish`
+    );
+
+    const work = userWorksInNewDatabase();
+    fs.renameSync(`${legacyDir()}.away`, legacyDir());
+
+    await expect(migrateLegacyInstall(install.paths, recordedDeps())).resolves.toMatchObject({
+      outcome: 'target-exists',
+    });
+    expect(sha256(install.paths.dbPath)).toBe(work);
+    expect(dataFolderFiles()).toEqual(['wa-stay.db']);
+  });
+
+  it('the copy fails, every marker write fails too, the user starts fresh: the in-progress marker is removed and the new database survives the next start', async () => {
+    writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
+    let diskFull = false;
+    const deps = recordedDeps(['start-fresh'], {
+      fs: fsWith({
+        openSync: ((file: fs.PathLike, flags: fs.OpenMode) => {
+          if (diskFull && String(file).endsWith('migration.json.tmp')) {
+            throw errorWithCode('ENOSPC', 'ENOSPC: no space left on device, open');
+          }
+          return fs.openSync(file, flags);
+        }) as MigrationFs['openSync'],
+      }),
+      openDatabase: (file, options) => {
+        const db = new Database(file, options);
+        if (file === install.paths.legacyDbPath) {
+          db.backup = async () => {
+            diskFull = true;
+            throw errorWithCode('SQLITE_FULL', 'database or disk is full');
+          };
+        }
+        return db;
+      },
+    });
+
+    await expect(migrateLegacyInstall(install.paths, deps)).resolves.toMatchObject({
+      outcome: 'declined',
+    });
+    expect(deps.lines).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^warn: legacy-install: could not write .* \(failed\): ENOSPC/),
+        expect.stringMatching(/^warn: legacy-install: could not write .* \(declined\): ENOSPC/),
+        `warn: legacy-install: removed ${install.paths.markerPath}, left by a copy that did not finish`,
+      ])
+    );
+    expect(fs.existsSync(install.paths.markerPath)).toBe(false);
+
+    const work = userWorksInNewDatabase();
+    await expect(migrateLegacyInstall(install.paths, recordedDeps())).resolves.toMatchObject({
+      outcome: 'target-exists',
+    });
+    expect(sha256(install.paths.dbPath)).toBe(work);
+  });
+
+  it('a marker that can be neither replaced nor removed: the redo moves wa-stay.db and its sidecars aside, byte for byte, sidecars first', async () => {
+    writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
+    writeInProgressMarker();
+    const userFiles = { '': 'user database', '-wal': 'user wal', '-shm': 'user shm' };
+    for (const [suffix, content] of Object.entries(userFiles)) {
+      fs.writeFileSync(`${install.paths.dbPath}${suffix}`, content);
+    }
+    const renamed: string[] = [];
+    const deps = recordedDeps([], {
+      fs: fsWith({
+        renameSync: (from, to) => {
+          renamed.push(path.basename(String(from)));
+          return fs.renameSync(from, to);
+        },
+      }),
+    });
+
+    await expect(migrateLegacyInstall(install.paths, deps)).resolves.toMatchObject({
+      outcome: 'migrated',
+    });
+
+    const aside = dataFolderFiles().filter((name) => SET_ASIDE_NAME.test(name));
+    expect(aside).toHaveLength(1);
+    for (const [suffix, content] of Object.entries(userFiles)) {
+      expect(
+        fs.readFileSync(path.join(install.paths.userData, `${aside[0]}${suffix}`), 'utf8')
+      ).toBe(content);
+    }
+    expect(renamed.slice(0, 3)).toEqual(['wa-stay.db-wal', 'wa-stay.db-shm', 'wa-stay.db']);
+    expect(watchCount(install.paths.dbPath)).toBe(2); // the fresh copy
+  });
+
+  it('a wa-stay.db that appears during the copy is never replaced: the copy stops and asks', async () => {
+    writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
+    const deps = recordedDeps(['start-fresh'], {
+      openDatabase: (file, options) => {
+        const db = new Database(file, options);
+        if (file === install.paths.legacyDbPath) {
+          const backup = db.backup.bind(db);
+          db.backup = (async (...args: Parameters<typeof db.backup>) => {
+            const result = await backup(...args);
+            fs.writeFileSync(install.paths.dbPath, 'appeared');
+            return result;
+          }) as typeof db.backup;
+        }
+        return db;
+      },
+    });
+
+    await expect(migrateLegacyInstall(install.paths, deps)).resolves.toMatchObject({
+      outcome: 'declined',
+    });
+    expect(fs.readFileSync(install.paths.dbPath, 'utf8')).toBe('appeared');
+    expect(fs.existsSync(`${install.paths.dbPath}.migrating`)).toBe(false);
+    expect(deps.lines).toEqual(
+      expect.arrayContaining([expect.stringMatching(/appeared during the copy/)])
+    );
+  });
+
+  it('an earlier set-aside database with the same name is kept: the new one gets a -1 suffix', async () => {
+    writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
+    writeInProgressMarker();
+    fs.writeFileSync(install.paths.dbPath, 'second');
+    const taken = `${install.paths.dbPath}.before-legacy-2026-10-04T00-00-00-000Z`;
+    fs.writeFileSync(taken, 'first');
+    const deps = recordedDeps([], { clock: () => new Date('2026-10-04T00:00:00.000Z') });
+
+    await expect(migrateLegacyInstall(install.paths, deps)).resolves.toMatchObject({
+      outcome: 'migrated',
+    });
+    expect(fs.readFileSync(taken, 'utf8')).toBe('first');
+    expect(fs.readFileSync(`${taken}-1`, 'utf8')).toBe('second');
+  });
+});
+
+describe('a failure names the folder it is in', () => {
+  const OLD_FOLDER_UNREADABLE = 'The old data folder could not be read.';
+
+  it.each<[string, () => Partial<LegacyInstallDeps>]>([
+    [
+      'the WA Stay data folder is read-only (EACCES writing the marker)',
+      () => ({
+        fs: fsWith({
+          openSync: ((file: fs.PathLike, flags: fs.OpenMode) => {
+            if (String(file).endsWith('migration.json.tmp')) {
+              throw errorWithCode('EACCES', `EACCES: permission denied, open '${String(file)}'`);
+            }
+            return fs.openSync(file, flags);
+          }) as MigrationFs['openSync'],
+        }),
+      }),
+    ],
+    [
+      'the rename into wa-stay.db is blocked (EPERM)',
+      () => ({
+        fs: fsWith({
+          renameSync: (from, to) => {
+            if (String(to) === install.paths.dbPath) {
+              throw errorWithCode('EPERM', 'EPERM: operation not permitted, rename');
+            }
+            return fs.renameSync(from, to);
+          },
+        }),
+      }),
+    ],
+    [
+      'the copy cannot be opened to check it (SQLITE_READONLY)',
+      () => ({
+        openDatabase: (file, options) => {
+          if (file.endsWith('.migrating')) {
+            throw errorWithCode('SQLITE_READONLY', 'attempt to write a readonly database');
+          }
+          return new Database(file, options);
+        },
+      }),
+    ],
+  ])('%s: unwritable, and the message names the WA Stay data folder', async (_case, faults) => {
+    writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
+    const before = fingerprint(legacyDir());
+    const deps = recordedDeps(['quit'], faults());
+
+    await expect(migrateLegacyInstall(install.paths, deps)).resolves.toMatchObject({
+      outcome: 'quit',
+    });
+
+    expect(deps.prompts).toEqual([
+      {
+        reason: 'unwritable',
+        message: expect.stringContaining(
+          `WA Stay could not write to its data folder, ${install.paths.userData}.`
+        ),
+        keptDir: legacyDir(),
+      },
+    ]);
+    expect(deps.prompts[0].message).not.toContain(OLD_FOLDER_UNREADABLE);
+    expect(fs.existsSync(install.paths.dbPath)).toBe(false);
+    expectUnchanged(legacyDir(), before);
+  });
+
+  it('the source cannot be read (SQLITE_PERM): unreadable, naming the old data folder', async () => {
+    writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
+    const deps = recordedDeps(['quit'], {
+      openDatabase: (file, options) => {
+        if (file === install.paths.legacyDbPath) {
+          throw errorWithCode('SQLITE_PERM', 'access permission denied');
+        }
+        return new Database(file, options);
+      },
+    });
+
+    await migrateLegacyInstall(install.paths, deps);
+
+    expect(deps.prompts).toEqual([
+      { reason: 'unreadable', message: OLD_FOLDER_UNREADABLE, keptDir: legacyDir() },
+    ]);
+    expect(readMarker(install)).toMatchObject({ status: 'failed', reason: 'unreadable' });
+  });
+});
+
+describe('leftovers of a killed copy', () => {
+  it.each<[string, string]>([
+    ['a locked temp copy (EBUSY removing wa-stay.db.migrating)', '.migrating'],
+    ['a database the redo cannot move aside (EPERM)', ''],
+  ])('%s: asks Retry instead of failing the start; Retry then copies', async (_case, suffix) => {
+    writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
+    writeInProgressMarker();
+    const blocked = `${install.paths.dbPath}${suffix}`;
+    fs.writeFileSync(blocked, 'left by the killed copy');
+    let failures = 1;
+    const fail = (file: fs.PathLike) => {
+      if (String(file) === blocked && failures > 0) {
+        failures -= 1;
+        throw errorWithCode(suffix ? 'EBUSY' : 'EPERM', 'resource busy or locked');
+      }
+    };
+    const deps = recordedDeps(['retry'], {
+      fs: fsWith({
+        rmSync: (file, options) => {
+          fail(file);
+          return fs.rmSync(file, options);
+        },
+        renameSync: (from, to) => {
+          fail(from);
+          return fs.renameSync(from, to);
+        },
+      }),
+    });
+
+    await expect(migrateLegacyInstall(install.paths, deps)).resolves.toMatchObject({
+      outcome: 'migrated',
+    });
+    expect(deps.prompts).toMatchObject([{ reason: 'unwritable' }]);
+    expect(fs.existsSync(`${install.paths.dbPath}.migrating`)).toBe(false);
+  });
+
+  it('a locked temp copy when there is nothing to migrate: logged, and the start goes on', async () => {
+    fs.mkdirSync(install.paths.userData, { recursive: true });
+    const temp = `${install.paths.dbPath}.migrating`;
+    fs.writeFileSync(temp, 'half a database');
+    const deps = recordedDeps([], {
+      fs: fsWith({
+        rmSync: (file, options) => {
+          if (String(file) === temp) throw errorWithCode('EBUSY', 'resource busy or locked');
+          return fs.rmSync(file, options);
+        },
+      }),
+    });
+
+    await expect(migrateLegacyInstall(install.paths, deps)).resolves.toEqual({
+      outcome: 'fresh-install',
+    });
+    expect(deps.lines).toContain(
+      `warn: legacy-install: could not remove ${temp}: EBUSY resource busy or locked`
+    );
+  });
+
+  it.each(['complete', 'in-progress'])(
+    'a staging folder (a copy of the legacy database) is removed on the next start, marker %s',
+    async (status) => {
+      writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
+      const staging = path.join(install.paths.userData, STAGING_DIR_NAME);
+      fs.mkdirSync(staging, { recursive: true });
+      fs.copyFileSync(install.paths.legacyDbPath, path.join(staging, 'parkstay.db'));
+      fs.writeFileSync(
+        install.paths.markerPath,
+        JSON.stringify({ version: 1, status, appVersion: '2.0.0' })
+      );
+      const deps = recordedDeps();
+
+      await migrateLegacyInstall(install.paths, deps);
+
+      expect(fs.existsSync(staging)).toBe(false);
+      expect(deps.lines).toContain(
+        `warn: legacy-install: removed ${staging}, left by a copy that did not finish`
+      );
+    }
+  );
+
+  it('a staging folder that cannot be removed is logged, and the start goes on', async () => {
+    const staging = path.join(install.paths.userData, STAGING_DIR_NAME);
+    fs.mkdirSync(staging, { recursive: true });
+    const deps = recordedDeps([], {
+      fs: fsWith({
+        rmSync: (file, options) => {
+          if (String(file) === staging) throw errorWithCode('EBUSY', 'resource busy or locked');
+          return fs.rmSync(file, options);
+        },
+      }),
+    });
+
+    await expect(migrateLegacyInstall(install.paths, deps)).resolves.toEqual({
+      outcome: 'fresh-install',
+    });
+    expect(deps.lines).toContain(
+      `warn: legacy-install: could not remove ${staging}: EBUSY resource busy or locked`
+    );
+  });
+});
+
 describe('finishLegacyInstall', () => {
+  const ALL: FollowUp[] = ['welcome', 'loginItems'];
+
+  /** A `complete` marker, as a copy writes it, with these follow-ups. */
+  function writeCompleteMarker(followUps: Partial<Record<FollowUp, 'pending' | 'done'>>): void {
+    fs.mkdirSync(install.paths.userData, { recursive: true });
+    fs.writeFileSync(
+      install.paths.markerPath,
+      JSON.stringify({ version: 1, status: 'complete', appVersion: '2.0.0', followUps })
+    );
+  }
+
   function finishDeps() {
     return {
       notifications: { create: jest.fn() },
       userId: 1,
       launchOnStartup: true,
       replaceLoginItems: jest.fn(),
+      markerPath: install.paths.markerPath,
       logger: { warn: jest.fn() },
     };
   }
 
-  it('after a copy in this start: one INFO notice naming the kept folder, and launch at login replaced', () => {
+  it('after a copy: one INFO notice naming the kept folder, launch at login replaced, and both marked done', () => {
+    writeCompleteMarker({ welcome: 'pending', loginItems: 'pending' });
     const deps = finishDeps();
 
-    finishLegacyInstall({ outcome: 'migrated', sourceDir: '/data/parkstay-bookings' }, deps);
+    finishLegacyInstall(
+      { outcome: 'migrated', sourceDir: '/data/parkstay-bookings', pendingFollowUps: ALL },
+      deps
+    );
 
     expect(deps.notifications.create).toHaveBeenCalledTimes(1);
     expect(deps.notifications.create).toHaveBeenCalledWith({
@@ -737,10 +1128,15 @@ describe('finishLegacyInstall', () => {
     });
     expect(WELCOME_NOTICE_TITLE).toBe('Your data has moved to WA Stay');
     expect(deps.replaceLoginItems).toHaveBeenCalledWith(true);
+    expect(readMarker(install)).toMatchObject({
+      status: 'complete',
+      followUps: { welcome: 'done', loginItems: 'done' },
+    });
+    expect(FOLLOW_UPS).toEqual(ALL);
   });
 
   it.each(['already-done', 'fresh-install', 'target-exists', 'declined'] as const)(
-    'after %s: no notice and no login-item change',
+    'after %s with nothing pending: no notice and no login-item change',
     (outcome) => {
       const deps = finishDeps();
 
@@ -751,7 +1147,43 @@ describe('finishLegacyInstall', () => {
     }
   );
 
-  it('a failing step is logged and never stops the start', () => {
+  it('a failing step is logged, never stops the start, and stays pending; the next start runs only it, then nothing', async () => {
+    writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
+    const first = await migrateLegacyInstall(install.paths, recordedDeps());
+    const deps = finishDeps();
+    deps.replaceLoginItems.mockImplementation(() => {
+      throw new Error('registry denied');
+    });
+
+    expect(() => finishLegacyInstall(first, deps)).not.toThrow();
+    expect(deps.notifications.create).toHaveBeenCalledTimes(1);
+    expect(deps.logger.warn).toHaveBeenCalledWith(
+      'legacy-install: could not re-register launch at login: registry denied; the next start tries again'
+    );
+    expect(readMarker(install)).toMatchObject({
+      followUps: { welcome: 'done', loginItems: 'pending' },
+    });
+
+    // The next start: only the failed step is pending
+    const second = await migrateLegacyInstall(install.paths, recordedDeps());
+    expect(second).toEqual({
+      outcome: 'already-done',
+      sourceDir: legacyDir(),
+      sourceKind: 'legacy',
+      pendingFollowUps: ['loginItems'],
+    });
+    const retry = finishDeps();
+    finishLegacyInstall(second, retry);
+    expect(retry.notifications.create).not.toHaveBeenCalled();
+    expect(retry.replaceLoginItems).toHaveBeenCalledWith(true);
+
+    await expect(migrateLegacyInstall(install.paths, recordedDeps())).resolves.toEqual({
+      outcome: 'already-done',
+    });
+  });
+
+  it('both steps failing: logged twice, and both stay pending', () => {
+    writeCompleteMarker({ welcome: 'pending', loginItems: 'pending' });
     const deps = finishDeps();
     deps.notifications.create.mockImplementation(() => {
       throw new Error('database is closed');
@@ -761,9 +1193,41 @@ describe('finishLegacyInstall', () => {
     });
 
     expect(() =>
-      finishLegacyInstall({ outcome: 'migrated', sourceDir: '/data/old' }, deps)
+      finishLegacyInstall(
+        { outcome: 'migrated', sourceDir: '/data/old', pendingFollowUps: ALL },
+        deps
+      )
     ).not.toThrow();
     expect(deps.logger.warn).toHaveBeenCalledTimes(2);
+    expect(readMarker(install)).toMatchObject({
+      followUps: { welcome: 'pending', loginItems: 'pending' },
+    });
+  });
+
+  it('a step that ran but cannot be recorded is logged; it runs again on the next start', () => {
+    writeCompleteMarker({ welcome: 'pending', loginItems: 'done' });
+    const deps = {
+      ...finishDeps(),
+      fs: fsWith({
+        openSync: () => {
+          throw errorWithCode('EACCES', 'EACCES: permission denied, open');
+        },
+      }),
+    };
+
+    finishLegacyInstall(
+      { outcome: 'already-done', sourceDir: '/data/old', pendingFollowUps: ['welcome'] },
+      deps
+    );
+
+    expect(deps.notifications.create).toHaveBeenCalledTimes(1);
+    expect(deps.replaceLoginItems).not.toHaveBeenCalled();
+    expect(deps.logger.warn).toHaveBeenCalledWith(
+      `legacy-install: could not record "add the welcome notice" as done in ${install.paths.markerPath}: EACCES: permission denied, open; the next start does it again`
+    );
+    expect(readMarker(install)).toMatchObject({
+      followUps: { welcome: 'pending', loginItems: 'done' },
+    });
   });
 });
 

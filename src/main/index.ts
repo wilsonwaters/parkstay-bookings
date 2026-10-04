@@ -145,13 +145,15 @@ async function start(): Promise<void> {
   container = ready;
   ready.profile.ensureLocalProfile();
 
-  // After a copy made in this start: the welcome notice and launch at login under WA Stay
+  // A copy's follow-ups still pending (this start's copy, or one whose start crashed after
+  // it): the welcome notice and launch at login under WA Stay
   finishLegacyInstall(migration, {
     notifications: ready.repositories.notifications,
     userId: ready.profile.requireUserId(),
     launchOnStartup: ready.repositories.settings.getValue<boolean>('launchOnStartup') === true,
     replaceLoginItems: (launchOnStartup) =>
       replaceLegacyLoginItems(launchOnStartup, { ...currentLaunchTarget(), log: logger }),
+    markerPath: paths.markerPath,
     logger,
   });
 
