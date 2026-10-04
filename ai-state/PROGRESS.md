@@ -1,6 +1,6 @@
 # Project Progress — WA Stay
 
-_Last updated: 2026-10-02 (orchestrator)_
+_Last updated: 2026-10-04 (orchestrator)_
 
 ## Phase
 Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
@@ -8,12 +8,12 @@ Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task spe
 ## Currently in flight
 - **V3** (#21) ParkStay provider module: MERGED (review APPROVE; 177 suites / 2009 tests, test:electron 26/26). Follow-up fix in lane X: gate reports `idle` when unheld (chip stuck on "Expired"), negative cache for missing release time, warn on empty bulk response. Known, deliberately left: `toofar` labelling of nights past the horizon; unit id for class-listed campgrounds is one free site id (may drift between polls; revisit after V5). Migrated daily-rollover `releaseAt` recompute moved to V4.
 - **V5** (#23) Location catalogue service: lane Y (`/home/user/wt/lane-y`, branched from lane/x).
-- **B3** (#28) Legacy install migration: review REQUEST_CHANGES (stale `in-progress` marker could delete a live `wa-stay.db`; target-vs-source permission errors; welcome/login-item follow-ups lost on crash; staging sweep). Fix agent running, lane A.
 - **E1** (#32) Explore screen: lane R.
 - **V4** (#22) Core services and scheduler: design phase (L task), lane W.
-- Next: V6, P7, E2/E3, U1–U5, Q2.
+- Next: V6 design starts once the V4 design is approved (it builds on `core/snipes` and `core/bookings`); then P7, U1, U3, U5 after V4; E2/E3 after E1 (E3 also after V5); U2/U4 after V6; Q2 last.
 
 ## Completed
+- **B3** (#28) Legacy install migration: review REQUEST_CHANGES (a stale `in-progress` marker could delete a live `wa-stay.db`). Fixed: stale markers cleared on fresh-install/declined, the redo moves `wa-stay.db` aside and never deletes it, target-folder errors name the WA Stay folder, the welcome notice and login-item replacement are retried until done, the staging folder is swept. Orchestrator added a guard so the final rename never replaces a `wa-stay.db` that appears mid-copy (+ test). 12/12 adversarial scenarios, 31 kill points; gate green after rebase on V3 (2099 tests). Merged. Manual Windows checklist (BQ3/BQ4) stays with the stakeholder.
 - **Q1** (#40) phase 1: Electron smoke E2E harness, test env hooks (gated `!isPackaged`), network-free fixture mode, 10 journeys, CI e2e job. Also fixed a D3 route-focus race. Merged after an orchestrator rebase and checks (gating reviewed; e2e 10/10 locally). Phase 2 (Explore and create-watch journeys) is handed to E1/U1; the full independent review happens then.
 - **V2** (#20) Data model v8: APPROVE after an adversarial migration review (every row and column matched on v5/v6 plus edge data). Orchestrator rebase onto B2: notifications carry the real provider and location, orphan adoption keeps `updated_at`. Merged.
 - **B2** (#27) App identity rename: review REQUEST_CHANGES (the installer snapshot didn't close the running v1 exe; dead finish page). Fixed: legacy app closed before the snapshot, standard finish page, small email logo. Merged.
