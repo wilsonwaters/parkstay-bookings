@@ -25,8 +25,8 @@ npm run test:coverage
 # Run tests in watch mode
 npm run test:watch
 
-# Run E2E tests (Playwright)
-npm run test:e2e
+# Run the Electron smoke tests (Playwright; built app, needs the Electron ABI; see "Electron smoke tests")
+npm run build:e2e && npm run test:e2e
 
 # Run live Electron tests (real Chromium networking; not part of npm test)
 npm run test:electron
@@ -137,7 +137,7 @@ tests/
 │   └── services/
 ├── integration/             # Integration tests (main project)
 ├── scripts/                 # Tests for Node scripts in scripts/ (main project)
-├── e2e/                     # End-to-end tests (Playwright, not Jest)
+├── e2e/                     # Electron smoke tests on the built app (Playwright _electron, not Jest)
 ├── electron/                # Live tests that run inside Electron (npm run test:electron, not Jest)
 ├── manual/                  # Scripts run by hand against live services (not Jest)
 ├── fixtures/                # Test data (users, bookings, watches, site-sniper)
@@ -207,21 +207,9 @@ describe('Authentication Flow', () => {
 });
 ```
 
-### E2E Tests (`tests/e2e/`)
-Tests complete user workflows in the browser using Playwright.
-
-**Example:**
-```typescript
-test('should create a booking', async ({ page }) => {
-  await page.goto('/bookings');
-  await page.click('button:has-text("Add Booking")');
-  await page.fill('input[name="bookingReference"]', 'BK123456');
-  await page.fill('input[name="parkName"]', 'Karijini National Park');
-  await page.click('button[type="submit"]');
-
-  await expect(page.locator('.toast-success')).toContainText('Booking created');
-});
-```
+### Electron smoke tests (`tests/e2e/`)
+Journeys through the built app (main, preload and renderer together), driven by Playwright's
+`_electron` launcher. See [Electron smoke tests](#electron-smoke-tests-e2e) below.
 
 ### Live Electron Tests (`tests/electron/`)
 Some behaviour only exists in Electron's real network stack, so mocks cannot prove it: the
@@ -247,6 +235,107 @@ npm run test:electron -- http-transport
   A behaviour change in either client must keep both runs green.
 - Not part of `npm test`: it needs the Electron binary and a display. Run it when you change
   `src/main/providers/sdk/http*.ts`.
+
+## Electron smoke tests (E2E)
+
+`tests/e2e/` holds the Electron smoke suite: a handful of journeys through the **built** app
+(main, preload and renderer together), driven by Playwright's `_electron` launcher. It
+catches what Jest cannot: startup crashes, preload or sandbox breakage, CSP violations,
+broken routing and focus, and a quit that hangs.
+
+```bash
+npm run build:e2e                 # the normal build, with no Mapbox token (scripts/build-e2e.js)
+xvfb-run -a npm run test:e2e      # Linux without a display; elsewhere: npm run test:e2e
+npx playwright show-report        # the HTML report of the last run
+```
+
+- **Build first.** The tests launch `dist/`, never the dev server. `build:e2e` runs `npm run
+  build` with `MAPBOX_ACCESS_TOKEN` set to an empty string, so a token in your `.env` never
+  reaches the e2e build and Explore is deterministically list-only. The suite stops at once
+  with "run `npm run build:e2e` first" when `dist/` is missing.
+- **Native ABI.** The app needs better-sqlite3 built for Electron, Jest needs it built for Node
+  (see [Native module ABI guard](#native-module-abi-guard)). After `npm rebuild better-sqlite3`
+  for Jest, run `npm run rebuild` before the suite. With the Node build the launch fails with
+  "WA Stay did not start" and the main process's `NODE_MODULE_VERSION` error.
+- **Display.** Electron needs one: on Linux without a desktop use `xvfb-run -a`. Windows and
+  macOS need nothing extra.
+- **Linux sandbox.** On CI (`CI` set) the harness passes `--no-sandbox`, because Ubuntu 24.04
+  runners restrict the user namespaces Electron's sandbox needs. Playwright adds it itself when
+  running as root. If Electron aborts with a sandbox error on your machine, run with `CI=1`.
+- **One app at a time.** `workers: 1`, no parallelism; each test launches its own app, so the
+  suite takes about a minute. On CI a failed test is retried once.
+
+### What every launch gets (`support/wa-stay.ts`)
+
+The `launchWaStay()` fixture starts the app with:
+
+- **Its own userData**, a fresh temp folder (`WA_STAY_USER_DATA_DIR`). Before anything else it
+  checks that the app really uses it (`app.getPath('userData')`), so a test can never touch a
+  real profile. Pass `{ userDataDir }` to relaunch on an existing one.
+- **Fixture mode** (`WA_STAY_E2E_FIXTURES_DIR=tests/e2e/fixtures/http`): every provider's
+  `HttpClient` is a `FixtureHttpClient` that answers from recorded responses, and a network
+  guard cancels every other http(s)/ws(s) request any Electron session makes. Each refusal is
+  written to `<userData>/e2e-unexpected-requests.log`; the lifecycle spec requires it to be
+  empty. `WA_STAY_E2E_ALLOW_HOSTS` (comma-separated hosts, subdomains included) lets some
+  through, for documentation screenshots.
+- **A production renderer**: `NODE_ENV=production`, no `ELECTRON_RENDERER_URL`, no Mapbox
+  token, `TZ=Australia/Perth`, `LANG=en_AU.UTF-8`.
+
+These test-only hooks live in `src/main/testing/` and are honoured only when the app is not
+packaged (architecture-notes §12.14); unit tests in `tests/unit/testing/` prove a packaged
+app ignores them.
+
+The fixture returns `{ app, window, userDataDir, consoleErrors(), mainLog(),
+unexpectedRequests(), close() }`. After the test it closes every app it started (killing one
+that hangs) and deletes the temp folders. When a test fails, the report gets the Electron
+window's trace (`trace-N`) and screenshot, the main process's output and log file, the
+renderer console errors and the unexpected requests.
+
+### Fixtures
+
+Recorded provider responses live in `tests/e2e/fixtures/http/<providerId>/`, with a
+`manifest.json` of routes. The format, where the data comes from and how to refresh it are in
+[`fixtures/http/README.md`](e2e/fixtures/http/README.md).
+
+### Adding a journey
+
+1. Create `tests/e2e/<journey>.spec.ts`. Import `test` and `expect` from `./support/wa-stay`
+   and the shell helpers (`navLink`, `pageHeading`, `chooseAccountMenuItem`, …) from
+   `./support/shell`.
+2. Start with `const { window } = await launchWaStay();`. Isolation, fixture mode and the
+   report attachments come with it.
+3. Find elements only by role, label or text (`getByRole`, `getByLabel`, `getByText`), using the
+   accessible names in `docs/design/shell.md` and the feature's spec. No CSS classes, XPath or
+   test ids: `grep -rnE "locator\(['\"][.#\[]|xpath=|data-testid" tests/e2e` must print nothing.
+4. Use web-first assertions (`toBeVisible`, `toHaveCount`, `toBeFocused`, `expect.poll`), never
+   `waitForTimeout`. After a page change, assert where focus is (`expectHeadingFocused`).
+5. If the journey makes provider requests, run it once: each request with no fixture fails with
+   "no fixture for GET …; add a route to …/manifest.json", and the failed test's
+   `unexpected-requests` attachment lists them. Add the routes and response files.
+6. Add the journey's pages to the lifecycle spec's journey, so its console errors and requests
+   are checked too.
+
+A `test.fail(…)` line marks a known gap the assertion is waiting for (the window title until
+B2 renames the app; an `h1` on Bookings until U3 rebuilds it). Once the gap is closed the test
+passes, Playwright reports it as failing, and the line must be removed.
+
+### Debugging
+
+- `npm run test:e2e:debug` (or `PWDEBUG=1 npm run test:e2e`) opens the Playwright Inspector and
+  pauses at each step. It needs a real display: run it outside `xvfb-run`.
+- `--headed` changes nothing here: Electron windows are always shown. Under `xvfb-run` they are
+  on the virtual display; run without it on a desktop to watch.
+- `npx playwright show-trace test-results/<test>/trace-1.zip` replays a failed launch: DOM
+  snapshots, screenshots, console and network.
+- `npx playwright test navigation -g "keyboard"` runs one spec or test.
+
+### CI
+
+The `e2e` job in `.github/workflows/ci.yml` runs on `ubuntu-latest` (20 minutes at most):
+`npm ci` (whose postinstall builds better-sqlite3 for Electron, so the job does not rebuild it
+for Node), `npm run build:e2e`, then `xvfb-run -a npm run test:e2e`. On failure it uploads
+`playwright-report/` and `test-results/` for 7 days. It is not in `build.yml`, so it never
+blocks a release tag.
 
 ## Test Utilities
 
@@ -427,8 +516,10 @@ jobs:
       - run: npm install
       - run: npm rebuild better-sqlite3
       - run: npm test -- --coverage
-      - run: npm run test:e2e
 ```
+
+The Electron smoke tests need the Electron build of better-sqlite3, so they run in their own
+job (see [Electron smoke tests → CI](#ci)).
 
 ## Troubleshooting
 
@@ -451,13 +542,10 @@ npm rebuild better-sqlite3
 ```
 
 ### E2E tests not starting
-```bash
-# Ensure renderer is built
-npm run build:renderer
-
-# Or run dev server
-npm run dev:renderer
-```
+- "run `npm run build:e2e` first": the suite drives the built app; build it.
+- "WA Stay did not start" with `NODE_MODULE_VERSION` in the log: better-sqlite3 is built for
+  Node (for Jest). Run `npm run rebuild` (the Electron build), then the suite again.
+- "Unable to open X display" on Linux: run it under `xvfb-run -a`.
 
 ### TypeScript errors
 ```bash
