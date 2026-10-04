@@ -12,7 +12,9 @@ describe('app shell flow', () => {
     const { user } = renderWithApp({ api: mock });
 
     // Starts on Explore, with no login gate.
-    expect(await screen.findByRole('heading', { level: 1, name: 'Explore' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' })
+    ).toBeInTheDocument();
     expect(mock.api.auth.validateSession).not.toHaveBeenCalled();
     const nav = screen.getByRole('navigation', { name: 'Primary' });
 
@@ -46,7 +48,9 @@ describe('app shell flow', () => {
       await screen.findByRole('heading', { level: 1, name: 'Page not found' })
     ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Back to Explore' }));
-    expect(await screen.findByRole('heading', { level: 1, name: 'Explore' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' })
+    ).toBeInTheDocument();
     expect(currentRoute()).toBe('/');
 
     // The frame never changed underneath.

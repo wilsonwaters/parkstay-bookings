@@ -13,7 +13,7 @@ One folder per provider id, each with a `manifest.json` and the response files i
 http/
 └── parkstay/
     ├── manifest.json
-    └── campground_map.json      # the catalogue the app syncs 5 s after launch (V5)
+    └── campground_map.json      # the catalogue the app syncs 5 s after launch (V5), Explore's places (E1)
 ```
 
 A provider with no folder, or no routes, answers every request with an error.
@@ -61,10 +61,12 @@ test attaches that log as `unexpected-requests`, which lists exactly the routes 
   and the app always fetches ParkStay data and images live at runtime (brief O8). Image URLs in
   a fixture are never loaded: the network guard cancels them, and the app shows its fallback.
 - **ParkStay** (`parkstay/`): the catalogue, because the app syncs it 5 s after the window is
-  up (V5). `campground_map.json` is the trimmed public `GET /api/campground_map/` sample probed
-  on 2026-10-02 that the Jest suite uses (`tests/fixtures/parkstay/`, 6 campgrounds covering
-  `campground_type` 0, 1, 2 and 4 in 4 regions). E1 extends it for the Explore journey, with
-  whatever else the Explore first load requests.
+  up (V5). `campground_map.json` answers `GET /api/campground_map/` with the trimmed public
+  sample probed on 2026-10-02 (`ai-state/research/parkstay-api-review.md`): the 6 campgrounds
+  the Jest suite uses (`tests/fixtures/parkstay/`, unchanged and first) plus 5 more for the
+  Explore journey (E1), 11 in all. They cover `campground_type` 0 (5), 1 (2), 2 (3) and 4 (1)
+  across 8 regions (Pilbara, Kimberley, South Coast, Goldfields, Midwest, South West, Swan,
+  Warren), each with its images and features, and at most 3 campsites.
 
 ## Refreshing a fixture
 

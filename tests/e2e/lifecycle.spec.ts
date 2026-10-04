@@ -5,7 +5,13 @@
  */
 
 import type { Page } from '@playwright/test';
-import { expect, test, within, withoutGuardedRequests } from './support/wa-stay';
+import {
+  expect,
+  test,
+  within,
+  withoutGuardedRequests,
+  withoutRemoteImages,
+} from './support/wa-stay';
 import {
   chooseAccountMenuItem,
   expectCurrentNavLink,
@@ -66,7 +72,8 @@ test('a journey through every page logs no console errors and sends nothing to t
 
   const requests = wa.unexpectedRequests();
   expect(withoutGuardedRequests(await wa.consoleErrors(), requests)).toEqual([]);
-  expect(requests).toEqual([]);
+  // Explore's provider photos are hot-linked; fixture mode cancels them, which is expected.
+  expect(withoutRemoteImages(requests)).toEqual([]);
 });
 
 test('quits within 10 s with exit code 0, and a relaunch on the same profile keeps its data', async ({
@@ -85,5 +92,5 @@ test('quits within 10 s with exit code 0, and a relaunch on the same profile kee
   await expectRoute(second.window, '/');
   await expect(pageHeading(second.window)).toHaveText(NAV_PAGES.explore.heading);
   expect(await readSetting(second.window)).toEqual({ success: true, data: false });
-  expect(second.unexpectedRequests()).toEqual([]);
+  expect(withoutRemoteImages(second.unexpectedRequests())).toEqual([]);
 });

@@ -23,3 +23,12 @@ export {
   type ProviderCapability,
   type ProviderManifest,
 } from './providers';
+export {
+  CATALOG_STALE_TIME_MS,
+  normaliseCatalogQuery,
+  useCatalogAll,
+  useCatalogRefresh,
+  useCatalogSearch,
+  useCatalogStatus,
+  useCatalogUpdates,
+} from './catalog';

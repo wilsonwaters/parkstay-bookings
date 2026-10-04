@@ -10,12 +10,14 @@ describe('App shell', () => {
   describe('startup', () => {
     it('opens on Explore with no login screen and no session check', async () => {
       const { mock } = renderWithApp();
-      expect(await screen.findByRole('heading', { level: 1, name: 'Explore' })).toBeInTheDocument();
-      // The placeholder is a section under the page title: an h2 at section size, not display.
-      const placeholder = screen.getByRole('heading', { level: 2, name: 'The map is on its way' });
-      expect(placeholder).toBeVisible();
-      expect(placeholder).toHaveClass('text-xl');
-      expect(placeholder).not.toHaveClass('text-display-sm');
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' })
+      ).toBeInTheDocument();
+      // Explore (E1): the search pill, and the catalogue (still syncing in the default mock).
+      expect(screen.getByRole('search', { name: 'Search places' })).toBeInTheDocument();
+      expect(
+        await screen.findByRole('heading', { level: 2, name: 'Getting places ready' })
+      ).toBeVisible();
       expect(currentRoute()).toBe('/');
       expect(screen.queryByRole('button', { name: /log ?in|sign in|log ?out/i })).toBeNull();
       expect(screen.queryByLabelText(/password/i)).toBeNull();
@@ -48,7 +50,7 @@ describe('App shell', () => {
       expect(
         within(banner).getByRole('button', { name: 'Account and settings' })
       ).toBeInTheDocument();
-      await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' });
     });
 
     it.each([
@@ -113,7 +115,7 @@ describe('App shell', () => {
         expect(bell.querySelector('svg.lucide-bell')).not.toBeNull();
         expect(bell.textContent).toBe('');
         expect(within(bell).queryByTestId('notification-badge')).toBeNull();
-        await screen.findByRole('heading', { level: 1, name: 'Explore' });
+        await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' });
       });
 
       it('puts the unread count in its name and shows it in a decorative badge', async () => {
@@ -208,7 +210,7 @@ describe('App shell', () => {
 
   describe('routes', () => {
     it.each([
-      ['/', 'Explore'],
+      ['/', 'Explore places to stay'],
       ['/watches', 'Watches'],
       ['/watches/new', 'Create Watch'],
       ['/site-sniper', 'Site Sniper'],
@@ -257,7 +259,9 @@ describe('App shell', () => {
       expect(screen.getByText('/does-not-exist')).toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'Back to Explore' }));
       expect(currentRoute()).toBe('/');
-      expect(await screen.findByRole('heading', { level: 1, name: 'Explore' })).toBeInTheDocument();
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' })
+      ).toBeInTheDocument();
     });
 
     it.each([
@@ -276,7 +280,7 @@ describe('App shell', () => {
   describe('accessibility', () => {
     it('makes "Skip to content" the first Tab stop, and it focuses main', async () => {
       const { user } = renderWithApp();
-      await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' });
       await user.tab();
       const skip = screen.getByRole('link', { name: 'Skip to content' });
       expect(skip).toHaveFocus();
@@ -288,14 +292,14 @@ describe('App shell', () => {
 
     it('has one banner, one main and one navigation named Primary', async () => {
       renderWithApp();
-      await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' });
       expect(getBanners()).toHaveLength(1);
       expect(screen.getAllByRole('main')).toHaveLength(1);
       expect(screen.getAllByRole('navigation', { name: 'Primary' })).toHaveLength(1);
     });
 
     it.each([
-      ['/', 'Explore'],
+      ['/', 'Explore places to stay'],
       ['/does-not-exist', 'Page not found'],
       ['/settings', 'Settings'],
     ])('%s has exactly one h1', async (route, name) => {
@@ -309,7 +313,10 @@ describe('App shell', () => {
       await screen.findByRole('heading', { level: 1, name: 'Page not found' });
       await user.click(navLink('Explore'));
 
-      const heading = await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      const heading = await screen.findByRole('heading', {
+        level: 1,
+        name: 'Explore places to stay',
+      });
       await waitFor(() => expect(heading).toHaveFocus());
       await waitFor(() =>
         expect(
@@ -328,7 +335,7 @@ describe('App shell', () => {
 
     it('focuses a loading page h1 once it appears', async () => {
       const { user } = renderWithApp();
-      await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' });
       await user.click(navLink('Watches'));
       const heading = await screen.findByRole('heading', { level: 1, name: 'Watches' });
       await waitFor(() => expect(heading).toHaveFocus());
@@ -336,10 +343,13 @@ describe('App shell', () => {
 
     it('focuses only the last page of a quick run of navigations', async () => {
       const { user } = renderWithApp();
-      await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' });
       await user.click(navLink('Watches'));
       await user.click(navLink('Explore'));
-      const heading = await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      const heading = await screen.findByRole('heading', {
+        level: 1,
+        name: 'Explore places to stay',
+      });
       await waitFor(() => expect(heading).toHaveFocus());
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(heading).toHaveFocus();
@@ -378,7 +388,7 @@ describe('App shell', () => {
 
     it('collapses to nothing but the toast region when idle', async () => {
       renderWithApp();
-      await screen.findByRole('heading', { level: 1, name: 'Explore' });
+      await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' });
       const tray = screen.getByTestId('tray');
       const region = within(tray).getByRole('region', { name: 'Notifications' });
       expect(within(region).queryAllByRole('listitem')).toHaveLength(0);
@@ -424,7 +434,9 @@ describe('App shell', () => {
   describe('without window.api', () => {
     it('renders the shell with a notice instead of crashing', async () => {
       const { user } = renderWithApp({ api: null });
-      expect(await screen.findByRole('heading', { level: 1, name: 'Explore' })).toBeVisible();
+      expect(
+        await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' })
+      ).toBeVisible();
       expect(screen.getByText('Running outside the WA Stay app')).toBeVisible();
       expect(screen.queryByRole('button', { name: 'Notifications' })).toBeNull();
       expect(screen.queryByRole('alert')).toBeNull();
