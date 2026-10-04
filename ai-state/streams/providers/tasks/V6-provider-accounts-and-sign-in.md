@@ -191,3 +191,8 @@ L. It covers security-sensitive windows, session handling, a new core service, I
 ## Orchestrator addendum (2026-10-03, from the V1 merge)
 - [ ] Move `accounts:list` (and any other implemented read channel in this namespace) from `PENDING_READS` into `READS` in `tests/integration/secret-sweep.test.ts`. The sweep must pass with real data seeded.
 - [ ] Use V1's merged SDK as-is: `HttpClient` with real redirect semantics, the frozen registry manifests, and `ProviderContext.manifest` / `limits` (architecture-notes §12.30).
+
+## Orchestrator addendum (2026-10-04, from the V4 design review; architecture-notes §12.31)
+- [ ] Migration v9 also adds `hold_reference`, `hold_expires_at`, `hold_unit_id`, `payment_url` and `last_error` to `watches`. V4 records watch auto-holds only as `last_result 'held'`; V6 persists the hold details when a watch auto-hold succeeds, and the night guard ignores a watch hold whose `hold_expires_at` has passed.
+- [ ] Payment hand-off for watch holds: a `watches.openPayment(id)` (or a shared hold-payment helper used by both) opens the same partitioned payment window as `snipes.openPayment`. On `/success/` the watch's hold becomes a confirmed booking (as for snipes) and `watch:updated` + `booking:updated` are emitted. Tests mirror the snipe payment tests.
+- V4 expires HELD snipes at `holdExpiresAt` with its own timer (re-armed on resume). `openPayment` still checks `holdExpiresAt > now` itself.
