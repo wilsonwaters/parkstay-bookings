@@ -162,3 +162,9 @@ L. It spans three services, the scheduler and the contracts, and the timing-corr
 
 ## Orchestrator addendum (2026-10-04, from V7)
 - [ ] On quit, `JobScheduler.stop()` aborts in-flight watch and snipe executions (AbortController) and awaits them, with a bound, before `container.dispose()` closes the database. No job may write to a closed DB. Fit this into V7's quit hold (`src/main/app/quit-hold.ts`). Test it with a slow in-flight job.
+
+## Orchestrator addendum (2026-10-04, from the V3 review)
+- [ ] V3 made `computeReleaseAt` return the stored `releaseAt`. Daily-rollover snipes that v8 migrated still carry the old midnight-AWST instant, so a snipe at a campground released at 02:00 (Bungarra) fires at 00:00 and its window closes before the release. When arming a `daily_rollover` snipe that is not terminal (and on `rescheduleAll()`), recompute `releaseAt` through `release.computeReleaseAt` and persist it if it changed. Test: a migrated row at 00:00 AWST with a provider release time of 02:00 is re-armed for 02:00.
+- V3 rewired the services in place. Its access gate (`providers/parkstay/queue/access-gate.ts`) exposes `ensure({ signal })`, `holdOpen()` and `status()`. A small V3 follow-up in lane X changes only the gate's idle status and two ParkStay nits, and will merge before V4.
+- V5 (catalogue service, lane Y) runs in parallel and touches `app/container.ts` and the catalogue. Keep container edits to the service moves.
+- Process (L task): first write a design and plan to `ai-state/streams/providers/designs/V4-design.md` (module layout after the move, scheduler state machine for watches and snipes with the generation token and abort, the access-gate hold lifecycle, quit hold, how each criterion and edge case is tested), commit it as `docs(ai-state): V4 design`, and hand back for approval before writing code.
