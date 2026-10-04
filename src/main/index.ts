@@ -14,7 +14,7 @@
  * data folder copied before `createContainer` (architecture-notes §12.23).
  */
 
-import { app, BrowserWindow, dialog, safeStorage } from 'electron';
+import { app, BrowserWindow, dialog, safeStorage, session } from 'electron';
 import path from 'path';
 import { openDatabase } from './database/connection';
 import { createContainer, AppContainer } from './app/container';
@@ -26,6 +26,7 @@ import { createAppUrlMatcher, resolveRendererEntry } from './app/renderer-entry'
 import { acquireSingleInstance, HIDDEN_ARG } from './app/single-instance';
 import { registerIpcHandlers } from './ipc';
 import { createSenderGuard } from './ipc/sender-guard';
+import { applyTestEnvHooks, startFixtureMode } from './testing';
 import { initFileLogging, logger } from './utils/logger';
 
 const crashPolicy = installCrashPolicy({ process, app, dialog, log: logger });
@@ -34,6 +35,10 @@ const crashPolicy = installCrashPolicy({ process, app, dialog, log: logger });
 // v1.x data would be left behind: keep the v1.x folder until B3 moves the data.
 // B3 replaces this
 app.setPath('userData', path.join(app.getPath('appData'), 'parkstay-bookings')); // legacy-name-ok
+
+// Test-only hooks (architecture-notes §12.14), ignored when packaged. The last change to
+// userData before the single-instance lock, which lives there.
+const testHooks = applyTestEnvHooks(app);
 
 const instance = acquireSingleInstance(app, {
   log: logger,
@@ -102,6 +107,14 @@ async function start(): Promise<void> {
   const logsDir = initFileLogging(path.join(userData, 'logs'));
   logger.info('Initializing application...');
 
+  // Test-only network-free mode (WA_STAY_E2E_FIXTURES_DIR), before anything can send a request
+  const fixtureMode = startFixtureMode(testHooks, {
+    app,
+    session,
+    userDataDir: userData,
+    log: logger,
+  });
+
   // Open and migrate the database (B3 moves it to the WA Stay data folder)
   const db = openDatabase(path.join(userData, 'parkstay.db'));
 
@@ -113,6 +126,7 @@ async function start(): Promise<void> {
     userDataDir: userData,
     safeStorage,
     isReady: () => app.isReady(),
+    fixtureMode,
   });
   container = ready;
   ready.profile.ensureLocalProfile();

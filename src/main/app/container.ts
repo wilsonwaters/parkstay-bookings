@@ -54,6 +54,7 @@ import { ElectronSessionHttpClient } from '../providers/sdk/http-electron';
 import { legacyMachineId } from '../security/legacy-decryptors';
 import { migrateLegacySecrets } from '../security/legacy-migration';
 import { FileLocalKeyStore, SecretVault, type SafeStorageLike } from '../security/secret-vault';
+import { FixtureHttpClient, type FixtureModeOptions } from '../testing';
 import { logger } from '../utils/logger';
 import type { QueueStatusEvent } from '@shared/types';
 import { getEmailLogoPath } from './paths';
@@ -123,6 +124,11 @@ export interface ContainerOptions {
   readonly safeStorage: SafeStorageLike;
   /** `app.isReady()`. */
   readonly isReady: () => boolean;
+  /**
+   * Test-only (`startFixtureMode`, never when packaged): every provider gets a
+   * `FixtureHttpClient` instead of its session partition.
+   */
+  readonly fixtureMode?: FixtureModeOptions;
 }
 
 export function createContainer({
@@ -131,6 +137,7 @@ export function createContainer({
   userDataDir,
   safeStorage,
   isReady,
+  fixtureMode,
 }: ContainerOptions): AppContainer {
   // Lazy: no safeStorage call and no key file until the first secret is read or written
   const vault = new SecretVault({
@@ -170,7 +177,10 @@ export function createContainer({
 
   // Each provider gets its own session partition, state, secrets and child logger.
   const providerDeps: ProviderContextDeps = {
-    createHttp: (providerId) => new ElectronSessionHttpClient({ providerId }),
+    createHttp: (providerId) =>
+      fixtureMode
+        ? new FixtureHttpClient({ providerId, ...fixtureMode })
+        : new ElectronSessionHttpClient({ providerId }),
     // `provider_state`, scoped to the provider; its scoped secrets live there too.
     createState: (providerId) => new SqliteKeyValueStore(providerState, providerId),
     // Each provider's ScopedSecretVault: envelopes from this vault, in the provider's own state

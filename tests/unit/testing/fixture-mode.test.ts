@@ -1,0 +1,213 @@
+/**
+ * The test-only env hooks and fixture mode (architecture-notes §12.14): honoured only when the
+ * app is unpackaged. A packaged build ignores every variable, sets no userData and installs no
+ * network guard. In fixture mode the guard cancels http(s)/ws(s) requests on the default
+ * session and every later session (provider partitions), except to allowed hosts, and logs them.
+ */
+
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import {
+  applyTestEnvHooks,
+  installNetworkGuard,
+  isBlockedRequest,
+  readUnexpectedRequests,
+  resolveTestHooks,
+  startFixtureMode,
+  type GuardRequestDetails,
+  type GuardableSession,
+  type SessionSource,
+} from '@main/testing';
+
+const ALL_HOOKS = {
+  WA_STAY_USER_DATA_DIR: '/tmp/wa-stay-e2e-profile',
+  WA_STAY_LEGACY_DATA_DIR: '/tmp/wa-stay-e2e-legacy',
+  WA_STAY_E2E_FIXTURES_DIR: 'tests/e2e/fixtures/http',
+  WA_STAY_E2E_ALLOW_HOSTS: 'api.mapbox.com, Events.Mapbox.com',
+};
+
+type Listener = (
+  details: GuardRequestDetails,
+  callback: (response: { cancel?: boolean }) => void
+) => void;
+
+class FakeSession implements GuardableSession {
+  listener?: Listener;
+  readonly webRequest = {
+    onBeforeRequest: jest.fn((listener: Listener) => {
+      this.listener = listener;
+    }),
+  };
+
+  /** What the guard decides for a request: cancelled or let through. */
+  request(url: string, resourceType = 'xhr'): 'cancelled' | 'allowed' {
+    let decision: 'cancelled' | 'allowed' = 'allowed';
+    this.listener?.({ url, method: 'GET', resourceType }, (response) => {
+      decision = response.cancel ? 'cancelled' : 'allowed';
+    });
+    return decision;
+  }
+}
+
+class FakeApp implements SessionSource {
+  readonly listeners: Array<(session: GuardableSession) => void> = [];
+  readonly setPath = jest.fn();
+  constructor(readonly isPackaged: boolean) {}
+  on(_event: 'session-created', listener: (session: GuardableSession) => void): this {
+    this.listeners.push(listener);
+    return this;
+  }
+  createSession(): FakeSession {
+    const session = new FakeSession();
+    this.listeners.forEach((listener) => listener(session));
+    return session;
+  }
+}
+
+let userDataDir: string;
+const log = { warn: jest.fn() };
+
+beforeEach(() => {
+  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-stay-fixture-mode-'));
+  log.warn.mockClear();
+});
+
+afterEach(() => {
+  fs.rmSync(userDataDir, { recursive: true, force: true });
+});
+
+describe('packaged: the hooks are inert even with every variable set', () => {
+  it('resolves no hooks and never changes userData', () => {
+    const app = new FakeApp(true);
+
+    expect(resolveTestHooks({ env: ALL_HOOKS, isPackaged: true, cwd: '/repo' })).toEqual({});
+    expect(applyTestEnvHooks(app, ALL_HOOKS, '/repo')).toEqual({});
+    expect(app.setPath).not.toHaveBeenCalled();
+  });
+
+  it('installs neither fixture mode nor the network guard', () => {
+    const app = new FakeApp(true);
+    const defaultSession = new FakeSession();
+
+    const hooks = applyTestEnvHooks(app, ALL_HOOKS, '/repo');
+    const fixtureMode = startFixtureMode(hooks, {
+      app,
+      session: { defaultSession },
+      userDataDir,
+      log,
+    });
+
+    expect(fixtureMode).toBeUndefined();
+    expect(defaultSession.webRequest.onBeforeRequest).not.toHaveBeenCalled();
+    expect(app.listeners).toHaveLength(0);
+    expect(app.createSession().webRequest.onBeforeRequest).not.toHaveBeenCalled();
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('unpackaged', () => {
+  it('overrides userData and resolves every hook, relative paths against cwd', () => {
+    const app = new FakeApp(false);
+
+    const hooks = applyTestEnvHooks(app, ALL_HOOKS, '/repo');
+
+    expect(app.setPath).toHaveBeenCalledWith('userData', path.resolve('/tmp/wa-stay-e2e-profile'));
+    expect(hooks).toEqual({
+      userDataDir: path.resolve('/tmp/wa-stay-e2e-profile'),
+      legacyDataDir: path.resolve('/tmp/wa-stay-e2e-legacy'),
+      fixtureMode: {
+        fixturesDir: path.resolve('/repo', 'tests/e2e/fixtures/http'),
+        allowHosts: ['api.mapbox.com', 'events.mapbox.com'],
+      },
+    });
+  });
+
+  it('with no variables (or empty ones) changes nothing', () => {
+    const app = new FakeApp(false);
+
+    expect(applyTestEnvHooks(app, { WA_STAY_USER_DATA_DIR: ' ' }, '/repo')).toEqual({});
+    expect(app.setPath).not.toHaveBeenCalled();
+  });
+
+  it('disables the legacy source when userData is overridden without a legacy folder (B3)', () => {
+    const env = { WA_STAY_USER_DATA_DIR: '/tmp/profile' };
+    expect(resolveTestHooks({ env, isPackaged: false, cwd: '/repo' })).toEqual({
+      userDataDir: path.resolve('/tmp/profile'),
+      legacyDataDir: null,
+    });
+  });
+
+  it('fixture mode guards the default session and every later one, and returns the client options', () => {
+    const app = new FakeApp(false);
+    const defaultSession = new FakeSession();
+    const hooks = applyTestEnvHooks(
+      app,
+      { WA_STAY_E2E_FIXTURES_DIR: '/fixtures', WA_STAY_USER_DATA_DIR: userDataDir },
+      '/repo'
+    );
+
+    const fixtureMode = startFixtureMode(hooks, {
+      app,
+      session: { defaultSession },
+      userDataDir,
+      log,
+    });
+
+    const logFile = path.join(userDataDir, 'e2e-unexpected-requests.log');
+    expect(fixtureMode).toEqual({ fixturesDir: path.resolve('/fixtures'), logFile });
+    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('Test fixture mode'));
+
+    // The default session and a provider partition created later are both guarded
+    const partition = app.createSession();
+    expect(defaultSession.request('https://parkstay.dbca.wa.gov.au/api/x', 'image')).toBe(
+      'cancelled'
+    );
+    expect(partition.request('https://parkstay.dbca.wa.gov.au/api/y')).toBe('cancelled');
+    expect(defaultSession.request('file:///repo/dist/renderer/index.html', 'mainFrame')).toBe(
+      'allowed'
+    );
+    expect(readUnexpectedRequests(logFile)).toEqual([
+      expect.objectContaining({
+        source: 'network-guard',
+        method: 'GET',
+        url: 'https://parkstay.dbca.wa.gov.au/api/x',
+        resourceType: 'image',
+      }),
+      expect.objectContaining({ url: 'https://parkstay.dbca.wa.gov.au/api/y' }),
+    ]);
+  });
+});
+
+describe('the network guard', () => {
+  it('cancels http, https, ws and wss except to allowed hosts and their subdomains', () => {
+    const allow = ['mapbox.com'];
+    expect(isBlockedRequest('http://example.com/', allow)).toBe(true);
+    expect(isBlockedRequest('https://example.com/', allow)).toBe(true);
+    expect(isBlockedRequest('ws://example.com/', allow)).toBe(true);
+    expect(isBlockedRequest('wss://example.com/', allow)).toBe(true);
+    expect(isBlockedRequest('https://127.0.0.1:3000/', allow)).toBe(true);
+    expect(isBlockedRequest('https://mapbox.com/', allow)).toBe(false);
+    expect(isBlockedRequest('https://API.mapbox.com/v4', allow)).toBe(false);
+    expect(isBlockedRequest('https://notmapbox.com/', allow)).toBe(true);
+    expect(isBlockedRequest('https://mapbox.com.evil.example/', allow)).toBe(true);
+    for (const local of ['file:///a.html', 'data:text/plain,x', 'blob:file:///1', 'devtools://x']) {
+      expect(isBlockedRequest(local, [])).toBe(false);
+    }
+  });
+
+  it('guards a session once, however often it is seen', () => {
+    const app = new FakeApp(false);
+    const session = new FakeSession();
+
+    installNetworkGuard({
+      sessions: [session],
+      app,
+      allowHosts: [],
+      logFile: path.join(userDataDir, 'log'),
+    });
+    app.listeners.forEach((listener) => listener(session));
+
+    expect(session.webRequest.onBeforeRequest).toHaveBeenCalledTimes(1);
+  });
+});
