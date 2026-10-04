@@ -159,3 +159,6 @@ L. It spans three services, the scheduler and the contracts, and the timing-corr
 - **Why a due-loop rather than per-watch cron.** It honours any interval, uses the persisted `next_check_at` (resilient to restarts), and makes per-provider concurrency trivial. node-cron is no longer used by watches, so remove the dependency if nothing else uses it, and record that in the PR.
 - **Auto-hold and DBCA terms.** Auto-hold respects DBCA terms (genuine intent, one booking per night) the same way snipes do. Payment stays a human step. If the stakeholder rejects auto-hold (PQ4), delete the `autoHold` field and the column use, keeping the DB column as dead data. U1 hides the toggle via the contract.
 - **Commit.** `refactor(core): provider-agnostic services and scheduler fixes (#<issue>)`.
+
+## Orchestrator addendum (2026-10-04, from V7)
+- [ ] On quit, `JobScheduler.stop()` aborts in-flight watch and snipe executions (AbortController) and awaits them, with a bound, before `container.dispose()` closes the database. No job may write to a closed DB. Fit this into V7's quit hold (`src/main/app/quit-hold.ts`). Test it with a slow in-flight job.
