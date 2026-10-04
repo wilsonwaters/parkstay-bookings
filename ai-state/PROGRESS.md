@@ -12,7 +12,7 @@ Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task spe
 - Next: P7, U1, U3, U5 after V4; E2/E3 after E1; U2/U4 after V6; Q2 last.
 
 ## Notes
-- 2026-10-04 11:45 UTC: the stakeholder paused new agent work to save quota. Running agents finish their current step; no reviews, merges or new dispatches until the stakeholder resumes. Next on resume: review V4 → merge → V6 phase 2 → review V6; review E1 (merge needs a rebase onto V4/V6 changes); then P7, U1, U3, U5, E2, E3, U2, U4, Q1 phase 2 review, Q2. All work is committed on lanes; nothing is running.
+- 2026-10-04 11:45 UTC: the stakeholder paused new agent work to save quota. Running agents finish their current step; no reviews, merges or new dispatches until the stakeholder resumes. Next on resume: review V4 → merge → V6 phase 2 → review V6; review E1 (merge needs a rebase onto V4/V6 changes); then P7, U1, U3, U5, E2, E3, U2, U4, Q1 phase 2 review, Q2. All work is committed on lanes; nothing is running. Unmerged lanes are backed up on GitHub (stakeholder-approved): `wip/v4-core-scheduler` (lane/w, `41001c1`), `wip/v6-accounts-phase1` (lane/a, `037468f`), `wip/e1-explore` (lane/r, `8405824`). On a fresh container: `git fetch origin wip/...` and recreate the lanes from them. Delete each wip branch once its work is merged.
 - 2026-10-04: V4's live sanity run placed a real anonymous hold (#2072968, Bungarra site 02, 3–5 Nov 2026; lapsed unpaid 12:04 UTC). New hard rule §12.33: no live holds in any run; added to both agent contracts.
 - 2026-10-04 ~10:30 UTC: an account usage limit stopped all agents; resumed at 10:55 from their saved lanes (pre-rebase work pinned as `backup/e1-pre-rebase` and `backup/v4-pre-rebase`, local only).
 
