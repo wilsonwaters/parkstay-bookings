@@ -56,7 +56,7 @@ import { migrateLegacySecrets } from '../security/legacy-migration';
 import { FileLocalKeyStore, SecretVault, type SafeStorageLike } from '../security/secret-vault';
 import { logger } from '../utils/logger';
 import type { QueueStatusEvent } from '@shared/types';
-import { getBrandIconPath } from './paths';
+import { getEmailLogoPath } from './paths';
 import { createLocalProfile, LocalProfile } from './profile';
 
 export interface AppRepositories {
@@ -135,6 +135,8 @@ export function createContainer({
     logger,
     isReady,
   });
+  // legacy: never change the file name — existing data depends on it (v1.x electron-store
+  // `name: 'gmail-oauth'`, which the legacy secret migration reads in place)
   const gmailStorePath = path.join(userDataDir, 'gmail-oauth.json');
 
   const repositories: AppRepositories = {
@@ -178,7 +180,7 @@ export function createContainer({
   const notifierDispatcher = new NotificationDispatcher(repositories.notifiers, [
     new SmtpEmailNotifier({
       providerName: (id) => providers.tryGet(id)?.manifest.shortName,
-      logoPath: getBrandIconPath(),
+      logoPath: getEmailLogoPath(),
     }),
   ]);
   const queueService = new QueueService(repositories.queueSessions);

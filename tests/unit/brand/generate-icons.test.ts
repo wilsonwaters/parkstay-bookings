@@ -6,7 +6,13 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { ICO_SIZES, PNG_SIZES, checkXml, readSvg } from '../../../scripts/generate-icons';
+import {
+  EMAIL_LOGO_SIZE,
+  ICO_SIZES,
+  PNG_SIZES,
+  checkXml,
+  readSvg,
+} from '../../../scripts/generate-icons';
 
 describe('generate-icons source checks', () => {
   let dir: string;
@@ -51,5 +57,7 @@ describe('generate-icons source checks', () => {
   it('builds the icon sizes the spec lists', () => {
     expect(ICO_SIZES).toEqual([16, 24, 32, 48, 64, 128, 256]);
     expect(PNG_SIZES).toEqual([16, 32, 48, 64, 128, 256, 512, 1024]);
+    // The emails show the logo at 40 px: 2x
+    expect(EMAIL_LOGO_SIZE).toBe(80);
   });
 });

@@ -187,6 +187,9 @@ describe('App shell', () => {
 
       const dialog = await screen.findByRole('dialog', { name: 'About WA Stay' });
       expect(await within(dialog).findByText('Version 2.0.0-test')).toBeVisible();
+      expect(
+        within(dialog).getByText('Find and book places to stay across Western Australia')
+      ).toBeVisible();
       expect(within(dialog).getByText('28.3.3')).toBeVisible();
       expect(within(dialog).getByRole('link', { name: 'GitHub' })).toHaveAttribute(
         'href',

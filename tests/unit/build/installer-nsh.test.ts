@@ -6,8 +6,9 @@
  *   made itself;
  * - uninstalling never offers to delete data during an update or in silent mode, and the v1.x
  *   data folder goes only after a second prompt that names it (default No);
- * - before the old v1.x uninstaller runs, the v1.x data is copied (never moved) into
- *   `$APPDATA\WA Stay\legacy-snapshot\`.
+ * - before the old v1.x uninstaller runs, a running v1.x app is closed (it holds the database
+ *   open), then the v1.x data is copied (never moved) into `$APPDATA\WA Stay\legacy-snapshot\`;
+ * - electron-builder's own finish page (runAfterFinish) is used, not a custom one.
  *
  * NSIS cannot run here: the CI Windows build compiles the script, and the manual Windows
  * checklist in the B2 spec covers the behaviour.
@@ -144,11 +145,12 @@ describe('installer.nsh', () => {
     expect(closingEndIf(uninstall, branch)).toBeGreaterThan(remove);
   });
 
-  it('defines customCheckAppRunning: the usual running-app check, then the legacy snapshot', () => {
+  it('defines customCheckAppRunning: the usual check, then (installer only) close v1.x, then the snapshot', () => {
     const check = macro('customCheckAppRunning');
     expect(check).toEqual([
       '!insertmacro _CHECK_APP_RUNNING',
       '!ifndef BUILD_UNINSTALLER',
+      '!insertmacro waStayCloseLegacyApp',
       '!insertmacro waStaySnapshotLegacyData',
       '!endif',
     ]);
@@ -156,7 +158,61 @@ describe('installer.nsh', () => {
     expect(CODE).toEqual(expect.arrayContaining(['!include "getProcessInfo.nsh"', 'Var pid']));
   });
 
-  it('copies (never moves) the v1.x database and Gmail file into legacy-snapshot, once', () => {
+  it("closes a running v1.x app (its own exe name) the way electron-builder closes WA Stay's", () => {
+    // _CHECK_APP_RUNNING looks only for "WA Stay.exe"
+    expect(CODE).toContain('!define WA_STAY_LEGACY_EXE "WA ParkStay Bookings.exe"');
+
+    const close = macro('waStayCloseLegacyApp');
+    const find = close.indexOf('!insertmacro FIND_PROCESS "${WA_STAY_LEGACY_EXE}" $R0');
+    expect(find).toBeGreaterThan(0);
+    // An update waits for the app to exit by itself, then stops it without asking
+    expect(close.slice(0, find)).toEqual(
+      expect.arrayContaining(['${if} ${isUpdated}', 'Sleep 300'])
+    );
+    const prompt = close.findIndex((line) => line.startsWith('MessageBox MB_OKCANCEL'));
+    const updateBranch = close.indexOf('${if} ${isUpdated}', find);
+    expect(updateBranch).toBeGreaterThan(find);
+    expect(close.slice(updateBranch, prompt)).toEqual([
+      '${if} ${isUpdated}',
+      'Sleep 1000',
+      'Goto waStayLegacyStop',
+      '${endIf}',
+    ]);
+    // Otherwise it asks first (OK in silent mode), and Cancel quits
+    expect(close[prompt]).toMatch(
+      /"WA ParkStay Bookings[^"]*is running\.[^"]*" \/SD IDOK IDOK waStayLegacyStop$/
+    );
+    expect(close[prompt + 1]).toBe('Quit');
+
+    // Graceful taskkill first, then /f in a loop until the process is gone
+    const kills = close.filter((line) => /taskkill/.test(line));
+    expect(kills).toHaveLength(4); // per-machine and per-user variants of each
+    for (const kill of kills) {
+      expect(kill).toContain('/im "${WA_STAY_LEGACY_EXE}" /fi "PID ne $pid"');
+    }
+    const stop = close.indexOf('waStayLegacyStop:');
+    const loop = close.indexOf('waStayLegacyLoop:');
+    const closed = close.indexOf('waStayLegacyClosed:');
+    expect(stop).toBeGreaterThan(prompt);
+    const graceful = close.findIndex((line) => /taskkill \/im/.test(line));
+    const forced = close.findIndex((line) => /taskkill \/f \/im/.test(line));
+    expect(graceful).toBeGreaterThan(stop);
+    expect(graceful).toBeLessThan(loop);
+    expect(forced).toBeGreaterThan(loop);
+    expect(forced).toBeLessThan(closed);
+    expect(close.slice(loop)).toEqual(
+      expect.arrayContaining([
+        'Goto waStayLegacyClosed',
+        'Goto waStayLegacyLoop',
+        expect.stringMatching(
+          /^MessageBox MB_RETRYCANCEL.*\/SD IDCANCEL IDRETRY waStayLegacyLoop$/
+        ),
+      ])
+    );
+    expect(closed).toBe(close.length - 2);
+  });
+
+  it('copies (never moves) the v1.x database, its -wal and -shm, and the Gmail file into legacy-snapshot, once', () => {
     const snapshot = macro('waStaySnapshotLegacyData');
     const guards = snapshot.filter((line) => /^\$\{(if|ifNot)\} \$\{FileExists\}/.test(line));
     expect(guards.slice(0, 3)).toEqual([
@@ -186,9 +242,14 @@ describe('installer.nsh', () => {
 
   it('says WA Stay in its messages', () => {
     expect(macro('customInit').join('\n')).toContain('"WA Stay requires Windows 10 or later."');
-    expect(macro('customHeader').join('\n')).toContain('Welcome to WA Stay Setup');
-    expect(macro('customFinishPage').join('\n')).toContain(
-      '!define MUI_FINISHPAGE_RUN "$INSTDIR\\${APP_EXECUTABLE_FILENAME}"'
-    );
+  });
+
+  it("keeps electron-builder's finish page (runAfterFinish) and defines no dead welcome text", () => {
+    // A customFinishPage replaces the finish page; customHeader's welcome text had no page
+    expect(() => macro('customFinishPage')).toThrow('defines no macro customFinishPage');
+    expect(() => macro('customHeader')).toThrow('defines no macro customHeader');
+    expect(CODE.join('\n')).not.toMatch(/MUI_FINISHPAGE|MUI_TEXT_WELCOME/);
+    const builder = JSON.parse(fs.readFileSync(path.join(ROOT, 'electron-builder.json'), 'utf8'));
+    expect(builder.nsis.runAfterFinish).toBe(true);
   });
 });

@@ -1,6 +1,8 @@
 // Application-wide constants
 
 export const APP_NAME = 'WA Stay';
+/** The tagline: package.json's `description`, which the installer and Linux packages show. */
+export const APP_DESCRIPTION = 'Find and book places to stay across Western Australia';
 export const APP_REPO_URL = 'https://github.com/wilsonwaters/wa-stay';
 export const APP_ISSUES_URL = `${APP_REPO_URL}/issues`;
 export const APP_VERSION = '1.0.0';

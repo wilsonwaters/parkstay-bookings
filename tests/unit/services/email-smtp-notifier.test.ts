@@ -21,7 +21,7 @@ jest.mock('nodemailer', () => ({
 }));
 
 const SENDER = 'me@example.com';
-const LOGO = path.resolve(__dirname, '../../../resources/icons/icon.png');
+const LOGO = path.resolve(__dirname, '../../../resources/icons/email-logo.png');
 
 /** Provider names come from the real registry, as the container wires them. */
 function providerNames(): (id: string) => string | undefined {

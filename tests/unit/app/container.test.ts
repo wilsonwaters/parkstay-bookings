@@ -270,11 +270,11 @@ describe('createContainer', () => {
     expect(session.fromPartition).toHaveBeenCalledWith('persist:provider-parkstay');
   });
 
-  it("gives the email notifier the providers' names and the WA Stay icon", () => {
+  it("gives the email notifier the providers' names and the small WA Stay email logo", () => {
     build();
 
     const [options] = jest.mocked(SmtpEmailNotifier).mock.calls[0];
-    expect(options?.logoPath).toBe(path.join('/app', 'resources', 'icons', 'icon.png'));
+    expect(options?.logoPath).toBe(path.join('/app', 'resources', 'icons', 'email-logo.png'));
     expect(options?.providerName?.('parkstay')).toBe('ParkStay');
     expect(options?.providerName?.('not-a-provider')).toBeUndefined();
   });

@@ -5,7 +5,7 @@
 
 import { useRef } from 'react';
 import { ExternalLink, FolderOpen } from 'lucide-react';
-import { APP_ISSUES_URL, APP_NAME, APP_REPO_URL } from '@shared/constants';
+import { APP_DESCRIPTION, APP_ISSUES_URL, APP_NAME, APP_REPO_URL } from '@shared/constants';
 import { useAppInfo, useOpenLogsFolder } from '../api';
 import { Logo } from './brand/Logo';
 import { Button, Dialog, Notice, Spinner } from './ui';
@@ -40,9 +40,7 @@ export default function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
             Version {info.data.version}
           </p>
         )}
-        <p className="mt-1 text-sm text-fg-secondary">
-          Automated campground booking for Western Australia
-        </p>
+        <p className="mt-1 text-sm text-fg-secondary">{APP_DESCRIPTION}</p>
       </div>
 
       {info.isLoading && (

@@ -1,12 +1,13 @@
 /**
  * @jest-environment node
  *
- * `getBrandIconPath`: the WA Stay icon for the window and OS notifications. Packaged, it is
- * the copy `extraResources` puts next to app.asar; from source, the committed file.
+ * `getBrandIconPath`: the WA Stay icon for the window and OS notifications, and
+ * `getEmailLogoPath`: the small one the emails show. Packaged, each is the copy
+ * `extraResources` puts next to app.asar; from source, the committed file.
  */
 import fs from 'fs';
 import path from 'path';
-import { getBrandIconPath } from '@main/app/paths';
+import { getBrandIconPath, getEmailLogoPath } from '@main/app/paths';
 
 const mockApp = { isPackaged: false, getAppPath: jest.fn(() => '/repo') };
 jest.mock('electron', () => ({
@@ -56,5 +57,30 @@ describe('getBrandIconPath', () => {
       Object.defineProperty(process, 'resourcesPath', { value: resourcesPath, configurable: true });
       mockApp.isPackaged = false;
     }
+  });
+});
+
+describe('getEmailLogoPath', () => {
+  it('packaged: email-logo.png, which extraResources ships next to the icon', () => {
+    const logo = getEmailLogoPath({
+      isPackaged: true,
+      appPath: path.join('C:', 'WA Stay', 'resources', 'app.asar'),
+      resourcesPath: path.join('C:', 'WA Stay', 'resources'),
+    });
+    expect(logo).toBe(path.join('C:', 'WA Stay', 'resources', 'icons', 'email-logo.png'));
+
+    const builder = JSON.parse(fs.readFileSync(path.join(ROOT, 'electron-builder.json'), 'utf8'));
+    expect(builder.extraResources[0].filter).toContain(path.basename(logo));
+  });
+
+  it('from source: resources/icons/email-logo.png, which exists', () => {
+    const logo = getEmailLogoPath({ isPackaged: false, appPath: ROOT, resourcesPath: '/unused' });
+    expect(logo).toBe(path.join(ROOT, 'resources', 'icons', 'email-logo.png'));
+    expect(fs.existsSync(logo)).toBe(true);
+  });
+
+  it('reads the running app by default', () => {
+    mockApp.isPackaged = false;
+    expect(getEmailLogoPath()).toBe(path.join('/repo', 'resources', 'icons', 'email-logo.png'));
   });
 });

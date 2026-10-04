@@ -11,6 +11,7 @@
  * 3. Rasterises with sharp (librsvg):
  *    - resources/icons/icon.ico: 16, 24, 32, 48, 64, 128, 256 (32 and below from the small mark)
  *    - resources/icons/icon.png (1024) and the Linux set NxN.png (16 to 1024)
+ *    - resources/icons/email-logo.png (80): the inline logo of the SMTP emails, shown at 40 px
  *    - resources/icons/installer-header.bmp (150x57) and installer-sidebar.bmp (164x314),
  *      24-bit uncompressed BMP written by scripts/lib/bmp.js
  *    - resources/brand/readme-banner.png (1280x640)
@@ -38,6 +39,8 @@ const DOCS_BRAND_DIR = path.join(ROOT, 'docs', 'design', 'brand');
 const ICO_SIZES = [16, 24, 32, 48, 64, 128, 256];
 const PNG_SIZES = [16, 32, 48, 64, 128, 256, 512, 1024];
 const SMALL_MAX = 32;
+/** Emails show the logo at 40 px: 2x for high-density screens, a few KB instead of the 1024. */
+const EMAIL_LOGO_SIZE = 80;
 
 /** Renderer copies: D3 and U5 import these exact paths. */
 const RENDERER_COPIES = {
@@ -397,6 +400,10 @@ async function run() {
   for (const size of PNG_SIZES) {
     writeIfChanged(path.join(ICONS_DIR, `${size}x${size}.png`), icons[size]);
   }
+  writeIfChanged(
+    path.join(ICONS_DIR, 'email-logo.png'),
+    await png(iconSvg(EMAIL_LOGO_SIZE), EMAIL_LOGO_SIZE)
+  );
 
   // Installer bitmaps: their own artboards, flattened onto white (header) and sand (sidebar).
   const boards = logo.installerArtboards(logo.CONCEPT, palette);
@@ -443,4 +450,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { ICO_SIZES, PNG_SIZES, RENDERER_COPIES, checkXml, readSvg, run };
+module.exports = { ICO_SIZES, PNG_SIZES, EMAIL_LOGO_SIZE, RENDERER_COPIES, checkXml, readSvg, run };

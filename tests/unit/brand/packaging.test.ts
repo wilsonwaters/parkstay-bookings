@@ -49,7 +49,7 @@ describe('electron-builder.json', () => {
 
   it('ships only the icons the running app loads as extra resources', () => {
     expect(builder.extraResources).toEqual([
-      { from: 'resources/icons', to: 'icons', filter: ['icon.png', 'icon.ico'] },
+      { from: 'resources/icons', to: 'icons', filter: ['icon.png', 'icon.ico', 'email-logo.png'] },
     ]);
     for (const file of builder.extraResources[0].filter) {
       expect(fs.existsSync(path.join(ROOT, 'resources/icons', file))).toBe(true);

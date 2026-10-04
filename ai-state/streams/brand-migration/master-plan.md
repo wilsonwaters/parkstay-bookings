@@ -62,6 +62,7 @@ Execution order:
 | BQ4 | What is the value name of the v1 auto-launch `Run` entry? v1 never called `setAppUserModelId`, so Electron used its default. | B3 auto-launch criterion | Find it through `app.getLoginItemSettings({ path: <legacy exe> }).launchItems` and also remove the likely candidates. Record the real name from `reg query` in the PR. |
 | BQ5 | When the user uninstalls WA Stay with "delete data", should the legacy backup folder go too? | B2 | Use a separate second prompt that names the folder, default **No** (`/SD IDNO`). |
 | BQ6 | Should `WA_STAY_USER_DATA_DIR` work in packaged builds, for portable-on-USB users? | B3 | No. Test hooks only work when the app is unpackaged. Revisit after 2.0. |
+| BQ7 | **Known limitation (B2 review): the install folder after an upgrade from v1 depends on how the installer runs.** An unattended `/S` update keeps v1's folder, `%LOCALAPPDATA%\Programs\WA ParkStay Bookings\` (NSIS reads `InstallLocation` from the appId's key). An interactive upgrade (the installer run by hand, or `quitAndInstall` with its UI) installs into `…\Programs\WA ParkStay Bookings\WA Stay\`, because electron-builder's `instFilesPre` adds the app name to a folder that lacks it (`assistedInstaller.nsh`). Both work; it is cosmetic. | Nothing | Accept for 2.0 and leave the install-dir logic alone. Q2's upgrade notes explain it (Q2 addendum). Revisit only if users report confusion. |
 
 ## Changelog
 
@@ -71,3 +72,4 @@ Execution order:
   - NSIS art is PNG although NSIS needs BMP (`NsisTarget.js:396-406` passes the path straight to `MUI_HEADERIMAGE_BITMAP`).
   - The released v1.2.0 has schema **v5** (v6 landed after the release), so B3 tests both.
   - BQ2 above.
+- **2026-10-04:** BQ7 (install folder after an upgrade from v1) recorded as a known limitation from the B2 review.

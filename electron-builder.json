@@ -19,7 +19,7 @@
     {
       "from": "resources/icons",
       "to": "icons",
-      "filter": ["icon.png", "icon.ico"]
+      "filter": ["icon.png", "icon.ico", "email-logo.png"]
     }
   ],
   "mac": {

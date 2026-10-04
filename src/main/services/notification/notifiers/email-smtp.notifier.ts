@@ -36,7 +36,10 @@ export interface SmtpEmailNotifierOptions {
    * does not know it. Without it emails name no provider.
    */
   providerName?: (providerId: string) => string | undefined;
-  /** A PNG of the WA Stay icon (`getBrandIconPath`), shown beside the wordmark if it exists. */
+  /**
+   * The small WA Stay icon PNG (`getEmailLogoPath`, 80 px for the 40 px slot), attached inline
+   * and shown beside the wordmark if the file exists.
+   */
   logoPath?: string;
 }
 

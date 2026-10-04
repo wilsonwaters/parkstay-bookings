@@ -4,31 +4,109 @@
 ; (createDesktopShortcut, createStartMenuShortcut), so this script never creates any.
 ;
 ; Upgrading from v1.x, the app's previous name (same appId, so the install upgrades in place):
-; - customCheckAppRunning runs just before the old v1 uninstaller. It copies the v1 data into
+; - customCheckAppRunning runs just before the old v1 uninstaller. It closes a running v1 app,
+;   whose process keeps the v1 database open (WAL), then copies the v1 data into
 ;   "$APPDATA\WA Stay\legacy-snapshot\", because that uninstaller can ask to delete the data
 ;   even during an upgrade, with no silent default. The legacy folder is never moved or changed.
 ;   Known limitation: an elevated (per-machine) install skips CHECK_APP_RUNNING in its UAC inner
 ;   instance, so it takes no snapshot.
 ; - customInstall then removes the shortcuts v1 created itself.
 ;
-; The upgrade keeps the old install folder: NSIS reads InstallLocation from the appId's key.
+; The install folder on an upgrade from v1 (cosmetic; the app works from either):
+; - an unattended (/S) update keeps v1's folder, because NSIS reads InstallLocation from the
+;   appId's key: "...\Programs\WA ParkStay Bookings\" (legacy-name-ok)
+; - an interactive upgrade (the installer run by hand, or quitAndInstall with its UI) installs
+;   into a "WA Stay" subfolder of it, because electron-builder's instFilesPre adds the app name
+;   to a folder that lacks it: "...\Programs\WA ParkStay Bookings\WA Stay\" (legacy-name-ok)
 
 ; customCheckAppRunning replaces electron-builder's check, whose helpers are included only
 ; when this macro is not defined (allowOnlyOneInstallerInstance.nsh).
 !include "getProcessInfo.nsh"
 Var pid
 
-; Close a running app as electron-builder does, then take the legacy snapshot (installer only).
+; Close a running app as electron-builder does, then (installer only) close a running v1 app
+; and take the legacy snapshot.
 !macro customCheckAppRunning
   !insertmacro _CHECK_APP_RUNNING
   !ifndef BUILD_UNINSTALLER
+    !insertmacro waStayCloseLegacyApp
     !insertmacro waStaySnapshotLegacyData
   !endif
 !macroend
 
-; Copies parkstay.db (with -wal and -shm) and gmail-oauth.json from the v1 data folder into
-; "$APPDATA\WA Stay\legacy-snapshot\", unless the data was already migrated (migration.json)
-; or a snapshot exists. Copies only: the legacy folder is left as it is.
+; v1.x's executable, whose process holds the v1 database open until it exits
+!define WA_STAY_LEGACY_EXE "WA ParkStay Bookings.exe" ; legacy-name-ok
+
+; Closes a running v1.x app the way _CHECK_APP_RUNNING closes WA Stay, so the snapshot copies a
+; database nothing is writing to: in an update, give the app time to exit by itself; otherwise
+; ask first. Then taskkill, wait, and taskkill /f until it is gone.
+!macro waStayCloseLegacyApp
+  ${GetProcessInfo} 0 $pid $1 $2 $3 $4
+  ${if} ${isUpdated}
+    ; allow the app to exit without an explicit kill
+    Sleep 300
+  ${endIf}
+
+  !insertmacro FIND_PROCESS "${WA_STAY_LEGACY_EXE}" $R0
+  ${if} $R0 == 0
+    ${if} ${isUpdated}
+      ; allow the app to exit without an explicit kill
+      Sleep 1000
+      Goto waStayLegacyStop
+    ${endIf}
+    MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "WA ParkStay Bookings, the app WA Stay replaces, is running.$\nClick OK to close it.$\nIf it doesn't close, try closing it manually." /SD IDOK IDOK waStayLegacyStop ; legacy-name-ok
+    Quit
+
+    waStayLegacyStop:
+    DetailPrint `Closing running "${WA_STAY_LEGACY_EXE}"...`
+    !ifdef INSTALL_MODE_PER_ALL_USERS
+      nsExec::Exec `taskkill /im "${WA_STAY_LEGACY_EXE}" /fi "PID ne $pid"`
+    !else
+      nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /im "${WA_STAY_LEGACY_EXE}" /fi "PID ne $pid" /fi "USERNAME eq %USERNAME%"`
+    !endif
+    ; to ensure that files are not "in-use"
+    Sleep 300
+
+    StrCpy $R1 0
+    waStayLegacyLoop:
+      IntOp $R1 $R1 + 1
+
+      !insertmacro FIND_PROCESS "${WA_STAY_LEGACY_EXE}" $R0
+      ${if} $R0 == 0
+        ; wait to give it a chance to exit gracefully
+        Sleep 1000
+        !ifdef INSTALL_MODE_PER_ALL_USERS
+          nsExec::Exec `taskkill /f /im "${WA_STAY_LEGACY_EXE}" /fi "PID ne $pid"`
+        !else
+          nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /f /im "${WA_STAY_LEGACY_EXE}" /fi "PID ne $pid" /fi "USERNAME eq %USERNAME%"`
+        !endif
+        !insertmacro FIND_PROCESS "${WA_STAY_LEGACY_EXE}" $R0
+        ${if} $R0 == 0
+          DetailPrint `Waiting for "${WA_STAY_LEGACY_EXE}" to close.`
+          Sleep 2000
+        ${else}
+          Goto waStayLegacyClosed
+        ${endIf}
+      ${else}
+        Goto waStayLegacyClosed
+      ${endIf}
+
+      ; Likely running elevated: ask the user to close it
+      ${if} $R1 > 1
+        MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "WA ParkStay Bookings cannot be closed.$\nPlease close it manually and click Retry to continue." /SD IDCANCEL IDRETRY waStayLegacyLoop ; legacy-name-ok
+        Quit
+      ${else}
+        Goto waStayLegacyLoop
+      ${endIf}
+    waStayLegacyClosed:
+  ${endIf}
+!macroend
+
+; Copies parkstay.db with its -wal and -shm files (all three, so the copy holds every committed
+; change) and gmail-oauth.json from the v1 data folder into "$APPDATA\WA Stay\legacy-snapshot\",
+; unless the data was already migrated (migration.json) or a snapshot exists. It runs after
+; waStayCloseLegacyApp, so no v1 process is writing to them. Copies only: the legacy folder is
+; left as it is.
 !macro waStaySnapshotLegacyData
   ; Electron keeps app data per user
   ${if} $installMode == "all"
@@ -123,14 +201,5 @@ Var pid
   ${EndIf}
 !macroend
 
-!macro customHeader
-  !define MUI_TEXT_WELCOME_INFO_TITLE "Welcome to WA Stay Setup"
-  !define MUI_TEXT_WELCOME_INFO_TEXT "This wizard will guide you through the installation of WA Stay.$\r$\n$\r$\nWA Stay helps you find and book places to stay across Western Australia.$\r$\n$\r$\nClick Next to continue."
-!macroend
-
-!macro customFinishPage
-  !define MUI_FINISHPAGE_TITLE "Installation Complete"
-  !define MUI_FINISHPAGE_TEXT "WA Stay has been installed on your computer.$\r$\n$\r$\nClick Finish to close this wizard."
-  !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
-  !define MUI_FINISHPAGE_RUN_TEXT "Launch WA Stay now"
-!macroend
+; No customHeader or customFinishPage: the installer has no welcome page, and electron-builder's
+; own finish page (with runAfterFinish's "Run WA Stay") is the one shown.

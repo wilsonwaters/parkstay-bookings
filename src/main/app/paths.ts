@@ -25,9 +25,22 @@ export interface AppLocation {
  * - From source: `<project>/resources/icons/icon.png`.
  */
 export function getBrandIconPath(location: AppLocation = currentLocation()): string {
+  return iconPath('icon.png', location);
+}
+
+/**
+ * The small (80 px) WA Stay icon the SMTP emails show inline at 40 px, from the same place as
+ * `getBrandIconPath` (`extraResources` ships it too). The 1024 px icon would add about 50 KB to
+ * every email.
+ */
+export function getEmailLogoPath(location: AppLocation = currentLocation()): string {
+  return iconPath('email-logo.png', location);
+}
+
+function iconPath(file: string, location: AppLocation): string {
   return location.isPackaged
-    ? path.join(location.resourcesPath, 'icons', 'icon.png')
-    : path.join(location.appPath, 'resources', 'icons', 'icon.png');
+    ? path.join(location.resourcesPath, 'icons', file)
+    : path.join(location.appPath, 'resources', 'icons', file);
 }
 
 function currentLocation(): AppLocation {

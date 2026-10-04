@@ -79,6 +79,13 @@ describe('PNG icon set', () => {
     expect(meta.hasAlpha).toBe(true);
   });
 
+  it('email-logo.png is the small 80 x 80 icon for the emails, not the 1024 one', async () => {
+    const meta = await sharp(icon('email-logo.png')).metadata();
+    expect([meta.format, meta.width, meta.height]).toEqual(['png', 80, 80]);
+    expect(meta.hasAlpha).toBe(true);
+    expect(fs.statSync(icon('email-logo.png')).size).toBeLessThan(10 * 1024);
+  });
+
   it('readme-banner.png is 1280 x 640', async () => {
     const meta = await sharp(path.join(BRAND_DIR, 'readme-banner.png')).metadata();
     expect([meta.format, meta.width, meta.height]).toEqual(['png', 1280, 640]);

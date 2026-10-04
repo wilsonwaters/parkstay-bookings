@@ -23,13 +23,13 @@
 import crypto from 'crypto';
 import { machineIdSync } from 'node-machine-id';
 
-// legacy: never change (v1.x AuthService)
+// legacy: never change — existing data depends on it (v1.x AuthService)
 const AUTH_APP_SECRET = 'parkstay-bookings-v1-secret'; // legacy-name-ok: decrypts v1.x data
 const AUTH_SALT = 'parkstay-salt';
 // legacy: never change (v1.x notification-provider repository)
 const NOTIFIER_CONFIG_SECRET = 'parkstay-notification-providers-v1';
 const NOTIFIER_SALT = 'parkstay-provider-salt';
-// legacy: never change (v1.x oauth2-handler electron-store options)
+// legacy: never change — existing data depends on it (v1.x oauth2-handler electron-store options)
 const GMAIL_STORE_ENCRYPTION_KEY = 'parkstay-gmail-oauth-encryption-key';
 // legacy: never change (v1.x key derivation and ciphers)
 const GCM_PBKDF2_ITERATIONS = 100000;

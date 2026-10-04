@@ -152,3 +152,7 @@ L. This is larger than `streams.md`'s M; DocQ5 proposes a split.
 - Proposed repo description (from the master plan): "WA Stay: find and book places to stay across Western Australia. Explore campgrounds on a map, set availability watches and get alerted. ParkStay WA is the first provider, with more to come. Windows desktop app (Electron)."
 - Stakeholder actions to list in the PR: repo rename, description and topics, social preview (B1 `readme-banner.png`), making the `e2e` check required (DocQ2), and the Mapbox secret.
 - Disclaimer copy: not affiliated with DBCA or Tourism WA; DBCA terms apply (one account per person, one booking per night, genuine intent); payment is always completed by the user on the provider's site.
+
+## Orchestrator addendum (2026-10-04, from the B2 review)
+- [ ] The "Upgrading from WA ParkStay Bookings" notes (README and docs) say that taskbar shortcuts pinned to v1 point to the old exe name (`WA ParkStay Bookings.exe`) and must be unpinned and pinned again from the new WA Stay shortcut.
+- [ ] The same notes explain the install folder after an upgrade (brand-migration master plan BQ7): an automatic (silent) update keeps `%LOCALAPPDATA%\Programs\WA ParkStay Bookings\`, while running the installer by hand puts WA Stay in a `WA Stay` subfolder of it. Both work; nothing needs fixing.

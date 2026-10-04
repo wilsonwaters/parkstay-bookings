@@ -7,6 +7,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { APP_DESCRIPTION } from '@shared/constants';
 
 const ROOT = path.resolve(__dirname, '../../..');
 const builder = JSON.parse(fs.readFileSync(path.join(ROOT, 'electron-builder.json'), 'utf8'));
@@ -82,6 +83,8 @@ describe('package.json', () => {
     expect(pkg.name).toBe('wa-stay');
     expect(pkg.productName).toBe('WA Stay');
     expect(pkg.description).toBe('Find and book places to stay across Western Australia');
+    // The About dialog's tagline
+    expect(APP_DESCRIPTION).toBe(pkg.description);
   });
 
   it('credits the author, who is the installer Publisher', () => {
