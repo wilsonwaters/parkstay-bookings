@@ -1,123 +1,136 @@
-; Custom NSIS Installer Script for WA ParkStay Bookings
-; This file contains custom installer commands that extend the default NSIS installer
+; WA Stay: custom NSIS steps, included by electron-builder (`nsis.include`).
+;
+; electron-builder creates the "WA Stay" desktop and Start-menu shortcuts itself
+; (createDesktopShortcut, createStartMenuShortcut), so this script never creates any.
+;
+; Upgrading from v1.x, the app's previous name (same appId, so the install upgrades in place):
+; - customCheckAppRunning runs just before the old v1 uninstaller. It copies the v1 data into
+;   "$APPDATA\WA Stay\legacy-snapshot\", because that uninstaller can ask to delete the data
+;   even during an upgrade, with no silent default. The legacy folder is never moved or changed.
+;   Known limitation: an elevated (per-machine) install skips CHECK_APP_RUNNING in its UAC inner
+;   instance, so it takes no snapshot.
+; - customInstall then removes the shortcuts v1 created itself.
+;
+; The upgrade keeps the old install folder: NSIS reads InstallLocation from the appId's key.
 
-; Custom macro for installation
+; customCheckAppRunning replaces electron-builder's check, whose helpers are included only
+; when this macro is not defined (allowOnlyOneInstallerInstance.nsh).
+!include "getProcessInfo.nsh"
+Var pid
+
+; Close a running app as electron-builder does, then take the legacy snapshot (installer only).
+!macro customCheckAppRunning
+  !insertmacro _CHECK_APP_RUNNING
+  !ifndef BUILD_UNINSTALLER
+    !insertmacro waStaySnapshotLegacyData
+  !endif
+!macroend
+
+; Copies parkstay.db (with -wal and -shm) and gmail-oauth.json from the v1 data folder into
+; "$APPDATA\WA Stay\legacy-snapshot\", unless the data was already migrated (migration.json)
+; or a snapshot exists. Copies only: the legacy folder is left as it is.
+!macro waStaySnapshotLegacyData
+  ; Electron keeps app data per user
+  ${if} $installMode == "all"
+    SetShellVarContext current
+  ${endIf}
+
+  ${if} ${FileExists} "$APPDATA\parkstay-bookings\parkstay.db" ; legacy-name-ok
+    ${ifNot} ${FileExists} "$APPDATA\WA Stay\migration.json"
+      ${ifNot} ${FileExists} "$APPDATA\WA Stay\legacy-snapshot\parkstay.db"
+        CreateDirectory "$APPDATA\WA Stay\legacy-snapshot"
+        CopyFiles /SILENT "$APPDATA\parkstay-bookings\parkstay.db" "$APPDATA\WA Stay\legacy-snapshot" ; legacy-name-ok
+        ${if} ${FileExists} "$APPDATA\parkstay-bookings\parkstay.db-wal" ; legacy-name-ok
+          CopyFiles /SILENT "$APPDATA\parkstay-bookings\parkstay.db-wal" "$APPDATA\WA Stay\legacy-snapshot" ; legacy-name-ok
+        ${endIf}
+        ${if} ${FileExists} "$APPDATA\parkstay-bookings\parkstay.db-shm" ; legacy-name-ok
+          CopyFiles /SILENT "$APPDATA\parkstay-bookings\parkstay.db-shm" "$APPDATA\WA Stay\legacy-snapshot" ; legacy-name-ok
+        ${endIf}
+        ${if} ${FileExists} "$APPDATA\parkstay-bookings\gmail-oauth.json" ; legacy-name-ok
+          CopyFiles /SILENT "$APPDATA\parkstay-bookings\gmail-oauth.json" "$APPDATA\WA Stay\legacy-snapshot" ; legacy-name-ok
+        ${endIf}
+        DetailPrint "Copied the previous version's data to $APPDATA\WA Stay\legacy-snapshot"
+      ${endIf}
+    ${endIf}
+  ${endIf}
+
+  ${if} $installMode == "all"
+    SetShellVarContext all
+  ${endIf}
+  ClearErrors
+!macroend
+
+; Removes the shortcuts v1.x created itself, for the current user and for all users.
 !macro customInstall
-  ; Log installation
-  DetailPrint "Installing WA ParkStay Bookings..."
-
-  ; Create additional registry entries if needed
-  ; WriteRegStr HKCU "Software\ParkStay\Bookings" "InstallPath" "$INSTDIR"
-
-  ; Create Start Menu folder
-  CreateDirectory "$SMPROGRAMS\WA ParkStay Bookings"
-
-  ; Create desktop shortcut (always)
-  CreateShortCut "$DESKTOP\WA ParkStay Bookings.lnk" "$INSTDIR\WA ParkStay Bookings.exe" \
-    "" "$INSTDIR\WA ParkStay Bookings.exe" 0 SW_SHOWNORMAL \
-    "" "Launch WA ParkStay Bookings"
-
-  ; Create Start Menu shortcuts
-  CreateShortCut "$SMPROGRAMS\WA ParkStay Bookings\WA ParkStay Bookings.lnk" \
-    "$INSTDIR\WA ParkStay Bookings.exe" \
-    "" "$INSTDIR\WA ParkStay Bookings.exe" 0 SW_SHOWNORMAL \
-    "" "Launch WA ParkStay Bookings"
-
-  CreateShortCut "$SMPROGRAMS\WA ParkStay Bookings\Uninstall.lnk" \
-    "$INSTDIR\Uninstall WA ParkStay Bookings.exe" \
-    "" "$INSTDIR\Uninstall WA ParkStay Bookings.exe" 0 SW_SHOWNORMAL \
-    "" "Uninstall WA ParkStay Bookings"
-
-  ; Optional: Create Quick Launch shortcut
-  ; CreateShortCut "$QUICKLAUNCH\WA ParkStay Bookings.lnk" "$INSTDIR\WA ParkStay Bookings.exe"
-
-  ; Set file associations (if needed)
-  ; WriteRegStr HKCR ".parkstay" "" "ParkStayBookingFile"
-  ; WriteRegStr HKCR "ParkStayBookingFile" "" "ParkStay Booking File"
-  ; WriteRegStr HKCR "ParkStayBookingFile\DefaultIcon" "" "$INSTDIR\WA ParkStay Bookings.exe,0"
-  ; WriteRegStr HKCR "ParkStayBookingFile\shell\open\command" "" '"$INSTDIR\WA ParkStay Bookings.exe" "%1"'
-
-  ; Add to Windows Firewall exceptions (optional)
-  ; This allows the app to access the network without user prompts
-  ; Requires administrator privileges
-  ; nsExec::ExecToLog 'netsh advfirewall firewall add rule name="WA ParkStay Bookings" dir=in action=allow program="$INSTDIR\WA ParkStay Bookings.exe" enable=yes'
-
-  DetailPrint "Installation complete!"
+  DetailPrint "Installing WA Stay..."
+  SetShellVarContext current
+  !insertmacro waStayRemoveLegacyShortcuts
+  SetShellVarContext all
+  !insertmacro waStayRemoveLegacyShortcuts
+  ${if} $installMode == "all"
+    SetShellVarContext all
+  ${else}
+    SetShellVarContext current
+  ${endIf}
+  ClearErrors
 !macroend
 
-; Custom macro for uninstallation
+!macro waStayRemoveLegacyShortcuts
+  Delete "$DESKTOP\WA ParkStay Bookings.lnk" ; legacy-name-ok
+  Delete "$SMPROGRAMS\WA ParkStay Bookings.lnk" ; legacy-name-ok
+  RMDir /r "$SMPROGRAMS\WA ParkStay Bookings" ; legacy-name-ok
+!macroend
+
+; Offers to delete the app's data, but never during an update (the installer runs the old
+; uninstaller with --updated) and never in a silent uninstall (/SD IDNO).
 !macro customUnInstall
-  ; Log uninstallation
-  DetailPrint "Uninstalling WA ParkStay Bookings..."
+  ${ifNot} ${isUpdated}
+    ; Electron keeps app data per user
+    ${if} $installMode == "all"
+      SetShellVarContext current
+    ${endIf}
 
-  ; Remove registry entries
-  ; DeleteRegKey HKCU "Software\ParkStay\Bookings"
+    MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "Do you also want to delete your WA Stay data? This includes your watches, snipes, bookings and settings.$\n$\nClick Yes to delete it, or No to keep it." /SD IDNO IDYES waStayDeleteData
+    DetailPrint "WA Stay data kept"
+    Goto waStayDataDone
 
-  ; Remove shortcuts
-  Delete "$DESKTOP\WA ParkStay Bookings.lnk"
-  Delete "$QUICKLAUNCH\WA ParkStay Bookings.lnk"
+    waStayDeleteData:
+      RMDir /r "$APPDATA\WA Stay"
+      RMDir /r "$LOCALAPPDATA\wa-stay-updater"
+      DetailPrint "WA Stay data deleted"
 
-  ; Remove Start Menu folder
-  RMDir /r "$SMPROGRAMS\WA ParkStay Bookings"
+      ; The previous version's data is a separate folder: ask again, naming it (default No)
+      ${if} ${FileExists} "$APPDATA\parkstay-bookings\*.*" ; legacy-name-ok
+        MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "The data of WA ParkStay Bookings, the app WA Stay replaced, is still in:$\n$\n$APPDATA\parkstay-bookings$\n$\nDo you want to delete that folder too?" /SD IDNO IDNO waStayDataDone ; legacy-name-ok
+        RMDir /r "$APPDATA\parkstay-bookings" ; legacy-name-ok
+        DetailPrint "Previous version's data deleted"
+      ${endIf}
 
-  ; Remove file associations
-  ; DeleteRegKey HKCR ".parkstay"
-  ; DeleteRegKey HKCR "ParkStayBookingFile"
-
-  ; Remove Windows Firewall rule
-  ; nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="WA ParkStay Bookings"'
-
-  ; Ask user if they want to delete application data
-  MessageBox MB_YESNO|MB_ICONQUESTION \
-    "Do you want to delete all application data? This includes your bookings, watches, and settings.$\n$\nClick Yes to delete all data, or No to keep your data." \
-    IDYES DeleteData IDNO SkipDeleteData
-
-  DeleteData:
-    ; Delete application data
-    RMDir /r "$APPDATA\parkstay-bookings"
-    RMDir /r "$LOCALAPPDATA\parkstay-bookings"
-    DetailPrint "Application data deleted"
-    Goto Done
-
-  SkipDeleteData:
-    DetailPrint "Application data preserved"
-
-  Done:
-    DetailPrint "Uninstallation complete!"
+    waStayDataDone:
+    ${if} $installMode == "all"
+      SetShellVarContext all
+    ${endIf}
+  ${endIf}
 !macroend
 
-; Custom initialization
+; Require Windows 10 or later
 !macro customInit
-  ; Check Windows version
-  ; Require Windows 10 or later
   ${If} ${AtLeastWin10}
     ; OK to proceed
   ${Else}
-    MessageBox MB_OK|MB_ICONSTOP "WA ParkStay Bookings requires Windows 10 or later."
+    MessageBox MB_OK|MB_ICONSTOP "WA Stay requires Windows 10 or later." /SD IDOK
     Quit
   ${EndIf}
-
-  ; Check for required dependencies
-  ; (Add checks for .NET Framework, Visual C++ Redistributables, etc. if needed)
 !macroend
 
-; Custom page for installer
-; !macro customInstallPage
-;   ; Add custom installer page here if needed
-; !macroend
-
-; Custom header for installer
 !macro customHeader
-  ; Custom header text
-  !define MUI_TEXT_WELCOME_INFO_TITLE "Welcome to WA ParkStay Bookings Setup"
-  !define MUI_TEXT_WELCOME_INFO_TEXT "This wizard will guide you through the installation of WA ParkStay Bookings.$\r$\n$\r$\nThis application helps you automate campground bookings on the Western Australia Parks and Wildlife Service ParkStay system.$\r$\n$\r$\nClick Next to continue."
+  !define MUI_TEXT_WELCOME_INFO_TITLE "Welcome to WA Stay Setup"
+  !define MUI_TEXT_WELCOME_INFO_TEXT "This wizard will guide you through the installation of WA Stay.$\r$\n$\r$\nWA Stay helps you find and book places to stay across Western Australia.$\r$\n$\r$\nClick Next to continue."
 !macroend
 
-; Custom finish page
 !macro customFinishPage
-  ; Custom finish page text
   !define MUI_FINISHPAGE_TITLE "Installation Complete"
-  !define MUI_FINISHPAGE_TEXT "WA ParkStay Bookings has been successfully installed on your computer.$\r$\n$\r$\nClick Finish to close this wizard."
-  !define MUI_FINISHPAGE_RUN "$INSTDIR\WA ParkStay Bookings.exe"
-  !define MUI_FINISHPAGE_RUN_TEXT "Launch WA ParkStay Bookings now"
+  !define MUI_FINISHPAGE_TEXT "WA Stay has been installed on your computer.$\r$\n$\r$\nClick Finish to close this wizard."
+  !define MUI_FINISHPAGE_RUN "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+  !define MUI_FINISHPAGE_RUN_TEXT "Launch WA Stay now"
 !macroend
