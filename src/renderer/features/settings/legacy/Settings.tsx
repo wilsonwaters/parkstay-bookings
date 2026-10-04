@@ -7,6 +7,18 @@ import React, { useState, useEffect } from 'react';
 import { EmailSettingsCard } from '../../../components/settings';
 import AboutDialog from '../../../components/AboutDialog';
 import { APP_NAME } from '@shared/constants';
+import type { ProviderAccount } from '@shared/types/provider.types';
+
+const PARKSTAY = 'parkstay';
+
+/** "Signed in as …", "Session expired" or "Not connected". */
+function accountStatusText(account: ProviderAccount | null): string {
+  if (account?.status === 'signed-in') {
+    return `Signed in as ${account.email ?? account.displayName ?? 'your ParkStay account'}`;
+  }
+  if (account?.status === 'signed-out' && account.lastSignedInAt) return 'Session expired';
+  return 'Not connected';
+}
 
 type TabType = 'account' | 'gmail' | 'notifications' | 'app' | 'advanced';
 
@@ -17,10 +29,9 @@ const Settings: React.FC = () => {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
-  // Account settings
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  // ParkStay account (U4 replaces this with Settings → Accounts)
+  const [parkstayAccount, setParkstayAccount] = useState<ProviderAccount | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   // Gmail settings
   const [gmailEnabled, setGmailEnabled] = useState(false);
@@ -45,15 +56,23 @@ const Settings: React.FC = () => {
     loadSettings();
   }, []);
 
+  useEffect(
+    () =>
+      window.api.events.on('account:updated', (account) => {
+        if (account.providerId === PARKSTAY) setParkstayAccount(account);
+      }),
+    []
+  );
+
   const loadSettings = async () => {
     try {
       setIsLoading(true);
       setError('');
 
-      // Load various settings
-      const credResponse = await window.api.auth.getCredentials();
-      if (credResponse.success && credResponse.data) {
-        // Credentials exist
+      // The ParkStay account, from the stored status (no network)
+      const accountsResponse = await window.api.accounts.list();
+      if (accountsResponse.success && accountsResponse.data) {
+        setParkstayAccount(accountsResponse.data.find((a) => a.providerId === PARKSTAY) ?? null);
       }
 
       // Load auto-launch setting
@@ -68,45 +87,21 @@ const Settings: React.FC = () => {
     }
   };
 
-  const handleSaveCredentials = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleConnectParkStay = async () => {
     try {
-      setIsSaving(true);
+      setIsConnecting(true);
       setError('');
-      setSuccessMessage('');
-
-      const response = await window.api.auth.storeCredentials({ email, password });
-
-      if (response.success) {
-        setSuccessMessage('Credentials saved successfully');
-        setPassword('');
+      // Opens ParkStay's own sign-in page in a window; answers once it is closed or done
+      const response = await window.api.accounts.signIn(PARKSTAY);
+      if (response.success && response.data) {
+        setParkstayAccount(response.data);
       } else {
-        setError(response.error || 'Failed to save credentials');
+        setError(response.error || 'Could not open the ParkStay sign-in window');
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred');
     } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleTestConnection = async () => {
-    try {
-      setIsSaving(true);
-      setError('');
-      setSuccessMessage('');
-
-      const response = await window.api.auth.validateSession();
-
-      if (response.success) {
-        setSuccessMessage('Connection successful!');
-      } else {
-        setError(response.error || 'Connection failed');
-      }
-    } catch (err: any) {
-      setError(err.message || 'An error occurred');
-    } finally {
-      setIsSaving(false);
+      setIsConnecting(false);
     }
   };
 
@@ -196,79 +191,29 @@ const Settings: React.FC = () => {
           {activeTab === 'account' && (
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">
-                  ParkStay Account Credentials
-                </h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">ParkStay account</h3>
                 <p className="text-sm text-gray-600 mb-4">
-                  Enter your ParkStay login credentials for auto-booking and Skip The Queue
-                  features.
+                  Optional. Connect ParkStay before the release so checkout is quicker: you sign in
+                  on ParkStay&rsquo;s own page here, and Site Sniper holds work either way.
                 </p>
               </div>
 
-              <form onSubmit={handleSaveCredentials} className="space-y-4">
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
-                    Email Address
-                  </label>
-                  <input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="input"
-                    placeholder="your.email@example.com"
-                    required
-                  />
-                </div>
+              <p role="status" className="text-sm font-medium text-gray-900">
+                {accountStatusText(parkstayAccount)}
+              </p>
 
-                <div>
-                  <label
-                    htmlFor="password"
-                    className="block text-sm font-medium text-gray-700 mb-1"
-                  >
-                    Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      id="password"
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="input pr-10"
-                      placeholder="Enter your password"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-2.5 text-gray-500 hover:text-gray-700"
-                    >
-                      {showPassword ? '👁️' : '👁️‍🗨️'}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="rounded-md bg-blue-50 p-4 border border-blue-200">
-                  <p className="text-sm text-blue-800">
-                    Your credentials are encrypted and stored securely on your device. They are
-                    never sent to any third-party servers.
-                  </p>
-                </div>
-
+              {parkstayAccount?.status !== 'signed-in' && (
                 <div className="flex gap-3">
-                  <button type="submit" disabled={isSaving} className="btn-primary">
-                    {isSaving ? 'Saving...' : 'Save Credentials'}
-                  </button>
                   <button
                     type="button"
-                    onClick={handleTestConnection}
-                    disabled={isSaving}
-                    className="btn-secondary"
+                    onClick={handleConnectParkStay}
+                    disabled={isConnecting}
+                    className="btn-primary"
                   >
-                    Test Connection
+                    {isConnecting ? 'Waiting for sign-in…' : 'Connect ParkStay'}
                   </button>
                 </div>
-              </form>
+              )}
             </div>
           )}
 

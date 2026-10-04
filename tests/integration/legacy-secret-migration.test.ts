@@ -1,6 +1,7 @@
 /**
- * `migrateLegacySecrets` on the real v5 (v1.2.0) and v6 fixtures, loaded and upgraded to v7,
- * plus a v1.x `gmail-oauth.json` written by conf@10.2.0:
+ * `migrateLegacySecrets` on the real v5 (v1.2.0) and v6 fixtures, loaded and upgraded to the
+ * latest schema, plus a v1.x `gmail-oauth.json` written by conf@10.2.0. The v1.x ParkStay
+ * password is not among the secrets: migration v9 drops it before this runs (§12.32).
  *
  * - every legacy ciphertext becomes a vault envelope that decrypts to the original plaintext,
  *   with no legacy layout left; a second run reports `migrated: 0`;
@@ -23,8 +24,7 @@ import { createContainer, type AppContainer } from '@main/app/container';
 import { registerIpcHandlers } from '@main/ipc';
 import { migrateLegacySecrets } from '@main/security/legacy-migration';
 import { parseGmailSecretFile } from '@main/security/gmail-secret-file';
-import { AuthService } from '@main/services/auth/AuthService';
-import { NotifierRepository, UserRepository } from '@main/database/repositories';
+import { NotifierRepository } from '@main/database/repositories';
 import { OAuth2Handler } from '@main/services/gmail/oauth2-handler';
 import { logger } from '@main/utils/logger';
 import { NotifierChannel, NotifierStatus, SMTPPreset } from '@shared/types';
@@ -98,7 +98,7 @@ const LEGACY_PLAINTEXTS = [
   LEGACY_GMAIL_TOKENS.refresh_token,
 ];
 
-/** A fixture loaded and upgraded to v7 (the database migrations run before this one). */
+/** A fixture loaded and upgraded (the database migrations run before this one). */
 function loadUpgraded(name: FixtureName): Database.Database {
   const db = loadFixture(name);
   runMigrations(db);
@@ -156,23 +156,12 @@ describe.each(FIXTURES)('migrateLegacySecrets on the %s fixture', (fixture) => {
   });
 
   it('re-encrypts every legacy secret: no legacy layout left, and each decrypts to its original plaintext', () => {
-    // Not vacuous: the fixture holds the legacy layouts
-    expect(rows(db, 'users')[0]).toMatchObject({
-      encrypted_password: expect.stringMatching(HEX),
-      encryption_iv: expect.stringMatching(HEX),
-      encryption_auth_tag: expect.stringMatching(HEX),
-    });
+    // Not vacuous: the fixture holds the legacy layout; v9 already dropped the ParkStay password
     expect(rows(db, 'notifiers')[0].config).toMatch(LEGACY_NOTIFIER_LAYOUT);
+    expect(rows(db, 'users')[0]).not.toHaveProperty('encrypted_password');
 
-    expect(migrate()).toEqual({ migrated: 3, current: 0, failed: 0 });
+    expect(migrate()).toEqual({ migrated: 2, current: 0, failed: 0 });
 
-    const [user] = rows(db, 'users');
-    expect(user).toMatchObject({
-      encrypted_password: expect.stringMatching(/^vault:v1:os:/),
-      encryption_iv: '',
-      encryption_auth_tag: '',
-      encryption_key: '',
-    });
     for (const row of [...rows(db, 'users'), ...rows(db, 'notifiers')]) {
       for (const value of Object.values(row)) {
         if (typeof value !== 'string') continue;
@@ -180,8 +169,6 @@ describe.each(FIXTURES)('migrateLegacySecrets on the %s fixture', (fixture) => {
         if (value.length >= 32) expect(value).not.toMatch(HEX);
       }
     }
-    expect(t.vault.decrypt(user.encrypted_password as string)).toBe(FIXTURE_USER_PASSWORD);
-
     const [notifier] = rows(db, 'notifiers');
     expect(notifier.config).toMatch(/^vault:v1:os:/);
     expect(JSON.parse(t.vault.decrypt(notifier.config as string))).toEqual(FIXTURE_NOTIFIER_CONFIG);
@@ -210,7 +197,7 @@ describe.each(FIXTURES)('migrateLegacySecrets on the %s fixture', (fixture) => {
     const notifiers = rows(db, 'notifiers');
     const gmail = fs.readFileSync(gmailStorePath);
 
-    expect(migrate()).toEqual({ migrated: 0, current: 3, failed: 0 });
+    expect(migrate()).toEqual({ migrated: 0, current: 2, failed: 0 });
     expect(rows(db, 'users')).toEqual(users);
     expect(rows(db, 'notifiers')).toEqual(notifiers);
     expect(fs.readFileSync(gmailStorePath).equals(gmail)).toBe(true);
@@ -219,9 +206,6 @@ describe.each(FIXTURES)('migrateLegacySecrets on the %s fixture', (fixture) => {
   it('the consumers read the migrated secrets', async () => {
     migrate();
 
-    await expect(
-      new AuthService(new UserRepository(db), t.vault).getCredentials()
-    ).resolves.toEqual({ email: 'fixture.user@example.com', password: FIXTURE_USER_PASSWORD });
     expect(
       new NotifierRepository(db, t.vault).findByChannel(NotifierChannel.EMAIL_SMTP)
     ).toMatchObject({ secretState: 'ok', config: FIXTURE_NOTIFIER_CONFIG });
@@ -243,17 +227,16 @@ describe.each(FIXTURES)('migrateLegacySecrets on the %s fixture', (fixture) => {
 
     const { result, logs } = await captureLogs(() => migrate('another-machine'));
 
-    expect(result).toEqual({ migrated: 1, current: 0, failed: 2 }); // the Gmail key is not machine-bound
+    expect(result).toEqual({ migrated: 1, current: 0, failed: 1 }); // the Gmail key is not machine-bound
     expect(rows(db, 'users')).toEqual(users);
     expect(rows(db, 'notifiers')).toEqual(notifiers);
-    expect(logs).toMatch(/users row 1 could not be migrated and was left unchanged/);
     expect(logs).toMatch(/notifier email_smtp could not be migrated and was left unchanged/);
-    for (const value of [...LEGACY_PLAINTEXTS, users[0].encrypted_password as string]) {
+    for (const value of [...LEGACY_PLAINTEXTS, notifiers[0].config as string]) {
       expect(logs).not.toContain(value);
     }
 
     // The next start tries again, and with the right id it finishes the job
-    expect(migrate()).toEqual({ migrated: 2, current: 1, failed: 0 });
+    expect(migrate()).toEqual({ migrated: 1, current: 1, failed: 0 });
   });
 
   it.each<[string, (real: (text: string) => Buffer, text: string) => Buffer]>([
@@ -272,21 +255,21 @@ describe.each(FIXTURES)('migrateLegacySecrets on the %s fixture', (fixture) => {
 
       const { result, logs } = await captureLogs(() => migrate());
 
-      expect(result).toEqual({ migrated: 0, current: 0, failed: 3 });
+      expect(result).toEqual({ migrated: 0, current: 0, failed: 2 });
       expect(rows(db, 'users')).toEqual(users);
       expect(rows(db, 'notifiers')).toEqual(notifiers);
       expect(fs.readFileSync(gmailStorePath).equals(gmail)).toBe(true);
       expect(fs.readdirSync(t.userDataDir).filter((f) => f.endsWith('.tmp'))).toEqual([]);
       expect(logs).toMatch(
-        /users row 1 could not be migrated and was left unchanged \(The new envelope did not decrypt to the original secret\)/
+        /notifier email_smtp could not be migrated and was left unchanged \(The new envelope did not decrypt to the original secret\)/
       );
       for (const value of LEGACY_PLAINTEXTS) expect(logs).not.toContain(value);
 
       // With a working encrypt the next start finishes the job
       encryptString.mockRestore();
-      expect(migrate()).toEqual({ migrated: 3, current: 0, failed: 0 });
-      expect(t.vault.decrypt(rows(db, 'users')[0].encrypted_password as string)).toBe(
-        FIXTURE_USER_PASSWORD
+      expect(migrate()).toEqual({ migrated: 2, current: 0, failed: 0 });
+      expect(JSON.parse(t.vault.decrypt(rows(db, 'notifiers')[0].config as string))).toEqual(
+        FIXTURE_NOTIFIER_CONFIG
       );
     }
   );
@@ -295,29 +278,27 @@ describe.each(FIXTURES)('migrateLegacySecrets on the %s fixture', (fixture) => {
     const machineId = jest.fn(() => FIXTURE_MACHINE_ID);
     const run = () => migrateLegacySecrets({ db, vault: t.vault, machineId, gmailStorePath });
 
-    expect(run()).toEqual({ migrated: 3, current: 0, failed: 0 });
-    expect(machineId).toHaveBeenCalledTimes(1); // the users row and the notifier share it
+    expect(run()).toEqual({ migrated: 2, current: 0, failed: 0 });
+    expect(machineId).toHaveBeenCalledTimes(1); // the notifier needs it; the Gmail key does not
 
     machineId.mockClear();
-    expect(run()).toEqual({ migrated: 0, current: 3, failed: 0 });
+    expect(run()).toEqual({ migrated: 0, current: 2, failed: 0 });
     expect(machineId).not.toHaveBeenCalled(); // nothing legacy left
   });
 
   it('a crash part-way leaves each item old or new; the next run finishes', () => {
-    const realEncrypt = t.vault.encrypt.bind(t.vault);
     const encrypt = jest.spyOn(t.vault, 'encrypt');
-    encrypt.mockImplementationOnce(realEncrypt); // users row: fine
     encrypt.mockImplementationOnce(() => {
       throw new Error('simulated crash');
-    }); // notifier: fails before its UPDATE
+    }); // notifier: fails before its UPDATE; the Gmail file goes on
     const notifierBefore = rows(db, 'notifiers');
 
-    expect(migrate()).toEqual({ migrated: 2, current: 0, failed: 1 });
-    expect(rows(db, 'users')[0].encrypted_password).toMatch(/^vault:v1:os:/);
+    expect(migrate()).toEqual({ migrated: 1, current: 0, failed: 1 });
     expect(rows(db, 'notifiers')).toEqual(notifierBefore);
+    expect(parseGmailSecretFile(fs.readFileSync(gmailStorePath))).toMatchObject({ format: 2 });
 
     encrypt.mockRestore();
-    expect(migrate()).toEqual({ migrated: 1, current: 2, failed: 0 });
+    expect(migrate()).toEqual({ migrated: 1, current: 1, failed: 0 });
     expect(rows(db, 'notifiers')[0].config).toMatch(/^vault:v1:os:/);
   });
 });
@@ -346,62 +327,30 @@ describe('migrateLegacySecrets edge cases', () => {
     removeUserData(t.userDataDir);
   });
 
-  it('an empty legacy password and an empty notifier config migrate as missing, not unreadable', () => {
-    // v1.x encrypted '' to an empty GCM ciphertext with an IV and tag
-    db.prepare(
-      `UPDATE users SET encrypted_password = '', encryption_iv = 'aa', encryption_auth_tag = 'bb'`
-    ).run();
-    db.prepare(`UPDATE notifiers SET config = ''`).run();
-
-    expect(migrate()).toEqual({ migrated: 1, current: 1, failed: 0 });
-    expect(rows(db, 'users')[0]).toMatchObject({
-      encrypted_password: '',
-      encryption_iv: '',
-      encryption_auth_tag: '',
-      encryption_key: '',
-    });
-    const auth = new AuthService(new UserRepository(db), t.vault);
-    expect(auth.getCredentialStatus()).toEqual({
-      email: 'fixture.user@example.com',
-      hasPassword: false,
-      secretState: 'missing',
-    });
-    expect(
-      new NotifierRepository(db, t.vault).findByChannel(NotifierChannel.EMAIL_SMTP)
-    ).toMatchObject({ secretState: 'missing', config: {} });
-  });
-
-  it('a profile with NULL credentials (v8: never signed in, or after Logout) is current, not failed', () => {
-    db.exec(`UPDATE users SET email = NULL, encrypted_password = NULL, encryption_key = NULL,
-               encryption_iv = NULL, encryption_auth_tag = NULL`);
+  it('an empty notifier config migrates as missing, not unreadable, without reading the machine id', () => {
     db.prepare(`UPDATE notifiers SET config = ''`).run();
     const machineId = jest.fn(() => FIXTURE_MACHINE_ID);
 
     expect(migrateLegacySecrets({ db, vault: t.vault, machineId, gmailStorePath })).toEqual({
       migrated: 0,
-      current: 2,
+      current: 1,
       failed: 0,
     });
     expect(machineId).not.toHaveBeenCalled();
-    expect(rows(db, 'users')[0]).toMatchObject({
-      email: null,
-      encrypted_password: null,
-      encryption_key: null,
-      encryption_iv: null,
-      encryption_auth_tag: null,
-    });
-    expect(new AuthService(new UserRepository(db), t.vault).getCredentialStatus()).toBeNull();
+    expect(
+      new NotifierRepository(db, t.vault).findByChannel(NotifierChannel.EMAIL_SMTP)
+    ).toMatchObject({ secretState: 'missing', config: {} });
   });
 
   it('gmail-oauth.json: a missing file is not configured, and a format-2 file is left as it is', () => {
-    expect(migrate()).toEqual({ migrated: 2, current: 0, failed: 0 });
+    expect(migrate()).toEqual({ migrated: 1, current: 0, failed: 0 });
     expect(fs.existsSync(gmailStorePath)).toBe(false);
 
     const oauth = new OAuth2Handler({ vault: t.vault, filePath: gmailStorePath });
     oauth.setCredentials({ clientId: 'id', clientSecret: 'format-2-secret' });
     const before = fs.readFileSync(gmailStorePath);
 
-    expect(migrate()).toEqual({ migrated: 0, current: 3, failed: 0 });
+    expect(migrate()).toEqual({ migrated: 0, current: 2, failed: 0 });
     expect(fs.readFileSync(gmailStorePath).equals(before)).toBe(true);
   });
 
@@ -410,7 +359,7 @@ describe('migrateLegacySecrets edge cases', () => {
     fs.mkdirSync(t.userDataDir, { recursive: true });
     fs.writeFileSync(gmailStorePath, damaged);
 
-    expect(migrate()).toEqual({ migrated: 2, current: 0, failed: 1 });
+    expect(migrate()).toEqual({ migrated: 1, current: 0, failed: 1 });
     expect(fs.readFileSync(gmailStorePath).equals(damaged)).toBe(true);
 
     const oauth = new OAuth2Handler({ vault: t.vault, filePath: gmailStorePath });
@@ -498,10 +447,6 @@ describe('the app on a fixture database (container + IPC)', () => {
           enabled: true,
         },
       });
-      await expect(call('auth:get-credentials')).resolves.toEqual({
-        success: true,
-        data: { email: 'fixture.user@example.com', hasPassword: false, secretState: 'unreadable' },
-      });
 
       // Two notifications: neither is sent through the unreadable notifier
       for (const title of ['Availability found', 'Another one']) {
@@ -531,11 +476,7 @@ describe('the app on a fixture database (container + IPC)', () => {
     expect(
       logs.match(/Skipping notifier email_smtp: its saved settings could not be decrypted/g)
     ).toHaveLength(1);
-    for (const value of [
-      ...LEGACY_PLAINTEXTS,
-      usersBefore[0].encrypted_password as string,
-      notifiersBefore[0].config as string,
-    ]) {
+    for (const value of [...LEGACY_PLAINTEXTS, notifiersBefore[0].config as string]) {
       expect(logs).not.toContain(value);
     }
 
@@ -563,12 +504,10 @@ describe('the app on a fixture database (container + IPC)', () => {
     start(); // migrates the fixture's and the Gmail store's legacy secrets
 
     const saved = {
-      parkstay: 'Scan-ParkStay-Passw0rd!',
       smtp: 'scan-smtp-app-password',
       clientSecret: 'GOCSPX-scan-client-secret',
     };
     const responses = [
-      await call('auth:store-credentials', { email: 'scan@example.com', password: saved.parkstay }),
       await call('notifiers:configure', {
         channel: NotifierChannel.EMAIL_SMTP,
         displayName: 'Email (SMTP)',
@@ -609,9 +548,8 @@ describe('the app on a fixture database (container + IPC)', () => {
     expect(scan()).toEqual([]);
 
     // Still readable by the app
-    await expect(container!.authService.getCredentials()).resolves.toEqual({
-      email: 'scan@example.com',
-      password: saved.parkstay,
-    });
+    await expect(
+      call('notifiers:get', { channel: NotifierChannel.EMAIL_SMTP })
+    ).resolves.toMatchObject({ data: { secretState: 'ok', hasPassword: true } });
   });
 });

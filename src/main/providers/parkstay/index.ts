@@ -9,9 +9,8 @@
  * - `queue/`: the DBCA virtual queue as the access gate;
  * - `release-policy.ts`: daily rollover, scheduled and cancellation releases;
  * - `holds.ts`: 30-minute `create_booking` holds and the payment page;
+ * - `auth.ts`: sign-in on ParkStay's own pages, checked with `/api/profile`;
  * - `links.ts`, `client.ts`, `headers.ts`, `constants.ts`, `types.ts`.
- *
- * Sign-in (`auth.ts`) comes with V6; until then `account` is `none`.
  */
 
 import type { ProviderManifest } from '@shared/types/provider.types';
@@ -19,6 +18,7 @@ import { SnipeReleaseMode } from '@shared/types/common.types';
 import { addDays } from '@shared/utils/calendar-date';
 import type { ProviderContext } from '../sdk/context';
 import { defineProvider, type ProviderModules } from '../sdk/provider';
+import { createParkStayAuth } from './auth';
 import { CampsiteViews, createAvailability } from './availability';
 import { CampgroundFacts, createCatalog } from './catalog';
 import { ParkStayClient, PARKSTAY_ENDPOINTS, type ParkStayEndpoints } from './client';
@@ -64,8 +64,9 @@ export const parkstayManifest: ProviderManifest = {
     holds: true,
     bookingImport: false,
     accessGate: true,
-    // Sign-in arrives with V6.
-    account: 'none',
+    // Holds need no sign-in and a ParkStay session lasts an hour, so signing in is a
+    // convenience (checkout is quicker), never a precondition (architecture-notes §12.32).
+    account: 'optional',
   },
   limits: {
     // Polite polling: availability changes rarely between quarter hours outside a release.
@@ -190,6 +191,7 @@ export function createParkStayModules(
         (await availability.check(externalId, stay, { signal })).units.find((u) => u.fullyAvailable)
           ?.unitId,
     }),
+    auth: createParkStayAuth(options.endpoints),
     dispose: async () => access.dispose(),
   };
 }

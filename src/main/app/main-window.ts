@@ -14,13 +14,14 @@
  *   production build carries it as a `<meta>` tag (`csp.ts`, `vite.config.ts`).
  * - A crashed renderer is reloaded once (`crash-policy.ts`).
  *
- * Provider sign-in and payment windows have their own policy (V6).
+ * Provider sign-in and payment windows have their own policy (`provider-windows.ts`).
  */
 
 import { App, BrowserWindow, Session, shell, WebContents } from 'electron';
 import fs from 'fs';
 import { APP_NAME } from '@shared/constants';
 import type { TrustedWebContents } from '../ipc/trusted-web-contents';
+import { describeUrl } from '../providers/sdk/url-patterns';
 import { logger } from '../utils/logger';
 import { reloadOnceOnRenderCrash } from './crash-policy';
 import { buildCsp } from './csp';
@@ -194,18 +195,6 @@ export function installDevCsp(session: Pick<Session, 'webRequest'>, devServerUrl
 function isExternalUrl(url: string): boolean {
   const protocol = protocolOf(url);
   return protocol !== null && EXTERNAL_PROTOCOLS.has(protocol);
-}
-
-/** What a log line says about a URL: the origin of a web URL, otherwise only its scheme. */
-function describeUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
-      ? parsed.origin
-      : `a ${parsed.protocol} URL`;
-  } catch {
-    return 'an invalid URL';
-  }
 }
 
 function protocolOf(url: string): string | null {

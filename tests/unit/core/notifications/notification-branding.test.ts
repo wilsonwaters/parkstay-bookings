@@ -6,9 +6,9 @@
  */
 import { NotificationService } from '@main/core/notifications/notification.service';
 import type { NotificationDispatcher } from '@main/core/notifications/notification-dispatcher';
-import { NotificationRepository, UserRepository } from '@main/database/repositories';
+import { NotificationRepository } from '@main/database/repositories';
 import { NotificationType } from '@shared/types/common.types';
-import { TestDatabaseHelper } from '@tests/utils/database-helper';
+import { insertUser, TestDatabaseHelper } from '@tests/utils/database-helper';
 import { mockUserInput } from '@tests/fixtures/users';
 import { mockWatch } from '@tests/fixtures/watches';
 import { mockSiteSnipe } from '@tests/fixtures/site-sniper';
@@ -33,8 +33,7 @@ describe('NotificationService branding', () => {
   beforeEach(async () => {
     dbHelper = new TestDatabaseHelper('notification-branding');
     await dbHelper.setup();
-    const users = new UserRepository(dbHelper.getDb());
-    userId = users.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag').id;
+    userId = insertUser(dbHelper.getDb(), mockUserInput.email).id;
 
     dispatch = jest.fn(async () => []);
     service = new NotificationService(new NotificationRepository(dbHelper.getDb()), {

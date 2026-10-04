@@ -13,6 +13,11 @@ import {
 } from '@main/database/connection';
 import { logger } from '@main/utils/logger';
 
+/** 1, 2, …, `last`. */
+function versionsUpTo(last: number): number[] {
+  return Array.from({ length: last }, (_, i) => i + 1);
+}
+
 function versions(db: Database.Database): number[] {
   return (
     db.prepare('SELECT version FROM migrations ORDER BY version').all() as {
@@ -239,10 +244,15 @@ describe('runMigrations', () => {
 
     expect(thrown).toBeInstanceOf(DatabaseTooNewError);
     expect((thrown as DatabaseTooNewError).version).toBe(LATEST_SCHEMA_VERSION + 1);
-    expect((thrown as Error).message).toMatch(/newer than this app supports \(8\)/);
+    expect((thrown as Error).message).toMatch(
+      new RegExp(`newer than this app supports \\(${LATEST_SCHEMA_VERSION}\\)`)
+    );
     expect(pragma).not.toHaveBeenCalled();
     expect(db.prepare('SELECT type, name, sql FROM sqlite_master').all()).toEqual(schemaBefore);
-    expect(versions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(versions(db)).toEqual([
+      ...versionsUpTo(LATEST_SCHEMA_VERSION),
+      LATEST_SCHEMA_VERSION + 1,
+    ]);
     db.close();
   });
 
@@ -257,15 +267,18 @@ describe('runMigrations', () => {
     expect(versions(db)).toEqual([1, 2, 3, 4, 5]);
 
     runMigrations(db);
-    expect(versions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(versions(db)).toEqual(versionsUpTo(LATEST_SCHEMA_VERSION));
     db.close();
   });
 
-  it.each([0, 9, 2.5, NaN])('rejects the target version %p, running nothing', (target) => {
-    const db = new Database(':memory:');
+  it.each([0, LATEST_SCHEMA_VERSION + 1, 2.5, NaN])(
+    'rejects the target version %p, running nothing',
+    (target) => {
+      const db = new Database(':memory:');
 
-    expect(() => runMigrations(db, target)).toThrow(RangeError);
-    expect(tableNames(db)).toEqual([]);
-    db.close();
-  });
+      expect(() => runMigrations(db, target)).toThrow(RangeError);
+      expect(tableNames(db)).toEqual([]);
+      db.close();
+    }
+  );
 });

@@ -1,7 +1,8 @@
 /**
- * `provider_accounts`: one row per provider the person has an account with (migration v8).
- * Migration v8 creates the ParkStay row from the legacy `users` login. V6 keeps it up to
- * date when the person signs in or out; the row holds no secret.
+ * `provider_accounts`: one row per provider the person has an account with (migration v8;
+ * `last_checked_at` from v9). Migration v8 creates the ParkStay row from the legacy `users`
+ * login. `ProviderAccountService` keeps it up to date when the person signs in or out and
+ * when a check gives a definite answer; the row holds no secret.
  */
 
 import type { AccountStatus, ProviderId } from '@shared/types';
@@ -15,6 +16,8 @@ export interface ProviderAccountRecord {
   displayName?: string;
   email?: string;
   lastSignedInAt?: Date;
+  /** When a sign-in check last gave a definite answer (signed in or out). */
+  lastCheckedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,6 +32,7 @@ export interface ProviderAccountUpsert {
   displayName?: string | null;
   email?: string | null;
   lastSignedInAt?: Date | null;
+  lastCheckedAt?: Date | null;
 }
 
 interface ProviderAccountRow {
@@ -37,6 +41,7 @@ interface ProviderAccountRow {
   display_name: string | null;
   email: string | null;
   last_signed_in_at: string | null;
+  last_checked_at: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -66,21 +71,23 @@ export class ProviderAccountRepository extends BaseRepository<ProviderAccountRec
         .get(input.providerId) as ProviderAccountRow | undefined;
       const pick = <V>(value: V | null | undefined, stored: V | null): V | null =>
         value === undefined ? stored : value;
-      const lastSignedInAt =
-        input.lastSignedInAt === undefined
-          ? (existing?.last_signed_in_at ?? null)
-          : (input.lastSignedInAt?.toISOString() ?? null);
+      const instant = (value: Date | null | undefined, stored: string | null | undefined) =>
+        value === undefined ? (stored ?? null) : (value?.toISOString() ?? null);
+      const lastSignedInAt = instant(input.lastSignedInAt, existing?.last_signed_in_at);
+      const lastCheckedAt = instant(input.lastCheckedAt, existing?.last_checked_at);
 
       this.db
         .prepare(
           `INSERT INTO provider_accounts
-             (provider_id, status, display_name, email, last_signed_in_at, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
+             (provider_id, status, display_name, email, last_signed_in_at, last_checked_at,
+              created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT (provider_id) DO UPDATE SET
              status = excluded.status,
              display_name = excluded.display_name,
              email = excluded.email,
              last_signed_in_at = excluded.last_signed_in_at,
+             last_checked_at = excluded.last_checked_at,
              updated_at = excluded.updated_at`
         )
         .run(
@@ -89,6 +96,7 @@ export class ProviderAccountRepository extends BaseRepository<ProviderAccountRec
           pick(input.displayName, existing?.display_name ?? null),
           pick(input.email, existing?.email ?? null),
           lastSignedInAt,
+          lastCheckedAt,
           now.toISOString(),
           now.toISOString()
         );
@@ -107,6 +115,7 @@ export class ProviderAccountRepository extends BaseRepository<ProviderAccountRec
       ...(row.last_signed_in_at !== null
         ? { lastSignedInAt: readInstant(row.last_signed_in_at) }
         : {}),
+      ...(row.last_checked_at !== null ? { lastCheckedAt: readInstant(row.last_checked_at) } : {}),
       createdAt: readInstant(row.created_at) ?? new Date(0),
       updatedAt: readInstant(row.updated_at) ?? new Date(0),
     };

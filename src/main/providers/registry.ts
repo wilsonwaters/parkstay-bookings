@@ -29,7 +29,9 @@ import {
   ProviderRegistrationError,
   UnknownProviderError,
 } from './sdk/errors';
+import type { HttpClient } from './sdk/http';
 import { parseProviderManifest } from './sdk/manifest';
+import { isHttpsOriginPattern, isHttpsUrlPattern } from './sdk/url-patterns';
 import {
   assembleProvider,
   type AccessGate,
@@ -129,6 +131,9 @@ export function authViolation(auth: ProviderAuth): string | undefined {
       if (!auth.allowedOrigins?.length || !auth.allowedOrigins.every(isHttpsOrigin)) {
         return 'browser-session auth needs https allowedOrigins';
       }
+      if (auth.completionUrlPatterns && !auth.completionUrlPatterns.every(isHttpsUrlPattern)) {
+        return 'browser-session auth completionUrlPatterns must be https URL patterns';
+      }
       return undefined;
     case 'credentials':
       if (!AccountFieldsSchema.safeParse(auth.fields).success) {
@@ -184,6 +189,13 @@ export const CONSISTENCY_RULES: readonly ConsistencyRule[] = [
     violation: (p) =>
       p.manifest.capabilities.holds && !(fn(p.holds?.create) && fn(p.holds?.paymentUrl))
         ? 'capability holds needs holds.create and holds.paymentUrl'
+        : undefined,
+  },
+  {
+    rule: 'holds payment origins',
+    violation: (p) =>
+      p.holds?.paymentOrigins && !p.holds.paymentOrigins.every(isHttpsOriginPattern)
+        ? 'holds.paymentOrigins must be https origins or https://*.<domain> patterns'
         : undefined,
   },
   {
@@ -351,6 +363,17 @@ export class ProviderRegistry {
 
   tryGet(id: ProviderId): AccommodationProvider | undefined {
     return this.entries.get(id)?.provider;
+  }
+
+  /**
+   * The provider's HTTP client (its context's `http`): bound to the provider's session
+   * partition, the one its sign-in and payment windows share. The account service asks a
+   * provider's `auth.isSignedIn` with it. Throws `UnknownProviderError`.
+   */
+  httpOf(id: ProviderId): HttpClient {
+    const entry = this.entries.get(id);
+    if (!entry) throw new UnknownProviderError(id);
+    return entry.ctx.http;
   }
 
   /** Every manifest (parsed and frozen), sorted by name. */

@@ -14,7 +14,8 @@ import { machineIdSync } from 'node-machine-id';
 import { openDatabase } from '@main/database/connection';
 import { createContainer, AppContainer } from '@main/app/container';
 import * as repositories from '@main/database/repositories';
-import { AuthService } from '@main/services/auth/AuthService';
+import { ProviderAccountService } from '@main/core/accounts/provider-account.service';
+import { ProviderWindows } from '@main/app/provider-windows';
 import { BookingService } from '@main/core/bookings/booking.service';
 import { GmailOTPService } from '@main/services/gmail/GmailOTPService';
 import { OAuth2Handler } from '@main/services/gmail/oauth2-handler';
@@ -36,6 +37,7 @@ import { containerSecrets, FakeSafeStorage, removeUserData } from '@tests/utils/
 import { testManifest } from '@tests/utils/fake-provider';
 import { SnipeReleaseMode, SnipeStatus } from '@shared/types/common.types';
 import { createMockSiteSnipeInput } from '@tests/fixtures/site-sniper';
+import { createMockWatchInput } from '@tests/fixtures/watches';
 
 jest.mock('electron', () => ({
   app: { getAppPath: () => '/app', getPath: () => '/tmp', isPackaged: false },
@@ -69,9 +71,10 @@ function mockCountedModule(modulePath: string): Record<string, unknown> {
 }
 
 jest.mock('@main/database/repositories', () => mockCountedModule('@main/database/repositories'));
-jest.mock('@main/services/auth/AuthService', () =>
-  mockCountedModule('@main/services/auth/AuthService')
+jest.mock('@main/core/accounts/provider-account.service', () =>
+  mockCountedModule('@main/core/accounts/provider-account.service')
 );
+jest.mock('@main/app/provider-windows', () => mockCountedModule('@main/app/provider-windows'));
 jest.mock('@main/core/bookings/booking.service', () =>
   mockCountedModule('@main/core/bookings/booking.service')
 );
@@ -130,7 +133,8 @@ const CONSTRUCTED_ONCE = {
   LocationRepository: repositories.LocationRepository,
   // One per provider; ParkStay is the only built-in one
   SqliteKeyValueStore: repositories.SqliteKeyValueStore,
-  AuthService,
+  ProviderAccountService,
+  ProviderWindows,
   BookingService,
   GmailOTPService,
   OAuth2Handler,
@@ -233,6 +237,21 @@ describe('createContainer', () => {
       container.catalogService
     );
     expect(RendererEvents).toHaveBeenCalledWith(container.trustedWebContents);
+    // Accounts ask the registry's providers, keep provider_accounts, and open their windows
+    // (and clear their sessions) through the one ProviderWindows
+    expect(ProviderWindows).toHaveBeenCalledWith({ devTools: true });
+    expect(jest.mocked(ProviderWindows).mock.results[0].value).toBe(container.providerWindows);
+    expect(ProviderAccountService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providers: container.providers,
+        accounts: r.providerAccounts,
+        windows: container.providerWindows,
+        sessions: container.providerWindows,
+        events: container.rendererEvents,
+        isBusy: expect.any(Function),
+      })
+    );
+    expect(jest.mocked(ProviderAccountService).mock.results[0].value).toBe(container.accounts);
     expect(JobScheduler).toHaveBeenCalledWith({
       watches: container.watchService,
       snipes: container.siteSniperService,
@@ -248,7 +267,6 @@ describe('createContainer', () => {
     const vault = container.vault;
     expect(jest.mocked(SecretVault).mock.results[0].value).toBe(vault);
     expect(repositories.NotifierRepository).toHaveBeenCalledWith(container.db, vault);
-    expect(AuthService).toHaveBeenCalledWith(r.users, vault);
     expect(OAuth2Handler).toHaveBeenCalledWith(
       expect.objectContaining({ vault, filePath: expect.stringMatching(/gmail-oauth\.json$/) })
     );
@@ -368,6 +386,40 @@ describe('createContainer', () => {
     expect(isReleaseInProgress?.('parkstay')).toBe(false);
   });
 
+  it('a provider account is busy while a snipe queues, snipes or holds, or a watch hold is unexpired', () => {
+    const { container, db } = build();
+    const userId = container.profile.ensureLocalProfile();
+    const [{ isBusy }] = jest.mocked(ProviderAccountService).mock.calls[0];
+    const snipes = container.repositories.snipes;
+    const snipe = snipes.create(userId, createMockSiteSnipeInput({ providerId: 'parkstay' }));
+
+    expect(isBusy('parkstay')).toBe(false);
+    for (const status of [SnipeStatus.QUEUEING, SnipeStatus.SNIPING, SnipeStatus.HELD]) {
+      snipes.updateStatus(snipe.id, status);
+      expect([status, isBusy('parkstay'), isBusy('other')]).toEqual([status, true, false]);
+    }
+    for (const status of [SnipeStatus.ARMED, SnipeStatus.WAITING_RELEASE, SnipeStatus.BOOKED]) {
+      snipes.updateStatus(snipe.id, status);
+      expect([status, isBusy('parkstay')]).toEqual([status, false]);
+    }
+
+    // A watch's hold (migration v9 columns) counts until it expires
+    const watch = container.repositories.watches.create(
+      userId,
+      createMockWatchInput({ providerId: 'parkstay' })
+    );
+    const holdUntil = (expiresAt: Date) =>
+      db
+        .prepare(
+          "UPDATE watches SET last_result = 'held', hold_reference = '41', hold_expires_at = ? WHERE id = ?"
+        )
+        .run(expiresAt.toISOString(), watch.id);
+    holdUntil(new Date(Date.now() + 10 * 60_000));
+    expect(isBusy('parkstay')).toBe(true);
+    holdUntil(new Date(Date.now() - 60_000));
+    expect(isBusy('parkstay')).toBe(false);
+  });
+
   it('dispose disposes the providers before the database closes', async () => {
     const { container, db } = build();
     const disposeAll = jest.spyOn(container.providers, 'disposeAll');
@@ -382,9 +434,11 @@ describe('createContainer', () => {
     expect(container.providers.list()).toEqual([]);
   });
 
-  it("dispose cuts the renderer off, stops the scheduler, disposes ParkStay's queue gate, then closes the database, once", async () => {
+  it("dispose cuts the renderer off, stops the accounts and closes their windows, stops the scheduler, disposes ParkStay's queue gate, then closes the database, once", async () => {
     const { container, db } = build();
     const revoke = jest.spyOn(container.trustedWebContents, 'revokeAll');
+    const stopAccounts = jest.spyOn(container.accounts, 'dispose');
+    const closeWindows = jest.spyOn(container.providerWindows, 'closeAll');
     const stop = jest.spyOn(container.scheduler, 'stop');
     const stopCatalog = jest.spyOn(container.catalogService, 'stop');
     const gate = container.providers.get('parkstay').access!;
@@ -401,6 +455,18 @@ describe('createContainer', () => {
     expect(stop).toHaveBeenCalledTimes(1);
     expect(disposeGate).toHaveBeenCalled();
     expect(revoke.mock.invocationCallOrder[0]).toBeLessThan(stop.mock.invocationCallOrder[0]);
+    // Accounts stop first (pending sign-ins settle, nothing writes), then the windows close
+    expect(stopAccounts).toHaveBeenCalledTimes(1);
+    expect(closeWindows).toHaveBeenCalledTimes(1);
+    expect(revoke.mock.invocationCallOrder[0]).toBeLessThan(
+      stopAccounts.mock.invocationCallOrder[0]
+    );
+    expect(stopAccounts.mock.invocationCallOrder[0]).toBeLessThan(
+      closeWindows.mock.invocationCallOrder[0]
+    );
+    expect(closeWindows.mock.invocationCallOrder[0]).toBeLessThan(
+      close.mock.invocationCallOrder[0]
+    );
     expect(close).toHaveBeenCalledTimes(1);
     expect(stop.mock.invocationCallOrder[0]).toBeLessThan(disposeGate.mock.invocationCallOrder[0]);
     // A catalogue sync in flight is aborted before the database closes

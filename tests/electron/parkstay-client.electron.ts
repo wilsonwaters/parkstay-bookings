@@ -18,6 +18,8 @@ import { ProviderRegistry, type ProviderWith } from '../../src/main/providers/re
 import {
   AccessGateError,
   CHROME_USER_AGENT,
+  chromeUserAgent,
+  runtimeChromeMajor,
   createProviderContext,
   defineProvider,
   FakeSecretVault,
@@ -94,7 +96,9 @@ const CASES: Case[] = [
       const [request] = server.requestsTo('/api/campsite_availablity_view/20/');
       assert.equal(request.query.get('arrival'), '2026/11/10');
       assert.equal(request.query.get('departure'), '2026/11/12');
-      assert.equal(request.headers['user-agent'], CHROME_USER_AGENT);
+      // The partition presents the Chromium version Electron runs (architecture-notes §12.32)
+      assert.equal(request.headers['user-agent'], chromeUserAgent(runtimeChromeMajor()));
+      assert.notEqual(request.headers['user-agent'], CHROME_USER_AGENT);
       assert.equal(request.headers.referer, 'https://parkstay.dbca.wa.gov.au/');
     },
   },

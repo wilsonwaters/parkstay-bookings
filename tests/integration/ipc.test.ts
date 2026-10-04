@@ -13,7 +13,6 @@ import { createSenderGuard } from '@main/ipc/sender-guard';
 import { NotifierChannel, SMTPPreset, Watch } from '@shared/types';
 import type { APIResponse } from '@shared/types';
 import { createMockWatchInput } from '@tests/fixtures/watches';
-import { mockUserInput } from '@tests/fixtures/users';
 import {
   APP_INDEX_PATH,
   FakeIpcMain,
@@ -142,15 +141,14 @@ describe('IPC through the container', () => {
       expect(stored.config).toMatch(/^vault:v1:os:/);
     });
 
-    it('Logout (auth.deleteCredentials) keeps the profile and its watches', async () => {
-      await expect(call('auth:store-credentials', mockUserInput)).resolves.toMatchObject({
-        success: true,
-      });
+    it('a ParkStay sign-out keeps the profile and its watches', async () => {
       await call('watches:create', createMockWatchInput());
 
-      await expect(call('auth:delete-credentials')).resolves.toEqual({ success: true, data: true });
+      await expect(call('accounts:sign-out', { providerId: 'parkstay' })).resolves.toMatchObject({
+        success: true,
+        data: { providerId: 'parkstay', status: 'signed-out' },
+      });
 
-      await expect(call('auth:validate-session')).resolves.toEqual({ success: true, data: false });
       const listed = await call<Watch[]>('watches:list');
       expect(listed.data).toHaveLength(1);
       expect(container.repositories.users.findAll()).toHaveLength(1);

@@ -4,11 +4,101 @@
  *
  *   jest.mock('electron', () => jest.requireActual('@tests/utils/electron-mocks').electron());
  *   jest.mock('electron-updater', () => jest.requireActual('@tests/utils/electron-mocks').electronUpdater());
+ *
+ * `FakeBrowserWindow` stands in for provider sign-in and payment windows: a test reads the
+ * windows from `FakeBrowserWindow.instances` and drives them (`webContents.navigate`,
+ * `willNavigate`, `close`).
  */
 
 import { EventEmitter } from 'events';
 
+/** A provider window's webContents: records handlers and replays Electron's events. */
+export class FakeWebContents extends EventEmitter {
+  static nextId = 1000;
+  readonly id = FakeWebContents.nextId++;
+  url = '';
+  windowOpenHandler?: (details: { url: string }) => { action: string };
+
+  setWindowOpenHandler(handler: (details: { url: string }) => { action: string }): void {
+    this.windowOpenHandler = handler;
+  }
+
+  getURL(): string {
+    return this.url;
+  }
+
+  isDestroyed(): boolean {
+    return false;
+  }
+
+  /** A committed top-level page (`did-navigate`), after any redirects. */
+  navigate(url: string, httpStatus = 200): void {
+    this.url = url;
+    this.emit('did-navigate', {}, url, httpStatus, 'OK');
+  }
+
+  /** Emits `will-navigate` as Electron 28 does. True when a handler prevented it. */
+  willNavigate(url: string): boolean {
+    let prevented = false;
+    this.emit('will-navigate', { url, preventDefault: () => (prevented = true) }, url);
+    return prevented;
+  }
+
+  /** Emits `will-redirect` as Electron 28 does. True when a handler prevented it. */
+  willRedirect(url: string, isMainFrame = true): boolean {
+    let prevented = false;
+    const event = { url, isMainFrame, preventDefault: () => (prevented = true) };
+    this.emit('will-redirect', event, url, false, isMainFrame);
+    return prevented;
+  }
+}
+
+export class FakeBrowserWindow extends EventEmitter {
+  static instances: FakeBrowserWindow[] = [];
+
+  readonly webContents = new FakeWebContents();
+  title: string;
+  destroyed = false;
+  readonly loadURL = jest.fn((url: string) => {
+    this.webContents.url = url;
+    return Promise.resolve();
+  });
+  readonly setMenu = jest.fn();
+  readonly show = jest.fn();
+  readonly focus = jest.fn();
+  readonly restore = jest.fn();
+  readonly setTitle = jest.fn((title: string) => {
+    this.title = title;
+  });
+  readonly close = jest.fn(() => this.finish());
+  readonly destroy = jest.fn(() => this.finish());
+
+  constructor(
+    readonly options: { webPreferences?: Record<string, unknown>; [option: string]: unknown }
+  ) {
+    super();
+    this.title = String(options.title ?? '');
+    FakeBrowserWindow.instances.push(this);
+  }
+
+  isDestroyed(): boolean {
+    return this.destroyed;
+  }
+
+  isMinimized(): boolean {
+    return false;
+  }
+
+  private finish(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.emit('closed');
+  }
+}
+
 export function electron(): Record<string, unknown> {
+  // One session per partition, as Electron's `session.fromPartition` does
+  const sessions = new Map<string, Record<string, unknown>>();
   return {
     app: {
       getAppPath: () => '/app',
@@ -18,12 +108,19 @@ export function electron(): Record<string, unknown> {
       isPackaged: false,
       setLoginItemSettings: jest.fn(),
     },
+    BrowserWindow: FakeBrowserWindow,
     Notification: jest.fn().mockImplementation(() => ({ on: jest.fn(), show: jest.fn() })),
-    shell: { openExternal: jest.fn(), openPath: jest.fn() },
+    shell: { openExternal: jest.fn(() => Promise.resolve()), openPath: jest.fn() },
     // The scheduler re-arms its timers on `resume` and `unlock-screen`; a test emits them.
     powerMonitor: new EventEmitter(),
     ipcMain: { handle: jest.fn() },
-    session: { fromPartition: jest.fn(() => fakeSession()) },
+    session: {
+      fromPartition: jest.fn((partition: string) => {
+        let ses = sessions.get(partition);
+        if (!ses) sessions.set(partition, (ses = fakeSession()));
+        return ses;
+      }),
+    },
     // Providers' HTTP clients send through `net.request`; it fails unless a test stubs it.
     net: {
       request: jest.fn(() => {
@@ -33,14 +130,23 @@ export function electron(): Record<string, unknown> {
   };
 }
 
-/** A session partition (`session.fromPartition`): providers' HTTP clients are built on it. */
+/**
+ * A session partition (`session.fromPartition`): providers' HTTP clients are built on it, and
+ * provider windows harden and clear it.
+ */
 export function fakeSession(): Record<string, unknown> {
   return {
     setUserAgent: jest.fn(),
+    setPermissionRequestHandler: jest.fn(),
+    setPermissionCheckHandler: jest.fn(),
+    setDevicePermissionHandler: jest.fn(),
+    clearStorageData: jest.fn(() => Promise.resolve()),
+    clearAuthCache: jest.fn(() => Promise.resolve()),
     cookies: {
       get: jest.fn(() => Promise.resolve([])),
       set: jest.fn(() => Promise.resolve()),
       remove: jest.fn(() => Promise.resolve()),
+      flushStore: jest.fn(() => Promise.resolve()),
     },
   };
 }

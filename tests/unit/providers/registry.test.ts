@@ -288,6 +288,12 @@ describe('ProviderRegistry.register', () => {
         (p) => delete p.holds,
         /capability holds needs holds\.create and holds\.paymentUrl/,
       ],
+      [
+        'holds payment origins',
+        {},
+        (p) => ((p.holds as { paymentOrigins?: string[] }).paymentOrigins = ['https://*.au']),
+        /holds\.paymentOrigins must be https origins or https:\/\/\*\.<domain> patterns/,
+      ],
       ['snipes', {}, (p) => delete p.release, /snipes needs availability, holds and release/],
       [
         'release modes supported',
@@ -367,6 +373,28 @@ describe('ProviderRegistry.register', () => {
         /browser-session auth needs https allowedOrigins/,
       ],
       [
+        'browser-session with completion URL patterns',
+        {
+          kind: 'browser-session',
+          signInUrl: 'https://fake.example/sign-in',
+          allowedOrigins: ['https://fake.example'],
+          completionUrlPatterns: ['https://fake.example/done/*'],
+          isSignedIn: signedIn,
+        },
+        null,
+      ],
+      [
+        'browser-session with an http completion pattern',
+        {
+          kind: 'browser-session',
+          signInUrl: 'https://fake.example/sign-in',
+          allowedOrigins: ['https://fake.example'],
+          completionUrlPatterns: ['http://fake.example/done/*'],
+          isSignedIn: signedIn,
+        },
+        /completionUrlPatterns must be https URL patterns/,
+      ],
+      [
         'credentials',
         {
           kind: 'credentials',
@@ -444,6 +472,12 @@ describe('ProviderRegistry lookups', () => {
     fake = createFakeProvider({ id: 'fake', name: 'Zebra Fake' });
     register(registry, fake);
     register(registry, fake2);
+  });
+
+  it('httpOf returns the HTTP client of the provider context; unknown ids throw', () => {
+    expect(registry.httpOf('fake')).toBe(fake.ctx?.http);
+    expect(registry.httpOf('fake').providerId).toBe('fake');
+    expect(() => registry.httpOf('nope')).toThrow(UnknownProviderError);
   });
 
   it('get("nope") throws UnknownProviderError; tryGet returns undefined', () => {

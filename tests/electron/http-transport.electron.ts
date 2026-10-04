@@ -55,7 +55,7 @@ async function main(): Promise<number> {
   for (const [index, testCase] of cases.entries()) {
     const client = new ElectronSessionHttpClient({ providerId: PROVIDER_ID });
     await client.cookies.clear();
-    const ctx: TransportCaseContext = { ...servers, client };
+    const ctx: TransportCaseContext = { ...servers, client, userAgent: client.userAgent };
     const started = Date.now();
     try {
       await testCase.run(ctx);

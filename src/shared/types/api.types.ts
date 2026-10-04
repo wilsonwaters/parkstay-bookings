@@ -28,6 +28,8 @@ export type ApiErrorCode =
   | 'PROVIDER_ERROR'
   | 'ACCESS_GATE'
   | 'AUTH_REQUIRED'
+  /** Signing out would lose a queue place or a hold in progress on the provider. */
+  | 'ACCOUNT_BUSY'
   | 'NOT_IMPLEMENTED';
 
 // Generic API Response wrapper

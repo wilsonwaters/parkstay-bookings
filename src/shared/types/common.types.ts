@@ -89,11 +89,10 @@ export enum SettingCategory {
 }
 
 // Base types
+/** The local profile (the single `users` row). Its email is a hint, never a sign-in. */
 export interface User {
   id: number;
   email: string;
-  /** A SecretVault envelope, or '' when no password is stored. Main process only. */
-  encryptedPassword: string;
   firstName?: string;
   lastName?: string;
   phone?: string;
@@ -101,17 +100,12 @@ export interface User {
   updatedAt: Date;
 }
 
+/** The profile fields. */
 export interface UserInput {
   email: string;
-  password: string;
   firstName?: string;
   lastName?: string;
   phone?: string;
-}
-
-export interface UserCredentials {
-  email: string;
-  password: string;
 }
 
 export interface JobLog {

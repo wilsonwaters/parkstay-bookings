@@ -9,8 +9,8 @@
  *    to the first (which brings its window to the front) and quits.
  * 3. After `ready`: log files under userData, the first-run copy of a v1.x install
  *    (`migration/legacy-install.ts`), the database, the container, the IPC handlers, the
- *    scheduler, the main window and then the catalogue sync (which waits 5 s). From then on
- *    errors are logged and survived.
+ *    scheduler, the main window and then the catalogue sync and the stale-account check (each
+ *    waits 5 s). From then on errors are logged and survived.
  *
  * The container's SecretVault uses `safeStorage`, whose Windows key lives in userData's
  * `Local State`: the final userData path is set before `ready`, and the legacy data is
@@ -26,6 +26,7 @@ import { installCrashPolicy } from './app/crash-policy';
 import { currentLaunchTarget, replaceLegacyLoginItems } from './app/login-item';
 import { createMainWindow, denyWebviews } from './app/main-window';
 import { getBrandIconPath } from './app/paths';
+import { isProviderWindow } from './app/provider-windows';
 import { installQuitHold } from './app/quit-hold';
 import { createAppUrlMatcher, resolveRendererEntry } from './app/renderer-entry';
 import { HIDDEN_ARG } from './app/single-instance';
@@ -92,6 +93,8 @@ function createWindow(startHidden: boolean): void {
     icon: process.platform === 'linux' || !app.isPackaged ? getBrandIconPath() : undefined,
   });
   mainWindow = window;
+  // Provider sign-in and payment windows sit above it and close with it
+  container.providerWindows.attachMainWindow(window);
   window.on('closed', () => {
     if (mainWindow !== window) return;
     mainWindow = null;
@@ -163,6 +166,7 @@ async function start(): Promise<void> {
     isTrustedSender: createSenderGuard({
       isTrustedWebContents: (id) => trusted.isTrusted(id),
       isAppUrl: createAppUrlMatcher(rendererEntry),
+      isProviderWindow,
     }),
   });
 
@@ -170,6 +174,8 @@ async function start(): Promise<void> {
   createWindow(isHiddenLaunch());
   // Stale catalogues sync a few seconds after the window is up, not during startup
   ready.catalogService.start();
+  // Accounts not checked for 6 h are checked a few seconds after startup, quietly
+  ready.accounts.startRefresh();
 
   // From here on an error is logged and survived; the user hears about it (throttled), but
   // not once the quit has started: the database is closed then.

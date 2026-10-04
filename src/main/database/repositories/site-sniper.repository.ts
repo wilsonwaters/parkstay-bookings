@@ -390,6 +390,21 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
     return snipe.attemptsCount >= snipe.maxAttempts;
   }
 
+  /**
+   * How many of the provider's snipes are in one of `statuses`, active or not (a HELD snipe
+   * is inactive). The account service asks it before a sign-out.
+   */
+  countByStatus(providerId: string, statuses: readonly SnipeStatus[]): number {
+    if (statuses.length === 0) return 0;
+    const placeholders = statuses.map(() => '?').join(', ');
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM site_snipes WHERE provider_id = ? AND status IN (${placeholders})`
+      )
+      .get(providerId, ...statuses) as { n: number };
+    return row.n;
+  }
+
   protected mapRow(row: SiteSnipeRow): SiteSnipe {
     const where = `site_snipes ${row.id}`;
     return {

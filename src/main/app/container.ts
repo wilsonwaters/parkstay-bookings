@@ -18,6 +18,7 @@ import path from 'path';
 import type Database from 'better-sqlite3';
 import { app, powerMonitor } from 'electron';
 import { SnipeReleaseMode, SnipeStatus } from '@shared/types/common.types';
+import { ProviderAccountService } from '../core/accounts/provider-account.service';
 import { LocationCatalogService } from '../core/catalog/location-catalog.service';
 import { closeDatabase } from '../database/connection';
 import {
@@ -40,7 +41,6 @@ import { NotificationService } from '../core/notifications/notification.service'
 import { SmtpEmailNotifier } from '../core/notifications/notifiers/email-smtp.notifier';
 import { SiteSniperService } from '../core/snipes/snipe.service';
 import { WatchService } from '../core/watches/watch.service';
-import { AuthService } from '../services/auth/AuthService';
 import { GmailOTPService } from '../services/gmail/GmailOTPService';
 import { OAuth2Handler } from '../services/gmail/oauth2-handler';
 import { AutoUpdaterService } from '../services/updater/auto-updater.service';
@@ -58,6 +58,7 @@ import { FixtureHttpClient, type FixtureModeOptions } from '../testing';
 import { logger } from '../utils/logger';
 import { getEmailLogoPath } from './paths';
 import { createLocalProfile, LocalProfile } from './profile';
+import { ProviderWindows } from './provider-windows';
 
 /** A timed snipe in these statuses is in its release: the catalogue sync waits for it. */
 const RELEASE_STATUSES: ReadonlySet<SnipeStatus> = new Set([
@@ -97,7 +98,10 @@ export interface AppContainer {
   /** Every provider's locations: sync, search, detail and availability (`catalog.*`). */
   readonly catalogService: LocationCatalogService;
   readonly notifierDispatcher: NotificationDispatcher;
-  readonly authService: AuthService;
+  /** Provider sign-in and payment windows, and their session partitions. */
+  readonly providerWindows: ProviderWindows;
+  /** The person's account with each provider: status, in-app sign-in, sign-out. */
+  readonly accounts: ProviderAccountService;
   readonly bookingService: BookingService;
   readonly notificationService: NotificationService;
   readonly watchService: WatchService;
@@ -107,8 +111,8 @@ export interface AppContainer {
   readonly scheduler: JobScheduler;
   /**
    * Cuts the renderer off (no webContents is trusted any more, so no invoke reaches a
-   * handler and no event is sent), stops the scheduler (aborting every check and attempt in
-   * flight) and the catalogue service (aborting any sync in flight), and starts disposing
+   * handler and no event is sent), stops the account service and closes the provider
+   * windows, stops the scheduler (aborting every check and attempt in flight) and the catalogue service (aborting any sync in flight), and starts disposing
    * the providers (and with them ParkStay's queue gate), all before it returns. The
    * database closes once the scheduler's jobs have settled (at most
    * `SCHEDULER_STOP_GRACE_MS`), so no job writes to a closed database. The promise resolves
@@ -223,12 +227,29 @@ export function createContainer({
         ),
   });
 
+  // Sign-in and payment windows share each provider's session partition with its HTTP client.
+  const providerWindows = new ProviderWindows({ devTools: !app.isPackaged });
+  const accounts = new ProviderAccountService({
+    providers,
+    accounts: repositories.providerAccounts,
+    windows: providerWindows,
+    sessions: providerWindows,
+    events: rendererEvents,
+    // Signing out would lose a queue place, a hold being placed, or a hold awaiting payment.
+    isBusy: (providerId) =>
+      repositories.snipes.countByStatus(providerId, [
+        SnipeStatus.QUEUEING,
+        SnipeStatus.SNIPING,
+        SnipeStatus.HELD,
+      ]) > 0 || repositories.watches.countUnexpiredHolds(providerId, new Date()) > 0,
+    logger,
+  });
+
   // A provider's short name (`ParkStay`), for emails and desktop notification titles
   const providerName = (id: string): string | undefined => providers.tryGet(id)?.manifest.shortName;
   const notifierDispatcher = new NotificationDispatcher(repositories.notifiers, [
     new SmtpEmailNotifier({ providerName, logoPath: getEmailLogoPath() }),
   ]);
-  const authService = new AuthService(repositories.users, vault);
   const notificationService = new NotificationService(
     repositories.notifications,
     notifierDispatcher,
@@ -248,9 +269,8 @@ export function createContainer({
     notifications: notificationService,
     nightGuard,
     events: rendererEvents,
-    // V6 replaces this with its account service
-    accountState: (providerId) =>
-      repositories.providerAccounts.get(providerId)?.status ?? 'unknown',
+    // The stored (last definite) sign-in state; no network on the hold path
+    accountState: (providerId) => accounts.storedState(providerId),
   });
   const siteSniperService = new SiteSniperService({
     snipes: repositories.snipes,
@@ -273,6 +293,9 @@ export function createContainer({
     if (disposed) return disposed;
     // Nothing from the renderer may reach the database once it closes below.
     trustedWebContents.revokeAll();
+    // No more account checks or writes; pending sign-ins settle; then the windows go.
+    accounts.dispose();
+    providerWindows.closeAll();
     // Aborts every job in flight at once; resolves when they settle (bounded).
     const stopping = scheduler.stop();
     // Aborts a catalogue sync in flight, so it writes nothing once the database closes.
@@ -298,7 +321,8 @@ export function createContainer({
     providers,
     catalogService,
     notifierDispatcher,
-    authService,
+    providerWindows,
+    accounts,
     bookingService,
     notificationService,
     watchService,

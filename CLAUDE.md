@@ -47,10 +47,10 @@ npm run dist:win     # Package Windows installer
 src/
 ├── main/           # Electron main process (Node.js)
 │   ├── app/        # Composition root (container.ts), local profile, renderer entry/origin
-│   ├── core/       # Provider-agnostic domain services (catalog, watches, snipes, bookings, holds, notifications)
+│   ├── core/       # Provider-agnostic domain services (catalog, watches, snipes, bookings, holds, notifications, accounts)
 │   ├── database/   # SQLite connection, migrations, repositories
 │   ├── providers/  # Provider SDK (sdk/), ProviderRegistry, built-in providers (parkstay/)
-│   ├── services/   # Other services (auth, gmail, updater)
+│   ├── services/   # Other services (gmail, updater)
 │   ├── scheduler/  # Watch due-loop and per-snipe timer chains
 │   ├── ipc/        # handle.ts, sender guard, renderer events, handlers/ (one per namespace)
 │   └── utils/      # Logger
@@ -68,7 +68,7 @@ src/
 
 **Composition root** (`src/main/app/container.ts`): `createContainer({ db })` builds every repository, service, notifier, dispatcher, scheduler, updater and Gmail service once, by constructor injection; nothing else in `src/main` calls `new` on them, and there are no singletons. `src/main/index.ts` opens the database, builds the container, runs `profile.ensureLocalProfile()`, registers the IPC handlers and starts the scheduler; `before-quit` calls `container.dispose()` (scheduler jobs aborted and awaited, providers and their queue gates, then the database).
 
-**Local profile** (`src/main/app/profile.ts`): one `users` row is the local profile that owns every watch, snipe, booking and notification. Main resolves it (`requireUserId()`, or `NO_PROFILE`); the renderer never sends a `userId`. Nothing may delete the row: Logout clears only the credential fields.
+**Local profile** (`src/main/app/profile.ts`): one `users` row is the local profile that owns every watch, snipe, booking and notification. Main resolves it (`requireUserId()`, or `NO_PROFILE`); the renderer never sends a `userId`. Since v9 the row is the profile only (email hint, names, phone). Nothing may delete it: a provider sign-out clears only that provider's session partition and `provider_accounts` row.
 
 ## Database
 
@@ -80,7 +80,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 
 `connection.ts` exports `openDatabase(filePath)` (enables foreign keys and WAL, then migrates), `closeDatabase(db)` and `runMigrations(db)`. It has no module singleton: repositories receive the `Database` through their constructor (`repositories/base.repository.ts`), and services receive their repositories.
 
-### Current migrations (version 8)
+### Current migrations (version 9)
 
 1. **v1** — Initial schema (users, bookings, watches, skip_the_queue_entries, notifications, job_logs, settings)
 2. **v2** — Add `last_availability` JSON column to watches
@@ -90,11 +90,12 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 6. **v6** — Add `site_snipes` table (Site Sniper) and widen `notifications` CHECK constraints (adds `snipe_held`/`snipe_booked` types and `snipe` related_type)
 7. **v7** — Integrity: rebuild `notifications` without CHECK constraints (types are validated in `NotificationRepository`), rebuild `notification_delivery_logs` with a real FK to `notifications` (repairs v6) and `provider_channel` → `notifier_channel`, rename `notification_providers` → `notifiers`, drop `skip_the_queue_entries`
 8. **v8** — Provider-aware data model (architecture-notes §5): rebuild `watches`, `site_snipes` and `bookings` with `provider_id`, generic location/stay/unit columns (`location_external_id`, `location_name`, `area_name`, `num_adults`…, `unit_ids` JSON, `stay_params` JSON for ParkStay's park id, gear type, vehicles and postcode) and calendar dates `YYYY-MM-DD`; bookings unique per `(provider_id, booking_reference)`; `site_snipes` drops the `release_mode` CHECK and renames `queue_enabled` → `access_gate_enabled`, `held_*` → `hold_*`; `notifications.provider_id`; `users` credential columns nullable plus the seeded local profile row (id 1); new `provider_accounts`, `provider_state` (the queue session moves there as `('parkstay', 'queue.session')`, `queue_session` dropped) and `locations` with the FTS5 index `locations_fts`
+9. **v9** — Retire the legacy ParkStay credentials (architecture-notes §12.32): rebuild `users` without `encrypted_password` and the `encryption_*` columns (the email moved to the ParkStay account in v8); add `hold_reference`, `hold_expires_at`, `hold_unit_id`, `payment_url` and `last_error` to `watches` (§12.31) and `last_checked_at` to `provider_accounts`. The runner then VACUUMs the file (and truncates the WAL) so the dropped ciphertext is not left in free pages. P7's `job_logs` drop takes v10
 
 ### Adding a new migration
 
 1. Open `src/main/database/connection.ts`
-2. Bump `LATEST_SCHEMA_VERSION` to the new version N (currently 8)
+2. Bump `LATEST_SCHEMA_VERSION` to the new version N (currently 9)
 3. Find the `runMigrations()` function
 4. Add a new `if (pending(N))` block at the bottom (`runMigrations(db, target)` stops at `target`; tests use it to build an older schema)
 5. Wrap its body in `applyMigration(db, N, [tables it creates or rebuilds], () => { ... })`. It runs the body, `PRAGMA foreign_key_check` and the `INSERT INTO migrations` in one transaction, and throws `MigrationError(N)` on failure. The listed tables must be completely free of foreign-key violations when the step commits, and the step may not introduce a violation in any other table; violations that were already there only log a warning (rule in `assertForeignKeys`). Do not insert the version yourself, and do not set `PRAGMA foreign_keys` inside the body (it is a no-op in a transaction; the runner turns it off around all steps)
@@ -105,13 +106,14 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 
 | Service | File | Purpose |
 | --- | --- | --- |
-| AuthService | `src/main/services/auth/AuthService.ts` | AES-256-GCM credential encryption |
 | BookingService | `src/main/core/bookings/booking.service.ts` | Booking CRUD on any provider, `manageUrl`, import through `bookingImport` |
 | WatchService | `src/main/core/watches/watch.service.ts` | Availability monitoring through the provider registry (matching, partial runs, price rule, auto-hold) |
 | SiteSniperService | `src/main/core/snipes/snipe.service.ts` | Site Sniper — auto-holds a high-demand site the instant it is released; release and queue rules come from the provider |
 | ProviderRegistry | `src/main/providers/registry.ts` | Accommodation providers behind the SDK in `providers/sdk/` (manifests, capability checks); built-ins listed in `providers/index.ts` |
 | LocationCatalogService | `src/main/core/catalog/location-catalog.service.ts` | Every provider's locations (`catalog.*`): 24 h catalogue sync into `locations` (single-flight, per-provider failure isolation, `catalog:updated`), FTS5 search with filters and facets, 6 h detail cache with stale fallback, bulk and per-location availability caches |
-| ParkStay provider | `src/main/providers/parkstay/` | The ParkStay (DBCA) module: catalogue, availability (YYYY/MM/DD dates, per-night prices), DBCA queue access gate (`queue/`), release policy, `create_booking` holds, links. Watches and snipes use it through the registry |
+| ProviderAccountService | `src/main/core/accounts/provider-account.service.ts` | The person's account with each provider (`accounts.*`): status from the provider's signed-in check (single flight, 60 s cache, definite answers only), in-app sign-in, pasted sign-in links, sign-out (`ACCOUNT_BUSY` while a snipe or hold needs the session), `ensureForHolds` for providers that require an account |
+| ProviderWindows | `src/main/app/provider-windows.ts` | Provider sign-in and payment windows on the provider's session partition (`persist:provider-<id>`, shared with its HttpClient): sandboxed, no script of ours, top-level origin allow-list, permissions/certificates refused |
+| ParkStay provider | `src/main/providers/parkstay/` | The ParkStay (DBCA) module: catalogue, availability (YYYY/MM/DD dates, per-night prices), DBCA queue access gate (`queue/`), release policy, `create_booking` holds, links, and sign-in (`auth.ts`: `/ssologin`, checked with `/api/profile`; the account is optional). Watches and snipes use it through the registry |
 | NotificationService | `src/main/core/notifications/notification.service.ts` | Desktop/in-app notifications (desktop title `{shortName} · {title}`) |
 | NotificationDispatcher | `src/main/core/notifications/notification-dispatcher.ts` | External notifiers (email) |
 | GmailOTPService | `src/main/services/gmail/GmailOTPService.ts` | Gmail OAuth2 OTP extraction |
@@ -128,9 +130,9 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 
 ## IPC Pattern
 
-- **Contract** in `src/shared/contracts/` is the single source of truth: one file per namespace (`bookings`, `watches`, `snipes`, `notifications`, `notifiers`, `gmail`, `settings`, `app`, `updater`, `providers`, `catalog`, `accounts`, plus the transitional `auth`), and `index.ts` exports `contract` and `type WindowApi`. The DBCA queue state reaches the renderer only as `providers.accessStatus(id)` / `provider:access-status`. Each method declares a `channel` (`<namespace>:<kebab-method>`), a zod `request` schema (one object payload, or `z.void()`), the preload's positional `args` and the `response` type
+- **Contract** in `src/shared/contracts/` is the single source of truth: one file per namespace (`bookings`, `watches`, `snipes`, `notifications`, `notifiers`, `gmail`, `settings`, `app`, `updater`, `providers`, `catalog`, `accounts`), and `index.ts` exports `contract` and `type WindowApi`. The DBCA queue state reaches the renderer only as `providers.accessStatus(id)` / `provider:access-status`. Each method declares a `channel` (`<namespace>:<kebab-method>`), a zod `request` schema (one object payload, or `z.void()`), the preload's positional `args` and the `response` type
 - Channel and event names live in the zod-free `contracts/channels.ts`, the only contract module the preload loads at runtime. Event payloads are in `contracts/events.ts`
-- `src/main/ipc/handle.ts`: `handle(def, fn)` is the only caller of `ipcMain.handle`. It checks the sender (a trusted webContents, its top frame, on the app origin — `ipc/sender-guard.ts`, `app/renderer-entry.ts`), parses the payload with the method's schema, and returns `APIResponse`: `{ success: true, data }` or `{ success: false, code, error }` with `code` `VALIDATION` (plus `issues` paths), `FORBIDDEN`, `NO_PROFILE`, `NOT_FOUND`, `INTERNAL` or `NOT_IMPLEMENTED`, and for provider errors (`main/providers/sdk/errors.ts` `toApiError`) `CAPABILITY`, `UNKNOWN_PROVIDER`, `PROVIDER_ERROR`, `ACCESS_GATE` or `AUTH_REQUIRED`. Throw `AppError(code)` (`main/utils/app-error.ts`) for a specific code. Logs never include payload values
+- `src/main/ipc/handle.ts`: `handle(def, fn)` is the only caller of `ipcMain.handle`. It checks the sender (a trusted webContents, its top frame, on the app origin — `ipc/sender-guard.ts`, `app/renderer-entry.ts`), parses the payload with the method's schema, and returns `APIResponse`: `{ success: true, data }` or `{ success: false, code, error }` with `code` `VALIDATION` (plus `issues` paths), `FORBIDDEN`, `NO_PROFILE`, `NOT_FOUND`, `INTERNAL` or `NOT_IMPLEMENTED`, and for provider errors (`main/providers/sdk/errors.ts` `toApiError`) `CAPABILITY`, `UNKNOWN_PROVIDER`, `PROVIDER_ERROR`, `ACCESS_GATE` or `AUTH_REQUIRED`, and `ACCOUNT_BUSY` (sign-out refused). Throw `AppError(code)` (`main/utils/app-error.ts`) for a specific code. Logs never include payload values
 - Handlers in `src/main/ipc/handlers/`, one file per namespace (`watches.handlers.ts`, …), each `registerXHandlers(handle, container)`; `registerIpcHandlers(container, { isTrustedSender })` in `ipc/index.ts` registers them all
 - Events: main emits through `container.rendererEvents.emit(name, payload)` (`ipc/events.ts`), which reaches only trusted webContents. The renderer subscribes with `window.api.events.on(name, cb)`, which returns an unsubscribe function for that subscription only
 - Settings keys are typed in `contracts/settings.ts` (`SETTING_KEYS`): main owns each key's `valueType` and `category`; add new keys there
@@ -139,9 +141,9 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 
 ## UI Status
 
-- **Active pages:** Dashboard, Watches, Settings, Login
+- **Active pages:** Explore, Watches, Settings (no login gate)
 - **Marked "Soon" in sidebar (greyed pill) but still usable:** Bookings and Site Sniper — both are navigable and show a `ComingSoonBanner` on the page (being finalized)
-- **Settings page** includes email/SMTP configuration (`EmailSettingsCard`)
+- **Settings page** includes email/SMTP configuration (`EmailSettingsCard`) and "Connect ParkStay" (`accounts.signIn('parkstay')`, the in-app sign-in window; optional)
 - **Key components:** AvailabilityGrid, QueueStatus, NotificationBell, WatchForm, SiteSniperForm, UpdateNotification, AboutDialog
 
 ## Testing

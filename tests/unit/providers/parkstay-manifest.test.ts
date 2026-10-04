@@ -35,7 +35,7 @@ describe('ParkStay provider manifest', () => {
     });
   });
 
-  it('offers catalogue, availability, bulk availability, watches, snipes, holds and the queue gate; no booking import; no account yet', () => {
+  it('offers catalogue, availability, bulk availability, watches, snipes, holds and the queue gate; no booking import; an optional account (§12.32)', () => {
     expect(parkstayManifest.capabilities).toEqual({
       catalog: true,
       catalogMode: 'full',
@@ -46,7 +46,7 @@ describe('ParkStay provider manifest', () => {
       holds: true,
       bookingImport: false,
       accessGate: true,
-      account: 'none',
+      account: 'optional',
     });
   });
 
@@ -104,6 +104,7 @@ describe('ParkStay provider manifest', () => {
     );
     expect(Object.keys(provider).sort()).toEqual([
       'access',
+      'auth',
       'availability',
       'catalog',
       'dispose',

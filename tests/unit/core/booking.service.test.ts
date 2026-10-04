@@ -10,8 +10,7 @@ import { ProviderRegistry } from '@main/providers/registry';
 import { ProviderCapabilityError, toApiError } from '@main/providers/sdk/errors';
 import { createFakeProvider, createTestProviderContext } from '@tests/utils/fake-provider';
 import { BookingRepository } from '@main/database/repositories/booking.repository';
-import { TestDatabaseHelper } from '@tests/utils/database-helper';
-import { UserRepository } from '@main/database/repositories/user.repository';
+import { insertUser, TestDatabaseHelper } from '@tests/utils/database-helper';
 import {
   mockBookingInput,
   createMockBookingInput,
@@ -34,7 +33,6 @@ describe('BookingService', () => {
   let registry: ProviderRegistry;
   let fake: ReturnType<typeof createFakeProvider>;
   let events: { emit: jest.Mock };
-  let userRepository: UserRepository;
   let testUserId: number;
 
   beforeEach(async () => {
@@ -68,8 +66,7 @@ describe('BookingService', () => {
     });
 
     // Create test user
-    userRepository = new UserRepository(dbHelper.getDb());
-    const user = userRepository.create(mockUserInput.email, 'encrypted', {
+    const user = insertUser(dbHelper.getDb(), mockUserInput.email, {
       firstName: mockUserInput.firstName,
       lastName: mockUserInput.lastName,
     });
@@ -210,7 +207,7 @@ describe('BookingService', () => {
 
     it('should only return bookings for specific user', async () => {
       // Create another user
-      const user2 = userRepository.create('user2@test.com', 'enc');
+      const user2 = insertUser(dbHelper.getDb(), 'user2@test.com');
 
       await bookingService.createBooking(testUserId, createMockBookingInput());
       await bookingService.createBooking(user2.id, createMockBookingInput());

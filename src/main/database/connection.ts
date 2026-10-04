@@ -21,7 +21,7 @@ import * as path from 'path';
 import { logger } from '../utils/logger';
 
 /** Schema version this build creates and understands. */
-export const LATEST_SCHEMA_VERSION = 8;
+export const LATEST_SCHEMA_VERSION = 9;
 
 /** A migration step failed. Its transaction was rolled back, so the database is still at the previous version. */
 export class MigrationError extends Error {
@@ -886,6 +886,87 @@ function v8AdoptOrphans(db: Database.Database): void {
   }
 }
 
+// ---------------------------------------------------------------------------------------
+// Migration 009 helpers: retire the legacy ParkStay credentials, watch holds, account checks
+// (V6; architecture-notes §12.26, §12.31, §12.32)
+// ---------------------------------------------------------------------------------------
+
+/**
+ * users: the profile only (id, email, names, phone, timestamps). The v1.x ParkStay password
+ * (`encrypted_password` and its `encryption_*` columns) is dropped: ParkStay never used it,
+ * and sign-in is now a session in the provider partition. The email is kept as the profile's
+ * hint; v8 already copied it to the ParkStay account.
+ */
+function v9RebuildUsers(db: Database.Database): void {
+  if (!columnsOf(db, 'users').has('encrypted_password')) return;
+  const seq = readSequence(db, 'users');
+  db.exec(`
+    CREATE TABLE users_v9 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE,
+      first_name TEXT,
+      last_name TEXT,
+      phone TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    INSERT INTO users_v9 (id, email, first_name, last_name, phone, created_at, updated_at)
+      SELECT id, email, first_name, last_name, phone, created_at, updated_at FROM users;
+    DROP TABLE users;
+    ALTER TABLE users_v9 RENAME TO users;
+    CREATE INDEX idx_users_email ON users(email);
+    CREATE TRIGGER update_users_timestamp
+    AFTER UPDATE ON users
+    BEGIN
+        UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+    END;
+  `);
+  restoreSequence(db, 'users', seq);
+}
+
+/** Adds each `[name, type]` column to `table` unless it is already there. */
+function addColumns(db: Database.Database, table: string, columns: [string, string][]): void {
+  const existing = columnsOf(db, table);
+  for (const [name, type] of columns) {
+    if (!existing.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
+  }
+}
+
+/** watches: the details of a watch's automatic hold, and the last run's error (§12.31). */
+function v9AddWatchHoldColumns(db: Database.Database): void {
+  addColumns(db, 'watches', [
+    ['hold_reference', 'TEXT'],
+    ['hold_expires_at', 'DATETIME'],
+    ['hold_unit_id', 'TEXT'],
+    ['payment_url', 'TEXT'],
+    ['last_error', 'TEXT'],
+  ]);
+}
+
+/** provider_accounts: when the sign-in state was last answered for certain. */
+function v9AddAccountLastChecked(db: Database.Database): void {
+  addColumns(db, 'provider_accounts', [['last_checked_at', 'DATETIME']]);
+}
+
+/**
+ * Rewrites the database file so no freed page keeps old content, then empties the WAL. Run
+ * once, after v9: the dropped legacy password ciphertext (and the copies v8's rebuild of
+ * `users` freed) must not survive in the file (§12.32). VACUUM keeps every rowid alias
+ * (`INTEGER PRIMARY KEY`), so the FTS index on `locations` stays valid. A failure is logged,
+ * not fatal: the migration itself has committed.
+ */
+function scrubFreedPages(db: Database.Database): void {
+  try {
+    db.exec('VACUUM');
+    if (String(db.pragma('journal_mode', { simple: true })).toLowerCase() === 'wal') {
+      db.pragma('wal_checkpoint(TRUNCATE)');
+    }
+    logger.info('Migration 009: database file rewritten (VACUUM)');
+  } catch (error) {
+    logger.error('Migration 009: VACUUM failed; freed pages may keep old data', error);
+  }
+}
+
 /**
  * Brings the database up to `targetVersion`, LATEST_SCHEMA_VERSION unless given. A lower
  * target stops after that version (tests use it to build a database of an older shape).
@@ -1324,9 +1405,27 @@ export function runMigrations(
         }
       );
     }
+
+    // Migration 009 (V6): retire the legacy ParkStay credentials and record watch holds.
+    // - users: rebuilt without encrypted_password and the encryption_* columns (§12.32);
+    // - watches: hold_reference, hold_expires_at, hold_unit_id, payment_url, last_error
+    //   (§12.31), added in place;
+    // - provider_accounts: last_checked_at.
+    // After the step, the file is rewritten (VACUUM) so the dropped ciphertext is gone.
+    if (pending(9)) {
+      applyMigration(database, 9, ['users', 'watches', 'provider_accounts'], () => {
+        logger.info('Running migration 009: Retire legacy credentials, watch holds');
+        v9RebuildUsers(database);
+        v9AddWatchHoldColumns(database);
+        v9AddAccountLastChecked(database);
+      });
+    }
   } finally {
     database.pragma('foreign_keys = ON');
   }
+
+  // Outside every transaction: VACUUM cannot run inside one.
+  if (pending(9)) scrubFreedPages(database);
 }
 
 /**

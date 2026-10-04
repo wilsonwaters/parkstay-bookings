@@ -2,8 +2,7 @@
  * SiteSniperRepository unit tests (backed by a real test database).
  */
 
-import { TestDatabaseHelper } from '@tests/utils/database-helper';
-import { UserRepository } from '@main/database/repositories/user.repository';
+import { insertUser, TestDatabaseHelper } from '@tests/utils/database-helper';
 import { SiteSniperRepository } from '@main/database/repositories';
 import { mockUserInput } from '@tests/fixtures/users';
 import { createMockSiteSnipeInput } from '@tests/fixtures/site-sniper';
@@ -18,8 +17,7 @@ describe('SiteSniperRepository', () => {
     dbHelper = new TestDatabaseHelper('site-sniper-repo');
     await dbHelper.setup();
 
-    const userRepo = new UserRepository(dbHelper.getDb());
-    const user = userRepo.create(mockUserInput.email, 'enc', 'key', 'iv', 'tag');
+    const user = insertUser(dbHelper.getDb(), mockUserInput.email);
     userId = user.id;
 
     repo = new SiteSniperRepository(dbHelper.getDb());

@@ -100,7 +100,7 @@ function defaultStubs(): ApiStubs {
     watches: { list: resolve(ok([])) },
     snipes: { list: resolve(ok([])) },
     bookings: { list: resolve(ok([])) },
-    auth: { getCredentials: resolve(ok(null)) },
+    accounts: { list: resolve(ok([])) },
     notifiers: { get: resolve(ok(null)) },
   };
 }

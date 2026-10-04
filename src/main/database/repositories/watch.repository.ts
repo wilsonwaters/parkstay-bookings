@@ -286,6 +286,21 @@ export class WatchRepository extends BaseRepository<Watch> {
     return units ? (parsed as UnitAvailability[]) : undefined;
   }
 
+  /**
+   * How many of the provider's watches hold a site whose hold has not expired at `now`
+   * (`last_result 'held'` and `hold_expires_at`, migration v9). The account service asks it
+   * before a sign-out: the hold lives in the provider's session.
+   */
+  countUnexpiredHolds(providerId: string, now: Date): number {
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM watches
+         WHERE provider_id = ? AND last_result = 'held' AND hold_expires_at > ?`
+      )
+      .get(providerId, now.toISOString()) as { n: number };
+    return row.n;
+  }
+
   protected mapRow(row: WatchRow): Watch {
     const where = `watches ${row.id}`;
     return {

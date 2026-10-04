@@ -4,8 +4,8 @@
  */
 
 import Database from 'better-sqlite3';
-import { TestDatabaseHelper } from '@tests/utils/database-helper';
-import { NotificationRepository, UserRepository } from '@main/database/repositories';
+import { insertUser, TestDatabaseHelper } from '@tests/utils/database-helper';
+import { NotificationRepository } from '@main/database/repositories';
 import { NotificationType, RelatedType } from '@shared/types/common.types';
 import { mockUserInput } from '@tests/fixtures/users';
 
@@ -18,7 +18,7 @@ describe('NotificationRepository validation', () => {
   beforeEach(async () => {
     dbHelper = new TestDatabaseHelper('notification-repo');
     db = await dbHelper.setup();
-    userId = new UserRepository(db).create(mockUserInput.email, 'enc', 'key', 'iv', 'tag').id;
+    userId = insertUser(db, mockUserInput.email).id;
     repo = new NotificationRepository(db);
   });
 
