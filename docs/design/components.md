@@ -102,3 +102,13 @@ All three take `appearance="field"` (forms) or `"segment"` (a segment of E1's se
 | `usePosition(anchorRef, floatingRef, { open })` | Placing a floating layer below or above its anchor, flipped and clamped to the window. Built on the pure `computePosition`. |
 | `useDisclosure()` | The state and ARIA props for a custom show/hide pattern. `Disclosure` uses it. |
 | `useOverlay()` / `OverlayStack` | Registering a new kind of overlay so Escape order and `inert` stay correct. |
+
+## Domain components
+
+Shared pieces built from the primitives, in `src/renderer/components/` (outside `ui/`, because they know about locations and routes).
+
+| Component | Use it for | Do | Don't |
+| --- | --- | --- | --- |
+| `LocationCard` | A place to stay in a list (Explore's results, and later watches and detail pages). One link to `ROUTES.placeDetail`, named by the place's name; photo, area, provider, kind, up to 3 facility icons, "Book online" or "Info only", unit count. | Pass `highlighted` and `selected` (Explore keeps them in step with the map), and `children` for extra state such as availability (E3). | Put buttons or other links inside it; the whole card is one link. |
+| `LocationPhoto` | A location's first photo, hot-linked from the provider: lazy, no referrer, a skeleton while loading, `PhotoPlaceholder` ("No photo available for {name}") when missing or broken. | Size and round it from the parent (`aspect-[4/3] rounded-lg`). | Put text or overlays on the photo. |
+| `amenityIcon(name)` | The lucide icon for a facility, matched by meaning from the provider's own words; `MapPin` when unknown (design-language.md, "Amenities"). | Pair the icon with the facility's name for screen readers. | Show the icon as the only signal. |

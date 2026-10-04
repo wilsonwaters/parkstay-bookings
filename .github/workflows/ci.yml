@@ -145,6 +145,10 @@ jobs:
 
       - name: Build application
         run: npm run build
+        env:
+          # Public (pk.) token for Explore's map, bundled into the renderer. Without it the
+          # build still succeeds and Explore is list-only.
+          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN || vars.MAPBOX_ACCESS_TOKEN }}
 
       - name: Check build artifacts
         run: |

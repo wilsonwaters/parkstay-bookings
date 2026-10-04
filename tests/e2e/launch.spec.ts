@@ -1,8 +1,9 @@
 /**
  * Launch: WA Stay opens straight on Explore, with no login gate (brief D2).
  *
- * Explore (E1): the campgrounds from the ParkStay catalogue fixture
- * (tests/e2e/fixtures/http/parkstay/campground_map.json), filtered by region, and one opened.
+ * Explore (E1): the search pill, the filters, the list-only notice (the e2e build has no
+ * Mapbox token, so there is no map), and the campgrounds from the ParkStay catalogue fixture
+ * (tests/e2e/fixtures/http/parkstay/campground_map.json).
  */
 
 import { APP_NAME } from '../../src/shared/constants/app-constants';
@@ -22,6 +23,32 @@ test('opens straight on Explore, with no login gate', async ({ launchWaStay }) =
   await expect(window.getByRole('banner')).toHaveCount(1);
   await expect(window.getByRole('main')).toBeVisible();
   await expect(window.getByLabel('Password')).toHaveCount(0);
+});
+
+test('Explore shows the search pill, the filters and, with no token, the list instead of a map', async ({
+  launchWaStay,
+}) => {
+  const wa = await launchWaStay();
+  const { window } = wa;
+
+  const search = window.getByRole('search', { name: 'Search places' });
+  await expect(search).toBeVisible();
+  await expect(search.getByRole('combobox', { name: 'Where' })).toBeVisible();
+  await expect(search.getByRole('button', { name: 'Search' })).toBeVisible();
+  const filters = window.getByRole('group', { name: 'Filters' });
+  for (const chip of ['Provider', 'Region', 'Facilities', 'Book online']) {
+    await expect(filters.getByRole('button', { name: chip, exact: true })).toBeVisible();
+  }
+
+  await expect(
+    window.getByText("The map isn't available in this build, so places are shown as a list.")
+  ).toBeVisible();
+  await expect(window.getByRole('region', { name: 'Map of places' })).toHaveCount(0);
+  // The production build never shows the developer hint.
+  await expect(window.getByText(/MAPBOX_ACCESS_TOKEN/)).toHaveCount(0);
+
+  expect(withoutGuardedRequests(await wa.consoleErrors(), wa.unexpectedRequests())).toEqual([]);
+  expect(withoutRemoteImages(wa.unexpectedRequests())).toEqual([]);
 });
 
 test('Explore lists the ParkStay campgrounds from the catalogue fixture', async ({

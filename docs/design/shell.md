@@ -19,7 +19,7 @@ The accessible names in [Stable names](#stable-names) are a contract with the El
 | `app/ErrorBoundary.tsx` | `AppErrorBoundary` and `RouteErrorBoundary`. |
 | `app/useRouteFocus.ts` | Focus and announcements on page changes. |
 | `app/NotFoundPage.tsx`, `app/LegacyPageFrame.tsx` | The 404 page, and the gutter and width the legacy pages used to get from the old sidebar layout (the same as the new pages'). |
-| `features/explore/ExplorePage.tsx` | The Explore placeholder. E1 replaces it. |
+| `features/explore/ExplorePage.tsx` | Explore, the home screen (E1): search pill, filters, results and the map ([map.md](map.md)). |
 | `features/<domain>/legacy/` | The pre-redesign pages, moved unchanged. The U tasks rebuild them and delete these folders. |
 
 ## Header
@@ -48,7 +48,7 @@ Build every address with `ROUTES` (or `buildPath` with a pattern), never by join
 
 | Path | `ROUTES` key | Renders | Notes |
 | --- | --- | --- | --- |
-| `/` | `explore` | `ExplorePage` | Placeholder until E1. |
+| `/` | `explore` | `ExplorePage` | Its state lives in the query string (`q`, filters, dates, guests, `map`, `follow`, `view`, `sel`). |
 | `/places/:providerId/:externalId` | `placeDetail(providerId, externalId)` | `NotFoundPage` | Reserved for E2. |
 | `/watches` | `watches` | legacy Watches list |  |
 | `/watches/new` | `watchNew(prefill?)` | legacy Create Watch |  |
@@ -87,7 +87,7 @@ One column, `fixed bottom-4 right-4`, 380 px wide at most, with an 8 px gap, por
 - The column never takes clicks itself (`pointer-events-none`); only the cards in it do.
 - Each card sits in a slot with no box of its own (`display: contents`), so a card that renders nothing (`QueueStatus` while idle) leaves no gap.
 - **Layers.** The tray is at `z-tray` (40), under the modal scrim (`z-overlay`, 50). Being portalled, it is never made `inert` by a modal. While a modal is open (the overlay stack marks `#root` inert), the tray rises to `z-toast` (60) so toasts stay readable and clickable above the scrim, and the update and queue slots are made `inert` and invisible, keeping their space so toasts do not move. Everything returns when the modal closes.
-- **Explore (E1):** the tray covers the bottom-right corner of the map. Move the Mapbox logo and attribution to the bottom-left so it never covers them (Mapbox terms).
+- **Explore (E1):** the tray covers the bottom-right corner of the map, so the Mapbox logo and attribution sit bottom-left, where it never covers them (Mapbox terms).
 
 ## Errors
 
@@ -103,7 +103,8 @@ One column, `fixed bottom-4 right-4`, 380 px wide at most, with an 8 px gap, por
 - `events.ts`: `useApiEvent(name, cb)` subscribes for as long as the component is mounted and always calls the latest `cb`. `useInvalidateOn(event, queryKey)` marks a query stale when the event arrives.
 - `providers.ts`: `useProviders()`, `useProvider(id)` and `useProvidersWith(capability)`. Until V1 (#19) adds the shared `ProviderManifest` and `window.api.providers`, they use a local structural type marked `TODO(V1)` and resolve to an empty list when the preload has no `providers` namespace.
 - `app.ts`: `useAppInfo()` and `useOpenLogsFolder()` for About.
-- **Query client** (`app/queryClient.ts`): `staleTime` 60 s, no refetch on window focus, queries retry once except for `VALIDATION`, `CAPABILITY`, `NOT_FOUND` and `API_UNAVAILABLE`, and mutations never retry.
+- `catalog.ts`: `useCatalogSearch(query)` (`catalog.search` with `limit: 5000`, previous results kept while the next load, 5 minutes fresh), `useCatalogAll()` (the unfiltered catalogue, for filter options and suggestions; the same cache entry as an empty search), `useCatalogStatus()`, `useCatalogRefresh()`, and `useCatalogUpdates()`, which reloads them on `catalog:updated`. The map area is never sent: Explore filters by area in the renderer.
+- **Query client** (`app/queryClient.ts`): `staleTime` 60 s, no refetch on window focus, queries retry once except for `VALIDATION`, `CAPABILITY`, `NOT_FOUND`, `NOT_IMPLEMENTED` and `API_UNAVAILABLE`, and mutations never retry.
 - **Guard:** `tests/unit/renderer/api-boundary.test.ts` fails if `window.api` appears outside `renderer/api/` and its explicit legacy allow-list. The U tasks delete entries as they rebuild each page; the list never grows. The token guard keeps a similar list of the legacy pages.
 
 ### Outside the app
@@ -130,6 +131,12 @@ With no `window.api` (the renderer opened in a plain browser with `npm run dev:r
 | 404 | heading level 1, button | Page not found · Back to Explore |
 | Route error | heading level 1, buttons | This page hit a problem · Try again · Back to Explore |
 | App error | heading, buttons | WA Stay hit a problem · Reload WA Stay · Copy error details |
+| Explore page title | heading level 1 (visually hidden) | Explore places to stay |
+| Explore search | search, combobox, button | Search places · Where · Search |
+| Explore filters | group, buttons | Filters · Provider · Type · Region · Facilities · Book online · Clear all (a chip with choices: "Region, 1 selected") |
+| Explore results | region, heading level 2 | Results · "169 places", or "169 places in map area" |
+| Explore map | region, switch | Map of places · Search as I move the map |
+| Explore below 1024 px | button | Show map · Show list |
 
 ## Testing
 

@@ -1,6 +1,6 @@
 /**
- * Explore's list: search, filters, the results and every state, through the whole app with a
- * mocked `window.api`.
+ * Explore in list-only mode (no Mapbox token under Jest): search, filters, the results and
+ * every state, through the whole app with a mocked `window.api`.
  */
 import { act, configure, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import {
@@ -16,9 +16,12 @@ import { currentRoute, renderWithApp } from '../../../../tests/utils/renderer/re
 import { PARKSTAY_LOCATIONS } from '../../../../tests/fixtures/catalog/parkstay-locations';
 import { format, parseISO } from 'date-fns';
 import { addDays, todayIn } from '../../../shared/utils/calendar-date';
+import { createMapboxController } from './map/mapboxController';
 
 // These render the whole app with 169 places: give async queries room on a busy CI runner.
 configure({ asyncUtilTimeout: 4000 });
+
+jest.mock('./map/mapboxController', () => ({ createMapboxController: jest.fn() }));
 
 const results = () => screen.getByRole('region', { name: 'Results' });
 const resultsHeading = () => within(results()).getByRole('heading', { level: 2 });
@@ -76,6 +79,21 @@ describe('Explore (list-only)', () => {
     // 40 cards first.
     expect(cards()).toHaveLength(40);
     expect(mock?.api.catalog.search).toHaveBeenCalledWith({ limit: 5000 });
+  });
+
+  it('shows the list-only notice and no map at all without a token', async () => {
+    await renderExplore();
+    expect(
+      screen.getByText(/The map isn't available in this build, so places are shown as a list\./)
+    ).toBeInTheDocument();
+    // Development builds say how to turn it on.
+    expect(screen.getByText(/Set MAPBOX_ACCESS_TOKEN in \.env to enable it\./)).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Map of places' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('switch', { name: 'Search as I move the map' })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Show map/ })).not.toBeInTheDocument();
+    expect(createMapboxController).not.toHaveBeenCalled();
   });
 
   it('adds 40 more cards with "Show more places"', async () => {
