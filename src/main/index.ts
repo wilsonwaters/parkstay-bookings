@@ -3,9 +3,10 @@
  *
  * The order matters:
  * 1. The crash policy is installed first, so a failed start shows an error box and exits.
- * 2. The single-instance lock is taken before any database or scheduler work. A second
+ * 2. userData is pinned before anything uses it (the single-instance lock lives there).
+ * 3. The single-instance lock is taken before any database or scheduler work. A second
  *    instance hands over to the first (which brings its window to the front) and quits.
- * 3. After `ready`: log files under userData, the database, the container, the IPC handlers,
+ * 4. After `ready`: log files under userData, the database, the container, the IPC handlers,
  *    the scheduler and the main window. From then on errors are logged and survived.
  *
  * The container's SecretVault uses `safeStorage`, whose Windows key lives in userData's
@@ -19,6 +20,7 @@ import { openDatabase } from './database/connection';
 import { createContainer, AppContainer } from './app/container';
 import { installCrashPolicy } from './app/crash-policy';
 import { createMainWindow, denyWebviews } from './app/main-window';
+import { getBrandIconPath } from './app/paths';
 import { installQuitHold } from './app/quit-hold';
 import { createAppUrlMatcher, resolveRendererEntry } from './app/renderer-entry';
 import { acquireSingleInstance, HIDDEN_ARG } from './app/single-instance';
@@ -27,6 +29,11 @@ import { createSenderGuard } from './ipc/sender-guard';
 import { initFileLogging, logger } from './utils/logger';
 
 const crashPolicy = installCrashPolicy({ process, app, dialog, log: logger });
+
+// The package is now `wa-stay`, so Electron's default userData would be <appData>/WA Stay and
+// v1.x data would be left behind: keep the v1.x folder until B3 moves the data.
+// B3 replaces this
+app.setPath('userData', path.join(app.getPath('appData'), 'parkstay-bookings')); // legacy-name-ok
 
 const instance = acquireSingleInstance(app, {
   log: logger,
@@ -71,6 +78,8 @@ function createWindow(startHidden: boolean): void {
     preloadPath: path.join(__dirname, '../../preload/index.js'),
     trustedWebContents: container.trustedWebContents,
     startHidden,
+    // A packaged Windows or macOS window shows the executable's own icon
+    icon: process.platform === 'linux' || !app.isPackaged ? getBrandIconPath() : undefined,
   });
   mainWindow = window;
   window.on('closed', () => {

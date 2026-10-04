@@ -270,6 +270,15 @@ describe('createContainer', () => {
     expect(session.fromPartition).toHaveBeenCalledWith('persist:provider-parkstay');
   });
 
+  it("gives the email notifier the providers' names and the WA Stay icon", () => {
+    build();
+
+    const [options] = jest.mocked(SmtpEmailNotifier).mock.calls[0];
+    expect(options?.logoPath).toBe(path.join('/app', 'resources', 'icons', 'icon.png'));
+    expect(options?.providerName?.('parkstay')).toBe('ParkStay');
+    expect(options?.providerName?.('not-a-provider')).toBeUndefined();
+  });
+
   it('dispose disposes the providers before the database closes', () => {
     const { container, db } = build();
     const disposeAll = jest.spyOn(container.providers, 'disposeAll');

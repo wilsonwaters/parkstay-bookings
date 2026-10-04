@@ -7,8 +7,8 @@
  * Any difference makes existing users' stored secrets unreadable.
  *
  * 1. ParkStay password (`users`): AES-256-GCM, hex `encrypted_password`, `encryption_iv` and
- *    `encryption_auth_tag` columns, key `PBKDF2(machineId + 'parkstay-bookings-v1-secret',
- *    'parkstay-salt', 100000, 32, sha512)` (v1.x `AuthService`).
+ *    `encryption_auth_tag` columns, key `PBKDF2(machineId + AUTH_APP_SECRET, 'parkstay-salt',
+ *    100000, 32, sha512)` (v1.x `AuthService`).
  * 2. Notifier config (`notifiers.config`): the same with `'parkstay-notification-providers-v1'`
  *    and `'parkstay-provider-salt'`, stored as hex `iv:authTag:ciphertext` (v1.x
  *    notification-provider repository).
@@ -24,7 +24,7 @@ import crypto from 'crypto';
 import { machineIdSync } from 'node-machine-id';
 
 // legacy: never change (v1.x AuthService)
-const AUTH_APP_SECRET = 'parkstay-bookings-v1-secret';
+const AUTH_APP_SECRET = 'parkstay-bookings-v1-secret'; // legacy-name-ok: decrypts v1.x data
 const AUTH_SALT = 'parkstay-salt';
 // legacy: never change (v1.x notification-provider repository)
 const NOTIFIER_CONFIG_SECRET = 'parkstay-notification-providers-v1';

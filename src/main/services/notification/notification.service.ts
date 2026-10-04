@@ -10,11 +10,23 @@ import { BOOKING_HOLD_MINUTES } from '@shared/constants';
 import { NotificationRepository } from '../../database/repositories';
 import { NotificationDispatcher } from './notification-dispatcher';
 import type { EventSink } from '@shared/contracts/events';
-import { Notification as ElectronNotification, app } from 'electron';
-import * as path from 'path';
+import { Notification as ElectronNotification } from 'electron';
+import { getBrandIconPath } from '../../app/paths';
 import { logger } from '../../utils/logger';
 
 const log = logger.child({ module: 'notifications' });
+
+/**
+ * The provider of every watch, snipe and booking until they carry their own `providerId`
+ * (V2, V4). Emails name it.
+ */
+const LEGACY_PROVIDER_ID = 'parkstay';
+
+/** What an email says a notification is about, beyond what is stored. */
+interface DispatchMeta {
+  providerId?: string;
+  locationName?: string;
+}
 
 /**
  * Notification Service
@@ -41,12 +53,9 @@ export class NotificationService {
   /**
    * Create a notification
    * @param input - Notification data to store
-   * @param dispatchMeta - Optional metadata for external providers (email, etc.)
+   * @param dispatchMeta - The provider and location, for external notifiers (email, etc.)
    */
-  async notify(
-    input: NotificationInput,
-    dispatchMeta?: { campgroundName?: string }
-  ): Promise<Notification> {
+  async notify(input: NotificationInput, dispatchMeta?: DispatchMeta): Promise<Notification> {
     // Store notification in database
     const notification = this.notificationRepo.create(input);
 
@@ -71,7 +80,8 @@ export class NotificationService {
           message: notification.message,
           actionUrl: notification.actionUrl,
           type: notification.type,
-          campgroundName: dispatchMeta?.campgroundName,
+          providerId: dispatchMeta?.providerId,
+          locationName: dispatchMeta?.locationName,
         });
       } catch (error) {
         log.error('Error dispatching notification to providers:', error);
@@ -99,7 +109,7 @@ export class NotificationService {
         relatedType: RelatedType.WATCH,
         actionUrl: `/watches/${watch.id}`,
       },
-      { campgroundName: watch.campgroundName }
+      { providerId: LEGACY_PROVIDER_ID, locationName: watch.campgroundName }
     );
   }
 
@@ -133,7 +143,7 @@ export class NotificationService {
         relatedType: RelatedType.WATCH,
         actionUrl: `/watches/${watch.id}`,
       },
-      { campgroundName: watch.campgroundName }
+      { providerId: LEGACY_PROVIDER_ID, locationName: watch.campgroundName }
     );
   }
 
@@ -156,7 +166,7 @@ export class NotificationService {
         relatedType: RelatedType.SNIPE,
         actionUrl: `/site-sniper/${snipe.id}`,
       },
-      { campgroundName: snipe.campgroundName }
+      { providerId: LEGACY_PROVIDER_ID, locationName: snipe.campgroundName }
     );
   }
 
@@ -180,7 +190,7 @@ export class NotificationService {
         relatedType: RelatedType.SNIPE,
         actionUrl: `/site-sniper/${snipe.id}`,
       },
-      { campgroundName: snipe.campgroundName }
+      { providerId: LEGACY_PROVIDER_ID, locationName: snipe.campgroundName }
     );
   }
 
@@ -192,15 +202,18 @@ export class NotificationService {
     bookingId: number,
     bookingReference: string
   ): Promise<void> {
-    await this.notify({
-      userId,
-      type: NotificationType.BOOKING_CONFIRMED,
-      title: 'Booking Confirmed',
-      message: `Your booking ${bookingReference} has been confirmed.`,
-      relatedId: bookingId,
-      relatedType: RelatedType.BOOKING,
-      actionUrl: `/bookings/${bookingId}`,
-    });
+    await this.notify(
+      {
+        userId,
+        type: NotificationType.BOOKING_CONFIRMED,
+        title: 'Booking Confirmed',
+        message: `Your booking ${bookingReference} has been confirmed.`,
+        relatedId: bookingId,
+        relatedType: RelatedType.BOOKING,
+        actionUrl: `/bookings/${bookingId}`,
+      },
+      { providerId: LEGACY_PROVIDER_ID }
+    );
   }
 
   /**
@@ -248,7 +261,7 @@ export class NotificationService {
         title: notification.title,
         body: notification.message,
         silent: !this.soundEnabled,
-        icon: path.join(app.getAppPath(), 'resources', 'icons', 'icon.png'),
+        icon: getBrandIconPath(),
       });
 
       desktopNotification.on('click', () => {

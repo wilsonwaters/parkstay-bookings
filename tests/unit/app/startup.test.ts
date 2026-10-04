@@ -1,6 +1,6 @@
 /**
- * Startup order in `src/main/index.ts`: the crash policy first, then the single-instance
- * lock, and only in the instance that holds it, after `ready`, the log files, the database,
+ * Startup order in `src/main/index.ts`: the crash policy first, then userData (kept on the
+ * v1.x folder until B3), then the single-instance lock, and only in the instance that holds it, after `ready`, the log files, the database,
  * the container, IPC, the scheduler and the window. A losing instance quits without
  * touching the database; a failed start goes to the crash policy. A quit hides the window
  * and disposes the container once; after that, errors no longer notify (the database is
@@ -15,6 +15,7 @@ const mockState = {
   hasLock: true,
   openDatabaseError: null as Error | null,
   containerOptions: null as null | Record<string, unknown>,
+  windowIcon: undefined as string | undefined,
 };
 const mockCrashPolicy = { markReady: jest.fn(), failStartup: jest.fn() };
 const mockWindowOptions: Array<{ preloadPath: string }> = [];
@@ -36,7 +37,9 @@ jest.mock('electron', () => {
       return mockState.hasLock;
     }),
     whenReady: jest.fn(() => Promise.resolve()),
-    getPath: jest.fn(() => '/user-data'),
+    getPath: jest.fn((name: string) => (name === 'appData' ? '/app-data' : '/user-data')),
+    setPath: jest.fn((name: string, value: string) => mockOrder.push(`setPath ${name} ${value}`)),
+    getAppPath: jest.fn(() => '/repo'),
     isReady: jest.fn(() => true),
     getLoginItemSettings: jest.fn(() => ({ wasOpenedAsHidden: false })),
     quit: jest.fn(),
@@ -101,9 +104,10 @@ jest.mock('@main/ipc', () => ({
 jest.mock('@main/app/main-window', () => {
   const { EventEmitter: Emitter } = jest.requireActual('events');
   return {
-    createMainWindow: jest.fn((options: { preloadPath: string }) => {
+    createMainWindow: jest.fn((options: { preloadPath: string; icon?: string }) => {
       mockOrder.push('createMainWindow');
       mockWindowOptions.push(options);
+      mockState.windowIcon = options.icon;
       const window = Object.assign(new Emitter(), {
         isDestroyed: () => false,
         isMinimized: () => false,
@@ -118,6 +122,9 @@ jest.mock('@main/app/main-window', () => {
     denyWebviews: jest.fn(),
   };
 });
+
+/** The v1.x data folder: the package rename must not move userData before B3 migrates it. */
+const LEGACY_USER_DATA = path.join('/app-data', 'parkstay-bookings');
 
 const { app } = jest.requireMock('electron') as { app: EventEmitter & { quit: jest.Mock } };
 
@@ -150,6 +157,7 @@ describe('main process startup', () => {
 
     expect(mockOrder).toEqual([
       'installCrashPolicy',
+      `setPath userData ${LEGACY_USER_DATA}`,
       'requestSingleInstanceLock',
       `initFileLogging ${path.join('/user-data', 'logs')}`,
       `openDatabase ${path.join('/user-data', 'parkstay.db')}`,
@@ -162,6 +170,8 @@ describe('main process startup', () => {
     expect(mockCrashPolicy.markReady).toHaveBeenCalledTimes(1);
     expect(mockCrashPolicy.failStartup).not.toHaveBeenCalled();
     expect(app.listenerCount('second-instance')).toBe(1);
+    // Running from source: the window gets the WA Stay icon
+    expect(mockState.windowIcon).toBe(path.join('/repo', 'resources', 'icons', 'icon.png'));
   });
 
   it('points the window at the bundled preload, relative to the main bundle (never the cwd)', async () => {
@@ -193,7 +203,11 @@ describe('main process startup', () => {
 
     await launch();
 
-    expect(mockOrder).toEqual(['installCrashPolicy', 'requestSingleInstanceLock']);
+    expect(mockOrder).toEqual([
+      'installCrashPolicy',
+      `setPath userData ${LEGACY_USER_DATA}`,
+      'requestSingleInstanceLock',
+    ]);
     expect(app.quit).toHaveBeenCalledTimes(1);
     expect(app.listenerCount('window-all-closed')).toBe(0);
   });

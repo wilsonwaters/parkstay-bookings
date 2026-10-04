@@ -56,6 +56,7 @@ import { migrateLegacySecrets } from '../security/legacy-migration';
 import { FileLocalKeyStore, SecretVault, type SafeStorageLike } from '../security/secret-vault';
 import { logger } from '../utils/logger';
 import type { QueueStatusEvent } from '@shared/types';
+import { getBrandIconPath } from './paths';
 import { createLocalProfile, LocalProfile } from './profile';
 
 export interface AppRepositories {
@@ -175,7 +176,10 @@ export function createContainer({
   });
 
   const notifierDispatcher = new NotificationDispatcher(repositories.notifiers, [
-    new SmtpEmailNotifier(),
+    new SmtpEmailNotifier({
+      providerName: (id) => providers.tryGet(id)?.manifest.shortName,
+      logoPath: getBrandIconPath(),
+    }),
   ]);
   const queueService = new QueueService(repositories.queueSessions);
   const forwardQueueStatus = (event: QueueStatusEvent): void =>

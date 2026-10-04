@@ -5,11 +5,10 @@
 
 import { useRef } from 'react';
 import { ExternalLink, FolderOpen } from 'lucide-react';
+import { APP_ISSUES_URL, APP_NAME, APP_REPO_URL } from '@shared/constants';
 import { useAppInfo, useOpenLogsFolder } from '../api';
 import { Logo } from './brand/Logo';
 import { Button, Dialog, Notice, Spinner } from './ui';
-
-const REPOSITORY_URL = 'https://github.com/wilsonwaters/parkstay-bookings';
 
 interface AboutDialogProps {
   isOpen: boolean;
@@ -25,7 +24,7 @@ export default function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
     <Dialog
       open={isOpen}
       onClose={onClose}
-      title="About WA Stay"
+      title={`About ${APP_NAME}`}
       size="sm"
       initialFocusRef={doneRef}
       footer={
@@ -75,7 +74,7 @@ export default function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
       <div className="mt-4 flex flex-wrap justify-center gap-2">
         <Button
           as="a"
-          href={REPOSITORY_URL}
+          href={APP_REPO_URL}
           target="_blank"
           rel="noreferrer"
           variant="ghost"
@@ -86,7 +85,7 @@ export default function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
         </Button>
         <Button
           as="a"
-          href={`${REPOSITORY_URL}/issues`}
+          href={APP_ISSUES_URL}
           target="_blank"
           rel="noreferrer"
           variant="ghost"

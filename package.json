@@ -1,16 +1,23 @@
 {
-  "name": "parkstay-bookings",
+  "name": "wa-stay",
+  "productName": "WA Stay",
   "version": "1.2.0",
-  "description": "Automated booking tool for WA ParkStay",
+  "description": "Find and book places to stay across Western Australia",
   "main": "dist/main/main/index.js",
-  "author": "ParkStay Bookings Team",
+  "author": {
+    "name": "Wilson Waters",
+    "email": "wilsonwaters@users.noreply.github.com"
+  },
   "license": "MIT",
   "private": true,
   "repository": {
     "type": "git",
-    "url": "https://github.com/wilsonwaters/parkstay-bookings.git"
+    "url": "https://github.com/wilsonwaters/wa-stay.git"
   },
-  "homepage": "https://github.com/wilsonwaters/parkstay-bookings",
+  "homepage": "https://github.com/wilsonwaters/wa-stay",
+  "bugs": {
+    "url": "https://github.com/wilsonwaters/wa-stay/issues"
+  },
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:preload\" \"npm run dev:renderer\"",
     "dev:main": "concurrently \"tsc -p tsconfig.main.json --watch\" \"tsc-alias -p tsconfig.main.json --watch\"",
@@ -136,11 +143,12 @@
     "vite": "^5.0.5"
   },
   "keywords": [
+    "accommodation",
+    "camping",
+    "western-australia",
     "parkstay",
     "booking",
-    "automation",
-    "electron",
-    "camping"
+    "electron"
   ],
   "engines": {
     "node": ">=20.0.0",

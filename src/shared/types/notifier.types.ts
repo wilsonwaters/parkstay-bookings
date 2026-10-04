@@ -129,9 +129,13 @@ export interface SmtpNotifierConfig {
 export interface NotificationMessage {
   title: string;
   message: string;
+  /** Linked from the message only when it is an http(s) URL. */
   actionUrl?: string;
   type?: string;
-  campgroundName?: string; // For watch notifications
+  /** The provider (`ProviderId`) the notification is about; absent for app-wide ones. */
+  providerId?: string;
+  /** The location it is about, e.g. a campground's name. */
+  locationName?: string;
 }
 
 /**

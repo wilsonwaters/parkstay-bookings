@@ -1,6 +1,8 @@
 // Application-wide constants
 
-export const APP_NAME = 'ParkStay Bookings';
+export const APP_NAME = 'WA Stay';
+export const APP_REPO_URL = 'https://github.com/wilsonwaters/wa-stay';
+export const APP_ISSUES_URL = `${APP_REPO_URL}/issues`;
 export const APP_VERSION = '1.0.0';
 
 // ParkStay API

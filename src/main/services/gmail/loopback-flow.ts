@@ -18,6 +18,7 @@ import http from 'http';
 import type { AddressInfo } from 'net';
 import { CodeChallengeMethod } from 'google-auth-library';
 import type { Credentials, GenerateAuthUrlOpts, GetTokenOptions } from 'google-auth-library';
+import { APP_NAME, BRAND_COLORS } from '@shared/constants';
 import { logger } from '../../utils/logger';
 
 const log = logger.child({ module: 'gmail-oauth' });
@@ -110,7 +111,7 @@ export async function runLoopbackFlow({
       exchanging = true;
       try {
         const { tokens } = await client.getToken({ code, codeVerifier, redirect_uri: redirectUri });
-        respondHtml(res, 200, SUCCESS_PAGE);
+        respondHtml(res, 200, successPage());
         finish(null, tokens);
       } catch (error) {
         respond(res, 500, 'Authorization failed');
@@ -175,36 +176,42 @@ const NOT_COMPLETED_PAGE = `
 </html>
 `;
 
-const SUCCESS_PAGE = `
-<html>
+/** The page the browser shows once Gmail is connected. */
+export function successPage(): string {
+  const c = BRAND_COLORS;
+  return `<!DOCTYPE html>
+<html lang="en">
   <head>
-    <title>Authorization Successful</title>
+    <meta charset="utf-8">
+    <title>${APP_NAME} – Gmail connected</title>
     <style>
       body {
-        font-family: Arial, sans-serif;
+        font-family: -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         display: flex;
         justify-content: center;
         align-items: center;
         height: 100vh;
         margin: 0;
-        background-color: #f0f0f0;
+        background-color: ${c.canvas};
       }
       .container {
-        background: white;
+        background: ${c.surface};
+        border: 1px solid ${c.border};
+        border-top: 4px solid ${c.ocean};
         padding: 40px;
-        border-radius: 8px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        border-radius: 12px;
         text-align: center;
       }
-      h1 { color: #4CAF50; }
-      p { color: #666; }
+      h1 { color: ${c.text}; }
+      p { color: ${c.textSecondary}; }
     </style>
   </head>
   <body>
     <div class="container">
-      <h1>Authorization Successful!</h1>
-      <p>You can close this window and return to ParkStay Bookings.</p>
+      <h1>Gmail connected</h1>
+      <p>You can close this window and return to ${APP_NAME}.</p>
     </div>
   </body>
 </html>
 `;
+}

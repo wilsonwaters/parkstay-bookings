@@ -1,4 +1,4 @@
-name: Build and Release
+name: WA Stay Build and Release
 
 on:
   push:

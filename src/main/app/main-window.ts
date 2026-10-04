@@ -19,6 +19,7 @@
 
 import { App, BrowserWindow, Session, shell, WebContents } from 'electron';
 import fs from 'fs';
+import { APP_NAME } from '@shared/constants';
 import type { TrustedWebContents } from '../ipc/trusted-web-contents';
 import { logger } from '../utils/logger';
 import { reloadOnceOnRenderCrash } from './crash-policy';
@@ -36,6 +37,8 @@ export interface MainWindowOptions {
   trustedWebContents: TrustedWebContents;
   /** Launched at login with `--hidden`: the window is created but not shown. */
   startHidden: boolean;
+  /** The window icon (`getBrandIconPath`). Omitted, the window uses the executable's icon. */
+  icon?: string;
 }
 
 export function createMainWindow({
@@ -43,6 +46,7 @@ export function createMainWindow({
   preloadPath,
   trustedWebContents,
   startHidden,
+  icon,
 }: MainWindowOptions): BrowserWindow {
   const hasPreload = fs.existsSync(preloadPath);
   const window = new BrowserWindow({
@@ -57,7 +61,8 @@ export function createMainWindow({
       webviewTag: false,
       ...(hasPreload ? { preload: preloadPath } : {}),
     },
-    title: 'ParkStay Bookings',
+    title: APP_NAME,
+    ...(icon ? { icon } : {}),
     show: false, // Don't show until ready
   });
   const contents = window.webContents;

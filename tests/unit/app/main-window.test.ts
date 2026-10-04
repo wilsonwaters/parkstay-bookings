@@ -326,6 +326,25 @@ describe('createMainWindow', () => {
     expect(window.show).not.toHaveBeenCalled();
   });
 
+  it('is titled WA Stay and uses the icon it is given, if any', () => {
+    const options = { entry: { kind: 'file', path: INDEX }, preloadPath: PRELOAD } as const;
+    const plain = createMainWindow({
+      ...options,
+      trustedWebContents: new TrustedWebContents(),
+      startHidden: false,
+    }) as unknown as FakeWindow;
+    expect(plain.options.title).toBe('WA Stay');
+    expect(plain.options).not.toHaveProperty('icon');
+
+    const withIcon = createMainWindow({
+      ...options,
+      trustedWebContents: new TrustedWebContents(),
+      startHidden: false,
+      icon: '/repo/resources/icons/icon.png',
+    }) as unknown as FakeWindow;
+    expect(withIcon.options.icon).toBe('/repo/resources/icons/icon.png');
+  });
+
   it('development: loads the dev server and sends the dev CSP header on its responses only', () => {
     const window = createMainWindow({
       entry: { kind: 'dev-server', url: 'http://localhost:3005' },

@@ -1,4 +1,4 @@
-name: CI
+name: WA Stay CI
 
 on:
   push:
@@ -113,7 +113,7 @@ jobs:
       - name: Run dependency check
         uses: dependency-check/Dependency-Check_Action@main
         with:
-          project: 'parkstay-bookings'
+          project: 'wa-stay'
           path: '.'
           format: 'HTML'
         continue-on-error: true

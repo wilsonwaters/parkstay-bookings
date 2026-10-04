@@ -1,10 +1,17 @@
 /**
  * SMTP Email Notifier
- * Sends notifications via email using SMTP (Nodemailer)
+ * Sends notifications via email using SMTP (Nodemailer).
+ *
+ * Emails carry the WA Stay brand: the sender name, the subject prefix, the wordmark (with the
+ * icon as an inline image when it exists) and D1 palette colours (`@shared/constants/brand`).
+ * Each email names the provider it is about, when there is one.
  */
 
+import fs from 'fs';
 import nodemailer, { Transporter } from 'nodemailer';
+import type Mail from 'nodemailer/lib/mailer';
 import SMTPTransport from 'nodemailer/lib/smtp-transport';
+import { APP_NAME, BRAND_COLORS } from '@shared/constants';
 import {
   NotifierChannel,
   NotificationMessage,
@@ -17,11 +24,39 @@ import {
 } from '@shared/types';
 import { BaseNotifier } from './base.notifier';
 
+/** The `cid:` of the inline icon beside the wordmark. */
+const LOGO_CID = 'wa-stay-logo';
+
+const FONT = "-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+const DISPLAY_FONT = "Georgia, 'Times New Roman', serif";
+
+export interface SmtpEmailNotifierOptions {
+  /**
+   * The short name (`manifest.shortName`) of a provider, or `undefined` when the registry
+   * does not know it. Without it emails name no provider.
+   */
+  providerName?: (providerId: string) => string | undefined;
+  /** A PNG of the WA Stay icon (`getBrandIconPath`), shown beside the wordmark if it exists. */
+  logoPath?: string;
+}
+
+/** What an email says, in both forms. */
+interface EmailContent {
+  subject: string;
+  html: string;
+  text: string;
+  attachments: Mail.Attachment[];
+}
+
 export class SmtpEmailNotifier extends BaseNotifier {
   private transporter: Transporter<SMTPTransport.SentMessageInfo> | null = null;
+  private readonly providerName: (providerId: string) => string | undefined;
+  private readonly logoPath: string | undefined;
 
-  constructor() {
+  constructor(options: SmtpEmailNotifierOptions = {}) {
     super(NotifierChannel.EMAIL_SMTP, 'Email (SMTP)');
+    this.providerName = options.providerName ?? (() => undefined);
+    this.logoPath = options.logoPath;
   }
 
   /**
@@ -88,19 +123,15 @@ export class SmtpEmailNotifier extends BaseNotifier {
       const senderEmail = config.fromEmail || config.auth.user;
       const toEmail = config.toEmail || senderEmail;
 
-      // Build email subject with app name and optional campground
-      const subject = this.buildSubject(message);
-
-      // Build email content
-      const htmlContent = this.buildHtmlEmail(message);
-      const textContent = this.buildTextEmail(message);
+      const email = this.buildEmail(message);
 
       const info = await transporter.sendMail({
-        from: `"ParkStay Bookings App" <${senderEmail}>`,
+        from: this.from(senderEmail),
         to: toEmail,
-        subject,
-        text: textContent,
-        html: htmlContent,
+        subject: email.subject,
+        text: email.text,
+        html: email.html,
+        attachments: email.attachments,
       });
 
       this.log('info', `Email sent successfully to ${toEmail}`, {
@@ -142,24 +173,17 @@ export class SmtpEmailNotifier extends BaseNotifier {
       // Send a test email
       const senderEmail = config.fromEmail || config.auth.user;
       const toEmail = config.toEmail || senderEmail;
+      const email = this.buildEmail({
+        title: 'Test email',
+        message: `This is a test email from ${APP_NAME}. If you received it, your email notifications are set up correctly.`,
+      });
       const info = await transporter.sendMail({
-        from: `"ParkStay Bookings App" <${senderEmail}>`,
+        from: this.from(senderEmail),
         to: toEmail,
-        subject: 'ParkStay Bookings App - Test Email',
-        text: 'This is a test email from ParkStay Bookings App. If you received this, your email notifications are configured correctly!',
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #2d5a27;">ParkStay Bookings App - Test Email</h2>
-            <p>This is a test email from ParkStay Bookings App.</p>
-            <p style="color: #28a745; font-weight: bold;">
-              If you received this, your email notifications are configured correctly!
-            </p>
-            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-            <p style="color: #666; font-size: 12px;">
-              This is an automated message from ParkStay Bookings App.
-            </p>
-          </div>
-        `,
+        subject: email.subject,
+        text: email.text,
+        html: email.html,
+        attachments: email.attachments,
       });
 
       this.log('info', 'Test email sent successfully', { messageId: info.messageId });
@@ -251,76 +275,118 @@ export class SmtpEmailNotifier extends BaseNotifier {
     return emailRegex.test(email);
   }
 
+  /** The From header: the WA Stay name with the sending address. */
+  private from(senderEmail: string): string {
+    return `"${APP_NAME}" <${senderEmail}>`;
+  }
+
+  /** Subject, HTML and text of one email, plus the inline icon when there is one. */
+  private buildEmail(message: NotificationMessage): EmailContent {
+    const provider = message.providerId ? this.providerName(message.providerId) : undefined;
+    const link = httpLink(message.actionUrl);
+    const logo = this.logoPath && fs.existsSync(this.logoPath) ? this.logoPath : undefined;
+
+    return {
+      subject: this.buildSubject(message, provider),
+      html: this.buildHtmlEmail(message, provider, link, logo !== undefined),
+      text: this.buildTextEmail(message, provider, link),
+      attachments: logo ? [{ filename: 'wa-stay.png', path: logo, cid: LOGO_CID }] : [],
+    };
+  }
+
   /**
-   * Build email subject line
+   * `WA Stay: <title> · <provider> · <location>`, leaving out the parts the message lacks.
    */
-  private buildSubject(message: NotificationMessage): string {
-    const appName = 'ParkStay Bookings App';
-
-    if (message.campgroundName) {
-      return `${appName}: ${message.title} - ${message.campgroundName}`;
-    }
-
-    return `${appName}: ${message.title}`;
+  private buildSubject(message: NotificationMessage, provider: string | undefined): string {
+    const parts = [message.title, provider, message.locationName].filter((part): part is string =>
+      Boolean(part)
+    );
+    return `${APP_NAME}: ${parts.join(' · ')}`;
   }
 
   /**
    * Build HTML email content
    */
-  private buildHtmlEmail(message: NotificationMessage): string {
-    const actionButton = message.actionUrl
-      ? `
-        <a href="${message.actionUrl}"
-           style="display: inline-block;
-                  background-color: #2d5a27;
-                  color: white;
-                  padding: 12px 24px;
-                  text-decoration: none;
-                  border-radius: 4px;
-                  margin-top: 16px;">
-          View Details
-        </a>
-      `
+  private buildHtmlEmail(
+    message: NotificationMessage,
+    provider: string | undefined,
+    link: string | undefined,
+    hasLogo: boolean
+  ): string {
+    const c = BRAND_COLORS;
+    const esc = (text: string) => this.escapeHtml(text);
+
+    const logo = hasLogo
+      ? `<td style="padding-right: 12px; vertical-align: middle;">
+                      <img src="cid:${LOGO_CID}" width="40" height="40" alt="" style="display: block; border: 0;">
+                    </td>`
       : '';
 
-    const campgroundInfo = message.campgroundName
-      ? `<p style="margin: 0 0 8px 0; color: #2d5a27; font-size: 14px; font-weight: bold;">
-          Campground: ${this.escapeHtml(message.campgroundName)}
-        </p>`
+    const details = [
+      message.locationName ? ['Location', message.locationName] : null,
+      provider ? ['Provider', provider] : null,
+    ]
+      .filter((row): row is string[] => row !== null)
+      .map(
+        ([label, value]) =>
+          `<p style="margin: 0 0 4px 0; color: ${c.link}; font-size: 14px; font-weight: bold;">
+                ${label}: ${esc(value)}
+              </p>`
+      )
+      .join('\n              ');
+
+    const actionButton = link
+      ? `<a href="${esc(link)}"
+                 style="display: inline-block;
+                        background-color: ${c.accent};
+                        color: ${c.accentText};
+                        font-weight: bold;
+                        padding: 12px 24px;
+                        text-decoration: none;
+                        border-radius: 8px;
+                        margin-top: 8px;">
+                View details
+              </a>`
       : '';
 
     return `
       <!DOCTYPE html>
-      <html>
+      <html lang="en">
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${esc(message.title)}</title>
         </head>
-        <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f5f5f5;">
-          <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background-color: white; border-radius: 8px; padding: 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-              <div style="border-bottom: 2px solid #2d5a27; padding-bottom: 16px; margin-bottom: 16px;">
-                <h1 style="margin: 0; color: #2d5a27; font-size: 24px;">
-                  ParkStay Bookings App
-                </h1>
+        <body style="margin: 0; padding: 0; font-family: ${FONT}; background-color: ${c.canvas};">
+          <div style="max-width: 600px; margin: 0 auto; padding: 24px 16px;">
+            <div style="background-color: ${c.surface}; border: 1px solid ${c.border}; border-radius: 12px; padding: 24px;">
+              <div style="border-bottom: 3px solid ${c.ocean}; padding-bottom: 16px; margin-bottom: 20px;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    ${logo}
+                    <td style="vertical-align: middle; font-family: ${DISPLAY_FONT}; font-size: 26px; font-weight: bold; color: ${c.text};">
+                      ${APP_NAME}
+                    </td>
+                  </tr>
+                </table>
               </div>
 
-              <h2 style="margin: 0 0 12px 0; color: #333; font-size: 20px;">
-                ${this.escapeHtml(message.title)}
+              <h2 style="margin: 0 0 12px 0; color: ${c.text}; font-size: 20px;">
+                ${esc(message.title)}
               </h2>
 
-              ${campgroundInfo}
+              ${details}
 
-              <p style="margin: 0 0 16px 0; color: #555; font-size: 16px; line-height: 1.5;">
-                ${this.escapeHtml(message.message)}
+              <p style="margin: 12px 0 16px 0; color: ${c.textSecondary}; font-size: 16px; line-height: 1.5;">
+                ${esc(message.message)}
               </p>
 
               ${actionButton}
 
-              <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
+              <hr style="border: none; border-top: 1px solid ${c.border}; margin: 24px 0;">
 
-              <p style="margin: 0; color: #999; font-size: 12px;">
-                This is an automated notification from ParkStay Bookings App.
+              <p style="margin: 0; color: ${c.textMuted}; font-size: 12px;">
+                Sent by ${APP_NAME}. You can turn these emails off in the app's settings.
               </p>
             </div>
           </div>
@@ -332,21 +398,25 @@ export class SmtpEmailNotifier extends BaseNotifier {
   /**
    * Build plain text email content
    */
-  private buildTextEmail(message: NotificationMessage): string {
-    let text = `ParkStay Bookings App\n\n`;
+  private buildTextEmail(
+    message: NotificationMessage,
+    provider: string | undefined,
+    link: string | undefined
+  ): string {
+    let text = `${APP_NAME}\n\n`;
     text += `${message.title}\n\n`;
 
-    if (message.campgroundName) {
-      text += `Campground: ${message.campgroundName}\n\n`;
-    }
+    if (message.locationName) text += `Location: ${message.locationName}\n`;
+    if (provider) text += `Provider: ${provider}\n`;
+    if (message.locationName || provider) text += '\n';
 
     text += `${message.message}\n`;
 
-    if (message.actionUrl) {
-      text += `\nView details: ${message.actionUrl}\n`;
+    if (link) {
+      text += `\nView details: ${link}\n`;
     }
 
-    text += `\n---\nThis is an automated notification from ParkStay Bookings App.`;
+    text += `\n---\nSent by ${APP_NAME}.`;
 
     return text;
   }
@@ -386,5 +456,16 @@ export class SmtpEmailNotifier extends BaseNotifier {
       },
       toEmail: toEmail || email,
     };
+  }
+}
+
+/** The URL when it is an absolute http(s) URL; anything else (`javascript:`, a route) is dropped. */
+function httpLink(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : undefined;
+  } catch {
+    return undefined;
   }
 }

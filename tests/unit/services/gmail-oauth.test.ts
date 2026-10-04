@@ -178,7 +178,7 @@ describe('runLoopbackFlow', () => {
     const page = await f.callback({ state: f.state, code: 'auth-code', scope: SCOPES[0] });
 
     expect(page.status).toBe(200);
-    expect(page.body).toContain('Authorization Successful');
+    expect(page.body).toContain('Gmail connected');
     await expect(f.flow).resolves.toEqual(TOKENS);
     expect(f.getToken).toHaveBeenCalledTimes(1);
     const options = f.getToken.mock.calls[0][0] as unknown as Record<string, string>;

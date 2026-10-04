@@ -123,7 +123,7 @@ ci (lint, type-check, test)
 
 ### 6. Publish the Release
 
-1. Go to the [GitHub Releases page](https://github.com/wilsonwaters/parkstay-bookings/releases)
+1. Go to the [GitHub Releases page](https://github.com/wilsonwaters/wa-stay/releases)
 2. Find the draft release created by CI
 3. Review the auto-generated release notes
 4. Edit the description if needed
@@ -143,8 +143,8 @@ Each release produces:
 
 | File | Description |
 | --- | --- |
-| `WA-ParkStay-Bookings-Setup-x.x.x.exe` | NSIS installer (recommended) |
-| `WA-ParkStay-Bookings-x.x.x.exe` | Portable executable |
+| `WA-Stay-Setup-x.x.x.exe` | NSIS installer (recommended) |
+| `WA-Stay-Portable-x.x.x.exe` | Portable executable |
 | `latest.yml` | Auto-update metadata |
 
 ## Auto-Updates

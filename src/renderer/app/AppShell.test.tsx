@@ -188,6 +188,14 @@ describe('App shell', () => {
       const dialog = await screen.findByRole('dialog', { name: 'About WA Stay' });
       expect(await within(dialog).findByText('Version 2.0.0-test')).toBeVisible();
       expect(within(dialog).getByText('28.3.3')).toBeVisible();
+      expect(within(dialog).getByRole('link', { name: 'GitHub' })).toHaveAttribute(
+        'href',
+        'https://github.com/wilsonwaters/wa-stay'
+      );
+      expect(within(dialog).getByRole('link', { name: 'Report an issue' })).toHaveAttribute(
+        'href',
+        'https://github.com/wilsonwaters/wa-stay/issues'
+      );
 
       await user.click(within(dialog).getByRole('button', { name: 'Done' }));
       expect(screen.queryByRole('dialog')).toBeNull();

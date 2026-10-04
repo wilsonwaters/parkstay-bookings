@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CircleUser, Info, Settings } from 'lucide-react';
 import { useHref } from 'react-router-dom';
+import { APP_NAME } from '@shared/constants';
 import { IconButton, Menu, MenuItem } from '../components/ui';
 import AboutDialog from '../components/AboutDialog';
 import { ROUTES } from './routes';
@@ -19,7 +20,7 @@ export function AccountMenu() {
           Settings
         </MenuItem>
         <MenuItem icon={<Info size={16} aria-hidden="true" />} onSelect={() => setAboutOpen(true)}>
-          About WA Stay
+          About {APP_NAME}
         </MenuItem>
       </Menu>
       <AboutDialog isOpen={aboutOpen} onClose={() => setAboutOpen(false)} />

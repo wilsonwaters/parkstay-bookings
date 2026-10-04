@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { EmailSettingsCard } from '../../../components/settings';
 import AboutDialog from '../../../components/AboutDialog';
+import { APP_NAME } from '@shared/constants';
 
 type TabType = 'account' | 'gmail' | 'notifications' | 'app' | 'advanced';
 
@@ -521,7 +522,7 @@ const Settings: React.FC = () => {
                     onClick={() => setShowAbout(true)}
                     className="btn-secondary text-sm"
                   >
-                    About WA ParkStay Bookings
+                    About {APP_NAME}
                   </button>
                 </div>
               </div>

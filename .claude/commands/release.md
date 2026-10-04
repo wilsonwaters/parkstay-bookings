@@ -39,7 +39,7 @@ Do NOT use `npm run version:patch/minor/major` — those auto-push tags before t
 
 ### Step 6: Confirm
 
-Tell the user the new version, that GitHub Actions will build a draft release, and link to https://github.com/wilsonwaters/parkstay-bookings/releases to publish once CI completes.
+Tell the user the new version, that GitHub Actions will build a draft release, and link to https://github.com/wilsonwaters/wa-stay/releases to publish once CI completes.
 
 ## Rules
 
