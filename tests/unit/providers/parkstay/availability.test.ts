@@ -225,6 +225,19 @@ describe('ParkStay availability', () => {
       expect(result.release).toEqual({ open: false, opensAt: '2026-10-02T18:00:00.000Z' });
     });
 
+    it('reads a view without a release time once per check, not again for the opening time', async () => {
+      const view = parkStayFixture('campsite_availablity_view_20.json');
+      const far = { arrival: '2027-04-01', departure: '2027-04-03', adults: 1 };
+      server.views.set('20', { ...view, release_date: null, release_time_friendly: null });
+      const before = server.requestsTo('/api/campsite_availablity_view/20/').length;
+      for (let i = 0; i < 3; i++) {
+        const result = await parkstay.provider.availability.check('20', far);
+        // Unknown release time: midnight AWST on 2026-10-03.
+        expect(result.release).toEqual({ open: false, opensAt: '2026-10-02T16:00:00.000Z' });
+      }
+      expect(server.requestsTo('/api/campsite_availablity_view/20/').length - before).toBe(3);
+    });
+
     it('on the furthest date, opens only once booking_time_open says the release time has come', async () => {
       // Today (2 Oct 2026, Perth) + 180 days = 2027-03-31.
       const view = parkStayFixture('campsite_availablity_view_20.json');
@@ -297,6 +310,23 @@ describe('ParkStay availability', () => {
       const entries = await parkstay.provider.availability.search(BUNGARRA_STAY);
       expect(entries.map((e) => e.key)).toContain('parkstay:999');
       server.overrides.clear();
+    });
+
+    it('returns an empty campground_available as no availability, with a warning that holds no request values', async () => {
+      server.overrides.set('/api/campground_availabilty_view/', {
+        status: 200,
+        body: { campground_available: {} },
+      });
+      await expect(parkstay.provider.availability.search(BUNGARRA_STAY)).resolves.toEqual([]);
+      server.overrides.clear();
+      const warnings = parkstay.logger.lines.filter((l) => l.level === 'warn');
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0].message).toMatch(/bulk availability listed 0 campgrounds/);
+      expect(JSON.stringify(warnings)).not.toMatch(/2026|\d{4}\/\d{2}\/\d{2}|gear/);
+
+      // A non-empty answer warns of nothing.
+      await parkstay.provider.availability.search(BUNGARRA_STAY);
+      expect(parkstay.logger.lines.filter((l) => l.level === 'warn')).toHaveLength(1);
     });
 
     it('rejects an unexpected shape with ProviderParseError', async () => {

@@ -5,7 +5,8 @@
  *   A new arrival date opens every day at the campground's own release time, Perth time
  *   (`api.py:1358-1372`): Bungarra's `release_time_friendly` is `02:00 AM`. The time is read
  *   from `campsite_availablity_view` and kept in the provider state as `release.time.<id>`;
- *   until it is known, 00:00 is assumed.
+ *   until it is known, 00:00 is assumed. When a campground's view has none (one not booked
+ *   online), the policy does not fetch the view again to look for it for an hour.
  * - `scheduled`: dates released in blocks (a release period, such as Ningaloo's), at a time
  *   the person sets. `suggestScheduledAt` offers the next first Tuesday at 10:00 AWST.
  * - `cancellation`: no release; poll continuously.
@@ -41,6 +42,9 @@ const MIDNIGHT: TimeOfDay = { hour: 0, minute: 0 };
 
 /** Where a campground's release time is kept in the provider state. */
 export const releaseTimeKey = (externalId: string): string => `release.time.${externalId}`;
+
+/** How long a view without a release time stops the policy fetching the view for one. */
+export const NO_RELEASE_TIME_TTL_MS = 3_600_000;
 
 /** `02:00 AM` → 2:00, `12:00 AM` → 0:00, `10:30 PM` → 22:30. Undefined when unreadable. */
 export function parseReleaseTime(friendly: string | null | undefined): TimeOfDay | undefined {
@@ -180,6 +184,8 @@ export class ParkStayReleasePolicy implements ReleasePolicy {
 
   /** Release times already in the provider state, so a poll does not rewrite them. */
   private readonly knownTimes = new Map<string, string>();
+  /** When a campground's view last came without a readable release time (epoch ms). */
+  private readonly noTimeSince = new Map<string, number>();
 
   constructor(private readonly deps: ReleasePolicyDeps) {}
 
@@ -249,27 +255,37 @@ export class ParkStayReleasePolicy implements ReleasePolicy {
     return Number.isInteger(hour) && Number.isInteger(minute) ? { hour, minute } : undefined;
   }
 
-  /** Records `release_time_friendly` from an availability view; stored only when it changes. */
+  /**
+   * Records `release_time_friendly` from an availability view; stored only when it changes.
+   * A view without a readable one is remembered for `NO_RELEASE_TIME_TTL_MS`.
+   */
   async rememberReleaseTime(
     externalId: string,
     friendly: string | null | undefined
   ): Promise<void> {
     const time = parseReleaseTime(friendly);
-    if (!time) return;
+    if (!time) {
+      this.noTimeSince.set(externalId, this.deps.clock().getTime());
+      return;
+    }
+    this.noTimeSince.delete(externalId);
     const value = `${String(time.hour).padStart(2, '0')}:${String(time.minute).padStart(2, '0')}`;
     if (this.knownTimes.get(externalId) === value) return;
     this.knownTimes.set(externalId, value);
     await this.deps.state.set(releaseTimeKey(externalId), value);
   }
 
-  /** The release time, fetching the campground's view once when it is not known yet. */
+  /**
+   * The release time, fetching the campground's view once when it is not known yet, unless a
+   * view read within the last hour had none.
+   */
   private async releaseTimeOrLoad(
     externalId: string,
     signal?: AbortSignal
   ): Promise<TimeOfDay | undefined> {
     let time = await this.releaseTime(externalId);
     throwIfAborted(signal);
-    if (time || !this.deps.loadView) return time;
+    if (time || !this.deps.loadView || this.recentlyWithoutTime(externalId)) return time;
     try {
       await this.deps.loadView(externalId, signal);
       time = await this.releaseTime(externalId);
@@ -282,6 +298,11 @@ export class ParkStayReleasePolicy implements ReleasePolicy {
     }
     throwIfAborted(signal);
     return time;
+  }
+
+  private recentlyWithoutTime(externalId: string): boolean {
+    const since = this.noTimeSince.get(externalId);
+    return since !== undefined && this.deps.clock().getTime() - since < NO_RELEASE_TIME_TTL_MS;
   }
 
   /** Today where ParkStay is. */

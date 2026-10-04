@@ -16,6 +16,9 @@
  * - **`holdOpen()`** is ref-counted. While anything holds the gate open, a keep-alive
  *   refreshes the session every 20 s (the ParkStay page's own cadence while active); the
  *   last release stops it.
+ * - **Idle again.** A session that ends while something holds the gate open or an `ensure`
+ *   waits is `expired`. One that ends with neither means nothing uses the queue: the gate
+ *   goes back to `idle` and tells its listeners, at the release or at the session's end.
  * - **Status** goes to `onStatus` listeners only (no EventEmitter, so no unhandled `error`
  *   event). A listener that throws is logged and the others still run.
  * - The saved session (`queue.session` in the provider state, the shape migration v8
@@ -117,6 +120,8 @@ export class ParkStayAccessGate implements AccessGate {
   private holds = 0;
   private keepAliveTimer?: ReturnType<typeof setTimeout>;
   private keepAliveRunning = false;
+  /** While nothing uses the gate: fires when the active session ends, to go idle. */
+  private idleTimer?: ReturnType<typeof setTimeout>;
   private disposed = false;
 
   constructor(private readonly deps: AccessGateDeps) {
@@ -127,6 +132,7 @@ export class ParkStayAccessGate implements AccessGate {
   status(): AccessStatus {
     const now = this.deps.clock().getTime();
     if (this.current.state === 'active' && this.session && this.session.expiresAt <= now) {
+      if (this.isUnused()) return this.make('idle');
       return { ...this.current, state: 'expired', updatedAt: new Date(now).toISOString() };
     }
     return { ...this.current };
@@ -148,13 +154,19 @@ export class ParkStayAccessGate implements AccessGate {
 
   holdOpen(): () => void {
     this.holds++;
-    if (this.holds === 1) this.scheduleKeepAlive();
+    if (this.holds === 1) {
+      this.scheduleKeepAlive();
+      this.watchForIdle();
+    }
     let released = false;
     return () => {
       if (released) return;
       released = true;
       this.holds--;
-      if (this.holds === 0) this.stopKeepAlive();
+      if (this.holds === 0) {
+        this.stopKeepAlive();
+        this.watchForIdle();
+      }
     };
   }
 
@@ -167,6 +179,7 @@ export class ParkStayAccessGate implements AccessGate {
     this.disposed = true;
     this.holds = 0;
     this.stopKeepAlive();
+    this.stopIdleTimer();
     const flight = this.flight;
     this.flight = undefined;
     if (flight) {
@@ -193,6 +206,7 @@ export class ParkStayAccessGate implements AccessGate {
   private startFlight(): Flight {
     const flight: Flight = { controller: new AbortController(), participants: new Set() };
     this.flight = flight;
+    this.watchForIdle();
     this.run(flight.controller.signal).then(
       (status) => this.land(flight, (p) => p.resolve(status)),
       (error: unknown) => this.land(flight, (p) => p.reject(error))
@@ -202,6 +216,7 @@ export class ParkStayAccessGate implements AccessGate {
 
   private land(flight: Flight, settle: (participant: Participant) => void): void {
     if (this.flight === flight) this.flight = undefined;
+    this.watchForIdle();
     for (const participant of [...flight.participants]) settle(participant);
     flight.participants.clear();
   }
@@ -221,6 +236,7 @@ export class ParkStayAccessGate implements AccessGate {
         if (flight.participants.size === 0 && this.flight === flight) {
           this.flight = undefined;
           flight.controller.abort();
+          this.watchForIdle();
         }
         reject(error);
       };
@@ -332,6 +348,44 @@ export class ParkStayAccessGate implements AccessGate {
       }
     }
     this.scheduleKeepAlive();
+    // The last hold may have been released while this refresh ran.
+    this.watchForIdle();
+  }
+
+  // -------------------------------------------------------------------------------------
+  // idle
+  // -------------------------------------------------------------------------------------
+
+  /** Nothing holds the gate open and no `ensure` is waiting. */
+  private isUnused(): boolean {
+    return this.holds === 0 && this.flight === undefined;
+  }
+
+  /**
+   * While the gate is unused with an active session, waits for the session to end, then goes
+   * `idle` (telling the listeners); otherwise stops waiting.
+   */
+  private watchForIdle(): void {
+    this.stopIdleTimer();
+    if (this.disposed || !this.isUnused() || this.current.state !== 'active' || !this.session) {
+      return;
+    }
+    const left = this.session.expiresAt - this.deps.clock().getTime();
+    if (left <= 0) {
+      this.setStatus(this.make('idle'));
+      return;
+    }
+    this.idleTimer = setTimeout(() => {
+      this.idleTimer = undefined;
+      this.watchForIdle();
+    }, left);
+    // Only an announcement: it does not keep the process alive.
+    this.idleTimer.unref?.();
+  }
+
+  private stopIdleTimer(): void {
+    if (this.idleTimer !== undefined) clearTimeout(this.idleTimer);
+    this.idleTimer = undefined;
   }
 
   // -------------------------------------------------------------------------------------

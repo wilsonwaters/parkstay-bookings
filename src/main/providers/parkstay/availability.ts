@@ -5,7 +5,9 @@
  *   `GET /api/campsite_availablity_view/{id}/` (the misspelling is ParkStay's). Each night is
  *   a tuple `[bookable, label, price, _, _, date]` (`api.py:1550`).
  * - `search`: every campground's free-site counts for a stay in one call,
- *   `GET /api/campground_availabilty_view/` (map pins). It has no prices.
+ *   `GET /api/campground_availabilty_view/` (map pins). It has no prices. ParkStay answers
+ *   a request it rejects (a bad Referer, empty dates) with HTTP 200 and no campgrounds
+ *   (`api.py:1062-1075`), so an empty answer is returned as it is, with a warning.
  *
  * For the public, ParkStay folds booked, closed and not-yet-released nights into one label,
  * `Unavailable` (`api.py:1578-1588`). Booked is by far the usual reason, so `Unavailable` is
@@ -159,7 +161,7 @@ export class CampsiteViews {
 }
 
 export interface AvailabilityDeps {
-  ctx: Pick<ProviderContext, 'id' | 'clock' | 'timezone'>;
+  ctx: Pick<ProviderContext, 'id' | 'clock' | 'timezone' | 'logger'>;
   client: ParkStayClient;
   facts: CampgroundFacts;
   views: CampsiteViews;
@@ -269,8 +271,15 @@ export function createAvailability({
         message: `${ctx.id}: bulk availability has an unexpected shape`,
       });
     }
+    const campgrounds = Object.entries(body.campground_available);
+    if (campgrounds.length === 0) {
+      // Possibly a genuinely empty answer, so not an error.
+      ctx.logger.warn(
+        'ParkStay bulk availability listed 0 campgrounds; ParkStay answers a request it rejects the same way'
+      );
+    }
     const entries: BulkAvailabilityEntry[] = [];
-    for (const [id, value] of Object.entries(body.campground_available)) {
+    for (const [id, value] of campgrounds) {
       // Campgrounds that are not bookable online have no totals.
       if (!Number.isFinite(value?.total_available) || !Number.isFinite(value?.total_bookable)) {
         continue;

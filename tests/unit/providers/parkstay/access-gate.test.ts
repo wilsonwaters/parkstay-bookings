@@ -1,7 +1,8 @@
 /**
  * `ParkStayAccessGate` (the DBCA queue) with fake timers: waiting → active, abort and
- * `maxWaitMs`, backoff while the queue API is down, the ref-counted keep-alive, the
- * `sitequeuesession` key, the saved session, and no `'error'` event to go unhandled.
+ * `maxWaitMs`, backoff while the queue API is down, the ref-counted keep-alive, expired
+ * versus idle, the `sitequeuesession` key, the saved session, and no `'error'` event to go
+ * unhandled.
  */
 
 import { EventEmitter } from 'events';
@@ -101,7 +102,8 @@ describe('ParkStayAccessGate', () => {
     });
     expect(seen.map((s) => s.state)).toEqual(['waiting', 'waiting', 'active']);
     expect(check).toHaveBeenCalledTimes(3);
-    expect(jest.getTimerCount()).toBe(0);
+    // No polling left: only the timer that turns the unused session idle when it ends.
+    expect(jest.getTimerCount()).toBe(1);
   });
 
   it('never puts the session key in a status (statuses reach the renderer)', async () => {
@@ -207,11 +209,76 @@ describe('ParkStayAccessGate', () => {
     expect(check).toHaveBeenCalledTimes(2);
   });
 
-  it('reports an active session that ran out as expired', async () => {
-    answer(active({ expiry_seconds: 60 }));
-    await gate.ensure();
-    await jest.advanceTimersByTimeAsync(61_000);
-    expect(gate.status().state).toBe('expired');
+  describe('expired or idle', () => {
+    let seen: Array<AccessStatus['state']>;
+
+    beforeEach(() => {
+      seen = [];
+      gate.onStatus((status) => seen.push(status.state));
+    });
+
+    it('reports a session that ran out while held open as expired, then idle (announced) at the last release', async () => {
+      answer(active({ expiry_seconds: 10 }));
+      await gate.ensure();
+      const release = gate.holdOpen();
+      await jest.advanceTimersByTimeAsync(11_000); // before the 20 s keep-alive
+      expect(gate.status().state).toBe('expired');
+
+      release();
+      expect(gate.status()).toEqual({
+        providerId: 'parkstay',
+        state: 'idle',
+        updatedAt: '2026-10-02T02:00:11.000Z',
+      });
+      expect(seen).toEqual(['active', 'idle']);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('goes idle, and announces it, when a session nothing uses any more ends', async () => {
+      answer(active({ expiry_seconds: 60 }));
+      await gate.ensure();
+      const release = gate.holdOpen();
+      await jest.advanceTimersByTimeAsync(20_000); // keep-alive: the session now ends at +80 s
+      release();
+      expect(gate.status().state).toBe('active');
+
+      await jest.advanceTimersByTimeAsync(59_999);
+      expect(seen).toEqual(['active', 'active']);
+      await jest.advanceTimersByTimeAsync(1);
+      expect(seen).toEqual(['active', 'active', 'idle']);
+      expect(gate.status().state).toBe('idle');
+      expect(jest.getTimerCount()).toBe(0);
+      expect(check).toHaveBeenCalledTimes(2);
+    });
+
+    it('reports expired while an ensure() waits for the refresh, and idle once it gives up', async () => {
+      answer(active({ expiry_seconds: 150 }));
+      await gate.ensure();
+      await jest.advanceTimersByTimeAsync(40_000); // 110 s left: refreshed, not trusted
+      check.mockImplementation(() => new Promise<QueueApiResponse>(() => {})); // no answer
+      const result = gate.ensure({ maxWaitMs: 120_000 }).catch((e: unknown) => e);
+
+      await jest.advanceTimersByTimeAsync(111_000);
+      expect(gate.status().state).toBe('expired');
+      expect(seen).toEqual(['active']);
+
+      await jest.advanceTimersByTimeAsync(9_000);
+      expect(await result).toBeInstanceOf(AccessGateError);
+      expect(gate.status().state).toBe('idle');
+      expect(seen).toEqual(['active', 'idle']);
+      expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('a new hold or ensure() stops the wait to go idle', async () => {
+      answer(active({ expiry_seconds: 60 }));
+      await gate.ensure();
+      expect(jest.getTimerCount()).toBe(1);
+      const release = gate.holdOpen();
+      expect(jest.getTimerCount()).toBe(1); // the keep-alive only
+      release();
+      await jest.advanceTimersByTimeAsync(61_000);
+      expect(gate.status().state).toBe('idle');
+    });
   });
 
   describe('holdOpen keep-alive', () => {
@@ -234,7 +301,8 @@ describe('ParkStayAccessGate', () => {
 
       releaseB();
       expect(gate.holdCount).toBe(0);
-      expect(jest.getTimerCount()).toBe(0);
+      // No keep-alive left: only the timer that turns the unused session idle when it ends.
+      expect(jest.getTimerCount()).toBe(1);
       await jest.advanceTimersByTimeAsync(60_000);
       expect(check).toHaveBeenCalledTimes(3);
     });

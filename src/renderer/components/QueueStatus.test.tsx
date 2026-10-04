@@ -62,4 +62,25 @@ describe('QueueStatus', () => {
     mock.emit('provider:access-status', status('idle'));
     expect(screen.queryByText('Queue Status')).toBeNull();
   });
+
+  it('hides once the periodic refresh finds the gate idle (a session nothing uses ran out)', async () => {
+    jest.useFakeTimers();
+    try {
+      const mock = renderWith(
+        status('active', { expiresAt: new Date(Date.now() + 5_000).toISOString() })
+      );
+      await settle();
+      expect(screen.getByText('Active')).toBeTruthy();
+
+      jest.mocked(mock.api.providers.accessStatus).mockResolvedValue(ok(status('idle')));
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(10_000);
+      });
+      expect(mock.api.providers.accessStatus).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText('Queue Status')).toBeNull();
+      expect(screen.queryByText('Expired')).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

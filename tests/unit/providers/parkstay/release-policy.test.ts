@@ -9,6 +9,7 @@ import {
   formatTimeOfDay,
   isReleased,
   nextFirstTuesdayAt10,
+  NO_RELEASE_TIME_TTL_MS,
   ParkStayReleasePolicy,
   parseReleaseTime,
   type ReleasePolicyDeps,
@@ -88,6 +89,32 @@ describe('ParkStay release policy', () => {
       );
       await release.computeReleaseAt(input);
       expect(loadView).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not read a campground without a release time again for an hour (offline type 1)', async () => {
+      let now = NOW.getTime();
+      // As the real view source does: a view without `release_time_friendly`.
+      const loadView = jest.fn(async (id: string) => release.rememberReleaseTime(id, null));
+      const { release } = policy({ loadView, clock: () => new Date(now) });
+      const input = {
+        mode: 'daily_rollover',
+        externalId: '20',
+        stay: stay('2027-04-01', '2027-04-02'),
+        now: NOW,
+      };
+      for (let i = 0; i < 5; i++) {
+        expect((await release.computeReleaseAt(input))?.toISOString()).toBe(
+          '2026-10-02T16:00:00.000Z' // midnight AWST
+        );
+      }
+      expect(loadView).toHaveBeenCalledTimes(1);
+
+      now += NO_RELEASE_TIME_TTL_MS - 1;
+      await release.computeReleaseAt(input);
+      expect(loadView).toHaveBeenCalledTimes(1);
+      now += 1;
+      await release.computeReleaseAt(input);
+      expect(loadView).toHaveBeenCalledTimes(2);
     });
 
     it('falls back to midnight, with a warning, when the campground cannot be read', async () => {
