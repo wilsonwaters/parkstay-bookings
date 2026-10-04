@@ -168,3 +168,4 @@ L. Cross-concern: a new create-flow pattern, shared domain components, and four 
 - [ ] Removes `features/watches/legacy/*` entries from the token-guard and API-boundary legacy allow-lists.
 - [ ] Create-watch route is `/watches/new` with the §12.10 prefill query (supersedes any `/watches/create` wording in this spec).
 - [ ] Fixes the two legacy WatchForm bugs reported by V2 (also on base): the form won't submit with no site type ticked, and an empty max price fails with NaN. Both must work in the rebuilt flow, with tests.
+- [ ] Q1 phase 2: add `tests/e2e/create-watch.spec.ts` (provider step → location → stay → review) using the network-free fixtures. Remove the Bookings-h1 `test.fail` mark if U3 has landed.

@@ -159,3 +159,7 @@ L. This is complex UI plus build wiring. Deliver it in two commits: (a) list-onl
 - The token is public by design (`pk.`), so give it public scopes only. URL restrictions don't apply to `file://` (EQ5).
 - Import lucide's `Map` as `MapIcon`.
 - Provider images are hot-linked live (O8). `LocationPhoto` uses `referrerPolicy="no-referrer"`, `loading="lazy"` and `decoding="async"`.
+
+## Orchestrator addendum (2026-10-04, from Q1 phase 1)
+- [ ] Extend the Q1 Electron smoke suite (`tests/e2e/`, see tests/README.md "Adding a journey"): add a trimmed ParkStay catalogue fixture under `tests/e2e/fixtures/http/parkstay/` and launch assertions that Explore lists campgrounds (and shows the map or the list-only fallback). Filter guard log entries for remote images in the "unexpected requests empty" assertion.
+- [ ] Mapbox attribution and logo bottom-left (the tray is bottom-right).
