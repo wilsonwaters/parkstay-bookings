@@ -223,6 +223,23 @@ describe('IPC through the container', () => {
     expect(container.repositories.watches.findAll()).toEqual([]);
   });
 
+  it('once dispose starts (the quit hold), the renderer is cut off before the database closes', async () => {
+    container.profile.ensureLocalProfile();
+    const listWatches = jest.spyOn(container.watchService, 'list');
+
+    void container.dispose();
+    expect(container.db.open).toBe(false);
+
+    // Refused before any handler runs, so nothing reaches the closed database
+    await expect(call('watches:list')).resolves.toMatchObject({ code: 'FORBIDDEN' });
+    expect(listWatches).not.toHaveBeenCalled();
+    // No event reaches the hidden window either, and a reload cannot register it again
+    autoUpdater.emit('update-not-available', {});
+    container.trustedWebContents.register(mainWindow);
+    expect(container.trustedWebContents.isTrusted(TRUSTED_SENDER_ID)).toBe(false);
+    expect(mainWindow.sent).toEqual([]);
+  });
+
   it('queue and updater events reach only trusted webContents', () => {
     const untrusted = fakeWebContents(7); // exists, but was never registered
 

@@ -1,9 +1,9 @@
 /**
  * Composition root: every service is built once, with shared instances; nothing is a
- * singleton (two containers share nothing); dispose stops the scheduler, then destroys the
- * queue service, then closes the database. The SecretVault is shared by every consumer,
- * including each provider's ScopedSecretVault, and building the container on a fresh
- * install does not touch `safeStorage` or read the machine id.
+ * singleton (two containers share nothing); dispose cuts the renderer off, stops the
+ * scheduler, then destroys the queue service, then closes the database. The SecretVault is
+ * shared by every consumer, including each provider's ScopedSecretVault, and building the
+ * container on a fresh install does not touch `safeStorage` or read the machine id.
  */
 
 import fs from 'fs';
@@ -283,8 +283,9 @@ describe('createContainer', () => {
     expect(container.providers.list()).toEqual([]);
   });
 
-  it('dispose stops the scheduler, then destroys the queue service, then closes the database, once', () => {
+  it('dispose cuts the renderer off, stops the scheduler, destroys the queue service, then closes the database, once', () => {
     const { container, db } = build();
+    const revoke = jest.spyOn(container.trustedWebContents, 'revokeAll');
     const stop = jest.spyOn(container.scheduler, 'stop');
     const destroy = jest.spyOn(container.queueService, 'destroy');
     const close = jest.spyOn(db, 'close');
@@ -292,8 +293,10 @@ describe('createContainer', () => {
     container.dispose();
     container.dispose();
 
+    expect(revoke).toHaveBeenCalledTimes(1);
     expect(stop).toHaveBeenCalledTimes(1);
     expect(destroy).toHaveBeenCalledTimes(1);
+    expect(revoke.mock.invocationCallOrder[0]).toBeLessThan(stop.mock.invocationCallOrder[0]);
     expect(close).toHaveBeenCalledTimes(1);
     expect(stop.mock.invocationCallOrder[0]).toBeLessThan(destroy.mock.invocationCallOrder[0]);
     expect(destroy.mock.invocationCallOrder[0]).toBeLessThan(close.mock.invocationCallOrder[0]);

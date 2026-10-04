@@ -19,6 +19,7 @@ import { openDatabase } from './database/connection';
 import { createContainer, AppContainer } from './app/container';
 import { installCrashPolicy } from './app/crash-policy';
 import { createMainWindow, denyWebviews } from './app/main-window';
+import { installQuitHold } from './app/quit-hold';
 import { createAppUrlMatcher, resolveRendererEntry } from './app/renderer-entry';
 import { acquireSingleInstance, HIDDEN_ARG } from './app/single-instance';
 import { registerIpcHandlers } from './ipc';
@@ -41,9 +42,6 @@ const rendererEntry = resolveRendererEntry(
   path.join(__dirname, '../../../dist/renderer/index.html'),
   app.isPackaged
 );
-
-/** The longest a quit waits for providers to close their browsers (each takes at most 5 s). */
-const QUIT_GRACE_MS = 6_000;
 
 // Global references
 let container: AppContainer | null = null;
@@ -121,10 +119,12 @@ async function start(): Promise<void> {
   ready.scheduler.start();
   createWindow(isHiddenLaunch());
 
-  // From here on an error is logged and survived; the user hears about it (throttled)
-  crashPolicy.markReady((error) =>
-    ready.notificationService.notifyError(ready.profile.requireUserId(), error, 'Unexpected error')
-  );
+  // From here on an error is logged and survived; the user hears about it (throttled), but
+  // not once the quit has started: the database is closed then.
+  crashPolicy.markReady((error) => {
+    if (container !== ready) return;
+    ready.notificationService.notifyError(ready.profile.requireUserId(), error, 'Unexpected error');
+  });
 
   logger.info('Application initialized successfully');
 }
@@ -158,23 +158,21 @@ if (instance.isPrimary) {
   });
 
   /**
-   * Before quit event. The first one disposes the container and holds the quit until the
-   * providers have closed their browsers (bounded), so a browser profile is flushed rather
-   * than killed with the app; then it quits again, and the second one lets the quit through.
+   * Quit. The first `before-quit` hides the windows, disposes the container and holds the
+   * quit until the providers have closed their browsers (bounded); see `app/quit-hold.ts`.
    */
-  app.on('before-quit', (event) => {
-    if (!container) return;
-    logger.info('Application shutting down...');
-
-    // Stops the scheduler, disposes the providers, destroys the queue service and closes the database
-    const disposed = container.dispose();
-    container = null;
-
-    event.preventDefault();
-    const grace = new Promise<void>((resolve) => setTimeout(resolve, QUIT_GRACE_MS));
-    void Promise.race([disposed, grace]).then(() => {
-      logger.info('Application shut down successfully');
-      app.quit();
-    });
+  installQuitHold({
+    app,
+    windows: () => BrowserWindow.getAllWindows(),
+    shutDown: () => {
+      const closing = container;
+      if (!closing) return null;
+      container = null;
+      logger.info('Application shutting down...');
+      // Cuts the renderer off, stops the scheduler, disposes the providers, destroys the
+      // queue service and closes the database; resolves once every browser has closed
+      return closing.dispose();
+    },
+    log: logger,
   });
 }

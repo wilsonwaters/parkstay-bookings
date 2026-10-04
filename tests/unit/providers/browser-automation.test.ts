@@ -15,6 +15,7 @@ import {
   BROWSER_CHANNEL_KEY,
   BROWSER_CLOSE_TIMEOUT_MS,
   BROWSER_IDLE_CLOSE_MS,
+  BROWSER_KILL_TIMEOUT_MS,
   BrowserUnavailableError,
   DEFAULT_PAGE_TIMEOUT_MS,
   InMemoryKeyValueStore,
@@ -25,7 +26,11 @@ import {
   type PlaywrightBrowserAutomationOptions,
 } from '@main/providers/sdk';
 import { ProviderRegistry } from '@main/providers/registry';
-import { fakePlaywright, type FakePage } from '@tests/utils/fake-playwright';
+import {
+  fakePlaywright,
+  type FakeBrowserContext,
+  type FakePage,
+} from '@tests/utils/fake-playwright';
 import {
   createFakeProvider,
   createMemoryLogger,
@@ -138,11 +143,13 @@ describe('channel detection', () => {
     const [, options] = fakePlaywright.chromium.launchPersistentContext.mock.calls[0];
     expect(options).toMatchObject({ executablePath: executable });
     expect(options).not.toHaveProperty('channel');
+    // A development build keeps Playwright's default (no sandbox): it often runs as root.
+    expect(options).not.toHaveProperty('chromiumSandbox');
     expect(await state.get(BROWSER_CHANNEL_KEY)).toBeUndefined();
     expect(await browser.isAvailable()).toEqual({ available: true, channel: 'custom' });
   });
 
-  it('launches the persistent context with the agreed settings', async () => {
+  it('launches the persistent context with the agreed settings, sandboxed', async () => {
     const { browser } = automation();
     await browser.withPage(noop);
 
@@ -150,6 +157,8 @@ describe('channel detection', () => {
     expect(userDataDir).toBe(PROFILE);
     expect(options).toEqual({
       channel: 'chrome',
+      // Without it Playwright adds --no-sandbox to the person's own Edge or Chrome.
+      chromiumSandbox: true,
       headless: true,
       timeout: 30_000,
       handleSIGINT: false,
@@ -211,10 +220,24 @@ describe('no browser', () => {
       'chrome',
       'msedge',
     ]);
-    expect(fakePlaywright.browsers[0].options).toMatchObject({ headless: true });
+    expect(fakePlaywright.browsers[0].options).toMatchObject({
+      headless: true,
+      chromiumSandbox: true,
+    });
     expect(fakePlaywright.browsers[0].close).toHaveBeenCalledTimes(1);
     expect(fakePlaywright.chromium.launchPersistentContext).not.toHaveBeenCalled();
     expect(await state.get(BROWSER_CHANNEL_KEY)).toBe('msedge');
+  });
+
+  it('does not keep a launch-failed probe: the next isAvailable probes again', async () => {
+    fakePlaywright.launchError = new Error('browserType.launch: crashed');
+    const { browser } = automation();
+
+    expect(await browser.isAvailable()).toEqual({ available: false, reason: 'launch-failed' });
+    expect(await browser.isAvailable()).toEqual({ available: true, channel: 'chrome' });
+    // Then the definitive answer is kept.
+    expect(await browser.isAvailable()).toEqual({ available: true, channel: 'chrome' });
+    expect(fakePlaywright.chromium.launch).toHaveBeenCalledTimes(2);
   });
 
   it('reports a browser that is installed but does not start as launch-failed, retryable', async () => {
@@ -477,8 +500,57 @@ describe('lifecycle', () => {
     expect(spawnSync).toHaveBeenCalledWith(
       'taskkill',
       ['/pid', String(context.pid), '/T', '/F'],
-      expect.objectContaining({ windowsHide: true })
+      // Bounded: spawnSync blocks the main process.
+      expect.objectContaining({ windowsHide: true, timeout: BROWSER_KILL_TIMEOUT_MS })
     );
+  });
+
+  it.each([
+    ['its context closes', (context: FakeBrowserContext) => context.crash()],
+    ['its browser disconnects', (context: FakeBrowserContext) => context.disconnect()],
+  ])(
+    'does not kill a browser that exits while close() hangs (%s): its pid may be reused',
+    async (_how, exit) => {
+      jest.useFakeTimers();
+      const kill = jest.spyOn(process, 'kill').mockImplementation(() => true);
+      const spawnSync = jest.spyOn(childProcess, 'spawnSync');
+      const { browser, logger } = automation();
+      await browser.withPage(noop);
+      const [context] = fakePlaywright.contexts;
+      context.hangOnClose = true;
+
+      let closed = false;
+      const closing = browser.close().then(() => (closed = true));
+      await jest.advanceTimersByTimeAsync(1000);
+      exit(context);
+
+      // close() still waits for context.close() (it flushes the profile), at most 5 s.
+      await jest.advanceTimersByTimeAsync(BROWSER_CLOSE_TIMEOUT_MS - 1000);
+      await closing;
+      expect(closed).toBe(true);
+      expect(kill).not.toHaveBeenCalled();
+      expect(spawnSync).not.toHaveBeenCalled();
+      expect(logger.lines.map((l) => l.message)).toContain(
+        'The browser exited but its close did not finish within 5 s; not killing it'
+      );
+    }
+  );
+
+  it('does not kill a browser that exited on its own before close()', async () => {
+    jest.useFakeTimers();
+    const kill = jest.spyOn(process, 'kill').mockImplementation(() => true);
+    const { browser } = automation();
+    await browser.withPage(noop);
+    const [context] = fakePlaywright.contexts;
+    context.hangOnClose = true;
+    context.disconnect();
+
+    const closing = browser.close();
+    await jest.advanceTimersByTimeAsync(BROWSER_CLOSE_TIMEOUT_MS);
+    await closing;
+
+    expect(context.close).not.toHaveBeenCalled();
+    expect(kill).not.toHaveBeenCalled();
   });
 
   it('close() does not kill a browser that closes in time', async () => {

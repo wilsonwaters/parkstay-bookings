@@ -13,8 +13,11 @@ The worked example is the test-only `tests/utils/fake-browser-provider.ts`, whic
 - [Selectors](#selectors)
 - [Waiting](#waiting)
 - [Honouring `signal`](#honouring-signal)
+- [Read data, not the DOM](#read-data-not-the-dom)
 - [Mapping to the normalised types](#mapping-to-the-normalised-types)
+- [Search-mode catalogues (`catalogMode: 'search'`)](#search-mode-catalogues-catalogmode-search)
 - [Politeness](#politeness)
+- [Headless detection and bot walls](#headless-detection-and-bot-walls)
 - [Provider terms and genuine intent](#provider-terms-and-genuine-intent)
 - [Headed mode for human steps](#headed-mode-for-human-steps)
 - [Testing with a mocked `playwright-core`](#testing-with-a-mocked-playwright-core)
@@ -54,7 +57,7 @@ const parks = await ctx.browser.withPage(
 2. **It launches one persistent context per provider, lazily, and reuses it.** Chromium locks a profile directory, so a provider never has two.
    - It finds a browser by trying channels in platform order: `msedge` then `chrome` on Windows (Edge is on every Windows 10/11 machine), and `chrome` then `msedge` on macOS and Linux.
    - It remembers the channel that worked in `ctx.state` (`browser.channel`) and tries it first next time.
-3. **It opens a fresh page, applies `timeoutMs`** to `page.setDefaultTimeout` and `page.setDefaultNavigationTimeout`, and runs `fn(page)`.
+3. **It gives `fn` a page.** The first call after a launch reuses the blank page Chromium opens the context with; every later call opens a new page (the previous call's pages are all closed). It applies `timeoutMs` to `page.setDefaultTimeout` and `page.setDefaultNavigationTimeout`, and runs `fn(page)`.
 4. **It always closes every page the call opened** when `fn` returns or throws, popups included. The context then has no pages.
 5. **It serialises calls per provider.** Two `withPage` calls on one provider run strictly one after the other (concurrency 1). Calls on different providers run independently.
 
@@ -62,14 +65,15 @@ The context is set up the same way for every provider:
 
 - viewport 1280 × 800, locale `en-AU`, and `timezoneId` from `manifest.timezone`;
 - `acceptDownloads: false`;
-- the browser's own user agent. Never override it.
+- the browser's own user agent. Never override it;
+- **Chromium's sandbox on** (`chromiumSandbox: true`). Playwright otherwise starts Chromium with `--no-sandbox`, and the person's own Edge or Chrome must keep its sandbox while it visits third-party sites. Only a development `WA_STAY_BROWSER_PATH` build keeps Playwright's default (no sandbox), because it often runs as root in CI or a container, where Chromium cannot start sandboxed.
 
 Around that:
 
 - **Idle close.** The context closes after 5 minutes with no `withPage` call. The next call relaunches it.
 - **Crashes.** If the browser crashes, updates itself or disconnects, the context is dropped and the next call relaunches it.
-- **Quit.** `registry.disposeAll()` on `before-quit` calls `ctx.browser.close()`. It gives the browser 5 s to close, then kills its process. A `withPage` call during or after `close()` rejects with `BrowserUnavailableError` (`closing`).
-- **`isAvailable()`** returns `{ available, channel?, reason? }`. It answers from the open context or the last launch when it can. Otherwise it probes each channel with a throwaway headless browser, never the provider's profile. The answer is kept for the session.
+- **Quit.** `before-quit` hides the app's windows, then disposes the container (`src/main/app/quit-hold.ts`): it cuts the renderer off, starts `registry.disposeAll()`, which calls `ctx.browser.close()`, and closes the database. `close()` gives the browser 5 s to close, then kills its process, unless the browser has already exited (its process id may by then belong to something else). The quit waits for this at most 6 s (on Windows, a `taskkill` that hangs can add up to 2 s more). A `withPage` call during or after `close()` rejects with `BrowserUnavailableError` (`closing`).
+- **`isAvailable()`** returns `{ available, channel?, reason? }`. It answers from the open context or the last launch when it can. Otherwise it probes each channel with a throwaway headless browser, never the provider's profile. A definitive answer is kept for the session; a `launch-failed` probe is not, so the next call probes again.
 
 Rules for `fn`:
 
@@ -115,6 +119,33 @@ check: (externalId, stay, { signal } = {}) =>
 - **In a long `fn`** (paging through results, many dates), call `throwIfAborted(signal)` from `@main/providers/sdk` between steps.
 - **Never swallow errors** in a `catch` inside `fn`. If you must catch, rethrow anything for which `isAbortError(error)` is true.
 
+## Read data, not the DOM
+
+Many sites that need a browser still load their data as JSON: a page script calls an endpoint, or the server embeds the page's initial state in the HTML. Read that JSON rather than the rendered markup. It is faster, carries the site's own ids and values, and survives redesigns that break selectors.
+
+- **Data that arrives by XHR or `fetch`.** Start waiting for the response *before* the action that triggers it (a response that arrives before `waitForResponse` is called is missed), then read its body:
+
+  ```ts
+  const [response] = await Promise.all([
+    page.waitForResponse((r) => new URL(r.url()).pathname === '/api/search' && r.ok()),
+    page.goto(searchUrl, { waitUntil: 'domcontentloaded' }),
+  ]);
+  const data: unknown = await response.json();
+  ```
+
+  Match on the endpoint's path, not the whole URL with its query string.
+- **Data embedded in the page.** Frameworks often ship the page's state as JSON in a script tag, such as Next.js's `<script id="__NEXT_DATA__" type="application/json">`. Read its text and parse it in Node:
+
+  ```ts
+  const text = await page.locator('script#__NEXT_DATA__').textContent();
+  const data: unknown = text ? JSON.parse(text) : undefined;
+  ```
+
+  Prefer a script tag's text over `page.evaluate(() => window.__INITIAL_STATE__)`: it is plain data, and needs nothing from the site's scripts.
+- **Validate it with a zod schema in Node** before you map it. The site's JSON is not a contract. A mismatch becomes a `ProviderParseError` with a clear message, not an `undefined` deep in the mapping.
+- **Use only what the page itself loads.** Do not call the site's internal endpoints with parameters its pages never send, or page through them faster than a person browsing would.
+- **If the endpoint answers a plain request** with the right headers, you may not need a browser for that step at all: use `ctx.http` (`hybrid` or `api`, above).
+
 ## Mapping to the normalised types
 
 Read raw values in the page, then map them in Node.
@@ -129,6 +160,37 @@ Read raw values in the page, then map them in Node.
 - **Turn an error page into an error.** Check `response.status()` after `page.goto` and throw `ProviderHttpError` for a non-2xx status, as `open()` does in the fake provider. A page that has no data is not an empty result.
 - **Sanitise nothing yourself.** Return HTML for `descriptionHtml` as you found it; main sanitises it before it crosses IPC.
 
+## Search-mode catalogues (`catalogMode: 'search'`)
+
+A provider that cannot list every location, such as a marketplace with thousands of listings, sets `capabilities.catalogMode: 'search'` and implements `catalog.searchArea` instead of `listLocations`. The registry refuses a `search` provider without it.
+
+```ts
+catalog: {
+  searchArea: ({ bbox, stay, cursor }, signal) =>
+    ctx.browser.withPage(
+      async (page) => {
+        // The cursor is the site's results-page number, as a string.
+        const resultsPage = cursor ? Number(cursor) : 1;
+        const results = await readSearchPage(page, searchUrl(bbox, stay, resultsPage));
+        return {
+          items: results.listings.map((listing) => toLocationSummary(ctx.id, listing)),
+          nextCursor: results.hasMore ? String(resultsPage + 1) : undefined,
+        };
+      },
+      { signal }
+    ),
+  getLocation: (externalId, signal) => ctx.browser.withPage(/* … */, { signal }),
+},
+```
+
+- **One results page per call.** `searchArea({ bbox, stay?, cursor? })` returns `{ items, nextCursor? }`, and each call is its own `withPage`. A caller that pages through results never holds the provider's only page for the whole crawl, and other calls (a watch check) can run between pages.
+- **`bbox` is `[west, south, east, north]`** in degrees (`BoundingBox`). Translate it into the site's own map-search parameters. If the site searches by centre and zoom instead, derive them from the box, and drop items outside the box before you return them.
+- **`stay`, when given,** narrows the search to locations bookable for those dates, if the site can filter that way. If it cannot, ignore it. Do not check availability item by item here.
+- **The cursor is opaque to the core.** Encode what the next call needs to fetch the next page (a page number, an offset or the site's own continuation token) as a string, and decode it on that call. It must not rely on anything held between calls: the page is closed, and the next call may come minutes later, after the browser was relaunched. Never put cookies, tokens or personal details in it.
+- **Return `nextCursor` only when there is another page.** Stop when the site says there are no more results. Never loop through every page inside one call.
+- **Keep keys stable across pages.** A listing that moves between pages because the site re-sorts keeps the same `makeLocationKey(ctx.id, externalId)`.
+- **Use the site's own page size.** Every page is a full browser visit. Leave it to the caller to decide how many pages it needs.
+
 ## Politeness
 
 A browser visit costs the provider far more than an API call: it loads scripts, images and fonts. Keep the load to what one careful person would cause.
@@ -142,6 +204,14 @@ A browser visit costs the provider far more than an API call: it loads scripts, 
 - **Fetch only what the stay needs.** Ask for the stay's dates, not a whole season, and do not pre-fetch pages "just in case".
 - **Never solve, bypass or outsource a CAPTCHA**, and do not use stealth plugins, fingerprint spoofing or a fake user agent. If a CAPTCHA, bot wall or "unusual traffic" page appears, stop and fail with a clear error. Do not retry in a loop.
 - **Back off on errors.** A `429`, `503` or block page means slow down. Throw a retryable `ProviderError` and let the core's scheduling decide when to try again.
+
+## Headless detection and bot walls
+
+Some sites treat a headless browser differently. Chromium's headless user agent contains `HeadlessChrome`, and a site may answer it with a CAPTCHA, a "browser not supported" or "access denied" page, an "unusual traffic" wall, or results that are quietly empty.
+
+- **Detect it, then stop.** Check for these pages (and for data that should be there and is not) and throw a `ProviderError` that says the site did not let WA Stay read it, for example *"Fake Parks did not allow WA Stay to read its site. Use the site directly."* Do not retry in a loop.
+- **Do not spoof or evade.** Never set or edit the user agent (for example to strip `HeadlessChrome`), patch `navigator.webdriver`, use stealth plugins, randomise fingerprints, rotate addresses, or solve or outsource a CAPTCHA. Do not switch to `headed: true` to get past a wall either: headed mode is for a person's own step, such as signing in.
+- **Respect the provider's terms.** A site that blocks automated access has said it does not want it. Re-read its terms ([below](#provider-terms-and-genuine-intent)); if they forbid automation, the provider gets links only, not a browser module.
 
 ## Provider terms and genuine intent
 
@@ -235,7 +305,7 @@ WA_STAY_BROWSER_E2E=1 npx jest tests/integration/browser-automation.smoke.test.t
     npx jest tests/integration/browser-automation.smoke.test.ts
   ```
 
-- **`WA_STAY_BROWSER_PATH` is for development only.** The running app also honours it, but only when it is not packaged; a packaged build always detects Edge or Chrome itself.
+- **`WA_STAY_BROWSER_PATH` is for development only.** The running app also honours it, but only when it is not packaged; a packaged build always detects Edge or Chrome itself. A browser started from this path runs without Chromium's sandbox (Playwright's default), so it can run as root in CI; Edge and Chrome found by detection always run sandboxed.
 
 Copy this test for your provider and point it at a local fixture site, never at the live site.
 

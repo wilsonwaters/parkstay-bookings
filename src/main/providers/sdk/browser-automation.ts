@@ -11,6 +11,10 @@
  *   supported" answer moves on to the next one. The channel that works is remembered in the
  *   provider's state (`browser.channel`) and tried first next time. `executablePath`
  *   replaces detection, for development only.
+ * - **Sandboxed.** Playwright starts Chromium with `--no-sandbox` unless it is asked not to.
+ *   The person's own Edge or Chrome browses third-party sites, so it always keeps Chromium's
+ *   sandbox (`chromiumSandbox: true`). Only a development `executablePath` keeps Playwright's
+ *   default, because it often runs as root (CI, containers), where a sandbox cannot start.
  * - **One persistent context per provider**, with its profile in
  *   `<userData>/providers/<id>/browser`, so the provider's own cookies and sign-in survive
  *   between runs. Chromium locks a profile, so `withPage` calls are serialised.
@@ -18,8 +22,9 @@
  *   context is relaunched when the mode changes, and a headed window closes when its call
  *   ends (Chromium quits with its last window anyway).
  * - **Lifecycle.** The context closes after 5 minutes without a call. `close()` gives it 5 s
- *   to close, then kills the browser process. A context that crashes or disconnects is
- *   dropped, and the next call relaunches it.
+ *   to close, then kills the browser process, unless the browser has already exited (its
+ *   process id may since belong to another process). A context that crashes or disconnects
+ *   is dropped, and the next call relaunches it.
  */
 
 import { spawnSync } from 'child_process';
@@ -50,6 +55,8 @@ export const DEFAULT_PAGE_TIMEOUT_MS = 60_000;
 export const BROWSER_IDLE_CLOSE_MS = 5 * 60_000;
 /** `close()` waits this long for the context, then kills the browser. */
 export const BROWSER_CLOSE_TIMEOUT_MS = 5_000;
+/** The longest the Windows kill (`taskkill`) may block the main process. */
+export const BROWSER_KILL_TIMEOUT_MS = 2_000;
 export const BROWSER_LAUNCH_TIMEOUT_MS = 30_000;
 /** A locked profile is tried once more after this long. */
 export const PROFILE_LOCK_RETRY_MS = 1_000;
@@ -86,7 +93,7 @@ interface PlaywrightModule {
 
 interface LaunchCandidate {
   channel: string;
-  options: Pick<LaunchOptions, 'channel' | 'executablePath'>;
+  options: Pick<LaunchOptions, 'channel' | 'executablePath' | 'chromiumSandbox'>;
 }
 
 interface Session {
@@ -97,6 +104,11 @@ interface Session {
   pid?: number;
   /** `closing` once we close it; `gone` when it closed by itself (crash, update, disconnect). */
   state: 'open' | 'closing' | 'gone';
+  /**
+   * The browser has gone: the context closed or the browser disconnected, whoever caused it.
+   * Its process id may be reused from then on, so it is never killed.
+   */
+  exited: boolean;
   closed?: Promise<void>;
 }
 
@@ -163,12 +175,25 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
   /**
    * Whether a browser can be automated. Answers from the open context, or from what the last
    * launch found; otherwise it probes each channel with a throwaway headless browser (never
-   * the provider's profile) and closes it. The answer is kept for the session.
+   * the provider's profile) and closes it. A definitive answer is kept for the session; a
+   * `launch-failed` probe is not, so the next call probes again.
    */
   async isAvailable(): Promise<BrowserAvailability> {
     if (this.closing) return { available: false, reason: 'closing' };
     if (this.session) return { available: true, channel: this.session.channel };
-    this.availability ??= this.probe();
+    if (!this.availability) {
+      const probing = this.probe().then((answer) => {
+        if (
+          !answer.available &&
+          answer.reason === 'launch-failed' &&
+          this.availability === probing
+        ) {
+          this.availability = undefined;
+        }
+        return answer;
+      });
+      this.availability = probing;
+    }
     return this.availability;
   }
 
@@ -287,7 +312,8 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
     const order = channelOrder(this.platform);
     const first = order.find((channel) => channel === this.rememberedChannel);
     const sorted = first ? [first, ...order.filter((channel) => channel !== first)] : order;
-    return sorted.map((channel) => ({ channel, options: { channel } }));
+    // The installed Edge or Chrome visits third-party sites: keep Chromium's sandbox on.
+    return sorted.map((channel) => ({ channel, options: { channel, chromiumSandbox: true } }));
   }
 
   private async rememberChannel(channel: string): Promise<void> {
@@ -371,14 +397,19 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
     headless: boolean,
     channel: string
   ): Promise<Session> {
-    const session: Session = { context, headless, channel, state: 'open' };
-    context.on('close', () => {
+    const session: Session = { context, headless, channel, state: 'open', exited: false };
+    const onExit = (): void => {
+      if (session.exited) return;
+      // Recorded whatever the state, also while we close it: the kill path must not run now.
+      session.exited = true;
       if (session.state !== 'open') return;
       session.state = 'gone';
       if (this.session === session) this.session = null;
       this.clearIdleTimer();
       this.logger.warn('The browser closed by itself (crash, update or disconnect)');
-    });
+    };
+    context.on('close', onExit);
+    context.browser()?.on('disconnected', onExit);
     session.pid = await this.findBrowserPid(context);
     this.logger.info(`Browser launched: ${channel}, ${headless ? 'headless' : 'headed'}`);
     return session;
@@ -480,10 +511,16 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
     );
     const inTime = await Promise.race([closed, timedOut]);
     clearTimeout(timer);
-    if (!inTime) {
-      this.logger.warn(`The browser did not close within 5 s; killing it`);
-      this.kill(session);
+    if (inTime) return;
+    if (session.exited) {
+      // Its process id may since belong to another process (group): never kill it.
+      this.logger.warn(
+        'The browser exited but its close did not finish within 5 s; not killing it'
+      );
+      return;
     }
+    this.logger.warn(`The browser did not close within 5 s; killing it`);
+    this.kill(session);
   }
 
   private kill({ pid }: Session): void {
@@ -493,8 +530,12 @@ export class PlaywrightBrowserAutomation implements BrowserAutomation {
     }
     try {
       if (this.platform === 'win32') {
-        // /T: Chromium's renderer and GPU processes too.
-        spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { windowsHide: true });
+        // /T: Chromium's renderer and GPU processes too. Bounded: it blocks the main process.
+        const { error } = spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], {
+          windowsHide: true,
+          timeout: BROWSER_KILL_TIMEOUT_MS,
+        });
+        if (error) this.logger.warn(`Could not kill browser process ${pid}`, error);
         return;
       }
       try {

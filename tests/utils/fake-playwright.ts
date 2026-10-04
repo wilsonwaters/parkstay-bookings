@@ -14,7 +14,8 @@
  *   and an `executablePath` that is not in `installed` with "executable doesn't exist";
  * - `profileLockedLaunches` launches fail with Chromium's ProcessSingleton message;
  * - a persistent context starts with one blank page, and reports its browser's process id
- *   through `browser().newBrowserCDPSession()` (`SystemInfo.getProcessInfo`).
+ *   through `browser().newBrowserCDPSession()` (`SystemInfo.getProcessInfo`);
+ * - its `browser()` emits `disconnected` when the browser goes (`crash()`, `disconnect()`).
  *
  * Pages load the HTML that `site` returns into jsdom, so `page.$$eval(selector, fn)` runs a
  * provider's real DOM code; results come back JSON-serialised, as from a real browser.
@@ -96,9 +97,33 @@ export class FakePage extends EventEmitter {
   }
 }
 
+/** The `Browser` behind a persistent context: it emits `disconnected` when the browser goes. */
+export class FakeBrowser extends EventEmitter {
+  constructor(private readonly pid: number) {
+    super();
+  }
+
+  async newBrowserCDPSession(): Promise<FakeCdpSession> {
+    return {
+      send: async (method: string) => {
+        if (method !== 'SystemInfo.getProcessInfo') throw new Error(`Unexpected ${method}`);
+        return {
+          processInfo: [
+            { type: 'renderer', id: this.pid + 1, cpuTime: 0 },
+            { type: 'browser', id: this.pid, cpuTime: 0 },
+          ],
+        };
+      },
+      detach: async () => undefined,
+    };
+  }
+}
+
 export class FakeBrowserContext extends EventEmitter {
   private readonly openPages: FakePage[] = [];
+  private readonly ownBrowser: FakeBrowser;
   private closed = false;
+  private disconnected = false;
   /** When true, `close()` never settles (a hung browser). */
   hangOnClose = false;
 
@@ -110,6 +135,7 @@ export class FakeBrowserContext extends EventEmitter {
   readonly close = jest.fn(async (): Promise<void> => {
     if (this.hangOnClose) return new Promise<void>(() => undefined);
     this.shutDown();
+    this.disconnect();
   });
 
   constructor(
@@ -119,6 +145,7 @@ export class FakeBrowserContext extends EventEmitter {
     readonly pid: number
   ) {
     super();
+    this.ownBrowser = new FakeBrowser(pid);
     // Like Chromium, a persistent context opens with one blank page.
     this.addPage();
   }
@@ -131,26 +158,21 @@ export class FakeBrowserContext extends EventEmitter {
     return this.closed;
   }
 
-  browser(): { newBrowserCDPSession(): Promise<FakeCdpSession> } {
-    return {
-      newBrowserCDPSession: async () => ({
-        send: async (method: string) => {
-          if (method !== 'SystemInfo.getProcessInfo') throw new Error(`Unexpected ${method}`);
-          return {
-            processInfo: [
-              { type: 'renderer', id: this.pid + 1, cpuTime: 0 },
-              { type: 'browser', id: this.pid, cpuTime: 0 },
-            ],
-          };
-        },
-        detach: async () => undefined,
-      }),
-    };
+  browser(): FakeBrowser {
+    return this.ownBrowser;
   }
 
   /** The browser crashed, updated itself or disconnected. */
   crash(): void {
     this.shutDown();
+    this.disconnect();
+  }
+
+  /** The browser process went away; only `browser().on('disconnected')` hears it. */
+  disconnect(): void {
+    if (this.disconnected) return;
+    this.disconnected = true;
+    this.ownBrowser.emit('disconnected', this.ownBrowser);
   }
 
   forget(page: FakePage): void {

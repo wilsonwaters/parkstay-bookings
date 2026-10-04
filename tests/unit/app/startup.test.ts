@@ -2,7 +2,9 @@
  * Startup order in `src/main/index.ts`: the crash policy first, then the single-instance
  * lock, and only in the instance that holds it, after `ready`, the log files, the database,
  * the container, IPC, the scheduler and the window. A losing instance quits without
- * touching the database; a failed start goes to the crash policy.
+ * touching the database; a failed start goes to the crash policy. A quit hides the window
+ * and disposes the container once; after that, errors no longer notify (the database is
+ * closed).
  */
 
 import { EventEmitter } from 'events';
@@ -16,6 +18,14 @@ const mockState = {
 };
 const mockCrashPolicy = { markReady: jest.fn(), failStartup: jest.fn() };
 const mockWindowOptions: Array<{ preloadPath: string }> = [];
+const mockWindows: Array<{ hide: jest.Mock }> = [];
+const mockContainer = {
+  dispose: jest.fn(() => {
+    mockOrder.push('dispose');
+    return Promise.resolve();
+  }),
+  notifyError: jest.fn(),
+};
 
 jest.mock('electron', () => {
   const { EventEmitter: Emitter } = jest.requireActual('events');
@@ -36,6 +46,7 @@ jest.mock('electron', () => {
     app,
     dialog: { showErrorBox: jest.fn() },
     safeStorage: { name: 'electron-safeStorage' },
+    BrowserWindow: { getAllWindows: () => mockWindows },
   };
 });
 
@@ -77,8 +88,8 @@ jest.mock('@main/app/container', () => ({
       trustedWebContents: { isTrusted: () => true },
       scheduler: { start: () => mockOrder.push('scheduler.start') },
       autoUpdater: { scheduleUpdateCheck: jest.fn() },
-      notificationService: { notifyError: jest.fn() },
-      dispose: jest.fn(),
+      notificationService: { notifyError: mockContainer.notifyError },
+      dispose: mockContainer.dispose,
     };
   }),
 }));
@@ -93,13 +104,16 @@ jest.mock('@main/app/main-window', () => {
     createMainWindow: jest.fn((options: { preloadPath: string }) => {
       mockOrder.push('createMainWindow');
       mockWindowOptions.push(options);
-      return Object.assign(new Emitter(), {
+      const window = Object.assign(new Emitter(), {
         isDestroyed: () => false,
         isMinimized: () => false,
         restore: jest.fn(),
         show: jest.fn(),
         focus: jest.fn(),
+        hide: jest.fn(() => mockOrder.push('hide')),
       });
+      mockWindows.push(window);
+      return window;
     }),
     denyWebviews: jest.fn(),
   };
@@ -118,6 +132,9 @@ async function launch(): Promise<void> {
 beforeEach(() => {
   mockOrder.length = 0;
   mockWindowOptions.length = 0;
+  mockWindows.length = 0;
+  mockContainer.dispose.mockClear();
+  mockContainer.notifyError.mockClear();
   mockState.hasLock = true;
   mockState.openDatabaseError = null;
   mockState.containerOptions = null;
@@ -179,6 +196,28 @@ describe('main process startup', () => {
     expect(mockOrder).toEqual(['installCrashPolicy', 'requestSingleInstanceLock']);
     expect(app.quit).toHaveBeenCalledTimes(1);
     expect(app.listenerCount('window-all-closed')).toBe(0);
+  });
+
+  it('a quit hides the window, then disposes the container once and holds the quit', async () => {
+    await launch();
+    mockOrder.length = 0;
+    const [notify] = mockCrashPolicy.markReady.mock.calls[0] as [(error: Error) => void];
+    notify(new Error('before the quit'));
+    expect(mockContainer.notifyError).toHaveBeenCalledTimes(1);
+
+    const quit = { preventDefault: jest.fn() };
+    app.emit('before-quit', quit);
+    app.emit('before-quit', { preventDefault: jest.fn() });
+
+    expect(mockOrder).toEqual(['hide', 'dispose']);
+    expect(quit.preventDefault).toHaveBeenCalled();
+    // The database is closed from here: an error is logged by the policy, never notified
+    notify(new Error('during the hold'));
+    expect(mockContainer.notifyError).toHaveBeenCalledTimes(1);
+
+    // Disposed: the hold quits again
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(app.quit).toHaveBeenCalledTimes(1);
   });
 
   it('a failed start is handed to the crash policy (error box, exit 1) and never marked ready', async () => {
