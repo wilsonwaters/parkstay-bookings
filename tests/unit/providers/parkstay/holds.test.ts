@@ -120,6 +120,13 @@ describe('ParkStay holds', () => {
     ).rejects.toBeInstanceOf(ProviderHttpError);
   });
 
+  it('rejects HTTP 429 (a rate limit) with ProviderHttpError status 429, never as taken', async () => {
+    server.createBooking = { status: 429, body: { detail: 'Request was throttled.' } };
+    await expect(
+      parkstay.provider.holds.create({ externalId: '20', unitId: '3', stay: SNIPE_STAY })
+    ).rejects.toMatchObject({ name: 'ProviderHttpError', status: 429 });
+  });
+
   it('rejects the DBCA queue page with AccessGateError', async () => {
     server.queueGate = 'html';
     await expect(

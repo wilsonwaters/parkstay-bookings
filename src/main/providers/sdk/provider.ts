@@ -45,6 +45,15 @@ export interface CatalogAreaPage {
   nextCursor?: string;
 }
 
+/** What the caller already knows about a location it asks the detail of. */
+export interface GetLocationOptions {
+  /**
+   * The location's summary from the stored catalogue. A provider may build the detail on it
+   * instead of listing its catalogue again (ParkStay: no 1.2 MB map download).
+   */
+  summary?: LocationSummary;
+}
+
 /**
  * The provider's locations. Which listing method it has follows
  * `manifest.capabilities.catalogMode` (the registry checks it).
@@ -54,7 +63,11 @@ export interface CatalogModule {
   listLocations?(signal?: AbortSignal): Promise<LocationSummary[]>;
   /** The locations in a map area, a page at a time (`catalogMode: 'search'`). */
   searchArea?(query: CatalogAreaQuery, signal?: AbortSignal): Promise<CatalogAreaPage>;
-  getLocation(externalId: string, signal?: AbortSignal): Promise<LocationDetail>;
+  getLocation(
+    externalId: string,
+    signal?: AbortSignal,
+    options?: GetLocationOptions
+  ): Promise<LocationDetail>;
 }
 
 /** A catalogue a `full` provider has: `listLocations` is there. */

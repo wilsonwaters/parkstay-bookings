@@ -50,7 +50,8 @@ export interface RawCampgroundFeature {
  * One night of a site in `campsite_availablity_view` (`api.py:1550`):
  * `[bookable, label, price, _, _, date]`. The label is `$30.00` when bookable, otherwise
  * `Unavailable` (or `Booked`, `Closed`… for staff); the price is a decimal string; the date
- * is `YYYY-MM-DD`.
+ * is `YYYY-MM-DD`. For a campsite class (`site-classes.ts`), `counts` is
+ * `[booked, closed, other]` sites while no site is free for the whole stay.
  */
 export type RawNightTuple = [
   bookable: boolean,
@@ -61,8 +62,18 @@ export type RawNightTuple = [
   date: string,
 ];
 
+/** One night of one site in a class's `breakdown`: `[free, label, price, _]`, by offset. */
+export type RawBreakdownNight = [
+  free: boolean,
+  label: string,
+  price: string | number | null,
+  reason: unknown,
+];
+
 export interface RawCampsite {
+  /** The site, or (class listings) one site of the class, which changes between polls. */
   id: number;
+  /** The site's name, or (class listings) the class's name. */
   name: string;
   /** The campground type, or (class listings) the campsite class id. */
   type: number;
@@ -77,6 +88,13 @@ export interface RawCampsite {
   max_vehicles: number;
   description?: string;
   short_description?: string;
+  /**
+   * Class listings, while no site is free for the whole stay: each site of the class by name,
+   * with its nights in the order of `availability`. Empty otherwise.
+   */
+  breakdown?: Array<{ name: string; availability: RawBreakdownNight[] }>;
+  /** Class listings: how many sites are free for the whole stay, when some are. */
+  site_left?: string;
 }
 
 /** `GET /api/campsite_availablity_view/{id}/` (`api.py:1217-1590`). */

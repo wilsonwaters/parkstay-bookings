@@ -13,6 +13,9 @@
  * `Unavailable` (`api.py:1578-1588`). Booked is by far the usual reason, so `Unavailable` is
  * `booked`, except on nights past the release horizon (`release-policy.ts` `isReleased`),
  * which are `not-released`. The label is kept for display.
+ *
+ * At a campground listed by site class (Lucky Bay), each class is one unit, `class:<id>`, and
+ * its nights come from the class's own nights and its per-site breakdown (`site-classes.ts`).
  */
 
 import type {
@@ -34,7 +37,13 @@ import { toParkStayDate, type ParkStayClient } from './client';
 import { DEFAULT_MAX_ADVANCE_DAYS } from './constants';
 import { parkstayLinks } from './links';
 import { isReleased, type ParkStayReleasePolicy } from './release-policy';
-import type { RawBulkAvailability, RawCampsiteAvailabilityView, RawNightTuple } from './types';
+import { bookableClassNights, classUnitId, isClassListing } from './site-classes';
+import type {
+  RawBulkAvailability,
+  RawCampsite,
+  RawCampsiteAvailabilityView,
+  RawNightTuple,
+} from './types';
 
 /** The gear types ParkStay accepts (`serialisers.py`: a `ChoiceField`; anything else is HTTP 500). */
 const GEAR_TYPES = ['all', 'tent', 'campervan', 'caravan'];
@@ -114,6 +123,49 @@ export function toNightStatus(tuple: RawNightTuple, released: boolean): NightSta
   else state = 'unknown';
   const price = parsePrice(rawPrice);
   return { date, state, ...(price !== undefined ? { price } : {}), label };
+}
+
+/** The class's sites, each with whether it is free on each of `offsets` (its night indexes). */
+function freeSitesByNight(entry: RawCampsite, offsets: readonly number[]): boolean[][] | undefined {
+  const rows = entry.breakdown;
+  const nights = entry.availability.length;
+  if (!Array.isArray(rows) || rows.length === 0) return undefined;
+  const aligned = rows.every(
+    (row) => Array.isArray(row?.availability) && row.availability.length === nights
+  );
+  if (!aligned) return undefined;
+  return rows.map((row) => offsets.map((offset) => row.availability[offset]?.[0] === true));
+}
+
+/**
+ * A campsite class's nights in the stay (`site-classes.ts`). While some site of the class is
+ * free for the whole stay, ParkStay marks every night bookable. Otherwise its breakdown says
+ * which sites are free each night: the nights one site can offer as a stay
+ * (`bookableClassNights`) are available; a night whose free sites cannot join the available
+ * nights next to it is `unknown` (shown available, the core would read one stay that no site
+ * can take); and a night with no free site is booked, closed or not released as for a site.
+ * Without a breakdown, the class's own labels are read as a site's.
+ */
+export function classNights(
+  entry: RawCampsite,
+  inStay: (date: string) => boolean,
+  released: (date: string) => boolean
+): NightStatus[] {
+  const offsets = entry.availability.flatMap((tuple, offset) => (inStay(tuple[5]) ? offset : []));
+  const free = freeSitesByNight(entry, offsets);
+  const chosen = free ? bookableClassNights(free, offsets.length) : undefined;
+  return offsets.map((offset, i): NightStatus => {
+    const tuple = entry.availability[offset];
+    const night = toNightStatus(tuple, released(tuple[5]));
+    if (!free || !chosen) return night;
+    if (chosen[i]) return { ...night, state: 'available' };
+    if (free.some((site) => site[i])) return { ...night, state: 'unknown' };
+    // No site is free; a price label then means taken and closed sites together.
+    if (night.state === 'available' || night.state === 'unknown') {
+      return { ...night, state: released(tuple[5]) ? 'booked' : 'not-released' };
+    }
+    return night;
+  });
 }
 
 export interface ViewSourceDeps {
@@ -200,18 +252,27 @@ export function createAvailability({
         bookingTimeOpen: view.booking_time_open,
       });
 
+    // Only the stay's own nights.
+    const inStay = (date: string): boolean => date >= stay.arrival && date < stay.departure;
+    const byClass = isClassListing(view);
     const wanted = unitIds?.length ? new Set(unitIds) : undefined;
+    const classOfUnit = facts.view(externalId)?.classOfUnit;
+    const isWanted = (unitId: string, site: RawCampsite): boolean =>
+      !wanted ||
+      wanted.has(unitId) ||
+      // A class is also asked for by a site id a view gave for it (unit ids before #21).
+      (byClass && [...wanted].some((id) => classOfUnit?.get(id) === String(site.type)));
+
     const units: UnitAvailability[] = [];
     for (const site of view.sites) {
-      const unitId = String(site.id);
-      if (wanted && !wanted.has(unitId)) continue;
-      const byDate = new Map<string, NightStatus>();
-      for (const tuple of site.availability) {
-        const date = tuple[5];
-        // Only the stay's own nights.
-        if (date < stay.arrival || date >= stay.departure) continue;
-        byDate.set(date, toNightStatus(tuple, released(date)));
-      }
+      const unitId = (byClass && classUnitId(site)) || String(site.id);
+      if (!isWanted(unitId, site)) continue;
+      const siteNights = byClass
+        ? classNights(site, inStay, released)
+        : site.availability
+            .filter((tuple) => inStay(tuple[5]))
+            .map((tuple) => toNightStatus(tuple, released(tuple[5])));
+      const byDate = new Map(siteNights.map((night) => [night.date, night]));
       const unitNights = nights.flatMap((date) => byDate.get(date) ?? []);
       const fullyAvailable =
         nights.length > 0 && nights.every((date) => byDate.get(date)?.state === 'available');
@@ -220,7 +281,7 @@ export function createAvailability({
         fullyAvailable && prices.every((p) => p !== undefined)
           ? prices.reduce<number>((sum, p) => sum + (p ?? 0), 0)
           : undefined;
-      const className = view.classes?.[String(site.class ?? null)];
+      const className = byClass ? undefined : view.classes?.[String(site.class ?? null)];
       units.push({
         unitId,
         unitName: site.name,

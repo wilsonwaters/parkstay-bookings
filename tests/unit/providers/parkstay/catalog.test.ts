@@ -169,6 +169,64 @@ describe('ParkStay catalogue', () => {
       );
     });
   });
+
+  describe('detail from a stored summary (no map download after a launch)', () => {
+    const mapRequests = () => server.requestsTo('/api/campground_map/').length;
+
+    it('builds Bungarra’s detail on the summary given, with no campground_map request', async () => {
+      const fresh = createTestParkStay(server);
+      const before = mapRequests();
+      const views = server.requestsTo('/api/campsite_availablity_view/20/').length;
+      const detail = await fresh.provider.catalog.getLocation('20', undefined, {
+        summary: byId.get('20'),
+      });
+      expect(mapRequests() - before).toBe(0);
+      expect(server.requestsTo('/api/campsite_availablity_view/20/').length - views).toBe(1);
+      expect(detail).toMatchObject({ ...byId.get('20'), fetchedAt: '2026-10-02T02:00:00.000Z' });
+      expect(detail.units).toHaveLength(5);
+      expect(detail.descriptionHtml).toContain('This campground is in the Gascoyne Region');
+      expect(detail.releaseInfo).toMatch(/^Bookable up to 31 March 2027/);
+
+      // Again in the same run: still no map.
+      await fresh.provider.catalog.getLocation('20', undefined, { summary: byId.get('20') });
+      expect(mapRequests() - before).toBe(0);
+    });
+
+    it('asks nothing at all for a campground another operator books, given its summary', async () => {
+      const fresh = createTestParkStay(server);
+      const before = server.requests.length;
+      const detail = await fresh.provider.catalog.getLocation('5', undefined, {
+        summary: byId.get('5'),
+      });
+      expect(detail).toMatchObject({ bookingMode: 'external', units: [] });
+      expect(detail.releaseInfo).toBeUndefined();
+      expect(server.requests.slice(before).map((r) => r.path)).toEqual([]);
+    });
+
+    it('reads the map when the summary given is another campground’s or another provider’s', async () => {
+      const fresh = createTestParkStay(server);
+      const before = mapRequests();
+      await fresh.provider.catalog.getLocation('18', undefined, { summary: byId.get('20') });
+      expect(mapRequests() - before).toBe(1);
+
+      const other = createTestParkStay(server);
+      const foreign = { ...byId.get('18')!, providerId: 'fake', key: 'fake:18' };
+      await other.provider.catalog.getLocation('18', undefined, { summary: foreign });
+      expect(mapRequests() - before).toBe(2);
+    });
+
+    it('prefers the map read in this run while it is fresh', async () => {
+      const fresh = createTestParkStay(server);
+      await fresh.provider.catalog.listLocations!();
+      const before = mapRequests();
+      const renamed = { ...byId.get('20')!, name: 'An older name' };
+      const detail = await fresh.provider.catalog.getLocation('20', undefined, {
+        summary: renamed,
+      });
+      expect(detail.name).toBe('Bungarra');
+      expect(mapRequests() - before).toBe(0);
+    });
+  });
 });
 
 describe('toLocationSummary', () => {
