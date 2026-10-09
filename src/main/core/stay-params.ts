@@ -15,40 +15,8 @@ import type {
   StayFieldUse,
   StayParams,
 } from '@shared/types/provider.types';
+import { stayFieldProblem } from '@shared/utils/stay-fields';
 import { AppError } from '../utils/app-error';
-
-/** Why a declared value is wrong, or undefined when it is fine. */
-function problemWith(field: StayFieldDescriptor, value: unknown): string | undefined {
-  switch (field.type) {
-    case 'select':
-      if (typeof value !== 'string') return `${field.label} must be one of the listed options`;
-      if (field.options && !field.options.some((option) => option.value === value)) {
-        return `${field.label} must be one of ${field.options.map((o) => o.label).join(', ')}`;
-      }
-      return undefined;
-    case 'number':
-      if (typeof value !== 'number' || !Number.isFinite(value)) {
-        return `${field.label} must be a number`;
-      }
-      if (field.min !== undefined && value < field.min) {
-        return `${field.label} must be at least ${field.min}`;
-      }
-      if (field.max !== undefined && value > field.max) {
-        return `${field.label} must be at most ${field.max}`;
-      }
-      return undefined;
-    case 'text':
-      if (typeof value !== 'string') return `${field.label} must be text`;
-      if (field.pattern && !new RegExp(`^(?:${field.pattern})$`).test(value)) {
-        return `${field.label} is not in the expected format`;
-      }
-      return undefined;
-    case 'boolean':
-      return typeof value === 'boolean' ? undefined : `${field.label} must be yes or no`;
-    default:
-      return undefined;
-  }
-}
 
 /**
  * The stay params with the provider's defaults filled in for `uses`, after checking every
@@ -79,7 +47,7 @@ export function resolveStayParams(
         ? applies(field) && field.required
           ? `${field.label} is required`
           : undefined
-        : problemWith(field, value);
+        : stayFieldProblem(field, value);
     if (problem) {
       issues.push(`stayParams.${field.key}`);
       messages.push(problem);
