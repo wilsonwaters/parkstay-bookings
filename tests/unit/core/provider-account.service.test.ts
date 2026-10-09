@@ -16,14 +16,7 @@ import {
   ProviderAccountService,
   type AccountTimings,
 } from '@main/core/accounts/provider-account.service';
-import type {
-  ProviderSessionStore,
-  ProviderWindowHandle,
-  ProviderWindowKind,
-  ProviderWindowNavigation,
-  ProviderWindowOpener,
-  ProviderWindowRequest,
-} from '@main/core/accounts/ports';
+import type { ProviderSessionStore } from '@main/core/accounts/ports';
 import { ProviderRegistry } from '@main/providers/registry';
 import {
   ProviderAuthRequiredError,
@@ -39,76 +32,11 @@ import {
   createTestProviderContext,
   type FakeProvider,
 } from '@tests/utils/fake-provider';
+import { FakeOpener } from '@tests/utils/fake-provider-windows';
 
 const SITE = 'https://parkstay.dbca.wa.gov.au';
 const B2C = 'https://dbcab2c.b2clogin.com';
 const SIGN_IN_URL = `${SITE}/ssologin`;
-
-/** A window the service opened: records focus, loads and closes; replays navigations. */
-class FakeWindow implements ProviderWindowHandle {
-  focused = 0;
-  closed = false;
-  readonly loads: string[] = [];
-  private readonly navigationListeners = new Set<(n: ProviderWindowNavigation) => void>();
-  private readonly closedListeners: Array<() => void> = [];
-
-  constructor(
-    readonly providerId: string,
-    readonly kind: ProviderWindowKind,
-    public url: string
-  ) {}
-
-  focus(): void {
-    this.focused++;
-  }
-  close(): void {
-    if (this.closed) return;
-    this.closed = true;
-    this.closedListeners.splice(0).forEach((listener) => listener());
-  }
-  load(url: string): void {
-    this.loads.push(url);
-    this.url = url;
-  }
-  currentUrl(): string {
-    return this.url;
-  }
-  onNavigate(listener: (n: ProviderWindowNavigation) => void): () => void {
-    this.navigationListeners.add(listener);
-    return () => this.navigationListeners.delete(listener);
-  }
-  onClosed(listener: () => void): void {
-    this.closedListeners.push(listener);
-  }
-  isClosed(): boolean {
-    return this.closed;
-  }
-  /** A committed top-level page. */
-  navigate(url: string): void {
-    this.url = url;
-    for (const listener of [...this.navigationListeners]) listener({ url, httpStatus: 200 });
-  }
-}
-
-class FakeOpener implements ProviderWindowOpener {
-  readonly requests: ProviderWindowRequest[] = [];
-  readonly windows: FakeWindow[] = [];
-  open(request: ProviderWindowRequest): ProviderWindowHandle {
-    this.requests.push(request);
-    const window = new FakeWindow(request.providerId, request.kind, request.url);
-    this.windows.push(window);
-    return window;
-  }
-  find(providerId: string, kind: ProviderWindowKind): ProviderWindowHandle | undefined {
-    return this.windows.find((w) => w.providerId === providerId && w.kind === kind && !w.closed);
-  }
-  closeAll(): void {
-    this.windows.forEach((w) => w.close());
-  }
-  get last(): FakeWindow {
-    return this.windows[this.windows.length - 1];
-  }
-}
 
 /** Lets pending promise callbacks run. */
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -458,7 +386,7 @@ describe('ProviderAccountService', () => {
           thrown = error;
         }
         expect(thrown).toBeInstanceOf(AppError);
-        expect((thrown as AppError).code).toBe('VALIDATION');
+        expect(thrown).toMatchObject({ code: 'VALIDATION', issues: ['url'] });
       }
       expect(windows.requests).toEqual([]);
     });
@@ -515,6 +443,33 @@ describe('ProviderAccountService', () => {
 
       await expect(pending).resolves.toMatchObject({ providerId: 'parkstay' });
       expect(windows.last.closed).toBe(true);
+    });
+  });
+
+  describe('recheck (after a payment window closes)', () => {
+    it('checks once, bypassing the cache, and stores a definite answer', async () => {
+      await service.status('parkstay');
+      expect(probes()).toBe(1);
+      parkstay.setAccount('signed-in');
+
+      await service.recheck('parkstay');
+
+      expect(probes()).toBe(2);
+      expect(service.storedState('parkstay')).toBe('signed-in');
+      expect(updates()).toHaveLength(2);
+    });
+
+    it('never rejects, and does nothing for a provider without accounts or after dispose', async () => {
+      const none = createFakeProvider({ id: 'none', capabilities: { account: 'none' } });
+      registry.register(none.factory, (m) => createTestProviderContext(m));
+
+      await expect(service.recheck('none')).resolves.toBeUndefined();
+      await expect(service.recheck('missing')).resolves.toBeUndefined();
+      expect(probes(none)).toBe(0);
+
+      service.dispose();
+      await service.recheck('parkstay');
+      expect(probes()).toBe(0);
     });
   });
 

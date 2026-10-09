@@ -3,6 +3,7 @@
  * stay fields), the answers mapped to `HoldResult`s, and the payment hand-off.
  */
 
+import { createHash } from 'crypto';
 import { CampgroundFacts } from '@main/providers/parkstay/catalog';
 import { createBookingForm } from '@main/providers/parkstay/holds';
 import { AccessGateError, ProviderHttpError } from '@main/providers/sdk';
@@ -150,7 +151,42 @@ describe('ParkStay holds', () => {
     expect(
       parkstay.provider.holds.paymentUrl({ ok: true, reference: '1', expiresAt: new Date() })
     ).toBe('https://parkstay.dbca.wa.gov.au/booking/');
-    expect(parkstay.provider.holds.paymentOrigins).toEqual(['https://parkstay.dbca.wa.gov.au']);
+    // ParkStay, and DBCA's own hosts for the payment ledger (PQ5)
+    expect(parkstay.provider.holds.paymentOrigins).toEqual([
+      'https://parkstay.dbca.wa.gov.au',
+      'https://*.dbca.wa.gov.au',
+    ]);
+  });
+
+  describe('bookedReference (the /success/ page proves this hold was paid)', () => {
+    // sha256('2072968'), as create_booking stores `checkouthash` (api.py:3375)
+    const HASH = createHash('sha256').update('2072968').digest('hex');
+    const booked = (url: string, reference = '2072968') =>
+      parkstay.provider.holds.bookedReference!({ reference }, url);
+
+    it('is PB + the reference for /success/ with the hold’s checkouthash', () => {
+      expect(booked(`https://parkstay.dbca.wa.gov.au/success/?checkouthash=${HASH}`)).toBe(
+        'PB2072968'
+      );
+      expect(booked(`https://parkstay.dbca.wa.gov.au/success?checkouthash=${HASH}&x=1`)).toBe(
+        'PB2072968'
+      );
+      expect(
+        booked(`https://parkstay.dbca.wa.gov.au/success/?checkouthash=${HASH.toUpperCase()}`)
+      ).toBe('PB2072968');
+    });
+
+    it('is null for another hold’s hash, no hash, another page or another origin', () => {
+      expect(booked(`https://parkstay.dbca.wa.gov.au/success/?checkouthash=${HASH}`, '1')).toBe(
+        null
+      );
+      expect(booked('https://parkstay.dbca.wa.gov.au/success/')).toBe(null);
+      expect(booked(`https://parkstay.dbca.wa.gov.au/booking/?checkouthash=${HASH}`)).toBe(null);
+      expect(booked(`https://parkstay.dbca.wa.gov.au/successful/?checkouthash=${HASH}`)).toBe(null);
+      expect(booked(`https://evil.example/success/?checkouthash=${HASH}`)).toBe(null);
+      expect(booked(`https://ledger.dbca.wa.gov.au/success/?checkouthash=${HASH}`)).toBe(null);
+      expect(booked('not a url')).toBe(null);
+    });
   });
 });
 

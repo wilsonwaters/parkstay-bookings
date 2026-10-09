@@ -220,14 +220,20 @@ pages, so it gets nothing of the app (`src/main/app/provider-windows.ts`):
   context isolation, no Node integration, web security on, no `<webview>`, and no script of
   the app injected. Its webContents is never a trusted IPC sender.
 - Top-level navigations and main-frame redirects may only go to the provider's allow-list
-  (ParkStay: its own site, the DBCA SSO gateway, Azure AD B2C and the DBCA queue). Anything
+  (ParkStay: its own site, the DBCA SSO gateway, Azure AD B2C and the DBCA queue; a payment
+  window also allows DBCA's own hosts, `*.dbca.wa.gov.au`, for the payment ledger). Anything
   else is cancelled and logged by origin only; a sign-in window opens it in the system
   browser instead. Sub-frames are not restricted (payment pages use them).
 - Every permission request and check is refused, certificate errors are rejected, and no
   client certificate or HTTP credentials are offered.
 - The pages keep their own Content-Security-Policy: the app never changes their headers.
 - The window title shows the host it is on, since there is no address bar.
-- Logs never carry a sign-in link's token, a cookie or the provider's profile.
+- Logs never carry a sign-in link's token, a cookie, the provider's profile or the payment
+  confirmation's `checkouthash`.
+- A payment is recorded only from the provider's own confirmation page for that hold
+  (ParkStay: `/success/` with `checkouthash = sha256(hold reference)`); any other page,
+  including another booking's confirmation, records nothing. The app never sees card
+  details: they are typed into the provider's own payment pages.
 
 Signing out clears the partition (cookies, storage, HTTP auth cache) and nothing else: the
 local profile, watches, snipes and bookings stay. It is refused while a snipe or hold needs

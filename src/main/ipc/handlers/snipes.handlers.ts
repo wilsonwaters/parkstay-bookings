@@ -1,7 +1,8 @@
 /**
  * `snipes` handlers. Snipes belong to the local profile; the renderer never sends a user id.
  * Every change re-arms the snipe's timer chain (a new generation), and a deactivated or
- * deleted snipe has its chain stopped and its attempt in flight aborted.
+ * deleted snipe has its chain stopped and its attempt in flight aborted. `openPayment` opens
+ * the payment window for a HELD snipe's hold (`HoldPaymentService`).
  */
 
 import { contract } from '@shared/contracts';
@@ -47,4 +48,6 @@ export function registerSnipesHandlers(handle: Handle, c: AppContainer): void {
   });
 
   handle(snipes.runNow, ({ id }) => c.scheduler.runSnipeNow(id));
+
+  handle(snipes.openPayment, ({ id }) => c.holdPayments.openForSnipe(id));
 }

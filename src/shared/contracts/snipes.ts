@@ -113,4 +113,15 @@ export const snipes = {
     args: {} as [id: number],
     response: {} as SnipeExecutionResult,
   },
+  /**
+   * Opens the provider's payment page for a HELD snipe's hold, in a payment window on the
+   * provider's session (where the hold is). Resolves once it is open. `HOLD_EXPIRED` when
+   * the hold has lapsed; `VALIDATION` while another hold's payment window is open.
+   */
+  openPayment: {
+    channel: C.openPayment,
+    request: idPayload,
+    args: {} as [id: number],
+    response: undefined as void,
+  },
 } satisfies Namespace;

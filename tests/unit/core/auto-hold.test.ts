@@ -57,6 +57,52 @@ describe('watch auto-hold', () => {
     await expect(h.watches.activate(watch.id)).rejects.toMatchObject({ code: 'VALIDATION' });
   });
 
+  it('a watch hold persists its reference, expiry, unit and payment URL (migration v9 columns)', async () => {
+    setUp({ availability: { '1': { u1: 'available', u2: 'available' } } });
+    const watch = await h.watches.create(h.userId, h.watchInput({ autoHold: true }));
+    await h.watches.execute(watch.id);
+
+    const stored = h.watchRepo.findById(watch.id)!;
+    expect(stored.hold).toEqual({
+      reference: 'FAKE-1',
+      expiresAt: new Date(NOW.getTime() + 30 * 60_000),
+      unitId: 'u1',
+      paymentUrl: 'https://fake.example/pay/FAKE-1',
+    });
+    expect(stored.lastError).toBeUndefined();
+    const row = h.db
+      .prepare(
+        'SELECT hold_reference, hold_expires_at, hold_unit_id, payment_url, last_error FROM watches WHERE id = ?'
+      )
+      .get(watch.id);
+    expect(row).toEqual({
+      hold_reference: 'FAKE-1',
+      hold_expires_at: new Date(NOW.getTime() + 30 * 60_000).toISOString(),
+      hold_unit_id: 'u1',
+      payment_url: 'https://fake.example/pay/FAKE-1',
+      last_error: null,
+    });
+    // Sign-out sees the hold until it expires (D3)
+    expect(h.watchRepo.countUnexpiredHolds('fake', NOW)).toBe(1);
+    expect(h.watchRepo.countUnexpiredHolds('fake', new Date(NOW.getTime() + 31 * 60_000))).toBe(0);
+  });
+
+  it('a hold not placed is the watch’s last error, and a later good check clears it', async () => {
+    setUp();
+    h.fake.scriptHold({ ok: false, reason: 'closed', message: 'Closed for bookings' });
+    const watch = await h.watches.create(h.userId, h.watchInput({ autoHold: true }));
+    await h.watches.execute(watch.id);
+    expect(h.watchRepo.findById(watch.id)).toMatchObject({
+      lastResult: WatchResult.FOUND,
+      lastError: 'Automatic hold failed: Closed for bookings',
+    });
+    expect(h.watchRepo.findById(watch.id)?.hold).toBeUndefined();
+
+    await h.watches.update(watch.id, { autoHold: false });
+    await h.watches.execute(watch.id, { manual: true });
+    expect(h.watchRepo.findById(watch.id)?.lastError).toBeUndefined();
+  });
+
   it('signed out, on a provider that needs an account for holds, notifies a normal match with the sign-in hint', async () => {
     setUp({ capabilities: { account: 'required-for-holds' } }, false);
     const watch = await h.watches.create(h.userId, h.watchInput({ autoHold: true }));

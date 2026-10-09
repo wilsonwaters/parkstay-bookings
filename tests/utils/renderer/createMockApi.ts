@@ -46,7 +46,7 @@ export const PARKSTAY_MANIFEST = {
     holds: true,
     bookingImport: true,
     accessGate: true,
-    account: 'required-for-holds' as const,
+    account: 'optional' as const,
   },
 };
 

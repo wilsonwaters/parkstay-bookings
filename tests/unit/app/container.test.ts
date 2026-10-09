@@ -17,6 +17,7 @@ import * as repositories from '@main/database/repositories';
 import { ProviderAccountService } from '@main/core/accounts/provider-account.service';
 import { ProviderWindows } from '@main/app/provider-windows';
 import { BookingService } from '@main/core/bookings/booking.service';
+import { HoldPaymentService } from '@main/core/holds/hold-payment.service';
 import { GmailOTPService } from '@main/services/gmail/GmailOTPService';
 import { OAuth2Handler } from '@main/services/gmail/oauth2-handler';
 import { NotificationDispatcher } from '@main/core/notifications/notification-dispatcher';
@@ -78,6 +79,9 @@ jest.mock('@main/app/provider-windows', () => mockCountedModule('@main/app/provi
 jest.mock('@main/core/bookings/booking.service', () =>
   mockCountedModule('@main/core/bookings/booking.service')
 );
+jest.mock('@main/core/holds/hold-payment.service', () =>
+  mockCountedModule('@main/core/holds/hold-payment.service')
+);
 jest.mock('@main/services/gmail/GmailOTPService', () =>
   mockCountedModule('@main/services/gmail/GmailOTPService')
 );
@@ -135,6 +139,7 @@ const CONSTRUCTED_ONCE = {
   SqliteKeyValueStore: repositories.SqliteKeyValueStore,
   ProviderAccountService,
   ProviderWindows,
+  HoldPaymentService,
   BookingService,
   GmailOTPService,
   OAuth2Handler,
@@ -202,8 +207,26 @@ describe('createContainer', () => {
         providers: container.providers,
         notifications: container.notificationService,
         events: container.rendererEvents,
+        // The account gate (only providers whose holds need an account use it)
+        accounts: container.accounts,
       })
     );
+    // Payment windows open through the one ProviderWindows, and record bookings through the
+    // booking service in one database transaction
+    expect(HoldPaymentService).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providers: container.providers,
+        snipes: r.snipes,
+        watches: r.watches,
+        bookings: container.bookingService,
+        notifications: container.notificationService,
+        windows: container.providerWindows,
+        events: container.rendererEvents,
+        transaction: expect.any(Function),
+        onWindowClosed: expect.any(Function),
+      })
+    );
+    expect(jest.mocked(HoldPaymentService).mock.results[0].value).toBe(container.holdPayments);
     // The watch and snipe services share one night guard
     const [[watchDeps]] = jest.mocked(WatchService).mock.calls;
     const [[snipeDeps]] = jest.mocked(SiteSniperService).mock.calls;
@@ -420,6 +443,27 @@ describe('createContainer', () => {
     expect(isBusy('parkstay')).toBe(false);
   });
 
+  it('a closed payment window checks the provider account once; transactions are real', () => {
+    const { container, db } = build();
+    const [[deps]] = jest.mocked(HoldPaymentService).mock.calls;
+    const recheck = jest.spyOn(container.accounts, 'recheck').mockResolvedValue(undefined);
+
+    deps.onWindowClosed?.('parkstay');
+    expect(recheck).toHaveBeenCalledWith('parkstay');
+
+    // A throw inside rolls every write back
+    const before = db.prepare('SELECT COUNT(*) AS n FROM settings').get() as { n: number };
+    expect(() =>
+      deps.transaction(() => {
+        db.prepare(
+          "INSERT INTO settings (key, value, value_type, category) VALUES ('t', 'x', 'string', 't')"
+        ).run();
+        throw new Error('boom');
+      })
+    ).toThrow('boom');
+    expect(db.prepare('SELECT COUNT(*) AS n FROM settings').get()).toEqual(before);
+  });
+
   it('dispose disposes the providers before the database closes', async () => {
     const { container, db } = build();
     const disposeAll = jest.spyOn(container.providers, 'disposeAll');
@@ -438,6 +482,7 @@ describe('createContainer', () => {
     const { container, db } = build();
     const revoke = jest.spyOn(container.trustedWebContents, 'revokeAll');
     const stopAccounts = jest.spyOn(container.accounts, 'dispose');
+    const stopPayments = jest.spyOn(container.holdPayments, 'dispose');
     const closeWindows = jest.spyOn(container.providerWindows, 'closeAll');
     const stop = jest.spyOn(container.scheduler, 'stop');
     const stopCatalog = jest.spyOn(container.catalogService, 'stop');
@@ -462,6 +507,11 @@ describe('createContainer', () => {
       stopAccounts.mock.invocationCallOrder[0]
     );
     expect(stopAccounts.mock.invocationCallOrder[0]).toBeLessThan(
+      closeWindows.mock.invocationCallOrder[0]
+    );
+    // A payment window's last pages record nothing once the windows are closing
+    expect(stopPayments).toHaveBeenCalledTimes(1);
+    expect(stopPayments.mock.invocationCallOrder[0]).toBeLessThan(
       closeWindows.mock.invocationCallOrder[0]
     );
     expect(closeWindows.mock.invocationCallOrder[0]).toBeLessThan(

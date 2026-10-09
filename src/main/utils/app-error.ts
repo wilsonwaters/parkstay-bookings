@@ -12,6 +12,7 @@ const DEFAULT_MESSAGES: Record<ApiErrorCode, string> = {
   ACCESS_GATE: 'Waiting in the provider queue',
   AUTH_REQUIRED: 'Sign in to the provider first',
   ACCOUNT_BUSY: 'The provider account is in use by a snipe or hold',
+  HOLD_EXPIRED: 'The hold has expired',
   NOT_IMPLEMENTED: 'Not available yet',
 };
 

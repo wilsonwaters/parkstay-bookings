@@ -5,7 +5,8 @@
  * A reservation conflicts with any of these that shares a night with the stay, for the same
  * provider and user (the owner itself excepted):
  * - a BOOKED snipe, or a HELD snipe whose hold has not expired;
- * - a watch whose auto-hold placed a hold (`last_result 'held'`);
+ * - a booked watch, or a watch whose auto-hold placed a hold that has not expired
+ *   (`last_result 'held'` and `hold_expires_at`, migration v9);
  * - a hold still in flight (reserved here, not answered yet).
  *
  * `tryReserve` is synchronous, so in the single-threaded main process the check and the
@@ -71,16 +72,11 @@ export class NightGuard {
     const self = (kind: HoldOwner['kind']): number | undefined =>
       owner.kind === kind ? owner.id : undefined;
 
+    const now = this.clock();
     const held =
-      this.snipes.findHeldOverlapping(
-        providerId,
-        userId,
-        arrival,
-        departure,
-        this.clock(),
-        self('snipe')
-      ).length > 0 ||
-      this.watches.findHeldOverlapping(providerId, userId, arrival, departure, self('watch'))
+      this.snipes.findHeldOverlapping(providerId, userId, arrival, departure, now, self('snipe'))
+        .length > 0 ||
+      this.watches.findHeldOverlapping(providerId, userId, arrival, departure, now, self('watch'))
         .length > 0;
     if (held) return { ok: false, reason: NIGHT_CONFLICT_MESSAGE, transient: false };
 

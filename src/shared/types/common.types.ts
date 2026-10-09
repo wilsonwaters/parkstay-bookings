@@ -10,8 +10,10 @@ export enum WatchResult {
   FOUND = 'found',
   NOT_FOUND = 'not_found',
   PARTIAL_FOUND = 'partial_found',
-  /** An auto-hold placed a hold; the night guard counts it until V6 records the booking. */
+  /** An auto-hold placed a hold; the night guard counts it until `hold_expires_at`. */
   HELD = 'held',
+  /** The hold was paid for in the payment window: a confirmed booking. */
+  BOOKED = 'booked',
   ERROR = 'error',
 }
 

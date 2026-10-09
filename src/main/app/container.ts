@@ -35,6 +35,7 @@ import {
   WatchRepository,
 } from '../database/repositories';
 import { BookingService } from '../core/bookings/booking.service';
+import { HoldPaymentService } from '../core/holds/hold-payment.service';
 import { NightGuard } from '../core/holds/night-guard';
 import { NotificationDispatcher } from '../core/notifications/notification-dispatcher';
 import { NotificationService } from '../core/notifications/notification.service';
@@ -102,6 +103,8 @@ export interface AppContainer {
   readonly providerWindows: ProviderWindows;
   /** The person's account with each provider: status, in-app sign-in, sign-out. */
   readonly accounts: ProviderAccountService;
+  /** Paying for a snipe's or watch's hold in a payment window (`*.openPayment`). */
+  readonly holdPayments: HoldPaymentService;
   readonly bookingService: BookingService;
   readonly notificationService: NotificationService;
   readonly watchService: WatchService;
@@ -111,8 +114,8 @@ export interface AppContainer {
   readonly scheduler: JobScheduler;
   /**
    * Cuts the renderer off (no webContents is trusted any more, so no invoke reaches a
-   * handler and no event is sent), stops the account service and closes the provider
-   * windows, stops the scheduler (aborting every check and attempt in flight) and the catalogue service (aborting any sync in flight), and starts disposing
+   * handler and no event is sent), stops the account and payment services and closes the
+   * provider windows, stops the scheduler (aborting every check and attempt in flight) and the catalogue service (aborting any sync in flight), and starts disposing
    * the providers (and with them ParkStay's queue gate), all before it returns. The
    * database closes once the scheduler's jobs have settled (at most
    * `SCHEDULER_STOP_GRACE_MS`), so no job writes to a closed database. The promise resolves
@@ -278,6 +281,21 @@ export function createContainer({
     notifications: notificationService,
     nightGuard,
     events: rendererEvents,
+    // Only for providers whose holds need an account (ParkStay's is optional)
+    accounts,
+  });
+  const holdPayments = new HoldPaymentService({
+    providers,
+    snipes: repositories.snipes,
+    watches: repositories.watches,
+    bookings: bookingService,
+    notifications: notificationService,
+    windows: providerWindows,
+    events: rendererEvents,
+    transaction: (fn) => db.transaction(fn)(),
+    // The person may have signed in on the payment page: check the account once
+    onWindowClosed: (providerId) => void accounts.recheck(providerId),
+    logger,
   });
   const gmailService = new GmailOTPService(new OAuth2Handler({ vault, filePath: gmailStorePath }));
   const autoUpdater = new AutoUpdaterService(rendererEvents);
@@ -293,8 +311,10 @@ export function createContainer({
     if (disposed) return disposed;
     // Nothing from the renderer may reach the database once it closes below.
     trustedWebContents.revokeAll();
-    // No more account checks or writes; pending sign-ins settle; then the windows go.
+    // No more account checks or writes, pending sign-ins settle, a payment window's pages
+    // record nothing; then the windows go.
     accounts.dispose();
+    holdPayments.dispose();
     providerWindows.closeAll();
     // Aborts every job in flight at once; resolves when they settle (bounded).
     const stopping = scheduler.stop();
@@ -323,6 +343,7 @@ export function createContainer({
     notifierDispatcher,
     providerWindows,
     accounts,
+    holdPayments,
     bookingService,
     notificationService,
     watchService,

@@ -61,6 +61,7 @@ const api: WindowApi = {
     activate: (id) => ({ id }),
     deactivate: (id) => ({ id }),
     runNow: (id) => ({ id }),
+    openPayment: (id) => ({ id }),
   }),
 
   snipes: bind('snipes', {
@@ -72,6 +73,7 @@ const api: WindowApi = {
     activate: (id) => ({ id }),
     deactivate: (id) => ({ id }),
     runNow: (id) => ({ id }),
+    openPayment: (id) => ({ id }),
   }),
 
   notifications: bind('notifications', {

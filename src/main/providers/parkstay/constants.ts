@@ -17,6 +17,16 @@ export const QUEUE_GROUP = 'parkstayv2';
 /** How long a `create_booking` hold lasts. */
 export const HOLD_MINUTES = 30;
 
+/** ParkStay's booking numbers: `PB` + the booking pk (`BOOKING_PREFIX`, `models.py`). */
+export const BOOKING_PREFIX = 'PB';
+
+/**
+ * Top-level origins the payment window may show: ParkStay, and DBCA's own hosts (the
+ * payment ledger and its pages). Card and 3-D Secure frames are subframes, which the window
+ * does not restrict (PQ5).
+ */
+export const PAYMENT_ORIGINS: readonly string[] = [PARKSTAY_BASE_URL, 'https://*.dbca.wa.gov.au'];
+
 /**
  * The queue session cookie. The queue middleware and the queue site set it on the parent
  * domain, so it is sent to both `parkstay.` and `queue.dbca.wa.gov.au`.

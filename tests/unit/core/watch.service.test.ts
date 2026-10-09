@@ -184,6 +184,7 @@ describe('WatchService', () => {
       expect(h.fake.calls.filter((c) => c.module === 'access')).toEqual([]);
       const stored = h.watchRepo.findById(watch.id)!;
       expect(stored.lastResult).toBe(WatchResult.ERROR);
+      expect(stored.lastError).toBe('fake: the queue is waiting');
       expect(stored.nextCheckAt).toEqual(new Date(NOW.getTime() + 60 * 60_000));
     });
 
@@ -221,7 +222,7 @@ describe('WatchService', () => {
   });
 
   describe('lifecycle', () => {
-    it('activate makes a watch due now; a held watch cannot be activated again', async () => {
+    it('activate makes a watch due now; a held or booked watch cannot be activated again', async () => {
       const watch = await h.watches.create(h.userId, h.watchInput());
       await h.watches.deactivate(watch.id);
       jest.setSystemTime(new Date(NOW.getTime() + 60_000));
@@ -231,8 +232,21 @@ describe('WatchService', () => {
         nextCheckAt: new Date(NOW.getTime() + 60_000),
       });
 
-      h.watchRepo.markHeld(watch.id);
-      await expect(h.watches.activate(watch.id)).rejects.toMatchObject({ code: 'VALIDATION' });
+      h.watchRepo.markHeld(watch.id, {
+        reference: '41',
+        expiresAt: new Date(NOW.getTime() + 60_000),
+      });
+      await expect(h.watches.activate(watch.id)).rejects.toMatchObject({
+        code: 'VALIDATION',
+        message: expect.stringContaining('already placed a hold'),
+      });
+
+      h.watchRepo.setBooked(watch.id);
+      await expect(h.watches.activate(watch.id)).rejects.toMatchObject({
+        code: 'VALIDATION',
+        message: expect.stringContaining('already booked'),
+      });
+      expect(h.watchRepo.findById(watch.id)?.isActive).toBe(false);
     });
 
     it('list filters by provider and state', async () => {

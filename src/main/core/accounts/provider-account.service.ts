@@ -34,6 +34,9 @@
  * **`ensureForHolds(id)`** is generic: for a provider whose account is `required-for-holds`
  * or `required`, it throws `ProviderAuthRequiredError` unless the account is signed in.
  * ParkStay's account is `optional` (§12.32), so it never blocks a ParkStay hold.
+ *
+ * **`recheck(id)`** checks once more after a payment window closes: the person may have
+ * signed in on the provider's page while paying.
  */
 
 import type { EventSink } from '@shared/contracts/events';
@@ -55,7 +58,12 @@ import { ProviderAuthRequiredError, ProviderCapabilityError } from '../../provid
 import type { AccommodationProvider, BrowserSessionAuth } from '../../providers/sdk/provider';
 import { matchesOrigin, matchesUrlPattern } from '../../providers/sdk/url-patterns';
 import { AppError } from '../../utils/app-error';
-import type { ProviderSessionStore, ProviderWindowHandle, ProviderWindowOpener } from './ports';
+import type {
+  AccountGate,
+  ProviderSessionStore,
+  ProviderWindowHandle,
+  ProviderWindowOpener,
+} from './ports';
 
 export interface AccountTimings {
   /** How long a check's answer is reused. */
@@ -110,7 +118,7 @@ interface SignInSession {
 
 const REQUIRES_SIGN_IN_FOR_HOLDS = new Set(['required-for-holds', 'required']);
 
-export class ProviderAccountService {
+export class ProviderAccountService implements AccountGate {
   private readonly providers: ProviderAccountServiceDeps['providers'];
   private readonly repo: ProviderAccountServiceDeps['accounts'];
   private readonly windows: ProviderWindowOpener;
@@ -197,7 +205,8 @@ export class ProviderAccountService {
     if (!matchesOrigin(url, auth.allowedOrigins)) {
       throw new AppError(
         'VALIDATION',
-        `That link is not a ${provider.manifest.shortName} sign-in link`
+        `That link is not a ${provider.manifest.shortName} sign-in link`,
+        { issues: ['url'] }
       );
     }
     const open = this.signIns.get(providerId);
@@ -252,6 +261,24 @@ export class ProviderAccountService {
     const account = await this.status(providerId);
     if (account.status !== 'signed-in') {
       throw new ProviderAuthRequiredError(providerId, `Sign in to ${manifest.shortName} first`);
+    }
+  }
+
+  /**
+   * One fresh check of the account, after a provider window other than sign-in closed (the
+   * person may have signed in, or out, on a payment page). Never rejects; nothing for a
+   * provider without accounts.
+   */
+  async recheck(providerId: ProviderId): Promise<void> {
+    if (this.disposed) return;
+    try {
+      const provider = this.providers.get(providerId);
+      if (provider.manifest.capabilities.account === 'none' || !provider.auth) return;
+      await this.status(providerId, { force: true });
+    } catch (error) {
+      this.log.debug(
+        `Account ${providerId}: check after the window closed failed (${String(error)})`
+      );
     }
   }
 

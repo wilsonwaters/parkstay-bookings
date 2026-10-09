@@ -12,6 +12,11 @@
  * the snipe is HELD with the provider's reference, expiry, unit and payment URL, and stops.
  * Payment stays a human step. The scheduler (`scheduler/snipe-runner.ts`) owns the timing;
  * this service owns the state and every write.
+ *
+ * Accounts (§12.32): for a provider whose holds need an account (`required-for-holds` or
+ * `required`), a snipe is created paused while signed out, `activate` is `AUTH_REQUIRED`
+ * until the account is signed in, and an attempt fails as "Sign in to …" when the stored
+ * state is not signed in. ParkStay's account is optional, so none of this applies to it.
  */
 
 import {
@@ -41,6 +46,7 @@ import {
 import type { AccessGate } from '../../providers/sdk/provider';
 import { AppError } from '../../utils/app-error';
 import { logger } from '../../utils/logger';
+import type { AccountGate } from '../accounts/ports';
 import type { NightGuard } from '../holds/night-guard';
 import type { NotificationService } from '../notifications/notification.service';
 import { resolveStayParams } from '../stay-params';
@@ -93,7 +99,15 @@ export interface SnipeServiceDeps {
   nightGuard: NightGuard;
   /** `snipe:updated` after every change. */
   events?: EventSink;
+  /** Sign-in checks for providers whose holds need an account (none: never checked). */
+  accounts?: AccountGate;
   clock?: () => Date;
+}
+
+/** A provider whose holds need a signed-in account. */
+function needsAccountForHolds(provider: { manifest: { capabilities: { account: string } } }) {
+  const { account } = provider.manifest.capabilities;
+  return account === 'required' || account === 'required-for-holds';
 }
 
 export interface SnipeRunOptions {
@@ -122,6 +136,7 @@ export class SiteSniperService {
   private readonly notifications: SnipeNotifications;
   private readonly nightGuard: NightGuard;
   private readonly events?: EventSink;
+  private readonly accounts?: AccountGate;
   private readonly clock: () => Date;
 
   constructor(deps: SnipeServiceDeps) {
@@ -130,6 +145,7 @@ export class SiteSniperService {
     this.notifications = deps.notifications;
     this.nightGuard = deps.nightGuard;
     this.events = deps.events;
+    this.accounts = deps.accounts;
     this.clock = deps.clock ?? (() => new Date());
   }
 
@@ -141,8 +157,13 @@ export class SiteSniperService {
   async create(userId: number, input: SiteSnipeInput): Promise<SiteSnipe> {
     const provider = this.providers.require(input.providerId, 'snipes');
     const prepared = await this.prepare(provider, input, input.releaseAt);
+    const signIn = await this.signInNeeded(provider);
     const snipe = this.repo.create(userId, { ...input, ...prepared });
-    if (input.releaseMode === SnipeReleaseMode.CANCELLATION) {
+    if (signIn) {
+      // Saved paused: arming it waits for the sign-in (activate checks again)
+      this.repo.deactivate(snipe.id);
+      this.repo.setResult(snipe.id, SnipeResult.PENDING, signIn);
+    } else if (input.releaseMode === SnipeReleaseMode.CANCELLATION) {
       // No fixed release: due for a poll at once.
       const now = this.clock();
       this.repo.updateCheckTimestamps(snipe.id, now, now);
@@ -219,6 +240,15 @@ export class SiteSniperService {
           ? 'This snipe already holds a site'
           : 'This snipe is already booked'
       );
+    }
+    // A provider whose holds need an account: AUTH_REQUIRED, and nothing is armed
+    const provider = this.providers.tryGet(snipe.providerId);
+    if (provider && needsAccountForHolds(provider) && this.accounts) {
+      await this.accounts.ensureForHolds(snipe.providerId);
+      // Signed in now: the sign-in hint no longer applies
+      if (snipe.lastError?.startsWith(`Sign in to ${provider.manifest.shortName}`)) {
+        this.repo.setResult(id, snipe.lastResult ?? SnipeResult.PENDING);
+      }
     }
     this.repo.activate(id);
     this.changed(id);
@@ -427,6 +457,15 @@ export class SiteSniperService {
         return outcome('continue', result, { success: true });
       }
 
+      // An account the holds need, stored as not signed in: no hold (no network here)
+      if (
+        this.accounts &&
+        needsAccountForHolds(provider) &&
+        this.accounts.storedState(snipe.providerId) !== 'signed-in'
+      ) {
+        return this.failSignIn(snipeId, provider.manifest.shortName, matched.unitId, checkedAt);
+      }
+
       // One booking per night: no hold while another covers a night of this stay.
       const reserved = this.nightGuard.tryReserve({
         providerId: snipe.providerId,
@@ -539,16 +578,8 @@ export class SiteSniperService {
             matchedSiteId: matched.unitId,
             error: message,
           });
-        case 'auth-required': {
-          const signIn = `Sign in to ${provider.manifest.shortName}`;
-          this.repo.incrementAttempts(snipeId);
-          this.repo.finish(snipeId, SnipeStatus.FAILED, SnipeResult.ERROR, signIn);
-          this.changed(snipeId);
-          return outcome('done', SnipeResult.ERROR, {
-            matchedSiteId: matched.unitId,
-            error: signIn,
-          });
-        }
+        case 'auth-required':
+          return this.failSignIn(snipeId, provider.manifest.shortName, matched.unitId, checkedAt);
         default:
           // Closed for bookings, refused, or failed: counted, tried again next tick.
           this.recordAttempt(snipeId, SnipeResult.ERROR, message, checkedAt, nextCheck, true);
@@ -572,6 +603,46 @@ export class SiteSniperService {
   }
 
   // ---- internal helpers -------------------------------------------------------
+
+  /**
+   * Why a new snipe must wait for a sign-in (its provider's holds need an account that is not
+   * signed in), or undefined.
+   */
+  private async signInNeeded(provider: SnipeProvider): Promise<string | undefined> {
+    if (!this.accounts || !needsAccountForHolds(provider)) return undefined;
+    try {
+      await this.accounts.ensureForHolds(provider.manifest.id);
+      return undefined;
+    } catch (error) {
+      if (!(error instanceof ProviderError) || error.code !== 'auth-required') throw error;
+      return `Sign in to ${provider.manifest.shortName} to arm this snipe`;
+    }
+  }
+
+  /** The hold needs a sign-in: the snipe FAILS (counted) with "Sign in to …". */
+  private failSignIn(
+    snipeId: number,
+    shortName: string,
+    unitId: string,
+    checkedAt: Date
+  ): SnipeOutcome {
+    const signIn = `Sign in to ${shortName}`;
+    this.repo.incrementAttempts(snipeId);
+    this.repo.finish(snipeId, SnipeStatus.FAILED, SnipeResult.ERROR, signIn);
+    this.changed(snipeId);
+    return {
+      next: 'done',
+      result: {
+        snipeId,
+        success: false,
+        result: SnipeResult.ERROR,
+        held: false,
+        checkedAt,
+        matchedSiteId: unitId,
+        error: signIn,
+      },
+    };
+  }
 
   private requireSnipe(id: number): SiteSnipe {
     const snipe = this.repo.findById(id);

@@ -152,6 +152,15 @@ describe('IPC contract', () => {
     );
   });
 
+  it('pays for holds in the app: snipes.openPayment and watches.openPayment take an id (V6)', () => {
+    expect(contract.snipes.openPayment.channel).toBe('snipes:open-payment');
+    expect(contract.watches.openPayment.channel).toBe('watches:open-payment');
+    for (const method of [contract.snipes.openPayment, contract.watches.openPayment]) {
+      expect(method.request.safeParse({ id: 4 }).success).toBe(true);
+      expect(method.request.safeParse({ id: 'x' }).success).toBe(false);
+    }
+  });
+
   describe('registration', () => {
     let container: AppContainer;
     let ipc: FakeIpcMain;
