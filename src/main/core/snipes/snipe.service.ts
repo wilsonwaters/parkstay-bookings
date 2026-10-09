@@ -435,7 +435,25 @@ export class SiteSniperService {
         departure: snipe.stay.departure,
         owner: { kind: 'snipe', id: snipeId },
       });
+      if (!reserved.ok && reserved.transient) {
+        // Another hold for these nights is still being placed and may fail: next tick,
+        // not counted.
+        this.recordAttempt(
+          snipeId,
+          SnipeResult.UNAVAILABLE,
+          reserved.reason,
+          checkedAt,
+          nextCheck,
+          false
+        );
+        return outcome('continue', SnipeResult.UNAVAILABLE, {
+          success: true,
+          matchedSiteId: matched.unitId,
+          error: reserved.reason,
+        });
+      }
       if (!reserved.ok) {
+        // A HELD or BOOKED snipe, or a held watch, covers a night: this snipe cannot hold.
         this.repo.incrementAttempts(snipeId);
         this.repo.finish(snipeId, SnipeStatus.FAILED, SnipeResult.ERROR, reserved.reason);
         this.changed(snipeId);
@@ -459,10 +477,33 @@ export class SiteSniperService {
         try {
           this.repo.incrementAttempts(snipeId);
           this.repo.markHeld(snipeId, hold.reference, hold.expiresAt, paymentUrl, unitId);
-          const updated = this.changed(snipeId);
-          await this.notifications.notifySnipeHeld(updated);
         } catch (error) {
           log.error(`Snipe ${snipeId}: hold ${hold.reference} placed but not recorded`, error);
+        }
+        // The person hears about the hold even if the snipe was deleted meanwhile: it is real.
+        const stored = this.repo.findById(snipeId);
+        if (stored) {
+          this.events?.emit('snipe:updated', stored);
+        } else {
+          log.warn(
+            `Snipe ${snipeId} was deleted while hold ${hold.reference} was placed; notifying anyway`
+          );
+        }
+        try {
+          await this.notifications.notifySnipeHeld(
+            stored ?? {
+              ...snipe,
+              status: SnipeStatus.HELD,
+              isActive: false,
+              lastResult: SnipeResult.HELD,
+              holdReference: hold.reference,
+              holdExpiresAt: hold.expiresAt,
+              holdUnitId: unitId,
+              paymentUrl,
+            }
+          );
+        } catch (error) {
+          log.error(`Snipe ${snipeId}: hold ${hold.reference} placed but not notified`, error);
         }
         return outcome('done', SnipeResult.HELD, {
           success: true,

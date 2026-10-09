@@ -11,7 +11,8 @@
  * `tryReserve` is synchronous, so in the single-threaded main process the check and the
  * reservation are one step: two holds for the same nights cannot both pass. The caller
  * releases the reservation once the provider has answered; a placed hold is in the database
- * by then and keeps blocking from there.
+ * by then and keeps blocking from there. A conflict with a hold still in flight is reported
+ * as transient: that hold may fail, so the other caller tries again later.
  */
 
 import type { ProviderId } from '@shared/types/provider.types';
@@ -37,10 +38,19 @@ export interface Reservation {
   release(): void;
 }
 
-export type ReserveResult = { ok: true; reservation: Reservation } | { ok: false; reason: string };
+/**
+ * The nights were reserved, or are taken: by a hold or booking (`transient: false`, final), or
+ * only by a hold still being placed (`transient: true`), which may yet fail: try again later.
+ */
+export type ReserveResult =
+  | { ok: true; reservation: Reservation }
+  | { ok: false; reason: string; transient: boolean };
 
 export const NIGHT_CONFLICT_MESSAGE =
   'Another hold or booking covers these nights (one booking per night)';
+
+export const NIGHT_PENDING_MESSAGE =
+  'Another hold for these nights is being placed; trying again (one booking per night)';
 
 function overlaps(a: { arrival: string; departure: string }, b: typeof a): boolean {
   return a.arrival < b.departure && b.arrival < a.departure;
@@ -61,7 +71,7 @@ export class NightGuard {
     const self = (kind: HoldOwner['kind']): number | undefined =>
       owner.kind === kind ? owner.id : undefined;
 
-    const taken =
+    const held =
       this.snipes.findHeldOverlapping(
         providerId,
         userId,
@@ -71,15 +81,17 @@ export class NightGuard {
         self('snipe')
       ).length > 0 ||
       this.watches.findHeldOverlapping(providerId, userId, arrival, departure, self('watch'))
-        .length > 0 ||
-      [...this.pending].some(
-        (other) =>
-          other.providerId === providerId &&
-          other.userId === userId &&
-          !(other.owner.kind === owner.kind && other.owner.id === owner.id) &&
-          overlaps(other, request)
-      );
-    if (taken) return { ok: false, reason: NIGHT_CONFLICT_MESSAGE };
+        .length > 0;
+    if (held) return { ok: false, reason: NIGHT_CONFLICT_MESSAGE, transient: false };
+
+    const pending = [...this.pending].some(
+      (other) =>
+        other.providerId === providerId &&
+        other.userId === userId &&
+        !(other.owner.kind === owner.kind && other.owner.id === owner.id) &&
+        overlaps(other, request)
+    );
+    if (pending) return { ok: false, reason: NIGHT_PENDING_MESSAGE, transient: true };
 
     const entry = { ...request };
     this.pending.add(entry);

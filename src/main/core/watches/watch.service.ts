@@ -217,7 +217,6 @@ export class WatchService {
    */
   async execute(watchId: number, options: WatchRunOptions = {}): Promise<WatchExecutionResult> {
     const { signal, manual = false } = options;
-    const watch = this.require(watchId);
     const checkedAt = this.clock();
     const result = (extra: Partial<WatchExecutionResult>): WatchExecutionResult => ({
       watchId,
@@ -227,9 +226,12 @@ export class WatchService {
       checkedAt,
       ...extra,
     });
-
-    if (!watch.isActive && !manual) return result({ error: 'The watch is not active' });
+    // Stopped (quit) before it started, possibly queued behind the provider's limit: it
+    // reads nothing, since the database may be about to close.
     if (signal?.aborted) return result({ error: 'The check was stopped' });
+
+    const watch = this.require(watchId);
+    if (!watch.isActive && !manual) return result({ error: 'The watch is not active' });
 
     const registered = this.providers.tryGet(watch.providerId);
     if (
@@ -261,7 +263,7 @@ export class WatchService {
       // The stay has begun where the provider is: nothing left to watch
       if (compareDates(arrival, todayIn(manifest.timezone, checkedAt)) < 0) {
         this.repo.deactivate(watchId);
-        this.changed(watchId);
+        this.emitChanged(watchId);
         return result({ expired: true, error: 'The arrival date has passed' });
       }
 
@@ -311,7 +313,7 @@ export class WatchService {
         if (watch.notifyOnly) this.repo.deactivate(watchId);
       }
 
-      this.changed(watchId);
+      this.emitChanged(watchId);
       return {
         watchId,
         success: true,
@@ -333,7 +335,7 @@ export class WatchService {
         checkedAt,
         nextCheckAt: nextCheck(),
       });
-      this.changed(watchId);
+      this.emitChanged(watchId);
       return result({ error: message, errorCode: code });
     }
   }
@@ -344,6 +346,15 @@ export class WatchService {
     const watch = this.repo.findById(id);
     if (!watch) throw new AppError('NOT_FOUND', 'Watch not found');
     return watch;
+  }
+
+  /**
+   * Emits `watch:updated` with the stored watch, if it is still there: a check can finish
+   * after its watch was deleted.
+   */
+  private emitChanged(id: number): void {
+    const watch = this.repo.findById(id);
+    if (watch) this.events?.emit('watch:updated', watch);
   }
 
   /** Emits `watch:updated` with the stored watch, and returns it. */
@@ -396,7 +407,7 @@ export class WatchService {
         this.random
       ),
     });
-    this.changed(watch.id);
+    this.emitChanged(watch.id);
   }
 
   /**
@@ -430,7 +441,11 @@ export class WatchService {
     });
     if (!reserved.ok) {
       log.info(`Watch ${watch.id}: no automatic hold, ${reserved.reason}`);
-      return { note: `Not held automatically: ${reserved.reason}` };
+      return {
+        note: reserved.transient
+          ? 'Not held automatically: another hold for these nights is being placed'
+          : `Not held automatically: ${reserved.reason}`,
+      };
     }
 
     try {

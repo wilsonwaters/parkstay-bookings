@@ -47,6 +47,9 @@ interface SnipeRun {
   readonly controller: AbortController;
   /** The one pending timer: re-arm, warm-up, release or poll. */
   timer?: ReturnType<typeof setTimeout>;
+  /** When the pending timer is due (wall clock, epoch ms) and what it runs. */
+  timerDueAt?: number;
+  timerStep?: () => void;
   /** Releases this run's `holdOpen()`; runs once. */
   releaseGate?: () => void;
   /** The step in flight (release-time refresh, queue, attempt). */
@@ -72,12 +75,21 @@ export class SnipeRunner {
   private readonly snipes: SiteSniperService;
   private readonly clock: () => Date;
   private readonly runs = new Map<number, SnipeRun>();
-  /** The attempt in flight per snipe, scheduled or manual; "run now" joins it. */
-  private readonly attempts = new Map<number, Promise<SnipeOutcome>>();
+  /**
+   * The attempt in flight per snipe, scheduled or manual, with the signal it runs under.
+   * "Run now" and the next poll join it, unless it was aborted by a run that has since been
+   * replaced: then they wait for it to settle and start a fresh one.
+   */
+  private readonly attempts = new Map<
+    number,
+    { promise: Promise<SnipeOutcome>; signal?: AbortSignal }
+  >();
   /** Controllers of manual attempts for snipes with no run. */
   private readonly manualControllers = new Set<AbortController>();
   private readonly holdTimers = new Map<number, ReturnType<typeof setTimeout>>();
   private generation = 0;
+  /** Set by `stop()`: nothing is armed afterwards, not even a hold's expiry. */
+  private stopped = false;
 
   constructor(deps: SnipeRunnerDeps) {
     this.snipes = deps.snipes;
@@ -86,26 +98,43 @@ export class SnipeRunner {
 
   /** Arms every active snipe and every held snipe's hold expiry. */
   start(): void {
+    this.stopped = false;
     for (const snipe of this.snipes.getActive()) this.arm(snipe.id);
     this.armHoldExpiries();
   }
 
   /**
-   * Re-arms every active snipe whose step is not in flight (timers are recomputed from the
-   * wall clock, which moved while the computer slept), and every hold expiry. A step in
-   * flight reads the clock when it continues.
+   * After a resume or unlock: timers do not count the time the computer slept, so each one is
+   * recomputed from the wall clock. A run keeps its generation, its gate hold and any step in
+   * flight (which reads the clock when it continues):
+   * - an armed run (no gate taken yet) is prepared again, which also asks the provider for a
+   *   daily rollover's release time;
+   * - a run waiting for its release or sniping has its pending timer re-set to the time left,
+   *   or expires when its window has passed;
+   * - an active snipe with no run is armed.
+   * Hold expiries are re-armed too.
    */
   rescheduleAll(): void {
+    if (this.stopped) return;
     for (const snipe of this.snipes.getActive()) {
       const run = this.runs.get(snipe.id);
-      if (run?.inFlight) continue;
-      this.arm(snipe.id);
+      if (!run) {
+        this.arm(snipe.id);
+        continue;
+      }
+      if (run.inFlight) continue;
+      if (snipe.status === SnipeStatus.ARMED) {
+        this.track(snipe.id, run, this.prepare(snipe.id, run));
+        continue;
+      }
+      this.retime(snipe.id, run);
     }
     this.armHoldExpiries();
   }
 
   /** Starts (or restarts) the snipe's chain with a new generation. */
   arm(id: number): void {
+    if (this.stopped) return;
     this.unschedule(id);
     const run: SnipeRun = { gen: ++this.generation, controller: new AbortController() };
     this.runs.set(id, run);
@@ -132,7 +161,7 @@ export class SnipeRunner {
   async runNow(id: number): Promise<SnipeExecutionResult> {
     const run = this.runs.get(id);
     let controller: AbortController | undefined;
-    if (!run && !this.attempts.has(id)) {
+    if (!run) {
       controller = new AbortController();
       this.manualControllers.add(controller);
     }
@@ -146,13 +175,14 @@ export class SnipeRunner {
 
   /** Stops everything; returns what is in flight, to be awaited. */
   stop(): Promise<unknown>[] {
+    this.stopped = true;
     const pending: Promise<unknown>[] = [];
     for (const id of [...this.runs.keys()]) {
       const inFlight = this.unschedule(id);
       if (inFlight) pending.push(inFlight);
     }
     for (const controller of this.manualControllers) controller.abort();
-    pending.push(...this.attempts.values());
+    pending.push(...[...this.attempts.values()].map((attempt) => attempt.promise));
     for (const timer of this.holdTimers.values()) clearTimeout(timer);
     this.holdTimers.clear();
     return pending;
@@ -183,13 +213,27 @@ export class SnipeRunner {
 
   private setTimer(id: number, run: SnipeRun, delayMs: number, step: () => void): void {
     if (run.timer !== undefined) clearTimeout(run.timer);
-    run.timer = setTimeout(
-      () => {
-        run.timer = undefined;
-        if (this.isCurrent(id, run)) step();
-      },
-      Math.min(Math.max(0, delayMs), MAX_TIMER_MS)
-    );
+    run.timer = undefined;
+    if (this.stopped) return;
+    const delay = Math.min(Math.max(0, delayMs), MAX_TIMER_MS);
+    run.timerDueAt = this.clock().getTime() + delay;
+    run.timerStep = step;
+    run.timer = setTimeout(() => {
+      run.timer = undefined;
+      if (this.isCurrent(id, run)) step();
+    }, delay);
+  }
+
+  /**
+   * Re-sets the run's pending timer to the time left by the wall clock, keeping the run as it
+   * is; expires it instead when its window has passed or its arrival date has come.
+   */
+  private retime(id: number, run: SnipeRun): void {
+    const snipe = this.live(id);
+    if (!snipe) return this.finish(id, run);
+    if (!this.planFor(id, run, snipe)) return;
+    if (run.timer === undefined || run.timerDueAt === undefined || !run.timerStep) return;
+    this.setTimer(id, run, run.timerDueAt - this.clock().getTime(), run.timerStep);
   }
 
   /** The run ends on its own (held, failed, expired, stopped): its gate is released once. */
@@ -369,14 +413,23 @@ export class SnipeRunner {
     this.setTimer(id, run, Math.min(plan.pollIntervalMs, untilWindowEnd), () => this.poll(id, run));
   }
 
-  /** The attempt in flight for the snipe, or a new one. A hold arms its expiry. */
-  private attempt(
+  /**
+   * The attempt in flight for the snipe, or a new one; at most one is ever in flight. An
+   * attempt aborted by a run that has since been replaced is not joined (it would only say
+   * "stopped"): the caller waits for it to settle, then starts a fresh one. A hold arms its
+   * expiry.
+   */
+  private async attempt(
     id: number,
     signal: AbortSignal | undefined,
     manual: boolean
   ): Promise<SnipeOutcome> {
-    const inFlight = this.attempts.get(id);
-    if (inFlight) return inFlight;
+    for (;;) {
+      const inFlight = this.attempts.get(id);
+      if (!inFlight) break;
+      if (!inFlight.signal?.aborted || inFlight.signal === signal) return inFlight.promise;
+      await inFlight.promise.catch(() => undefined);
+    }
     const promise: Promise<SnipeOutcome> = this.snipes
       .execute(id, { signal, manual })
       .then((outcome) => {
@@ -384,9 +437,9 @@ export class SnipeRunner {
         return outcome;
       })
       .finally(() => {
-        if (this.attempts.get(id) === promise) this.attempts.delete(id);
+        if (this.attempts.get(id)?.promise === promise) this.attempts.delete(id);
       });
-    this.attempts.set(id, promise);
+    this.attempts.set(id, { promise, signal });
     return promise;
   }
 
@@ -398,6 +451,7 @@ export class SnipeRunner {
 
   /** At `holdExpiresAt` a still-HELD snipe becomes EXPIRED. */
   private armHoldExpiry(snipe: SiteSnipe | null): void {
+    if (this.stopped) return;
     if (!snipe || snipe.status !== SnipeStatus.HELD || !snipe.holdExpiresAt) return;
     const existing = this.holdTimers.get(snipe.id);
     if (existing !== undefined) clearTimeout(existing);

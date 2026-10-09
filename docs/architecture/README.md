@@ -23,14 +23,14 @@ This directory contains the complete architecture documentation for the WA ParkS
 - Technology stack (Electron, React, TypeScript, SQLite)
 - Component architecture (main process, renderer, preload)
 - Service layer design (ParkStay, Booking, Watch, STQ, Auth, Notification)
-- Job scheduling system (node-cron based)
+- Job scheduling system (chained timers)
 - Notification system (in-app, desktop, system tray)
 - Security architecture (credential encryption, IPC security)
 - Deployment architecture (installers, auto-update, logging)
 
 **Key Technologies:**
 - **Frontend:** React 18, TypeScript, Tailwind CSS, Shadcn/ui
-- **Backend:** Node.js, better-sqlite3, node-cron, axios
+- **Backend:** Node.js, better-sqlite3, axios
 - **Desktop:** Electron 28+, Electron Builder
 - **Testing:** Jest, Playwright
 
@@ -89,7 +89,7 @@ This directory contains the complete architecture documentation for the WA ParkS
 - Validated IPC communication
 
 **Scheduling:**
-- Background job scheduler (node-cron)
+- Background job scheduler (chained timers)
 - Configurable polling intervals
 - Error handling and retries
 - Job persistence across restarts
@@ -108,7 +108,7 @@ This directory contains the complete architecture documentation for the WA ParkS
 | UI Framework | React 18 |
 | Language | TypeScript 5+ |
 | Database | SQLite 3.43+ |
-| Job Scheduler | node-cron |
+| Job Scheduler | Chained `setTimeout` timers |
 | HTTP Client | axios |
 | Styling | Tailwind CSS |
 | Build Tool | Vite 5+ |
@@ -243,11 +243,11 @@ npm run build
 - ACID compliance
 - Mature and reliable
 
-### Why node-cron?
-- Simple API
-- Sufficient for our needs
-- Good for scheduled tasks
-- Active maintenance
+### Why chained timers (not cron)?
+- Any watch interval, not just what a cron expression can say
+- Site Sniper needs the exact release instant, to the second
+- Each job is re-armed only after the last one finished, so runs never overlap
+- No dependency
 
 ## Contributing
 

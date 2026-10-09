@@ -17,7 +17,7 @@
 import path from 'path';
 import type Database from 'better-sqlite3';
 import { app, powerMonitor } from 'electron';
-import { SnipeStatus } from '@shared/types/common.types';
+import { SnipeReleaseMode, SnipeStatus } from '@shared/types/common.types';
 import { LocationCatalogService } from '../core/catalog/location-catalog.service';
 import { closeDatabase } from '../database/connection';
 import {
@@ -58,6 +58,13 @@ import { FixtureHttpClient, type FixtureModeOptions } from '../testing';
 import { logger } from '../utils/logger';
 import { getEmailLogoPath } from './paths';
 import { createLocalProfile, LocalProfile } from './profile';
+
+/** A timed snipe in these statuses is in its release: the catalogue sync waits for it. */
+const RELEASE_STATUSES: ReadonlySet<SnipeStatus> = new Set([
+  SnipeStatus.QUEUEING,
+  SnipeStatus.WAITING_RELEASE,
+  SnipeStatus.SNIPING,
+]);
 
 export interface AppRepositories {
   readonly users: UserRepository;
@@ -202,14 +209,17 @@ export function createContainer({
     providerState,
     events: rendererEvents,
     logger,
-    // A catalogue fetch must not compete with a release in progress.
+    // A catalogue fetch must not compete with a release in progress: a timed snipe from its
+    // queue warm-up to the end of its window. A cancellation snipe polls for weeks, so it does
+    // not hold the catalogue back.
     isReleaseInProgress: (providerId) =>
       repositories.snipes
         .findActive()
         .some(
           (snipe) =>
             snipe.providerId === providerId &&
-            (snipe.status === SnipeStatus.QUEUEING || snipe.status === SnipeStatus.SNIPING)
+            snipe.releaseMode !== SnipeReleaseMode.CANCELLATION &&
+            RELEASE_STATUSES.has(snipe.status)
         ),
   });
 

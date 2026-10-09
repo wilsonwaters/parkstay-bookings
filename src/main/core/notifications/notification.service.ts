@@ -37,6 +37,8 @@ export type ProviderNameResolver = (providerId: string) => string | undefined;
 export interface NotificationServiceOptions {
   /** Resolves a provider's short name through the registry, for desktop titles. */
   providerName?: ProviderNameResolver;
+  /** For the minutes a hold has left. */
+  clock?: () => Date;
 }
 
 /**
@@ -61,6 +63,7 @@ export class NotificationService {
   private dispatcher: NotificationDispatcher | null = null;
   private events: EventSink | null = null;
   private readonly providerName: ProviderNameResolver;
+  private readonly clock: () => Date;
   private soundEnabled: boolean = true;
   private desktopEnabled: boolean = true;
 
@@ -75,6 +78,7 @@ export class NotificationService {
     this.dispatcher = dispatcher || null;
     this.events = events || null;
     this.providerName = options.providerName ?? (() => undefined);
+    this.clock = options.clock ?? (() => new Date());
   }
 
   /**
@@ -179,7 +183,10 @@ export class NotificationService {
   async notifyWatchHeld(watch: Watch, hold: WatchHold, unitName: string): Promise<void> {
     const arrival = formatCalendarDate(watch.stay.arrival);
     const departure = formatCalendarDate(watch.stay.departure);
-    const minutesLeft = Math.max(1, Math.round((Date.parse(hold.expiresAt) - Date.now()) / 60_000));
+    const minutesLeft = Math.max(
+      1,
+      Math.round((Date.parse(hold.expiresAt) - this.clock().getTime()) / 60_000)
+    );
     const message = `${unitName} held at ${watch.location.name} for ${arrival}–${departure}. Complete payment within ${minutesLeft} minutes.`;
 
     await this.notify(
@@ -206,7 +213,7 @@ export class NotificationService {
     const where = snipe.location.name || snipe.location.externalId;
     // The provider sets how long a hold lasts (ParkStay: 30 minutes).
     const minutesLeft = snipe.holdExpiresAt
-      ? Math.max(1, Math.round((snipe.holdExpiresAt.getTime() - Date.now()) / 60_000))
+      ? Math.max(1, Math.round((snipe.holdExpiresAt.getTime() - this.clock().getTime()) / 60_000))
       : undefined;
     const deadline = minutesLeft ? ` within ${minutesLeft} minutes` : ' before the hold expires';
     const message = `Site held at ${where} for ${arrival}–${departure}. Complete payment${deadline}.`;

@@ -68,7 +68,7 @@ The WA ParkStay Bookings application is a desktop tool that automates campground
 │  │  └──────────────────────────────────────────┘     │    │
 │  │                                                     │    │
 │  │  ┌──────────────────────────────────────────┐     │    │
-│  │  │       Job Scheduler (node-cron)          │     │    │
+│  │  │       Job Scheduler (timers)             │     │    │
 │  │  │  - Watch Polling                         │     │    │
 │  │  │  - Skip The Queue Checks                 │     │    │
 │  │  │  - Retry Jobs                            │     │    │
@@ -127,7 +127,7 @@ The WA ParkStay Bookings application is a desktop tool that automates campground
 
 #### Backend
 - **better-sqlite3** - Fast SQLite access
-- **node-cron** - Job scheduling
+- Chained `setTimeout` timers - Job scheduling
 - **axios** - HTTP client
 - **cheerio** - HTML parsing (if needed)
 - **crypto (built-in)** - Encryption
@@ -553,30 +553,17 @@ class NotificationService {
 
 ### Architecture
 
-The job scheduler uses **node-cron** for time-based scheduling and a custom queue system for immediate job execution.
+The job scheduler (`src/main/scheduler/`) uses chained `setTimeout` timers, with no cron:
 
-```typescript
-class JobScheduler {
-  private cronJobs: Map<string, CronJob>;
-  private queue: JobQueue;
-
-  // Lifecycle
-  async start(): Promise<void>
-  async stop(): Promise<void>
-
-  // Watch jobs
-  async scheduleWatch(watch: Watch): Promise<void>
-  async unscheduleWatch(watchId: number): Promise<void>
-
-  // STQ jobs
-  async scheduleSTQ(entry: SkipTheQueueEntry): Promise<void>
-  async unscheduleSTQ(entryId: number): Promise<void>
-
-  // Manual execution
-  async executeWatchNow(watchId: number): Promise<void>
-  async executeSTQNow(entryId: number): Promise<void>
-}
-```
+- **Watches:** one due-loop ticks every 30 s and runs the watches whose `next_check_at` has
+  come. Each check stores the next one (the watch's interval, never under 15 minutes, plus
+  0–10 % jitter), so intervals survive restarts. At most two checks run at once per
+  provider, and "check now" joins a check already in flight.
+- **Site Sniper:** each snipe has one timer chain (warm-up, release, poll) with a generation
+  token and an `AbortController`; the next poll is armed only after the previous attempt
+  settles.
+- **Sleep and quit:** `powerMonitor` `resume`/`unlock-screen` re-time every timer from the
+  wall clock; `stop()` aborts every job and waits for it (bounded) before the database closes.
 
 ### Job Types
 
@@ -636,24 +623,9 @@ interface STQCheckJob {
 
 ### Job Persistence
 
-Jobs are persisted in the database to survive application restarts:
-
-```typescript
-interface ScheduledJob {
-  id: string;
-  type: 'watch' | 'stq';
-  relatedId: number;
-  cronExpression: string;
-  nextRunAt: Date;
-  isActive: boolean;
-}
-```
-
-On application startup:
-1. Load all active jobs from database
-2. Recalculate next run times
-3. Schedule jobs with node-cron
-4. Resume execution
+Nothing but the rows themselves is persisted: a watch's `next_check_at` and a snipe's status
+and release instant. On startup the scheduler spreads overdue watches over two minutes and
+re-arms every active snipe from its stored state (a HELD snipe is never armed again).
 
 ## Notification System
 
@@ -935,7 +907,7 @@ const logger = winston.createLogger({
 | UI Framework | Electron + React | Cross-platform, rapid development, rich ecosystem |
 | Language | TypeScript | Type safety, better developer experience |
 | Database | SQLite | Local storage, no server needed, reliable |
-| Job Scheduler | node-cron | Simple, reliable, sufficient for our needs |
+| Job Scheduler | Chained `setTimeout` timers | Any interval, exact release instants, no overlap; no dependency |
 | HTTP Client | axios | Mature, good error handling, interceptors |
 | State Management | TanStack Query | Server state caching, automatic refetching |
 | Styling | Tailwind CSS | Rapid UI development, consistent design |

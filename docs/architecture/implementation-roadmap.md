@@ -52,7 +52,6 @@ This document provides a detailed roadmap for implementing the WA ParkStay Booki
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.20.0",
     "better-sqlite3": "^9.2.0",
-    "node-cron": "^3.0.3",
     "axios": "^1.6.0",
     "zod": "^3.22.0",
     "@tanstack/react-query": "^5.8.0",

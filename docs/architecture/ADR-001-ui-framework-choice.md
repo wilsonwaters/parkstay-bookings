@@ -54,7 +54,7 @@ We need to choose a UI framework for the WA ParkStay Bookings application that:
 - React or Vue for UI
 - Node.js backend
 - SQLite for local storage
-- node-cron for job scheduling
+- node-cron for job scheduling (since replaced by chained timers)
 
 **Installation:**
 - Single installer/DMG file per platform
@@ -156,7 +156,7 @@ While Electron has higher resource usage, modern hardware makes this acceptable 
 - **Tailwind CSS** for styling
 - **Electron Builder** for packaging and distribution
 - **SQLite** (better-sqlite3) for local database
-- **node-cron** for job scheduling
+- **node-cron** for job scheduling (since replaced by chained timers)
 - **Electron Store** for configuration
 
 **Architecture Pattern:**

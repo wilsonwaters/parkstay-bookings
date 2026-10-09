@@ -76,13 +76,22 @@ describe('NightGuard', () => {
     expect(guard.tryReserve(request('2026-12-03', '2026-12-05')).ok).toBe(true);
     watches.markHeld(watch.id);
     const result = guard.tryReserve(request('2026-12-03', '2026-12-05'));
-    expect(result).toEqual({ ok: false, reason: expect.stringContaining('one booking per night') });
+    expect(result).toEqual({
+      ok: false,
+      transient: false,
+      reason: expect.stringContaining('one booking per night'),
+    });
   });
 
   it('blocks a second hold for the same nights while the first is in flight, until released', () => {
     const first = guard.tryReserve(request('2026-12-01', '2026-12-03', 'fake', 1));
     expect(first.ok).toBe(true);
-    expect(guard.tryReserve(request('2026-12-02', '2026-12-04', 'fake', 2)).ok).toBe(false);
+    // Transient: the hold in flight may yet fail
+    expect(guard.tryReserve(request('2026-12-02', '2026-12-04', 'fake', 2))).toEqual({
+      ok: false,
+      transient: true,
+      reason: expect.stringContaining('being placed'),
+    });
     if (first.ok) first.reservation.release();
     expect(guard.tryReserve(request('2026-12-02', '2026-12-04', 'fake', 2)).ok).toBe(true);
   });

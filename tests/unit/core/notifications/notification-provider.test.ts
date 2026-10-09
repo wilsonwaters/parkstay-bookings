@@ -110,6 +110,22 @@ describe('notifications carry their provider', () => {
     );
   });
 
+  it("words a hold's minutes left from the injected clock", async () => {
+    const at = new Date('2026-10-04T02:00:00.000Z');
+    const clocked = new NotificationService(repo, undefined, undefined, { clock: () => at });
+    await clocked.notifyWatchHeld(
+      fakeWatch,
+      {
+        reference: 'FAKE-2',
+        expiresAt: new Date(at.getTime() + 25 * 60_000).toISOString(),
+        unitId: 'u1',
+        paymentUrl: 'https://fake.example/pay/FAKE-2',
+      },
+      'Site u1'
+    );
+    expect(repo.findByUserId(userId)[0].message).toContain('within 25 minutes');
+  });
+
   it('app-wide notifications and unknown providers keep the plain desktop title', async () => {
     await service.notifyInfo(userId, 'Update ready', 'Restart to update');
     expect(mockNotification.mock.calls[0][0].title).toBe('Update ready');

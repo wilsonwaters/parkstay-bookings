@@ -97,7 +97,7 @@ Shows major components and their relationships.
 │  │  └─────────────────────────────────────────────────┘   │    │
 │  │                                                         │    │
 │  │  ┌─────────────────────────────────────────────────┐   │    │
-│  │  │        Job Scheduler (node-cron)                │   │    │
+│  │  │        Job Scheduler (timers)                   │   │    │
 │  │  │  • Watch Polling Jobs                           │   │    │
 │  │  │  • STQ Check Jobs                               │   │    │
 │  │  │  • Cleanup Jobs                                 │   │    │

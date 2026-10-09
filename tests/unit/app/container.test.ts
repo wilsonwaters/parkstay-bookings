@@ -34,7 +34,7 @@ import { SecretVault } from '@main/security/secret-vault';
 import { TEST_LOGS_DIR } from '@tests/utils/ipc-harness';
 import { containerSecrets, FakeSafeStorage, removeUserData } from '@tests/utils/fake-safe-storage';
 import { testManifest } from '@tests/utils/fake-provider';
-import { SnipeStatus } from '@shared/types/common.types';
+import { SnipeReleaseMode, SnipeStatus } from '@shared/types/common.types';
 import { createMockSiteSnipeInput } from '@tests/fixtures/site-sniper';
 
 jest.mock('electron', () => ({
@@ -345,6 +345,26 @@ describe('createContainer', () => {
     snipes.updateStatus(snipe.id, SnipeStatus.SNIPING);
     expect(isReleaseInProgress?.('parkstay')).toBe(true);
     snipes.updateStatus(snipe.id, SnipeStatus.HELD);
+    expect(isReleaseInProgress?.('parkstay')).toBe(false);
+    // Waiting for its release (queue held open) counts too
+    snipes.updateStatus(snipe.id, SnipeStatus.WAITING_RELEASE);
+    expect(isReleaseInProgress?.('parkstay')).toBe(true);
+  });
+
+  it('a cancellation snipe, which polls for weeks, does not hold the catalogue sync back', () => {
+    const { container } = build();
+    const userId = container.profile.ensureLocalProfile();
+    const [{ isReleaseInProgress }] = jest.mocked(LocationCatalogService).mock.calls[0];
+    const snipes = container.repositories.snipes;
+    const snipe = snipes.create(
+      userId,
+      createMockSiteSnipeInput({
+        providerId: 'parkstay',
+        releaseMode: SnipeReleaseMode.CANCELLATION,
+      })
+    );
+
+    snipes.updateStatus(snipe.id, SnipeStatus.SNIPING);
     expect(isReleaseInProgress?.('parkstay')).toBe(false);
   });
 

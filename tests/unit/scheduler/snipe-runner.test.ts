@@ -122,7 +122,7 @@ describe('SnipeRunner generation token', () => {
 
     runner.unschedule(1);
     runner.unschedule(1);
-    await Promise.all(runner.stop());
+    await jest.advanceTimersByTimeAsync(0);
     expect(releases[0]).toHaveBeenCalledTimes(1);
     expect(jest.getTimerCount()).toBe(0);
 
@@ -133,6 +133,16 @@ describe('SnipeRunner generation token', () => {
     resolveEnsure[1]();
     await jest.advanceTimersByTimeAsync(0);
     expect(gate.holdOpen).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('arms nothing after stop()', async () => {
+    void runner.stop();
+    runner.arm(1);
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(gate.ensure).not.toHaveBeenCalled();
+    expect(runner.isScheduled(1)).toBe(false);
     expect(jest.getTimerCount()).toBe(0);
   });
 
