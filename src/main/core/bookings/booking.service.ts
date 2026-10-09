@@ -283,6 +283,31 @@ export class BookingService {
   }
 
   /**
+   * A booking the provider confirmed (a hold paid for in the payment window): created, or,
+   * when the provider already has it here (a reloaded confirmation page), set confirmed.
+   * Synchronous and silent, so it can share the caller's transaction; `announce` it after the
+   * commit.
+   */
+  recordConfirmed(userId: number, input: BookingInput): Booking {
+    this.validateBookingInput(input);
+    const existing = this.bookingRepository.findByReference(
+      input.providerId,
+      input.bookingReference
+    );
+    const saved = existing
+      ? this.bookingRepository.updateStatus(existing.id, BookingStatus.CONFIRMED)
+      : this.bookingRepository.create(userId, input);
+    if (!saved) throw new AppError('INTERNAL', `Booking ${input.bookingReference} was not saved`);
+    logger.info(`Booking confirmed: ${saved.id} (${input.providerId})`);
+    return saved;
+  }
+
+  /** Emits `booking:updated` for a booking written elsewhere; returns it with `manageUrl`. */
+  announce(booking: Booking): Booking {
+    return this.changed(booking);
+  }
+
+  /**
    * Validate booking input
    */
   private validateBookingInput(input: BookingInput): void {

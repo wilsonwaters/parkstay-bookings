@@ -1,13 +1,13 @@
 /**
  * One booking per night (`core/holds/night-guard.ts`): HELD (unexpired) and BOOKED snipes,
- * held auto-hold watches and holds still in flight block a hold on any shared night of the
- * same provider; an expired hold does not.
+ * held (unexpired) and booked auto-hold watches and holds still in flight block a hold on any
+ * shared night of the same provider; an expired hold does not.
  */
 
 import { openDatabase } from '@main/database/connection';
 import { SiteSniperRepository, WatchRepository } from '@main/database/repositories';
 import { NightGuard } from '@main/core/holds/night-guard';
-import { SnipeReleaseMode, SnipeStatus } from '@shared/types/common.types';
+import { SnipeReleaseMode, SnipeStatus, WatchResult } from '@shared/types/common.types';
 import type Database from 'better-sqlite3';
 
 const NOW = new Date('2026-10-04T02:00:00.000Z');
@@ -74,13 +74,49 @@ describe('NightGuard', () => {
       stay: stay('2026-12-01', '2026-12-04'),
     });
     expect(guard.tryReserve(request('2026-12-03', '2026-12-05')).ok).toBe(true);
-    watches.markHeld(watch.id);
+    watches.markHeld(watch.id, {
+      reference: '41',
+      expiresAt: new Date(NOW.getTime() + 30 * 60_000),
+      unitId: 'u1',
+      paymentUrl: 'https://fake.example/pay/41',
+    });
     const result = guard.tryReserve(request('2026-12-03', '2026-12-05'));
     expect(result).toEqual({
       ok: false,
       transient: false,
       reason: expect.stringContaining('one booking per night'),
     });
+  });
+
+  it('ignores a watch hold past hold_expires_at, and a booked watch blocks for good', () => {
+    const watch = watches.create(userId, {
+      providerId: 'fake',
+      name: 'W',
+      location: { externalId: '1', name: 'Banksia' },
+      stay: stay('2026-12-01', '2026-12-04'),
+    });
+    watches.markHeld(watch.id, {
+      reference: '41',
+      expiresAt: new Date(NOW.getTime() + 30 * 60_000),
+    });
+    const lapsed = new NightGuard(snipes, watches, () => new Date(NOW.getTime() + 31 * 60_000));
+    expect(guard.tryReserve(request('2026-12-03', '2026-12-05')).ok).toBe(false);
+    expect(lapsed.tryReserve(request('2026-12-03', '2026-12-05')).ok).toBe(true);
+
+    watches.setBooked(watch.id);
+    expect(watches.findById(watch.id)?.lastResult).toBe(WatchResult.BOOKED);
+    expect(lapsed.tryReserve(request('2026-12-03', '2026-12-05')).ok).toBe(false);
+  });
+
+  it('a held watch row from before v9 (no hold_expires_at) blocks nothing', () => {
+    const watch = watches.create(userId, {
+      providerId: 'fake',
+      name: 'W',
+      location: { externalId: '1', name: 'Banksia' },
+      stay: stay('2026-12-01', '2026-12-04'),
+    });
+    db.prepare("UPDATE watches SET last_result = 'held' WHERE id = ?").run(watch.id);
+    expect(guard.tryReserve(request('2026-12-03', '2026-12-05')).ok).toBe(true);
   });
 
   it('blocks a second hold for the same nights while the first is in flight, until released', () => {

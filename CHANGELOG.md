@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - ParkStay sign-in happens in the app, on ParkStay's own sign-in page (Settings → Connect ParkStay). Connect ParkStay once in Settings; the old saved password is no longer used. Signing in is optional: holds work without it, and you can sign in on the payment page.
+- A held site is paid for in the app: "Complete payment" opens ParkStay's payment page on the session that holds the site, and once ParkStay confirms the payment the snipe (or watch) shows as booked and the booking appears under Bookings.
 
 ## [1.2.0] - 2026-05-18
 

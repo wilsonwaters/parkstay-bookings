@@ -38,6 +38,7 @@ export const statusPresets = {
     },
     [WatchResult.NOT_FOUND]: { tone: 'neutral', icon: Search, label: 'Nothing yet' },
     [WatchResult.HELD]: { tone: 'warning', icon: Timer, label: 'Site held' },
+    [WatchResult.BOOKED]: { tone: 'available', icon: CircleCheck, label: 'Booked' },
     [WatchResult.ERROR]: { tone: 'danger', icon: CircleAlert, label: 'Check failed' },
   },
   snipe: {

@@ -30,6 +30,8 @@ export type ApiErrorCode =
   | 'AUTH_REQUIRED'
   /** Signing out would lose a queue place or a hold in progress on the provider. */
   | 'ACCOUNT_BUSY'
+  /** The hold has lapsed (or there is none to pay for): payment cannot open. */
+  | 'HOLD_EXPIRED'
   | 'NOT_IMPLEMENTED';
 
 // Generic API Response wrapper

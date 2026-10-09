@@ -164,8 +164,26 @@ export default function SiteSniperPage() {
     }
   };
 
-  const handleCompletePayment = (url: string) => {
-    window.open(url, '_blank');
+  // The payment page opens in the app, on the provider's session where the hold is
+  const handleCompletePayment = async (id: number) => {
+    try {
+      setActionLoading(id);
+      const result = await window.api.snipes.openPayment(id);
+      if (!result.success) {
+        showError(
+          result.code === 'HOLD_EXPIRED'
+            ? 'This hold has expired, so it can no longer be paid for'
+            : result.error || 'Could not open the payment page'
+        );
+        if (result.code === 'HOLD_EXPIRED') await loadSnipes();
+      }
+    } catch (err: unknown) {
+      showError(
+        (err instanceof Error && err.message) || 'An error occurred while opening the payment page'
+      );
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   if (loading) {
@@ -293,8 +311,9 @@ export default function SiteSniperPage() {
                         . Complete payment now to confirm your booking.
                       </p>
                       <button
-                        onClick={() => handleCompletePayment(snipe.paymentUrl as string)}
-                        className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 font-medium"
+                        onClick={() => handleCompletePayment(snipe.id)}
+                        disabled={actionLoading === snipe.id}
+                        className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Complete payment →
                       </button>

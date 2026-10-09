@@ -4,6 +4,7 @@ import {
   type UnitAvailability,
   Watch,
   WatchInput,
+  type WatchHoldState,
   type WatchListFilter,
   WatchUpdate,
 } from '@shared/types';
@@ -34,6 +35,12 @@ interface WatchRow extends StayRow {
   max_price: number | null;
   notes: string | null;
   last_availability: string | null;
+  // Migration v9 (§12.31)
+  hold_reference: string | null;
+  hold_expires_at: string | null;
+  hold_unit_id: string | null;
+  payment_url: string | null;
+  last_error: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -175,23 +182,36 @@ export class WatchRepository extends BaseRepository<Watch> {
   }
 
   /**
-   * Watches of the provider and user whose auto-hold placed a hold on a night of the stay
-   * (`last_result 'held'`), other than `excludeId`. Calendar dates compare as text.
+   * Watches of the provider and user that hold or booked a night of the stay, other than
+   * `excludeId`: booked ones (`last_result 'booked'`), and held ones whose hold has not
+   * expired at `now` (`hold_expires_at`; a held row with none, from before v9, holds nothing).
+   * Calendar dates compare as text.
    */
   findHeldOverlapping(
     providerId: string,
     userId: number,
     arrival: string,
     departure: string,
+    now: Date,
     excludeId?: number
   ): Watch[] {
     const rows = this.db
       .prepare(
         `SELECT * FROM watches
-         WHERE provider_id = ? AND user_id = ? AND last_result = ? AND id != ?
+         WHERE provider_id = ? AND user_id = ? AND id != ?
+           AND ((last_result = ? AND hold_expires_at > ?) OR last_result = ?)
            AND arrival_date < ? AND ? < departure_date`
       )
-      .all(providerId, userId, WatchResult.HELD, excludeId ?? -1, departure, arrival);
+      .all(
+        providerId,
+        userId,
+        excludeId ?? -1,
+        WatchResult.HELD,
+        now.toISOString(),
+        WatchResult.BOOKED,
+        departure,
+        arrival
+      );
     return rows.map((row) => this.mapRow(row as WatchRow));
   }
 
@@ -223,7 +243,8 @@ export class WatchRepository extends BaseRepository<Watch> {
 
   /**
    * Records one check in one transaction: its result, the units it saw (when it got that
-   * far), when it ran and when the watch is next due. `found` adds one to `found_count`.
+   * far), when it ran, when the watch is next due, and its error (none clears the last one).
+   * `found` adds one to `found_count`.
    */
   recordRun(
     id: number,
@@ -233,13 +254,15 @@ export class WatchRepository extends BaseRepository<Watch> {
       checkedAt: Date;
       nextCheckAt: Date;
       availability?: UnitAvailability[];
+      error?: string;
     }
   ): void {
     this.db.transaction(() => {
       this.db
         .prepare(
           `UPDATE watches
-           SET last_result = ?, found_count = found_count + ?, last_checked_at = ?, next_check_at = ?
+           SET last_result = ?, found_count = found_count + ?, last_checked_at = ?,
+               next_check_at = ?, last_error = ?
            WHERE id = ?`
         )
         .run(
@@ -247,6 +270,7 @@ export class WatchRepository extends BaseRepository<Watch> {
           run.found ? 1 : 0,
           run.checkedAt.toISOString(),
           run.nextCheckAt.toISOString(),
+          run.error ?? null,
           id
         );
       if (run.availability) {
@@ -257,16 +281,57 @@ export class WatchRepository extends BaseRepository<Watch> {
     })();
   }
 
-  /** The auto-hold placed a hold: `last_result 'held'`, and the watch stops. */
-  markHeld(id: number): void {
+  /**
+   * The auto-hold placed a hold: `last_result 'held'`, the hold's reference, expiry, unit and
+   * payment page, and the watch stops (one statement).
+   */
+  markHeld(id: number, hold: WatchHoldState): void {
     this.db
-      .prepare('UPDATE watches SET last_result = ?, is_active = 0 WHERE id = ?')
-      .run(WatchResult.HELD, id);
+      .prepare(
+        `UPDATE watches
+         SET last_result = ?, is_active = 0, hold_reference = ?, hold_expires_at = ?,
+             hold_unit_id = ?, payment_url = ?, last_error = NULL
+         WHERE id = ?`
+      )
+      .run(
+        WatchResult.HELD,
+        hold.reference,
+        hold.expiresAt.toISOString(),
+        hold.unitId ?? null,
+        hold.paymentUrl ?? null,
+        id
+      );
+  }
+
+  /** The hold was paid for: `last_result 'booked'`, inactive; the hold columns stay. */
+  setBooked(id: number): void {
+    this.db
+      .prepare('UPDATE watches SET last_result = ?, is_active = 0, last_error = NULL WHERE id = ?')
+      .run(WatchResult.BOOKED, id);
+  }
+
+  /** Why the last run fell short (an automatic hold that was not placed), or none. */
+  setLastError(id: number, error: string | undefined): void {
+    this.db.prepare('UPDATE watches SET last_error = ? WHERE id = ?').run(error ?? null, id);
   }
 
   /** The last result alone (an unknown provider, found when the scheduler starts). */
   setLastResult(id: number, result: WatchResult): void {
     this.db.prepare('UPDATE watches SET last_result = ? WHERE id = ?').run(result, id);
+  }
+
+  /** `hold`, when the row has a hold reference and expiry (v9 columns). */
+  private readHold(row: WatchRow): { hold?: WatchHoldState } {
+    const expiresAt = this.parseDate(row.hold_expires_at);
+    if (!row.hold_reference || !expiresAt) return {};
+    return {
+      hold: {
+        reference: row.hold_reference,
+        expiresAt,
+        ...(row.hold_unit_id ? { unitId: row.hold_unit_id } : {}),
+        ...(row.payment_url ? { paymentUrl: row.payment_url } : {}),
+      },
+    };
   }
 
   /**
@@ -329,6 +394,8 @@ export class WatchRepository extends BaseRepository<Watch> {
       allowPartialMatch: Boolean(row.allow_partial_match),
       maxPrice: row.max_price ?? undefined,
       notes: row.notes ?? undefined,
+      ...this.readHold(row),
+      ...(row.last_error ? { lastError: row.last_error } : {}),
       createdAt: this.parseDate(row.created_at)!,
       updatedAt: this.parseDate(row.updated_at)!,
     };

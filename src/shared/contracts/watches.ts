@@ -114,4 +114,15 @@ export const watches = {
     args: {} as [id: number],
     response: {} as WatchExecutionResult,
   },
+  /**
+   * Opens the provider's payment page for the watch's automatic hold, in a payment window on
+   * the provider's session. Resolves once it is open. `HOLD_EXPIRED` when there is no hold
+   * left to pay for; `VALIDATION` while another hold's payment window is open.
+   */
+  openPayment: {
+    channel: C.openPayment,
+    request: idPayload,
+    args: {} as [id: number],
+    response: undefined as void,
+  },
 } satisfies Namespace;

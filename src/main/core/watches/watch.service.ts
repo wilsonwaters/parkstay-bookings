@@ -170,15 +170,17 @@ export class WatchService {
   }
 
   /**
-   * Activates a watch, due at once. A watch whose auto-hold placed a hold is refused: it would
-   * hold the same nights again.
+   * Activates a watch, due at once. A watch whose auto-hold placed a hold, or whose hold was
+   * paid for, is refused: it would hold the same nights again.
    */
   async activate(id: number): Promise<void> {
     const watch = this.require(id);
-    if (watch.lastResult === WatchResult.HELD) {
+    if (watch.lastResult === WatchResult.HELD || watch.lastResult === WatchResult.BOOKED) {
       throw new AppError(
         'VALIDATION',
-        'This watch already placed a hold; create a new watch to look again'
+        watch.lastResult === WatchResult.HELD
+          ? 'This watch already placed a hold; create a new watch to look again'
+          : 'This watch is already booked; create a new watch to look again'
       );
     }
     this.repo.activate(id, this.clock());
@@ -241,8 +243,9 @@ export class WatchService {
     ) {
       const errorCode: ApiErrorCode = registered ? 'CAPABILITY' : 'UNKNOWN_PROVIDER';
       log.warn(`Watch ${watchId}: ${errorCode} (${watch.providerId})`);
-      this.recordFailure(watch, checkedAt, { limits: registered?.manifest.limits });
-      return result({ error: `${watch.providerId} cannot run watches`, errorCode });
+      const error = `${watch.providerId} cannot run watches`;
+      this.recordFailure(watch, checkedAt, { limits: registered?.manifest.limits }, error);
+      return result({ error, errorCode });
     }
     const provider = registered as WatchProvider;
     const { manifest } = provider;
@@ -301,6 +304,8 @@ export class WatchService {
           ? await this.autoHold(watch, provider, full[0], signal)
           : { note: undefined };
         hold = outcome.hold;
+        // An automatic hold that was not placed says why (the run itself succeeded)
+        if (!hold && outcome.note) this.repo.setLastError(watchId, outcome.note);
         if (hold) {
           await this.notifications.notifyWatchHeld(watch, hold, full[0].unitName);
         } else {
@@ -334,6 +339,7 @@ export class WatchService {
         found: false,
         checkedAt,
         nextCheckAt: nextCheck(),
+        error: message,
       });
       this.emitChanged(watchId);
       return result({ error: message, errorCode: code });
@@ -395,11 +401,13 @@ export class WatchService {
   private recordFailure(
     watch: Watch,
     checkedAt: Date,
-    manifest: Parameters<typeof effectiveIntervalMinutes>[1]
+    manifest: Parameters<typeof effectiveIntervalMinutes>[1],
+    error: string
   ): void {
     this.repo.recordRun(watch.id, {
       result: WatchResult.ERROR,
       found: false,
+      error,
       checkedAt,
       nextCheckAt: nextCheckAt(
         checkedAt,
@@ -469,7 +477,12 @@ export class WatchService {
       // A placed hold is recorded even when the run was stopped meanwhile: it exists now.
       const placed: WatchHold = this.toWatchHold(provider, hold, match);
       try {
-        this.repo.markHeld(watch.id);
+        this.repo.markHeld(watch.id, {
+          reference: placed.reference,
+          expiresAt: hold.expiresAt,
+          unitId: placed.unitId,
+          paymentUrl: placed.paymentUrl,
+        });
       } catch (error) {
         log.error(`Watch ${watch.id}: hold ${placed.reference} placed but not recorded`, error);
       }

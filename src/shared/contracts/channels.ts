@@ -24,6 +24,7 @@ export const CHANNELS = {
     activate: 'watches:activate',
     deactivate: 'watches:deactivate',
     runNow: 'watches:run-now',
+    openPayment: 'watches:open-payment',
   },
   snipes: {
     list: 'snipes:list',
@@ -34,6 +35,7 @@ export const CHANNELS = {
     activate: 'snipes:activate',
     deactivate: 'snipes:deactivate',
     runNow: 'snipes:run-now',
+    openPayment: 'snipes:open-payment',
   },
   notifications: {
     list: 'notifications:list',

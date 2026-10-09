@@ -167,6 +167,12 @@ export interface HoldsModule {
   paymentUrl(hold: HoldSuccess): string;
   /** Top-level origins the payment window may visit. */
   readonly paymentOrigins?: readonly string[];
+  /**
+   * The booking reference when `url`, a page the payment window showed, proves that this
+   * hold was paid for (ParkStay: its `/success/` page with the hold's `checkouthash`), else
+   * null. Without it, the app cannot tell when a payment completes.
+   */
+  bookedReference?(hold: { reference: string }, url: string): string | null;
 }
 
 export interface ExternalBooking {

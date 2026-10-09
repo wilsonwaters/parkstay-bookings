@@ -249,7 +249,12 @@ describe('accounts over IPC', () => {
           providerId: 'parkstay',
           url: 'https://evil.example/x',
         })
-      ).resolves.toMatchObject({ success: false, code: 'VALIDATION' });
+      ).resolves.toEqual({
+        success: false,
+        code: 'VALIDATION',
+        error: 'That link is not a ParkStay sign-in link',
+        issues: ['url'],
+      });
       expect(electron.BrowserWindow.instances).toHaveLength(0);
 
       const link = 'https://dbcab2c.b2clogin.com/dbcab2c.onmicrosoft.com/link?token=abc';

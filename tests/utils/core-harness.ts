@@ -20,6 +20,7 @@ import {
   SiteSniperRepository,
   WatchRepository,
 } from '@main/database/repositories';
+import type { AccountGate } from '@main/core/accounts/ports';
 import { NightGuard } from '@main/core/holds/night-guard';
 import { SiteSniperService, type SnipeNotifications } from '@main/core/snipes/snipe.service';
 import { WatchService, type WatchNotifications } from '@main/core/watches/watch.service';
@@ -39,6 +40,8 @@ export interface CoreHarnessOptions {
   /** For the watch jitter (default 0: no jitter). */
   random?: () => number;
   accountState?: (providerId: string) => AccountStatus['state'];
+  /** The snipe service's account gate (default: none). */
+  accounts?: AccountGate;
   notifications?: WatchNotifications & SnipeNotifications;
   stopGraceMs?: number;
 }
@@ -112,6 +115,7 @@ export function createCoreHarness(options: CoreHarnessOptions = {}): CoreHarness
     notifications,
     nightGuard,
     events,
+    accounts: options.accounts,
   });
   const power = new EventEmitter();
   const scheduler = new JobScheduler({

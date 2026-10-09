@@ -8,14 +8,21 @@
  * Answers: `{status:'success', pk}`; 400 `{inprogress_booking:true}` when the session
  * already has a booking; 400 "The system is currently closed for bookings."; any other 400
  * when the site was taken or the request was refused.
+ *
+ * Payment: `create_booking` also sets `session['checkouthash'] = sha256(str(pk))`
+ * (`api.py:3375`), and the payment ledger returns to `/success/?checkouthash=<that hash>`
+ * (`utils.py:1766`). `/success/` alone proves nothing: it also serves `success-error.html`,
+ * or another booking's page. So a booking is recorded only for `/success/` on ParkStay with
+ * the hold's own hash; its reference is ParkStay's `PB` + pk (`BOOKING_PREFIX`).
  */
 
+import { createHash } from 'crypto';
 import type { ProviderContext } from '../sdk/context';
 import { throwIfAborted } from '../sdk/errors';
 import type { HoldRequest, HoldResult, HoldsModule, HoldSuccess } from '../sdk/provider';
 import type { CampgroundFacts } from './catalog';
 import { toParkStayDate, type ParkStayClient } from './client';
-import { HOLD_MINUTES, PARKSTAY_BASE_URL } from './constants';
+import { BOOKING_PREFIX, HOLD_MINUTES, PARKSTAY_BASE_URL, PAYMENT_ORIGINS } from './constants';
 import type { RawCreateBookingResponse } from './types';
 
 /** `msg` as text: a string, `{ error }`, or anything else serialised. */
@@ -47,7 +54,7 @@ function stringParam(request: HoldRequest, key: string): string | undefined {
 }
 
 export interface HoldsDeps {
-  ctx: Pick<ProviderContext, 'id' | 'clock'>;
+  ctx: Pick<ProviderContext, 'id' | 'clock' | 'logger'>;
   client: ParkStayClient;
   facts: CampgroundFacts;
   /** A fully available unit for the stay, from a fresh availability check, if there is one. */
@@ -134,6 +141,34 @@ export function createHolds({ ctx, client, facts, findFreeUnit }: HoldsDeps): Ho
   return {
     create,
     paymentUrl: () => `${PARKSTAY_BASE_URL}/booking/`,
-    paymentOrigins: [PARKSTAY_BASE_URL],
+    paymentOrigins: PAYMENT_ORIGINS,
+    bookedReference(hold, url) {
+      const page = successPage(url);
+      if (!page) return null;
+      if (page.checkouthash !== checkoutHash(hold.reference)) {
+        // Another booking's confirmation, or ParkStay's error page: not this hold's payment
+        ctx.logger.warn('Payment window: a /success/ page that is not for this hold; ignored');
+        return null;
+      }
+      return `${BOOKING_PREFIX}${hold.reference}`;
+    },
   };
+}
+
+/** `sha256(str(pk))` as hex, as `create_booking` stores it (`api.py:3375`). */
+export function checkoutHash(reference: string): string {
+  return createHash('sha256').update(reference, 'utf8').digest('hex');
+}
+
+/** ParkStay's `/success/` page and its `checkouthash`, or null for any other URL. */
+function successPage(url: string): { checkouthash: string } | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.origin !== PARKSTAY_BASE_URL) return null;
+  if (parsed.pathname !== '/success' && !parsed.pathname.startsWith('/success/')) return null;
+  return { checkouthash: (parsed.searchParams.get('checkouthash') ?? '').toLowerCase() };
 }

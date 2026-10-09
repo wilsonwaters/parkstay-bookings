@@ -570,6 +570,11 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
           },
           paymentUrl: (hold: HoldSuccess) => `https://${id}.example/pay/${hold.reference}`,
           paymentOrigins: [`https://${id}.example`],
+          // Paid: the provider's page `/paid/<reference>` (any query), booked as `BK-<reference>`
+          bookedReference: (hold: { reference: string }, url: string) => {
+            const paid = `https://${id}.example/paid/${hold.reference}`;
+            return url === paid || url.startsWith(`${paid}?`) ? `BK-${hold.reference}` : null;
+          },
         }
       : undefined,
 

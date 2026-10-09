@@ -4,7 +4,7 @@
  * them on `BrowserWindow` and the provider's session partition.
  */
 
-import type { ProviderId } from '@shared/types/provider.types';
+import type { AccountStatus, ProviderId } from '@shared/types/provider.types';
 
 export type ProviderWindowKind = 'sign-in' | 'payment';
 
@@ -61,4 +61,15 @@ export interface ProviderSessionStore {
   clear(providerId: ProviderId): Promise<void>;
   /** Writes the partition's cookies to disk now. */
   flush(providerId: ProviderId): Promise<void>;
+}
+
+/**
+ * What the snipe service asks of `ProviderAccountService` before a hold, for a provider whose
+ * holds need an account (`required-for-holds` or `required`). ParkStay's is optional.
+ */
+export interface AccountGate {
+  /** Throws `ProviderAuthRequiredError` (`AUTH_REQUIRED`) unless the account is signed in. */
+  ensureForHolds(providerId: ProviderId): Promise<void>;
+  /** The stored (last definite) state; synchronous, no network. */
+  storedState(providerId: ProviderId): AccountStatus['state'];
 }

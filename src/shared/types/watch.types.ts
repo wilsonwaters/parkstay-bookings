@@ -35,8 +35,20 @@ export interface Watch {
   allowPartialMatch: boolean;
   maxPrice?: number;
   notes?: string;
+  /** The hold its auto-hold placed (`lastResult` held, or booked once paid for). */
+  hold?: WatchHoldState;
+  /** Why the last run did not do what it should (a failed check or automatic hold). */
+  lastError?: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** A watch's auto-hold as stored: pay for it with `watches.openPayment` until `expiresAt`. */
+export interface WatchHoldState {
+  reference: string;
+  expiresAt: Date;
+  unitId?: string;
+  paymentUrl?: string;
 }
 
 /** A watch as create requests send it. Main resolves the user. */
