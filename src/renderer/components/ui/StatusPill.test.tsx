@@ -38,7 +38,7 @@ describe('statusPresets', () => {
     expect(Object.keys(presets).sort()).toEqual(Object.values(values).sort());
   });
 
-  it('covers a watch being active or paused', () => {
-    expect(Object.keys(statusPresets.watch).sort()).toEqual(['active', 'paused']);
+  it('covers a watch being active, paused or ended', () => {
+    expect(Object.keys(statusPresets.watch).sort()).toEqual(['active', 'ended', 'paused']);
   });
 });

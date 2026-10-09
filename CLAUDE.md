@@ -145,7 +145,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 - **Active pages:** Explore, Watches, Settings (no login gate)
 - **Marked "Soon" in sidebar (greyed pill) but still usable:** Bookings and Site Sniper — both are navigable and show a `ComingSoonBanner` on the page (being finalized)
 - **Settings page** includes email/SMTP configuration (`EmailSettingsCard`) and "Connect ParkStay" (`accounts.signIn('parkstay')`, the in-app sign-in window; optional)
-- **Key components:** AvailabilityGrid, QueueStatus, NotificationBell, WatchForm, SiteSniperForm, UpdateNotification, AboutDialog
+- **Key components:** StepFlow, ProviderPicker, LocationCombobox, ProviderStayFields, UnitPicker (shared create-flow blocks, U1), QueueStatus, NotificationBell, SiteSniperForm, UpdateNotification, AboutDialog
 
 ## Testing
 

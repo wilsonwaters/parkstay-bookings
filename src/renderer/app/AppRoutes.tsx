@@ -10,10 +10,10 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Spinner } from '../components/ui';
 import ExplorePage from '../features/explore/ExplorePage';
 import PlaceDetailPage from '../features/place/PlaceDetailPage';
-import WatchesPage from '../features/watches/legacy';
-import CreateWatch from '../features/watches/legacy/CreateWatch';
-import EditWatch from '../features/watches/legacy/EditWatch';
-import WatchDetail from '../features/watches/legacy/WatchDetail';
+import { WatchesPage } from '../features/watches/WatchesPage';
+import { NewWatchPage } from '../features/watches/create/NewWatchPage';
+import { WatchDetailPage } from '../features/watches/detail/WatchDetailPage';
+import { EditWatchPage } from '../features/watches/edit/EditWatchPage';
 import SiteSniperPage from '../features/snipes/legacy';
 import CreateSiteSnipe from '../features/snipes/legacy/CreateSiteSnipe';
 import BookingsList from '../features/bookings/legacy/BookingsList';
@@ -49,10 +49,10 @@ export function AppRoutes() {
         <Route path={PATTERNS.explore} element={<ExplorePage />} />
         <Route path={PATTERNS.placeDetail} element={<PlaceDetailPage />} />
 
-        <Route path={PATTERNS.watches} element={legacy(<WatchesPage />)} />
-        <Route path={PATTERNS.watchNew} element={legacy(<CreateWatch />)} />
-        <Route path={PATTERNS.watchDetail} element={legacy(<WatchDetail />)} />
-        <Route path={PATTERNS.watchEdit} element={legacy(<EditWatch />)} />
+        <Route path={PATTERNS.watches} element={<WatchesPage />} />
+        <Route path={PATTERNS.watchNew} element={<NewWatchPage />} />
+        <Route path={PATTERNS.watchDetail} element={<WatchDetailPage />} />
+        <Route path={PATTERNS.watchEdit} element={<EditWatchPage />} />
 
         <Route path={PATTERNS.snipes} element={legacy(<SiteSniperPage />)} />
         <Route path={PATTERNS.snipeNew} element={legacy(<CreateSiteSnipe />)} />

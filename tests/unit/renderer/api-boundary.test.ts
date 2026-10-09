@@ -23,20 +23,15 @@ const LEGACY_ALLOW_LIST = [
   'components/forms/ImportBookingForm.tsx', // U3
   'components/forms/ManualBookingForm.tsx', // U3
   'components/forms/SiteSniperForm.tsx', // U2
-  'components/forms/WatchForm.tsx', // U1
   'components/settings/EmailSettingsCard.tsx', // U4
   'features/bookings/legacy/BookingDetail.tsx', // U3
   'features/bookings/legacy/BookingsList.tsx', // U3
   'features/settings/legacy/Settings.tsx', // U4
   'features/snipes/legacy/CreateSiteSnipe.tsx', // U2
   'features/snipes/legacy/index.tsx', // U2
-  'features/watches/legacy/CreateWatch.tsx', // U1
-  'features/watches/legacy/EditWatch.tsx', // U1
-  'features/watches/legacy/WatchDetail.tsx', // U1
-  'features/watches/legacy/index.tsx', // U1
 ];
 /** The length LEGACY_ALLOW_LIST had when D3 wrote it. Lower it as entries go; never raise it. */
-const LEGACY_ALLOW_LIST_MAX = 17;
+const LEGACY_ALLOW_LIST_MAX = 12;
 
 /** The globals the preload API hangs off. */
 const GLOBAL = String.raw`\b(?:window|globalThis|self)\b`;

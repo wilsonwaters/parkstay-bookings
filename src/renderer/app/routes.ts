@@ -135,7 +135,9 @@ export const ROUTES = {
   snipeDetail: (id: Id) => buildPath(PATTERNS.snipeDetail, { id }),
   bookings: () => buildPath(PATTERNS.bookings),
   bookingDetail: (id: Id) => buildPath(PATTERNS.bookingDetail, { id }),
-  settings: (section?: string) => buildPath(PATTERNS.settings, { section }),
+  /** `?provider=<id>` focuses that provider's row on Settings → Accounts. */
+  settings: (section?: string, query?: { provider?: string }) =>
+    buildPath(PATTERNS.settings, { section }, query),
   design: () => buildPath(PATTERNS.design),
 } as const;
 

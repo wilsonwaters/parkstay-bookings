@@ -213,7 +213,7 @@ describe('App shell', () => {
     it.each([
       ['/', 'Explore places to stay'],
       ['/watches', 'Watches'],
-      ['/watches/new', 'Create Watch'],
+      ['/watches/new', 'New watch'],
       ['/site-sniper', 'Site Sniper'],
       ['/site-sniper/new', 'Create Site Snipe'],
       ['/bookings', 'Your Bookings'],
@@ -235,7 +235,7 @@ describe('App shell', () => {
       ['/watches/12', 'watches', 'get', 'Watch not found'],
       ['/watches/12/edit', 'watches', 'get', 'Watch not found'],
       ['/bookings/3', 'bookings', 'get', 'Booking not found'],
-    ])('%s renders its legacy page with its data', async (route, namespace, method, text) => {
+    ])('%s renders its page with its data', async (route, namespace, method, text) => {
       const get = jest.fn().mockResolvedValue(fail(text, 'NOT_FOUND'));
       renderWithApp({ route, api: { [namespace]: { [method]: get } } });
       expect(await screen.findByText(text)).toBeInTheDocument();

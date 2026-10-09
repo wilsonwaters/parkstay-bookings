@@ -1,0 +1,25 @@
+import { parkstayManifest } from '@main/providers/parkstay';
+import { ProviderManifestSchema } from '@shared/types/provider.types';
+import {
+  BROWSE_ONLY_MANIFEST,
+  FAKE_MANIFEST,
+  PARKSTAY_MANIFEST,
+} from '@tests/utils/renderer/manifests';
+
+describe('renderer test manifests', () => {
+  it('give ParkStay the stay fields, capabilities, limits and time zone main registers', () => {
+    expect(PARKSTAY_MANIFEST.stayFields).toEqual(parkstayManifest.stayFields);
+    expect(PARKSTAY_MANIFEST.capabilities.holds).toBe(parkstayManifest.capabilities.holds);
+    expect(PARKSTAY_MANIFEST.capabilities.watches).toBe(parkstayManifest.capabilities.watches);
+    expect(PARKSTAY_MANIFEST.capabilities.account).toBe(parkstayManifest.capabilities.account);
+    expect(PARKSTAY_MANIFEST.limits).toEqual(parkstayManifest.limits);
+    expect(PARKSTAY_MANIFEST.timezone).toBe(parkstayManifest.timezone);
+    expect(PARKSTAY_MANIFEST.currency).toBe(parkstayManifest.currency);
+  });
+
+  it('are all valid manifests', () => {
+    for (const manifest of [PARKSTAY_MANIFEST, FAKE_MANIFEST, BROWSE_ONLY_MANIFEST]) {
+      expect(ProviderManifestSchema.safeParse(manifest).success).toBe(true);
+    }
+  });
+});

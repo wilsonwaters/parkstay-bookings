@@ -191,3 +191,36 @@ export function useLocationCheck(key: string | null, stay: StayQuery | null) {
     refetchOnReconnect: false,
   });
 }
+
+/** The most places a location picker lists at once; the total says how many matched. */
+export const LOCATION_SEARCH_LIMIT = 20;
+/** A location picker searches from this many characters. */
+export const LOCATION_SEARCH_MIN_CHARS = 2;
+
+/**
+ * A location picker's search: one provider's places matching `text`, best first (main's
+ * full-text ranking), at most `LOCATION_SEARCH_LIMIT`. Runs from 2 characters; while the next
+ * search loads, the previous results stay (`isPlaceholderData`).
+ */
+export function useLocationSearch({
+  providerId,
+  text,
+}: {
+  providerId: ProviderId | undefined;
+  text: string;
+}) {
+  const trimmed = text.trim();
+  const query: CatalogQuery = {
+    text: trimmed,
+    providerIds: providerId ? [providerId] : [],
+    limit: LOCATION_SEARCH_LIMIT,
+    sort: 'relevance',
+  };
+  return useQuery({
+    queryKey: queryKeys.catalog.search(query),
+    queryFn: () => unwrap((api) => api.catalog.search(query)),
+    placeholderData: keepPreviousData,
+    staleTime: CATALOG_STALE_TIME_MS,
+    enabled: Boolean(providerId) && trimmed.length >= LOCATION_SEARCH_MIN_CHARS,
+  });
+}

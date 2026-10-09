@@ -35,8 +35,8 @@ const UNIT_NOUNS: Record<LocationKind, [one: string, many: string]> = {
   other: ['unit', 'units'],
 };
 
-/** What a location's units are called: `{ one: 'site', many: 'sites' }` for a campground. */
-export function unitNoun(kind: string): { one: string; many: string } {
+/** What a unit is called at a location of this kind: `{ one: 'site', many: 'sites' }`. */
+export function unitNoun(kind: string | undefined): { one: string; many: string } {
   const [one, many] = UNIT_NOUNS[kind as LocationKind] ?? UNIT_NOUNS.other;
   return { one, many };
 }

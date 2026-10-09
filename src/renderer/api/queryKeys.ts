@@ -9,6 +9,8 @@ const catalog = ['catalog'] as const;
 const notifications = ['notifications'] as const;
 const app = ['app'] as const;
 const updater = ['updater'] as const;
+const watches = ['watches'] as const;
+const accounts = ['accounts'] as const;
 
 export const queryKeys = {
   providers: {
@@ -37,5 +39,14 @@ export const queryKeys = {
   updater: {
     all: updater,
     status: () => [...updater, 'status'] as const,
+  },
+  watches: {
+    all: watches,
+    list: () => [...watches, 'list'] as const,
+    detail: (id: number) => [...watches, 'detail', id] as const,
+  },
+  accounts: {
+    all: accounts,
+    list: () => [...accounts, 'list'] as const,
   },
 } as const;

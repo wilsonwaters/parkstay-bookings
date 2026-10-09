@@ -1,5 +1,6 @@
 /**
- * Maps the legacy ParkStay forms to and from the provider-aware domain types (V2).
+ * Maps the legacy ParkStay snipe and booking forms to and from the provider-aware domain types
+ * (V2). Watches have their own provider-first form (features/watches, U1).
  *
  * The forms keep their own values (date pickers, ParkStay field names) and their look; only
  * what crosses IPC changed. A date input with `valueAsDate` holds UTC midnight of the picked
@@ -14,18 +15,14 @@ import type {
   SiteSnipeInput,
   Stay,
   StayParams,
-  Watch,
-  WatchInput,
-  WatchUpdate,
 } from '../../../shared/types';
 import type { RefCallback } from 'react';
 import type { UseFormRegisterReturn } from 'react-hook-form';
 import type { CreatePrefill } from '../../app/routes';
 import type { BookingSchemaType } from '../../../shared/schemas/booking.schema';
 import type { SiteSnipeSchemaType } from '../../../shared/schemas/site-sniper.schema';
-import type { WatchSchemaType } from '../../../shared/schemas/watch.schema';
 
-/** The legacy forms create ParkStay watches, snipes and bookings only. */
+/** The legacy forms create ParkStay snipes and bookings only. */
 export const LEGACY_FORM_PROVIDER_ID = 'parkstay';
 
 /** The calendar date a date input's `valueAsDate` means (UTC midnight of the picked day). */
@@ -91,101 +88,6 @@ function compactParams(params: Record<string, string | number | boolean | undefi
 /** Drops undefined members, so an update changes only what the form gave. */
 function defined<T extends object>(value: T): T {
   return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as T;
-}
-
-// ---------------------------------------------------------------------------------------
-// Watches
-// ---------------------------------------------------------------------------------------
-
-/** The ParkStay gear types the legacy watch form offers (its `stayFields` options). */
-const LEGACY_GEAR_TYPES = ['tent', 'campervan', 'caravan'];
-
-/**
- * The one gear type ticked, or undefined (any gear, which main fills in) when none or
- * several are: ParkStay checks a single gear type.
- */
-function singleGearType(siteType: string | undefined): string | undefined {
-  const ticked = (siteType ?? '')
-    .split(',')
-    .map((gear) => gear.trim())
-    .filter(Boolean);
-  return ticked.length === 1 && LEGACY_GEAR_TYPES.includes(ticked[0]) ? ticked[0] : undefined;
-}
-
-export function watchFormToInput(form: WatchSchemaType): WatchInput {
-  return defined({
-    providerId: LEGACY_FORM_PROVIDER_ID,
-    name: form.name,
-    location: { externalId: form.campgroundId, name: form.campgroundName, areaName: form.parkName },
-    stay: {
-      arrival: toCalendarDate(form.arrivalDate),
-      departure: toCalendarDate(form.departureDate),
-      adults: form.numGuests,
-    },
-    unitIds: form.preferredSites,
-    stayParams: compactParams({ parkId: form.parkId, gearType: singleGearType(form.siteType) }),
-    checkIntervalMinutes: form.checkIntervalMinutes,
-    autoHold: form.autoHold,
-    notifyOnly: form.notifyOnly,
-    allowPartialMatch: form.allowPartialMatch,
-    maxPrice: form.maxPrice,
-    notes: form.notes,
-  });
-}
-
-/** The watch form as an update: everything but the provider, which never changes. */
-export function watchFormToUpdate(form: WatchSchemaType): WatchUpdate {
-  const input: Partial<WatchInput> = watchFormToInput(form);
-  delete input.providerId;
-  return input;
-}
-
-/** The watch form's starting values for an existing watch. */
-export function watchToFormValues(watch: Partial<Watch> | undefined): Partial<WatchSchemaType> {
-  return {
-    name: watch?.name || '',
-    parkId: stayParamText(watch?.stayParams, 'parkId') || '',
-    parkName: watch?.location?.areaName || '',
-    campgroundId: watch?.location?.externalId || '',
-    campgroundName: watch?.location?.name || '',
-    arrivalDate: watch?.stay ? formDate(watch.stay.arrival) : new Date(),
-    departureDate: watch?.stay ? formDate(watch.stay.departure) : new Date(),
-    numGuests: (watch?.stay && partySize(watch.stay)) || 2,
-  };
-}
-
-/**
- * The legacy watch form's starting values from a create flow's prefill query (§12.10), the
- * bridge E2's "Watch for availability" uses until U1 rebuilds the form. ParkStay only: a
- * prefill for another provider is ignored. The place is filled only with its name (looked up
- * by the page); guests are adults plus children.
- */
-export function watchFromPrefill(
-  prefill: CreatePrefill,
-  place: { name: string; areaName?: string } | undefined
-): Partial<Watch> | undefined {
-  if (prefill.provider !== LEGACY_FORM_PROVIDER_ID) return undefined;
-  const watch: Partial<Watch> = {};
-  if (prefill.location && place?.name) {
-    watch.location = {
-      externalId: prefill.location,
-      name: place.name,
-      // The legacy form's park fields, filled as choosing the campground in it fills them.
-      areaName: place.areaName || place.name,
-    };
-    watch.stayParams = { parkId: prefill.location };
-  }
-  if (prefill.arrival && prefill.departure) {
-    watch.stay = {
-      arrival: prefill.arrival,
-      departure: prefill.departure,
-      adults: prefill.adults ?? 0,
-      children: prefill.children ?? 0,
-      infants: 0,
-      concessions: 0,
-    };
-  }
-  return watch;
 }
 
 // ---------------------------------------------------------------------------------------

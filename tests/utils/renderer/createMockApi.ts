@@ -15,6 +15,9 @@ import type { APIResponse } from '../../../src/shared/types/api.types';
 import type { AccessStatus } from '../../../src/shared/types/provider.types';
 import { act } from '@testing-library/react';
 import { createMockWindowApi } from '../window-api';
+import { PARKSTAY_MANIFEST } from './manifests';
+
+export { BROWSE_ONLY_MANIFEST, FAKE_MANIFEST, PARKSTAY_MANIFEST } from './manifests';
 
 /** A successful `APIResponse`. */
 export function ok<T>(data: T): APIResponse<T> {
@@ -25,30 +28,6 @@ export function ok<T>(data: T): APIResponse<T> {
 export function fail(error: string, code = 'INTERNAL'): APIResponse<never> {
   return { success: false, error, code } as APIResponse<never>;
 }
-
-/** The ParkStay manifest (architecture-notes §3), as V1 will return it from `providers.list()`. */
-export const PARKSTAY_MANIFEST = {
-  id: 'parkstay',
-  name: 'ParkStay WA',
-  shortName: 'ParkStay',
-  description: "Campgrounds in Western Australia's national parks",
-  website: 'https://parkstay.dbca.wa.gov.au',
-  integration: 'api' as const,
-  brand: { color: '#2F6B3A', monogram: 'PS' }, // token-guard-ignore: provider brand data
-  locationKinds: ['campground'],
-  timezone: 'Australia/Perth',
-  capabilities: {
-    catalog: true,
-    availability: true,
-    bulkAvailability: true,
-    watches: true,
-    snipes: true,
-    holds: true,
-    bookingImport: true,
-    accessGate: true,
-    account: 'optional' as const,
-  },
-};
 
 export const APP_INFO: AppInfo = {
   name: 'WA Stay',

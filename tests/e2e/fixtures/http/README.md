@@ -14,7 +14,7 @@ http/
 └── parkstay/
     ├── manifest.json
     ├── campground_map.json      # the catalogue the app syncs 5 s after launch (V5), Explore's places (E1)
-    ├── campsite_availablity_view_20.json  # Bungarra's sites and description, for its detail page (E2)
+    ├── campsite_availablity_view_20.json  # Bungarra's sites and description, for its detail page (E2) and a new watch's first check (U1)
     └── profile-signed-out.json  # /api/profile signed out (403), the account check at launch (V6)
 ```
 
@@ -69,6 +69,12 @@ test attaches that log as `unexpected-requests`, which lists exactly the routes 
   Explore journey (E1), 11 in all. They cover `campground_type` 0 (5), 1 (2), 2 (3) and 4 (1)
   across 8 regions (Pilbara, Kimberley, South Coast, Goldfields, Midwest, South West, Swan,
   Warren), each with its images and features, and at most 3 campsites.
+- **ParkStay, E2 and U1**: `campsite_availablity_view_20.json` is the Jest fixture
+  `tests/fixtures/parkstay/campsite_availablity_view_20.json` (the public per-campground view
+  for Bungarra, campground 20), copied unchanged; it answers Bungarra's detail page and a new
+  watch's first check, for any dates. `profile-signed-out.json` is Django REST Framework's standard 403
+  body for `GET /api/profile` without a session, which the account service's startup check (V6)
+  sends 5 s after launch; it is written by hand, not recorded, and holds no personal data.
 
 ## Refreshing a fixture
 

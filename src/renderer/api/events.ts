@@ -23,10 +23,37 @@ export function useApiEvent<E extends EventName>(
   }, [name]);
 }
 
+export interface InvalidateOnOptions {
+  /**
+   * Coalesces a burst: the first event starts a window of this many milliseconds, and one
+   * invalidation runs when it ends, however many events arrived in it. Without it, every
+   * event invalidates at once.
+   */
+  coalesceMs?: number;
+}
+
 /** Marks `queryKey` (and everything under it) stale whenever `event` arrives. */
-export function useInvalidateOn(event: EventName, queryKey: QueryKey): void {
+export function useInvalidateOn(
+  event: EventName,
+  queryKey: QueryKey,
+  { coalesceMs }: InvalidateOnOptions = {}
+): void {
   const queryClient = useQueryClient();
+  const latestKey = useRef(queryKey);
+  latestKey.current = queryKey;
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => () => clearTimeout(timer.current), []);
+
   useApiEvent(event, () => {
-    void queryClient.invalidateQueries({ queryKey });
+    const invalidate = () => {
+      timer.current = undefined;
+      void queryClient.invalidateQueries({ queryKey: latestKey.current });
+    };
+    if (!coalesceMs) {
+      invalidate();
+      return;
+    }
+    if (timer.current === undefined) timer.current = setTimeout(invalidate, coalesceMs);
   });
 }
