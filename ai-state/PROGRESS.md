@@ -7,7 +7,8 @@ Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task spe
 
 ## Currently in flight
 - **E1** (#32) Explore screen: review REQUEST_CHANGES (security and politeness pass: token build-time only, photos https/no-referrer, panning makes 0 IPC calls, 1 ParkStay call per session; no file overlap with V4). Majors: flaky camera-URL tests (initial view writes `map=` after 500 ms); list narrowed to the old map area during a fit (wrong "no places" flash and announcement); stock Outdoors labels, shields and roads outrank our pins. Minors and design critique: unstyled popup, fit padding vs the floating pill, focus after closing the preview, region cut off on cards, hand-built chips (use D2 primitives), heavy selected ring, duplicated hover title, alphabetical default opening on "14 Mile", "in map area" label before the map moves. Fix by the original implementer running, lane R.
-- Next (two agents at a time): U1 now; then P7, U3, U5, U2, U4; E2/E3 after E1; Q2 last.
+- **U1** (#35) Watches provider-first: design phase (L task), lane M; reuses E1's catalogue hooks and cards; implementation after E1 merges.
+- Next (two agents at a time): then P7, U3, U5, U2, U4; E2/E3 after E1; Q2 last.
 
 ## Notes
 - 2026-10-09: the stakeholder resumed. V4 and E1 rebased onto `47ceaf1` (`a14dfe3`, `16bc8c4`; wip backups updated); V4 and E1 reviews running in parallel (two agents at a time to pace quota).
