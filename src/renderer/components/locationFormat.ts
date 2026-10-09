@@ -35,9 +35,15 @@ const UNIT_NOUNS: Record<LocationKind, [one: string, many: string]> = {
   other: ['unit', 'units'],
 };
 
+/** What a location's units are called: `{ one: 'site', many: 'sites' }` for a campground. */
+export function unitNoun(kind: string): { one: string; many: string } {
+  const [one, many] = UNIT_NOUNS[kind as LocationKind] ?? UNIT_NOUNS.other;
+  return { one, many };
+}
+
 /** "24 sites", "1 cabin". */
 export function unitCountLabel(kind: string, count: number): string {
-  const [one, many] = UNIT_NOUNS[kind as LocationKind] ?? UNIT_NOUNS.other;
+  const { one, many } = unitNoun(kind);
   return `${count} ${count === 1 ? one : many}`;
 }
 

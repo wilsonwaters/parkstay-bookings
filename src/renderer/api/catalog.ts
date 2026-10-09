@@ -4,10 +4,16 @@ import {
   type CatalogQuery,
   type CatalogSearchResult,
   type CatalogStatus,
+  type LocationDetail,
 } from '../../shared/types/catalog.types';
-import type { ProviderId } from '../../shared/types/provider.types';
+import type {
+  LocationAvailability,
+  ProviderId,
+  StayQuery,
+} from '../../shared/types/provider.types';
+import { parseLocationKey } from '../../shared/utils/location-key';
 import { unwrap } from './client';
-import { useInvalidateOn } from './events';
+import { useApiEvent, useInvalidateOn } from './events';
 import { queryKeys } from './queryKeys';
 
 // Vite replaces `process.env.NODE_ENV` in renderer code; Jest runs on Node (as in ui/dev.ts).
@@ -108,4 +114,78 @@ export function useCatalogRefresh() {
  */
 export function useCatalogUpdates(): void {
   useInvalidateOn('catalog:updated', queryKeys.catalog.all);
+}
+
+/** A place's detail keeps 10 minutes here; main caches it for 6 hours. */
+export const LOCATION_DETAIL_STALE_TIME_MS = 10 * 60_000;
+/** A check of one place's availability keeps a minute, as main's own check cache does. */
+export const LOCATION_CHECK_STALE_TIME_MS = 60_000;
+
+/**
+ * The place's summary from a catalogue search already in the cache (Explore's), as a detail
+ * with no units yet: the page shows its name, photos and facilities at once while the detail
+ * loads. `isPlaceholderData` tells it apart from the real detail.
+ */
+function cachedSummary(
+  queryClient: ReturnType<typeof useQueryClient>,
+  key: string
+): LocationDetail | undefined {
+  const searches = queryClient.getQueriesData<CatalogSearchResult>({
+    queryKey: [...queryKeys.catalog.all, 'search'],
+  });
+  for (const [, data] of searches) {
+    const item = data?.items?.find((candidate) => candidate.key === key);
+    if (item) return { ...item, units: [] };
+  }
+  return undefined;
+}
+
+/**
+ * `catalog.get(key)`: one place's detail (description, units, release rules). Main serves it
+ * from its 6-hour cache when it can, so opening a place again costs the provider nothing.
+ * `key` null (or `enabled: false`) asks nothing.
+ */
+export function useLocationDetail(key: string | null, options: { enabled?: boolean } = {}) {
+  const queryClient = useQueryClient();
+  return useQuery<LocationDetail>({
+    queryKey: queryKeys.catalog.detail(key ?? ''),
+    queryFn: () => unwrap((api) => api.catalog.get(key as string)),
+    staleTime: LOCATION_DETAIL_STALE_TIME_MS,
+    enabled: Boolean(key) && (options.enabled ?? true),
+    placeholderData: () => (key ? cachedSummary(queryClient, key) : undefined),
+  });
+}
+
+/**
+ * Reloads the detail of `key`, in place, when its provider's catalogue syncs. Only the detail:
+ * a sync never re-checks availability (each check is a request to the provider).
+ */
+export function useLocationDetailUpdates(key: string | null): void {
+  const queryClient = useQueryClient();
+  useApiEvent('catalog:updated', (event) => {
+    if (!key) return;
+    let providerId: string;
+    try {
+      providerId = parseLocationKey(key).providerId;
+    } catch {
+      return;
+    }
+    if (event.providerId !== providerId) return;
+    void queryClient.invalidateQueries({ queryKey: queryKeys.catalog.detail(key), exact: true });
+  });
+}
+
+/**
+ * `catalog.checkLocation(key, stay)`: each unit's nights for the stay. It asks only once a
+ * stay is given (the person pressed Check), and each stay is its own cache entry. A failed
+ * check is not retried by itself: the person retries, so a busy provider is not asked twice.
+ */
+export function useLocationCheck(key: string | null, stay: StayQuery | null) {
+  return useQuery<LocationAvailability>({
+    queryKey: queryKeys.catalog.check(key ?? '', stay),
+    queryFn: () => unwrap((api) => api.catalog.checkLocation(key as string, stay as StayQuery)),
+    staleTime: LOCATION_CHECK_STALE_TIME_MS,
+    enabled: Boolean(key && stay),
+    retry: false,
+  });
 }

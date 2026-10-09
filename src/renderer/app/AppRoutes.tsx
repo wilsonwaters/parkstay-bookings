@@ -9,6 +9,7 @@ import { lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Spinner } from '../components/ui';
 import ExplorePage from '../features/explore/ExplorePage';
+import PlaceDetailPage from '../features/place/PlaceDetailPage';
 import WatchesPage from '../features/watches/legacy';
 import CreateWatch from '../features/watches/legacy/CreateWatch';
 import EditWatch from '../features/watches/legacy/EditWatch';
@@ -46,8 +47,7 @@ export function AppRoutes() {
     <Routes>
       <Route element={<AppShell />}>
         <Route path={PATTERNS.explore} element={<ExplorePage />} />
-        {/* Reserved for E2 (location detail). */}
-        <Route path={PATTERNS.placeDetail} element={<NotFoundPage />} />
+        <Route path={PATTERNS.placeDetail} element={<PlaceDetailPage />} />
 
         <Route path={PATTERNS.watches} element={legacy(<WatchesPage />)} />
         <Route path={PATTERNS.watchNew} element={legacy(<CreateWatch />)} />

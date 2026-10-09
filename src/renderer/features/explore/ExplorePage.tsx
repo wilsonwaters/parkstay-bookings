@@ -9,6 +9,7 @@ import {
   useState,
   type CSSProperties,
 } from 'react';
+import { useLocation } from 'react-router-dom';
 import { List, Map as MapIcon } from 'lucide-react';
 import type {
   BoundingBox,
@@ -26,6 +27,8 @@ import {
   useCatalogUpdates,
   useProvidersWith,
 } from '../../api';
+import type { PlaceLinkState } from '../../app/routes';
+import type { StayParams } from '../../app/stayParams';
 import { hasMapLocation, placesLabel } from '../../components/locationFormat';
 import { Button, Notice, Spinner, useAnnounce, type Guests } from '../../components/ui';
 import { cx } from '../../components/ui/cx';
@@ -42,6 +45,7 @@ import { SearchPill } from './search/SearchPill';
 import { buildSuggestionIndex, type Suggestion } from './search/suggestions';
 import { hasActiveFilters, type ExploreParams, type KnownValues } from './state/exploreParams';
 import { createHighlightStore, HighlightContext } from './state/highlight';
+import { useExploreScrollMemory } from './state/scrollMemory';
 import { useExploreParams } from './state/useExploreParams';
 import { useOnline } from './state/useOnline';
 
@@ -124,6 +128,23 @@ export default function ExplorePage() {
   }, [catalogProviders, catalogue, catalogueByKey]);
 
   const { params, update, setCamera } = useExploreParams(known);
+
+  // A place's detail page opens with Explore's stay, and Back on it returns here as it was.
+  const { search: currentSearch } = useLocation();
+  const detailStay = useMemo<Partial<StayParams>>(
+    () => ({
+      arrival: params.arrival,
+      departure: params.departure,
+      adults: params.adults,
+      children: params.children,
+      infants: params.infants,
+    }),
+    [params.arrival, params.departure, params.adults, params.children, params.infants]
+  );
+  const detailState = useMemo<PlaceLinkState>(
+    () => ({ from: 'explore', search: currentSearch }),
+    [currentSearch]
+  );
 
   const filters: ExploreFilters = useMemo(
     () => ({
@@ -365,6 +386,8 @@ export default function ExplorePage() {
   else if (area && visible.length === 0) state = { kind: 'empty-area' };
   else state = { kind: 'results' };
 
+  const scrollMemory = useExploreScrollMemory(state.kind === 'results');
+
   // ---- Announce the count once a new search's results are on screen ---------------------------
   // (Not for the first results, and not for map moves.)
   const message =
@@ -486,7 +509,8 @@ export default function ExplorePage() {
   return (
     <HighlightContext.Provider value={highlight}>
       <div className="flex flex-col" style={stickyStyle}>
-        <h1 className="sr-only">Explore places to stay</h1>
+        {/* Fixed, so the focus it takes on arrival never scrolls the list back to the top. */}
+        <h1 className="sr-only fixed left-0 top-0">Explore places to stay</h1>
 
         <div
           ref={subheaderRef}
@@ -542,6 +566,10 @@ export default function ExplorePage() {
               onClearFilters={clearSearch}
               onShowAll={showAll}
               notices={hasNotices ? notices : undefined}
+              stay={detailStay}
+              linkState={detailState}
+              initialShown={scrollMemory.initialShown}
+              onShownChange={scrollMemory.setShown}
             />
           </div>
 
@@ -581,6 +609,8 @@ export default function ExplorePage() {
                   onFollowChange={setFollow}
                   onSearchArea={searchArea}
                   onFailed={setMapFailure}
+                  detailStay={detailStay}
+                  detailState={detailState}
                 />
               </Suspense>
             </section>

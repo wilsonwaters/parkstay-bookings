@@ -219,7 +219,7 @@ describe('App shell', () => {
       ['/bookings', 'Your Bookings'],
       ['/settings', 'Settings'],
       ['/settings/notifications', 'Settings'],
-      ['/places/parkstay/1', 'Page not found'],
+      ['/places/nowhere/1', "This place isn't available"],
       ['/site-sniper/4', 'Page not found'],
       ['/does-not-exist', 'Page not found'],
     ])('%s renders "%s" inside the shell', async (route, heading) => {

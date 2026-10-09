@@ -9,7 +9,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { siteSnipeSchema, SiteSnipeSchemaType } from '../../../shared/schemas/site-sniper.schema';
 import { LocationSummary, SiteSnipe, SnipeReleaseMode } from '../../../shared/types';
-import { snipeToFormValues } from './legacy-mapping';
+import { dateInputRef, snipeToFormValues } from './legacy-mapping';
 
 interface Campground {
   id: string;
@@ -118,6 +118,7 @@ const SiteSniperForm: React.FC<SiteSniperFormProps> = ({
     handleSubmit,
     watch,
     setValue,
+    getValues,
     formState: { errors },
   } = useForm<SiteSnipeSchemaType>({
     resolver: zodResolver(siteSnipeSchema) as any,
@@ -213,6 +214,10 @@ const SiteSniperForm: React.FC<SiteSniperFormProps> = ({
       setIsSubmitting(false);
     }
   };
+
+  // Date inputs that also show their starting dates (see dateInputRef).
+  const arrivalField = register('arrivalDate', { valueAsDate: true });
+  const departureField = register('departureDate', { valueAsDate: true });
 
   return (
     <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
@@ -328,7 +333,8 @@ const SiteSniperForm: React.FC<SiteSniperFormProps> = ({
           <input
             id="arrivalDate"
             type="date"
-            {...register('arrivalDate', { valueAsDate: true })}
+            {...arrivalField}
+            ref={dateInputRef(arrivalField, () => getValues('arrivalDate'))}
             className="input"
           />
           {errors.arrivalDate && (
@@ -342,7 +348,8 @@ const SiteSniperForm: React.FC<SiteSniperFormProps> = ({
           <input
             id="departureDate"
             type="date"
-            {...register('departureDate', { valueAsDate: true })}
+            {...departureField}
+            ref={dateInputRef(departureField, () => getValues('departureDate'))}
             className="input"
           />
           {errors.departureDate && (

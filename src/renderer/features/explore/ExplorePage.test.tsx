@@ -7,6 +7,7 @@ import {
   catalogApi,
   failedStatus,
   pendingStatus,
+  placeApi,
   placeNamed,
   searchStub,
   syncingStatus,
@@ -359,6 +360,66 @@ describe('Explore cards', () => {
     await renderExplore('/?regions=South+West', catalogApi(), '26 places');
     const name = 'Chapman Pool (formerly Warner Glen at Chapman Pool)';
     expect(await screen.findByRole('link', { name })).toBeInTheDocument();
+  });
+});
+
+describe('Explore and the detail page', () => {
+  let scrollTo: jest.SpyInstance;
+  beforeEach(() => {
+    scrollTo = jest.spyOn(window, 'scrollTo').mockImplementation((_x?: unknown, y?: unknown) => {
+      window.scrollY = Number(y);
+    });
+  });
+  afterEach(() => {
+    scrollTo.mockRestore();
+    window.scrollY = 0;
+  });
+
+  it("opens a place with Explore's dates and guests", async () => {
+    await renderExplore('/?arrival=2099-01-10&departure=2099-01-12&adults=2&children=1');
+    expect(screen.getAllByRole('link', { name: 'Bungarra' })[0]).toHaveAttribute(
+      'href',
+      '#/places/parkstay/20?arrival=2099-01-10&departure=2099-01-12&adults=2&children=1'
+    );
+  });
+
+  it('comes back from a place where the list was left: scrolled, and with its extra cards', async () => {
+    const { user } = await renderExplore('/', placeApi());
+    await user.click(screen.getByRole('button', { name: 'Show more places' }));
+    expect(cards()).toHaveLength(80);
+    window.scrollY = 2400;
+    fireEvent.scroll(window);
+    await waitFor(() =>
+      expect(JSON.parse(window.sessionStorage.getItem('ws:explore:scroll:') ?? '{}')).toEqual({
+        y: 2400,
+        shown: 80,
+      })
+    );
+
+    const bungarra = placeNamed('Bungarra');
+    await user.click(screen.getByRole('link', { name: bungarra.name }));
+    await screen.findByRole('heading', { level: 1, name: 'Bungarra' });
+    window.scrollY = 0;
+    await user.click(screen.getByRole('link', { name: 'Back to Explore' }));
+
+    await screen.findByRole('heading', { level: 2, name: '169 places' });
+    expect(cards()).toHaveLength(80);
+    await waitFor(() => expect(scrollTo).toHaveBeenLastCalledWith(0, 2400));
+  });
+
+  it('starts at the top on a new visit, whatever was saved', async () => {
+    window.sessionStorage.setItem('ws:explore:scroll:', JSON.stringify({ y: 900, shown: 80 }));
+    window.scrollY = 300;
+    const { user } = renderWithApp({ route: '/watches', api: catalogApi() });
+    await screen.findByRole('heading', { level: 1 });
+    await user.click(
+      within(screen.getByRole('navigation', { name: 'Primary' })).getByRole('link', {
+        name: 'Explore',
+      })
+    );
+    await screen.findByRole('heading', { level: 2, name: '169 places' });
+    expect(scrollTo).toHaveBeenCalledWith(0, 0);
+    expect(cards()).toHaveLength(40);
   });
 });
 

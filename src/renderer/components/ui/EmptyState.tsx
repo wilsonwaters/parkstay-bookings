@@ -11,7 +11,8 @@ export interface EmptyStateProps {
   actions?: ReactNode;
   /** The sparing brushstroke accent above the title (at most one per region). */
   accent?: 'sun' | 'ocean';
-  headingLevel?: 2 | 3;
+  /** 1 when the empty state is the whole page (its only heading), as on a missing place. */
+  headingLevel?: 1 | 2 | 3;
   /**
    * `lg` (default): a Fraunces display title, for an empty state that is the whole view.
    * `md`: a Figtree section title (`text-xl`), for one under the page's `h1`, so it never

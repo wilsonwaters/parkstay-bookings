@@ -4,6 +4,8 @@
  * and their stable names is in docs/design/shell.md.
  */
 import { matchPath } from 'react-router-dom';
+import { PROVIDER_ID_PATTERN } from '../../shared/types/provider.types';
+import { parseStayParams, stayParamsQuery, type StayParams } from './stayParams';
 
 /** The route patterns (architecture-notes §12.10). */
 export const PATTERNS = {
@@ -76,12 +78,54 @@ export interface CreatePrefill {
   children?: number;
 }
 
+/**
+ * The history state of a link to a place's detail page from Explore: Back on the detail page
+ * goes back one step when it is there, or else opens Explore at `search`.
+ */
+export interface PlaceLinkState {
+  from: 'explore';
+  /** Explore's query string when the place was opened. */
+  search: string;
+}
+
+/** Reads a `PlaceLinkState` from history state, which may hold anything. */
+export function placeLinkState(state: unknown): PlaceLinkState | null {
+  const value = state as Partial<PlaceLinkState> | null;
+  return value && value.from === 'explore' && typeof value.search === 'string'
+    ? { from: 'explore', search: value.search }
+    : null;
+}
+
+/** The longest `location` a prefill query may carry; anything longer is not an external id. */
+const MAX_LOCATION_LENGTH = 200;
+
+/**
+ * Reads the prefill query (§12.10) a create flow was opened with. Values that are not valid
+ * are left out: a provider id that is not one, a date that is not a calendar date, a departure
+ * on or before the arrival, a guest count out of range. Infants are not part of the contract.
+ */
+export function parseCreatePrefill(search: string): CreatePrefill {
+  const query = new URLSearchParams(search);
+  const prefill: CreatePrefill = {};
+  const provider = query.get('provider');
+  if (provider && PROVIDER_ID_PATTERN.test(provider)) prefill.provider = provider;
+  const location = query.get('location');
+  if (location && location.length <= MAX_LOCATION_LENGTH) prefill.location = location;
+  const stay = parseStayParams(search);
+  if (stay.arrival) prefill.arrival = stay.arrival;
+  if (stay.departure) prefill.departure = stay.departure;
+  if (stay.adults !== null) prefill.adults = stay.adults;
+  if (stay.children !== null) prefill.children = stay.children;
+  return prefill;
+}
+
 type Id = string | number;
 
 export const ROUTES = {
   explore: () => buildPath(PATTERNS.explore),
-  placeDetail: (providerId: string, externalId: string) =>
-    buildPath(PATTERNS.placeDetail, { providerId, externalId }),
+  /** A place's detail page, with the stay to check (E2) when there is one. */
+  placeDetail: (providerId: string, externalId: string, stay?: Partial<StayParams>) =>
+    buildPath(PATTERNS.placeDetail, { providerId, externalId }, stayParamsQuery(stay)),
   watches: () => buildPath(PATTERNS.watches),
   watchNew: (prefill?: CreatePrefill) => buildPath(PATTERNS.watchNew, {}, { ...prefill }),
   watchDetail: (id: Id) => buildPath(PATTERNS.watchDetail, { id }),

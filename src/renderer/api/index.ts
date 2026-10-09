@@ -25,10 +25,15 @@ export {
 } from './providers';
 export {
   CATALOG_STALE_TIME_MS,
+  LOCATION_CHECK_STALE_TIME_MS,
+  LOCATION_DETAIL_STALE_TIME_MS,
   normaliseCatalogQuery,
   useCatalogAll,
   useCatalogRefresh,
   useCatalogSearch,
   useCatalogStatus,
   useCatalogUpdates,
+  useLocationCheck,
+  useLocationDetail,
+  useLocationDetailUpdates,
 } from './catalog';

@@ -15,6 +15,7 @@ import {
 } from '../../../components/ui';
 import { buttonClassName } from '../../../components/ui/Button';
 import { ROUTES } from '../../../app/routes';
+import type { StayParams } from '../../../app/stayParams';
 import { cardId } from '../results/cardId';
 import { useHighlightStore } from '../state/highlight';
 import { createMapboxController } from './mapboxController';
@@ -59,6 +60,10 @@ export interface MapViewProps {
   onSearchArea: (bbox: BoundingBox) => void;
   /** The map could not load, or stopped working; Explore falls back to the list. */
   onFailed: (error: Error) => void;
+  /** The stay the preview's "View details" opens the place with. */
+  detailStay?: Partial<StayParams>;
+  /** The history state "View details" carries (where the place was opened from). */
+  detailState?: unknown;
 }
 
 /** The key set, as one string, so the map's data is replaced only when it really changes. */
@@ -86,6 +91,8 @@ export default function MapView({
   onFollowChange,
   onSearchArea,
   onFailed,
+  detailStay,
+  detailState,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
@@ -348,9 +355,11 @@ export default function MapView({
                 <p className="text-sm text-fg-secondary">{areaLine(preview)}</p>
               )}
               <div className="mt-2 flex items-center justify-between gap-3">
-                <ProviderBadge providerId={preview.providerId} variant="compact" size="sm" />
+                {/* The provider's name too, not only its monogram (§12.9). */}
+                <ProviderBadge providerId={preview.providerId} size="sm" />
                 <Link
-                  to={ROUTES.placeDetail(preview.providerId, preview.externalId)}
+                  to={ROUTES.placeDetail(preview.providerId, preview.externalId, detailStay)}
+                  state={detailState}
                   className={buttonClassName({ variant: 'secondary', size: 'sm' })}
                 >
                   View details

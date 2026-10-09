@@ -3,16 +3,37 @@
  * Form for creating a new availability watch
  */
 
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import WatchForm from '../../../components/forms/WatchForm';
 import { WatchSchemaType } from '../../../../shared/schemas/watch.schema';
-import { watchFormToInput } from '../../../components/forms/legacy-mapping';
+import {
+  LEGACY_FORM_PROVIDER_ID,
+  watchFormToInput,
+  watchFromPrefill,
+} from '../../../components/forms/legacy-mapping';
+import { useLocationDetail } from '../../../api';
+import { parseCreatePrefill } from '../../../app/routes';
+import { Spinner } from '../../../components/ui';
 
 const CreateWatch: React.FC = () => {
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+
+  // E2's bridge (U1 replaces this page): a ParkStay prefill query fills the form, with the
+  // campground's name looked up from its detail.
+  const { search } = useLocation();
+  const prefill = useMemo(() => parseCreatePrefill(search), [search]);
+  const placeKey =
+    prefill.provider === LEGACY_FORM_PROVIDER_ID && prefill.location
+      ? `${LEGACY_FORM_PROVIDER_ID}:${prefill.location}`
+      : null;
+  const place = useLocationDetail(placeKey);
+  const initialData = watchFromPrefill(
+    prefill,
+    place.data ? { name: place.data.name, areaName: place.data.area?.name } : undefined
+  );
 
   const handleSubmit = async (data: WatchSchemaType) => {
     try {
@@ -74,7 +95,18 @@ const CreateWatch: React.FC = () => {
 
       {/* Form */}
       <div className="card">
-        <WatchForm onSubmit={handleSubmit} onCancel={handleCancel} submitLabel="Create Watch" />
+        {placeKey && place.isLoading ? (
+          <div className="flex justify-center py-12">
+            <Spinner label="Loading the campground" />
+          </div>
+        ) : (
+          <WatchForm
+            initialData={initialData}
+            onSubmit={handleSubmit}
+            onCancel={handleCancel}
+            submitLabel="Create Watch"
+          />
+        )}
       </div>
 
       {/* Success Toast */}

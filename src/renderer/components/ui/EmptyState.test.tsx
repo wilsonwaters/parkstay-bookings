@@ -38,4 +38,11 @@ describe('EmptyState', () => {
     render(<EmptyState title="No results" headingLevel={3} />);
     expect(screen.getByRole('heading', { level: 3, name: 'No results' })).toBeInTheDocument();
   });
+
+  it("can be a page's h1 when it is the whole page", () => {
+    render(<EmptyState title="This place isn't available" headingLevel={1} />);
+    expect(
+      screen.getByRole('heading', { level: 1, name: "This place isn't available" })
+    ).toBeInTheDocument();
+  });
 });

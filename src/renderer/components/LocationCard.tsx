@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { MapPinOff } from 'lucide-react';
 import type { LocationSummary } from '../../shared/types/catalog.types';
 import { ROUTES } from '../app/routes';
+import type { StayParams } from '../app/stayParams';
 import { amenityIcon } from './amenityIcons';
 import { areaLine, hasMapLocation, kindLabel, unitCountLabel } from './locationFormat';
 import { Badge, PhotoPlaceholder, ProviderBadge, Skeleton, VisuallyHidden } from './ui';
@@ -115,6 +116,10 @@ export interface LocationCardProps {
   onHighlight?: (key: string | null) => void;
   /** The DOM id, so a map pin can scroll its card into view. */
   id?: string;
+  /** The stay to open the detail page with (Explore's dates and guests). Keep it stable. */
+  stay?: Partial<StayParams>;
+  /** History state for the detail link, e.g. where it was opened from. Keep it stable. */
+  linkState?: unknown;
   /** Extra content under the details, e.g. an availability state (E3). */
   children?: ReactNode;
 }
@@ -131,6 +136,8 @@ export const LocationCard = memo(function LocationCard({
   layout = 'stack',
   onHighlight,
   id,
+  stay,
+  linkState,
   children,
 }: LocationCardProps) {
   const generated = useId();
@@ -146,7 +153,8 @@ export const LocationCard = memo(function LocationCard({
   return (
     <Link
       id={id}
-      to={ROUTES.placeDetail(location.providerId, location.externalId)}
+      to={ROUTES.placeDetail(location.providerId, location.externalId, stay)}
+      state={linkState}
       aria-labelledby={nameId}
       aria-describedby={detailsId}
       aria-current={selected ? 'true' : undefined}

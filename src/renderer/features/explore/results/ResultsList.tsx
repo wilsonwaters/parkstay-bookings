@@ -1,6 +1,7 @@
-import { forwardRef, memo, useEffect, useState, type ReactNode } from 'react';
+import { forwardRef, memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import { CircleAlert, Compass, LoaderCircle, MapPinned, SearchX, Store } from 'lucide-react';
 import type { LocationSummary } from '../../../../shared/types/catalog.types';
+import type { StayParams } from '../../../app/stayParams';
 import { LocationCard } from '../../../components/LocationCard';
 import { placesLabel } from '../../../components/locationFormat';
 import { Button, EmptyState, Skeleton } from '../../../components/ui';
@@ -46,6 +47,14 @@ export interface ResultsListProps {
   onShowAll: () => void;
   /** Notices shown above the heading (offline, search error, list-only). */
   notices?: ReactNode;
+  /** The stay each card's detail link carries. Keep it stable. */
+  stay?: Partial<StayParams>;
+  /** The history state each card's detail link carries. Keep it stable. */
+  linkState?: unknown;
+  /** How many cards to start with (more than 40 when coming back to a longer list). */
+  initialShown?: number;
+  /** Called with the number of cards on the page whenever it changes. */
+  onShownChange?: (shown: number) => void;
 }
 
 export { cardId };
@@ -56,11 +65,15 @@ const ResultCard = memo(function ResultCard({
   selected,
   layout,
   onHighlight,
+  stay,
+  linkState,
 }: {
   location: LocationSummary;
   selected: boolean;
   layout: 'stack' | 'row';
   onHighlight: (key: string | null) => void;
+  stay?: Partial<StayParams>;
+  linkState?: unknown;
 }) {
   const highlighted = useIsHighlighted(location.key);
   return (
@@ -71,6 +84,8 @@ const ResultCard = memo(function ResultCard({
       selected={selected}
       layout={layout}
       onHighlight={onHighlight}
+      stay={stay}
+      linkState={linkState}
     />
   );
 });
@@ -123,6 +138,10 @@ export function ResultsList({
   onClearFilters,
   onShowAll,
   notices,
+  stay,
+  linkState,
+  initialShown,
+  onShownChange,
 }: ResultsListProps) {
   const lg = useMinWidth(1024);
   const xl = useMinWidth(1280);
@@ -134,8 +153,17 @@ export function ResultsList({
       ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-2'
       : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
 
-  const [shown, setShown] = useState(PAGE_SIZE);
-  useEffect(() => setShown(PAGE_SIZE), [resetKey]);
+  const [shown, setShown] = useState(() => Math.max(PAGE_SIZE, initialShown ?? PAGE_SIZE));
+  // A new search starts again at 40 (not the first results: they may be a list come back to).
+  const shownFor = useRef(resetKey);
+  useEffect(() => {
+    if (shownFor.current === resetKey) return;
+    shownFor.current = resetKey;
+    setShown(PAGE_SIZE);
+  }, [resetKey]);
+  const latestOnShown = useRef(onShownChange);
+  latestOnShown.current = onShownChange;
+  useEffect(() => latestOnShown.current?.(shown), [shown]);
 
   // A place selected on the map must have its card on the page.
   useEffect(() => {
@@ -264,6 +292,8 @@ export function ResultsList({
                   selected={item.key === selectedKey}
                   layout={layout}
                   onHighlight={onHighlight}
+                  stay={stay}
+                  linkState={linkState}
                 />
               </li>
             ))}

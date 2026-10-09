@@ -30,3 +30,5 @@ function installMockWindowApi(): void {
 // or in a `beforeEach`; stubs made at module scope or in `beforeAll` are replaced.
 installMockWindowApi();
 beforeEach(installMockWindowApi);
+// Explore remembers its list position in sessionStorage; each test starts without it.
+beforeEach(() => window.sessionStorage.clear());

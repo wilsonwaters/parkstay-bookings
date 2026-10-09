@@ -1,0 +1,242 @@
+import { useId, useMemo, useState, type ReactNode, type Ref } from 'react';
+import { Check, CircleQuestionMark, Clock, Minus, X, type LucideIcon } from 'lucide-react';
+import type { NightState, UnitAvailability } from '../../shared/types/provider.types';
+import {
+  DEFAULT_UNIT_NOUN,
+  isFullyAvailable,
+  NIGHT_STATE_LABELS,
+  nightCellText,
+  nightHeading,
+  nightOf,
+  noFullRowsMessage,
+  stayNights,
+  stayRangeLabel,
+  summariseAvailability,
+  summaryLine,
+  type UnitNoun,
+} from './nightGrid';
+import { Button, Switch, VisuallyHidden } from './ui';
+import { cx } from './ui/cx';
+
+/** Rows shown before "Show all". */
+export const NIGHT_GRID_ROWS = 10;
+
+const STATE_LOOK: Record<NightState, { icon: LucideIcon; cell: string; glyph: string }> = {
+  available: {
+    icon: Check,
+    cell: 'bg-available-subtle text-available-fg',
+    glyph: 'text-available',
+  },
+  booked: { icon: X, cell: 'bg-surface-subtle text-fg-muted', glyph: '' },
+  closed: { icon: Minus, cell: 'bg-surface-subtle text-fg-muted', glyph: '' },
+  'not-released': { icon: Clock, cell: 'bg-warning-subtle text-warning-fg', glyph: '' },
+  unknown: {
+    icon: CircleQuestionMark,
+    cell: 'border border-border bg-surface text-fg-muted',
+    glyph: '',
+  },
+};
+
+const LEGEND_ORDER: NightState[] = ['available', 'booked', 'closed', 'not-released', 'unknown'];
+
+const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+export interface NightGridProps {
+  /** Each unit's nights, as a provider's availability check returns them. */
+  units: readonly UnitAvailability[];
+  /** The stay: one column per night, from `arrival` up to the night before `departure`. */
+  arrival: string;
+  departure: string;
+  /** What a unit is called (`site`/`sites`, `cabin`/`cabins`). */
+  unitNoun?: UnitNoun;
+  /** ISO 4217 code for prices, from the provider's manifest. */
+  currency?: string;
+  /** The table's caption. Default: "Availability by night, 6–8 Nov". */
+  caption?: string;
+  /** The summary line, so a page can move focus to it once a check completes. */
+  summaryRef?: Ref<HTMLParagraphElement>;
+  /** Shown above the summary, e.g. a release notice. */
+  children?: ReactNode;
+}
+
+function NightCell({ state, label, short }: { state: NightState; label: string; short?: string }) {
+  const look = STATE_LOOK[state];
+  const Icon = look.icon;
+  return (
+    <td className="px-1 py-1.5 text-center">
+      <span
+        className={cx(
+          'inline-flex h-9 min-w-[3rem] items-center justify-center gap-1 rounded-md px-1.5 text-xs font-semibold tabular-nums',
+          look.cell
+        )}
+      >
+        <Icon size={16} aria-hidden="true" className={cx('shrink-0', look.glyph)} />
+        {short && <span aria-hidden="true">{short}</span>}
+        <VisuallyHidden>{label}</VisuallyHidden>
+      </span>
+    </td>
+  );
+}
+
+/**
+ * Units by nights, for one stay: a real `<table>` with a caption, a column per night ("Fri 3";
+ * never the check-out day), a row per unit, and every cell's state in words as well as an icon
+ * (and its price when known). A summary line ("8 of 24 sites free for all 2 nights") and a
+ * "Fully available only" switch (on by default) come first; the first 10 rows show, with
+ * "Show all" for the rest. The table scrolls sideways with the unit names held in place, so a
+ * 30-night stay stays readable. Domain-generic: Explore's place page and watch details use it.
+ */
+export function NightGrid({
+  units,
+  arrival,
+  departure,
+  unitNoun = DEFAULT_UNIT_NOUN,
+  currency,
+  caption,
+  summaryRef,
+  children,
+}: NightGridProps) {
+  const captionId = useId();
+  const [fullyOnly, setFullyOnly] = useState(true);
+  const [showAll, setShowAll] = useState(false);
+  const nights = useMemo(() => stayNights(arrival, departure), [arrival, departure]);
+  const summary = useMemo(() => summariseAvailability(units, nights), [units, nights]);
+  const rows = useMemo(
+    () => (fullyOnly ? units.filter((unit) => isFullyAvailable(unit, nights)) : [...units]),
+    [units, nights, fullyOnly]
+  );
+  const shown = showAll ? rows : rows.slice(0, NIGHT_GRID_ROWS);
+  const present = useMemo(() => {
+    const states = new Set<NightState>();
+    for (const unit of shown) for (const date of nights) states.add(nightOf(unit, date).state);
+    return LEGEND_ORDER.filter((state) => states.has(state));
+  }, [shown, nights]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      {children}
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+        <p ref={summaryRef} tabIndex={-1} className="text-base font-semibold text-fg">
+          {units.length > 0
+            ? summaryLine(summary, unitNoun)
+            : `No ${unitNoun.many} were listed for these dates`}
+        </p>
+        {units.length > 0 && (
+          <Switch
+            label="Fully available only"
+            checked={fullyOnly}
+            onChange={(event) => setFullyOnly(event.target.checked)}
+          />
+        )}
+      </div>
+
+      {units.length > 0 && rows.length === 0 && (
+        <p className="text-sm text-fg-secondary">{noFullRowsMessage(summary, unitNoun)}</p>
+      )}
+
+      {rows.length > 0 && (
+        <>
+          {present.length > 0 && (
+            <ul
+              aria-label="Key"
+              className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-fg-secondary"
+            >
+              {present.map((state) => {
+                const look = STATE_LOOK[state];
+                const Icon = look.icon;
+                return (
+                  <li key={state} className="flex items-center gap-1.5">
+                    <span
+                      aria-hidden="true"
+                      className={cx(
+                        'inline-flex h-5 w-5 items-center justify-center rounded-sm',
+                        look.cell
+                      )}
+                    >
+                      <Icon size={14} className={look.glyph} />
+                    </span>
+                    {NIGHT_STATE_LABELS[state]}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {/* Focusable, so the table can be scrolled sideways from the keyboard. */}
+          <div
+            role="region"
+            aria-labelledby={captionId}
+            tabIndex={0}
+            className="overflow-x-auto rounded-lg border border-border bg-surface"
+          >
+            <table className="w-full border-collapse text-sm">
+              <caption id={captionId} className="sr-only">
+                {caption ?? `Availability by night, ${stayRangeLabel(arrival, departure)}`}
+              </caption>
+              <thead>
+                <tr className="border-b border-border">
+                  <th
+                    scope="col"
+                    className="sticky left-0 bg-surface-subtle px-3 py-2 text-left font-semibold text-fg-secondary"
+                  >
+                    {capitalise(unitNoun.one)}
+                  </th>
+                  {nights.map((date, i) => (
+                    <th
+                      key={date}
+                      scope="col"
+                      className="whitespace-nowrap bg-surface-subtle px-1 py-2 text-center text-xs font-semibold tabular-nums text-fg-secondary"
+                    >
+                      {nightHeading(date, nights[i - 1])}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((unit) => (
+                  <tr key={unit.unitId} className="border-b border-border last:border-b-0">
+                    <th
+                      scope="row"
+                      className="sticky left-0 max-w-[12rem] bg-surface px-3 py-1.5 text-left font-semibold text-fg"
+                    >
+                      <span className="block truncate">{unit.unitName}</span>
+                      {unit.unitType && (
+                        <span className="block truncate text-xs font-normal text-fg-muted">
+                          {unit.unitType}
+                        </span>
+                      )}
+                    </th>
+                    {nights.map((date) => {
+                      const night = nightOf(unit, date);
+                      return (
+                        <NightCell
+                          key={date}
+                          state={night.state}
+                          {...nightCellText(night, currency)}
+                        />
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {rows.length > NIGHT_GRID_ROWS && (
+            <Button
+              variant="secondary"
+              size="sm"
+              className="self-start"
+              aria-expanded={showAll}
+              onClick={() => setShowAll((all) => !all)}
+            >
+              {showAll ? `Show fewer ${unitNoun.many}` : `Show all ${rows.length} ${unitNoun.many}`}
+            </Button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+export default NightGrid;

@@ -20,6 +20,8 @@ The accessible names in [Stable names](#stable-names) are a contract with the El
 | `app/useRouteFocus.ts` | Focus and announcements on page changes. |
 | `app/NotFoundPage.tsx`, `app/LegacyPageFrame.tsx` | The 404 page, and the gutter and width the legacy pages used to get from the old sidebar layout (the same as the new pages'). |
 | `features/explore/ExplorePage.tsx` | Explore, the home screen (E1): search pill, filters, results and the map ([map.md](map.md)). |
+| `features/place/PlaceDetailPage.tsx` | A place's detail page (E2): gallery, description, facilities, sites, booking rules, and the "Check your dates" card with the night grid and the hand-offs. |
+| `app/stayParams.ts` | The stay in a query string (`arrival`, `departure`, `adults`, `children`, `infants`): parsed, validated and written in one order. |
 | `features/<domain>/legacy/` | The pre-redesign pages, moved unchanged. The U tasks rebuild them and delete these folders. |
 
 ## Header
@@ -49,7 +51,7 @@ Build every address with `ROUTES` (or `buildPath` with a pattern), never by join
 | Path | `ROUTES` key | Renders | Notes |
 | --- | --- | --- | --- |
 | `/` | `explore` | `ExplorePage` | Its state lives in the query string (`q`, filters, dates, guests, `map`, `follow`, `view`, `sel`). |
-| `/places/:providerId/:externalId` | `placeDetail(providerId, externalId)` | `NotFoundPage` | Reserved for E2. |
+| `/places/:providerId/:externalId` | `placeDetail(providerId, externalId, stay?)` | `PlaceDetailPage` | E2. Its stay (`arrival`, `departure`, `adults`, `children`, `infants`) is in its own query, and an unknown place shows "This place isn't available". |
 | `/watches` | `watches` | legacy Watches list |  |
 | `/watches/new` | `watchNew(prefill?)` | legacy Create Watch |  |
 | `/watches/:id` | `watchDetail(id)` | legacy Watch detail |  |
@@ -66,7 +68,9 @@ Build every address with `ROUTES` (or `buildPath` with a pattern), never by join
 
 Legacy pages render inside `LegacyPageFrame` until the provider-ux stream rebuilds them. It gives them the new pages' gutter (`px-6 py-8 lg:px-8`, `max-w-7xl`), so their `h1`s line up with the new pages', and cancels the `p-6` root that the legacy Watches and Site Sniper lists still carry.
 
-**Prefill query** for create flows (§12.10): `?provider=<id>&location=<externalId>&arrival=YYYY-MM-DD&departure=YYYY-MM-DD&adults=N&children=N`. `ROUTES.watchNew(prefill)` and `ROUTES.snipeNew(prefill)` build it and leave out empty values. `location` is the provider's external id, not the composite location key.
+**Prefill query** for create flows (§12.10): `?provider=<id>&location=<externalId>&arrival=YYYY-MM-DD&departure=YYYY-MM-DD&adults=N&children=N`. `ROUTES.watchNew(prefill)` and `ROUTES.snipeNew(prefill)` build it and leave out empty values, and `parseCreatePrefill(search)` reads it back, dropping values that are not valid. `location` is the provider's external id, not the composite location key. Until U1 and U2 rebuild them, the legacy create pages read a ParkStay prefill into their forms (E2's bridge).
+
+**From Explore to a place and back.** Explore's cards and the map preview's "View details" open `ROUTES.placeDetail(providerId, externalId, stay)` with Explore's stay, and history state `{ from: 'explore', search }` (`PlaceLinkState`). "Back to Explore" on the place page goes back one step when it has that state, so Explore returns exactly as it was left: its state is in the URL, and `useExploreScrollMemory` puts back the window's scroll and the number of cards, saved per search in `sessionStorage['ws:explore:scroll:' + search]`. Otherwise it opens Explore with the place's stay. Explore's hidden `h1` is `fixed`, so the focus it takes on arrival never scrolls the list.
 
 ## Focus and announcements
 
@@ -104,6 +108,8 @@ One column, `fixed bottom-4 right-4`, 380 px wide at most, with an 8 px gap, por
 - `providers.ts`: `useProviders()`, `useProvider(id)` and `useProvidersWith(capability)`. Until V1 (#19) adds the shared `ProviderManifest` and `window.api.providers`, they use a local structural type marked `TODO(V1)` and resolve to an empty list when the preload has no `providers` namespace.
 - `app.ts`: `useAppInfo()` and `useOpenLogsFolder()` for About.
 - `catalog.ts`: `useCatalogSearch(query)` (`catalog.search` with `limit: 5000`, previous results kept while the next load, 5 minutes fresh), `useCatalogAll()` (the unfiltered catalogue, for filter options and suggestions; the same cache entry as an empty search), `useCatalogStatus()`, `useCatalogRefresh()`, and `useCatalogUpdates()`, which reloads them on `catalog:updated`. The map area is never sent: Explore filters by area in the renderer.
+  - `useLocationDetail(key)`: `catalog.get` (10 minutes fresh; main caches it 6 hours), showing the place's summary from a cached search (`isPlaceholderData`) while it loads. `useLocationDetailUpdates(key)` reloads only that detail when its provider's catalogue syncs.
+  - `useLocationCheck(key, stay)`: `catalog.checkLocation`, asked only once a stay is given (the person pressed Check), one cache entry per stay, 1 minute fresh as in main, and never retried by itself.
 - **Query client** (`app/queryClient.ts`): `staleTime` 60 s, no refetch on window focus, queries retry once except for `VALIDATION`, `CAPABILITY`, `NOT_FOUND`, `NOT_IMPLEMENTED` and `API_UNAVAILABLE`, and mutations never retry.
 - **Guard:** `tests/unit/renderer/api-boundary.test.ts` fails if `window.api` appears outside `renderer/api/` and its explicit legacy allow-list. The U tasks delete entries as they rebuild each page; the list never grows. The token guard keeps a similar list of the legacy pages.
 
@@ -137,6 +143,11 @@ With no `window.api` (the renderer opened in a plain browser with `npm run dev:r
 | Explore results | region, heading level 2 | Results · "169 places", or "12 places in map area" once the person has moved the map |
 | Explore map | region, switch | Map of places · Search as I move the map |
 | Explore below 1024 px | button | Show map · Show list |
+| Place page title | heading level 1 | The place's name, or "This place isn't available" |
+| Place page | link, region, button | Back to Explore · Check your dates · Check availability |
+| Place hand-offs | link | Book on {shortName} (opens in your browser) · Watch for availability · Snipe a site, coming soon |
+| Place gallery | button, dialog | Show all {n} photos · Photos of {name} |
+| Place results | region, table, switch | Availability · Availability by night, {dates} · Fully available only |
 
 ## Testing
 

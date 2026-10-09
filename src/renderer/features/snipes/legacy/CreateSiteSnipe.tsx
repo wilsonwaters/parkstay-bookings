@@ -3,16 +3,34 @@
  * Form for creating a new Site Snipe.
  */
 
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import SiteSniperForm from '../../../components/forms/SiteSniperForm';
 import { SiteSnipeSchemaType } from '../../../../shared/schemas/site-sniper.schema';
-import { snipeFormToInput } from '../../../components/forms/legacy-mapping';
+import {
+  LEGACY_FORM_PROVIDER_ID,
+  snipeFormToInput,
+  snipeFromPrefill,
+} from '../../../components/forms/legacy-mapping';
+import { useLocationDetail } from '../../../api';
+import { parseCreatePrefill } from '../../../app/routes';
+import { Spinner } from '../../../components/ui';
 
 const CreateSiteSnipe: React.FC = () => {
   const navigate = useNavigate();
   const [error, setError] = useState('');
   const [showSuccessToast, setShowSuccessToast] = useState(false);
+
+  // E2's bridge (U2 replaces this page): a ParkStay prefill query fills the form, with the
+  // campground's name looked up from its detail.
+  const { search } = useLocation();
+  const prefill = useMemo(() => parseCreatePrefill(search), [search]);
+  const placeKey =
+    prefill.provider === LEGACY_FORM_PROVIDER_ID && prefill.location
+      ? `${LEGACY_FORM_PROVIDER_ID}:${prefill.location}`
+      : null;
+  const place = useLocationDetail(placeKey);
+  const initialData = snipeFromPrefill(prefill, place.data ? { name: place.data.name } : undefined);
 
   const handleSubmit = async (data: SiteSnipeSchemaType) => {
     try {
@@ -75,11 +93,18 @@ const CreateSiteSnipe: React.FC = () => {
 
       {/* Form */}
       <div className="card">
-        <SiteSniperForm
-          onSubmit={handleSubmit}
-          onCancel={handleCancel}
-          submitLabel="Create Snipe"
-        />
+        {placeKey && place.isLoading ? (
+          <div className="flex justify-center py-12">
+            <Spinner label="Loading the campground" />
+          </div>
+        ) : (
+          <SiteSniperForm
+            initialData={initialData}
+            onSubmit={handleSubmit}
+            onCancel={handleCancel}
+            submitLabel="Create Snipe"
+          />
+        )}
       </div>
 
       {/* Success Toast */}

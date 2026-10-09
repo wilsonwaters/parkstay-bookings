@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { createMockApi, ok } from '@tests/utils/renderer/createMockApi';
-import { catalogApi, syncingStatus } from '@tests/utils/renderer/catalog';
+import { createMockApi, fail, ok } from '@tests/utils/renderer/createMockApi';
+import { catalogApi, placeApi, syncingStatus } from '@tests/utils/renderer/catalog';
 import { createQueryClient } from '../app/queryClient';
 import {
   CATALOG_STALE_TIME_MS,
@@ -12,10 +12,11 @@ import {
   useCatalogSearch,
   useCatalogStatus,
   useCatalogUpdates,
+  useLocationCheck,
+  useLocationDetail,
 } from './catalog';
 
-function wrapper() {
-  const client = createQueryClient();
+function wrapper(client = createQueryClient()) {
   return function QueryWrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
   };
@@ -138,5 +139,62 @@ describe('catalog hooks', () => {
       syncedAt: '2026-10-04T00:00:00Z',
     });
     await waitFor(() => expect(mock.api.catalog.search).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('place hooks', () => {
+  const STAY = { arrival: '2026-11-06', departure: '2026-11-08', adults: 2 };
+
+  it('useLocationDetail asks catalog.get, and nothing without a key', async () => {
+    const mock = createMockApi(placeApi());
+    window.api = mock.api;
+    const { result, rerender } = renderHook(({ key }) => useLocationDetail(key), {
+      wrapper: wrapper(),
+      initialProps: { key: null as string | null },
+    });
+    expect(mock.api.catalog.get).not.toHaveBeenCalled();
+    rerender({ key: 'parkstay:20' });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mock.api.catalog.get).toHaveBeenCalledWith('parkstay:20');
+    expect(result.current.data?.units).toHaveLength(24);
+  });
+
+  it("shows the place's summary from a cached search while its detail loads", async () => {
+    const mock = createMockApi(placeApi());
+    window.api = mock.api;
+    let release: () => void = () => undefined;
+    const real = jest.mocked(mock.api.catalog.get).getMockImplementation()!;
+    jest
+      .mocked(mock.api.catalog.get)
+      .mockImplementationOnce(
+        (key) => new Promise((resolve) => (release = () => resolve(real(key))))
+      );
+    const client = createQueryClient();
+    const { result: search } = renderHook(() => useCatalogAll(), { wrapper: wrapper(client) });
+    await waitFor(() => expect(search.current.isSuccess).toBe(true));
+
+    const { result } = renderHook(() => useLocationDetail('parkstay:20'), {
+      wrapper: wrapper(client),
+    });
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.data).toMatchObject({ name: 'Bungarra', units: [] });
+    act(() => release());
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(false));
+    expect(result.current.data?.units).toHaveLength(24);
+  });
+
+  it('useLocationCheck asks only once a stay is given, once per stay, and never retries itself', async () => {
+    const checkLocation = jest.fn().mockResolvedValue(fail('parkstay: HTTP 500', 'PROVIDER_ERROR'));
+    const mock = createMockApi(placeApi({ catalog: { checkLocation } }));
+    window.api = mock.api;
+    const { result, rerender } = renderHook(({ stay }) => useLocationCheck('parkstay:20', stay), {
+      wrapper: wrapper(),
+      initialProps: { stay: null as typeof STAY | null },
+    });
+    expect(checkLocation).not.toHaveBeenCalled();
+    rerender({ stay: STAY });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(checkLocation).toHaveBeenCalledTimes(1);
+    expect(checkLocation).toHaveBeenCalledWith('parkstay:20', STAY);
   });
 });

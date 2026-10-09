@@ -13,7 +13,9 @@ One folder per provider id, each with a `manifest.json` and the response files i
 http/
 └── parkstay/
     ├── manifest.json
-    └── campground_map.json      # the catalogue the app syncs 5 s after launch (V5), Explore's places (E1)
+    ├── campground_map.json      # the catalogue the app syncs 5 s after launch (V5), Explore's places (E1)
+    ├── campsite_availablity_view_20.json  # Bungarra's sites and description, for its detail page (E2)
+    └── profile-signed-out.json  # /api/profile signed out (403), the account check at launch (V6)
 ```
 
 A provider with no folder, or no routes, answers every request with an error.

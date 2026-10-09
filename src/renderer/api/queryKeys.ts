@@ -19,6 +19,8 @@ export const queryKeys = {
     all: catalog,
     search: (query: unknown) => [...catalog, 'search', query] as const,
     detail: (key: string) => [...catalog, 'detail', key] as const,
+    /** One location's availability for one stay (`catalog.checkLocation`). */
+    check: (key: string, stay: unknown) => [...catalog, 'check', key, stay] as const,
     availability: (stay: unknown, options?: unknown) =>
       [...catalog, 'availability', stay, options ?? {}] as const,
     status: () => [...catalog, 'status'] as const,

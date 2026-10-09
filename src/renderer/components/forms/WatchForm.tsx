@@ -8,7 +8,7 @@ import React, { useState, useEffect } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { watchSchema, WatchSchemaType } from '../../../shared/schemas/watch.schema';
 import { LocationSummary, Watch } from '../../../shared/types';
-import { watchToFormValues } from './legacy-mapping';
+import { dateInputRef, watchToFormValues } from './legacy-mapping';
 
 interface Campground {
   id: string;
@@ -64,6 +64,7 @@ const WatchForm: React.FC<WatchFormProps> = ({
     handleSubmit,
     watch,
     setValue,
+    getValues,
     formState: { errors },
   } = useForm<WatchSchemaType>({
     resolver: zodResolver(watchSchema) as any,
@@ -136,6 +137,10 @@ const WatchForm: React.FC<WatchFormProps> = ({
     setCampgroundSearchQuery('');
     setFilteredCampgrounds([]);
   };
+
+  // Date inputs that also show their starting dates (see dateInputRef).
+  const arrivalField = register('arrivalDate', { valueAsDate: true });
+  const departureField = register('departureDate', { valueAsDate: true });
 
   return (
     <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
@@ -242,7 +247,8 @@ const WatchForm: React.FC<WatchFormProps> = ({
           <input
             id="arrivalDate"
             type="date"
-            {...register('arrivalDate', { valueAsDate: true })}
+            {...arrivalField}
+            ref={dateInputRef(arrivalField, () => getValues('arrivalDate'))}
             className="input"
           />
           {errors.arrivalDate && (
@@ -256,7 +262,8 @@ const WatchForm: React.FC<WatchFormProps> = ({
           <input
             id="departureDate"
             type="date"
-            {...register('departureDate', { valueAsDate: true })}
+            {...departureField}
+            ref={dateInputRef(departureField, () => getValues('departureDate'))}
             className="input"
           />
           {errors.departureDate && (

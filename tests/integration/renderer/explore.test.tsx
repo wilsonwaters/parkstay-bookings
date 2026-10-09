@@ -1,11 +1,12 @@
 /**
  * The Explore journey through the whole renderer: the shell opens on Explore, a search, a
- * region filter, then a card to its detail page. And Explore with 5,000 places.
+ * region filter, then a card to its detail page, a check of its dates, the hand-off to a
+ * watch, and back to Explore as it was left. And Explore with 5,000 places.
  */
-import { configure, screen, waitFor, within } from '@testing-library/react';
+import { act, configure, screen, waitFor, within } from '@testing-library/react';
 import { PARKSTAY_LOCATIONS } from '../../fixtures/catalog/parkstay-locations';
 import { SYNTHETIC_LOCATIONS_5K } from '../../fixtures/catalog/synthetic-locations';
-import { catalogApi } from '../../utils/renderer/catalog';
+import { catalogApi, placeApi } from '../../utils/renderer/catalog';
 import { currentRoute, renderWithApp } from '../../utils/renderer/renderWithApp';
 
 // These render the whole app with 169 (and 5,000) places: give async queries room on a busy
@@ -62,6 +63,61 @@ describe('Explore journey', () => {
       await screen.findByRole('heading', { name: `${kimberley.length} places` })
     ).toBeInTheDocument();
     expect(screen.getByRole('combobox', { name: 'Where' })).toHaveValue('National Park');
+  });
+
+  it('opens a place from a filtered search, checks its dates, hands off to a watch and comes back', async () => {
+    const stay = 'arrival=2099-01-10&departure=2099-01-12&adults=2';
+    const { user, mock } = renderWithApp({ route: `/?${stay}`, api: placeApi() });
+    const results = await screen.findByRole('region', { name: 'Results' });
+    await within(results).findByRole('heading', { name: '169 places' });
+
+    // A search and a region filter.
+    await user.type(screen.getByRole('combobox', { name: 'Where' }), 'Cape{Enter}');
+    await user.click(screen.getByRole('button', { name: /^Region/ }));
+    const region = screen.getByRole('dialog', { name: 'Region' });
+    await user.click(within(region).getByRole('checkbox', { name: /^Pilbara,/ }));
+    await user.click(within(region).getByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(currentRoute()).toBe(`/?q=Cape&regions=Pilbara&${stay}`));
+    const explore = currentRoute();
+
+    // The card opens the place with the stay.
+    await user.click(await within(results).findByRole('link', { name: 'Bungarra' }));
+    const title = await screen.findByRole('heading', { level: 1, name: 'Bungarra' });
+    expect(currentRoute()).toBe(`/places/parkstay/20?${stay}`);
+    await waitFor(() => expect(title).toHaveFocus());
+
+    // Check the dates.
+    const card = screen.getByRole('region', { name: 'Check your dates' });
+    await user.click(within(card).getByRole('button', { name: 'Check availability' }));
+    const availability = await screen.findByRole('region', { name: 'Availability' });
+    expect(
+      await within(availability).findByText('8 of 24 sites free for all 2 nights')
+    ).toBeInTheDocument();
+    expect(mock?.api.catalog.checkLocation).toHaveBeenCalledTimes(1);
+
+    // Hand off to a watch: the legacy form opens filled in.
+    await user.click(within(card).getByRole('link', { name: 'Watch for availability' }));
+    expect(currentRoute()).toBe(
+      '/watches/new?provider=parkstay&location=20&arrival=2099-01-10&departure=2099-01-12&adults=2'
+    );
+    expect(await screen.findByText('Bungarra')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Check-in Date/)).toHaveValue('2099-01-10');
+    expect(screen.getByLabelText(/Check-out Date/)).toHaveValue('2099-01-12');
+    expect(screen.getByLabelText(/Number of Guests/)).toHaveValue(2);
+
+    // Back to the place, then back to Explore as it was left.
+    act(() => window.history.back());
+    await screen.findByRole('heading', { level: 1, name: 'Bungarra' });
+    await user.click(screen.getByRole('link', { name: 'Back to Explore' }));
+    await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' });
+    expect(currentRoute()).toBe(explore);
+    expect(screen.getByRole('combobox', { name: 'Where' })).toHaveValue('Cape');
+    expect(screen.getByRole('button', { name: 'Region, 1 selected' })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: 'Results' })).getByRole('link', {
+        name: 'Bungarra',
+      })
+    ).toBeInTheDocument();
   });
 
   it('keeps only 40 cards on the page with 5,000 places, and still searches as you type', async () => {

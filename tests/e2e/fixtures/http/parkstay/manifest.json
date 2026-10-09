@@ -1,3 +1,11 @@
 {
-  "routes": [{ "method": "GET", "path": "/api/campground_map/", "file": "campground_map.json" }]
+  "routes": [
+    { "method": "GET", "path": "/api/campground_map/", "file": "campground_map.json" },
+    {
+      "method": "GET",
+      "path": "/api/campsite_availablity_view/20/",
+      "file": "campsite_availablity_view_20.json"
+    },
+    { "method": "GET", "path": "/api/profile", "status": 403, "file": "profile-signed-out.json" }
+  ]
 }

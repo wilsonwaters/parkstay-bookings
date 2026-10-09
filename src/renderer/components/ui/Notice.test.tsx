@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Clock } from 'lucide-react';
 import { Notice } from './Notice';
 
 describe('Notice', () => {
@@ -30,6 +31,17 @@ describe('Notice', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+
+  it('takes an icon that says it better than the tone, still decorative', () => {
+    render(
+      <Notice tone="warning" icon={Clock}>
+        Bookings open 180 days ahead.
+      </Notice>
+    );
+    const icon = screen.getByRole('status').querySelector('svg');
+    expect(icon).toHaveClass('lucide-clock');
+    expect(icon).toHaveAttribute('aria-hidden', 'true');
   });
 
   it('is not dismissible by default', () => {

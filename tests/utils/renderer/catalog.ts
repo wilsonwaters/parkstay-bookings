@@ -9,10 +9,13 @@
 import type {
   CatalogQuery,
   CatalogStatus,
+  LocationDetail,
   LocationSummary,
 } from '../../../src/shared/types/catalog.types';
+import type { StayQuery } from '../../../src/shared/types/provider.types';
 import { PARKSTAY_LOCATIONS, searchLocations } from '../../fixtures/catalog/parkstay-locations';
-import { ok, type ApiStubs } from './createMockApi';
+import { availabilityFor, placeDetail } from '../../fixtures/catalog/place-detail';
+import { fail, ok, type ApiStubs } from './createMockApi';
 
 export interface CatalogApiOptions {
   items?: readonly LocationSummary[];
@@ -83,4 +86,29 @@ export function placeNamed(name: string): LocationSummary {
   const place = PARKSTAY_LOCATIONS.find((p) => p.name === name);
   if (!place) throw new Error(`No fixture place named ${name}`);
   return place;
+}
+
+export interface PlaceApiOptions extends CatalogApiOptions {
+  /** What `catalog.get` returns for its key; any other key is NOT_FOUND. */
+  detail?: LocationDetail;
+}
+
+/**
+ * The catalogue stubs plus a place's detail (`catalog.get`, Bungarra by default) and
+ * `catalog.checkLocation` answering 8 of 24 sites free (tests/fixtures/catalog/place-detail.ts).
+ */
+export function placeApi(options: PlaceApiOptions = {}): ApiStubs {
+  const detail = options.detail ?? placeDetail();
+  return catalogApi({
+    ...options,
+    catalog: {
+      get: jest.fn(async (key: string) =>
+        key === detail.key ? ok(detail) : fail(`There is no location ${key}`, 'NOT_FOUND')
+      ),
+      checkLocation: jest.fn(async (_key: string, stay: StayQuery) =>
+        ok(availabilityFor(stay, {}, detail.units))
+      ),
+      ...options.catalog,
+    },
+  });
 }

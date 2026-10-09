@@ -21,6 +21,8 @@ const TONE: Record<NoticeTone, { className: string; icon: LucideIcon }> = {
 export interface NoticeProps {
   tone?: NoticeTone;
   title?: ReactNode;
+  /** Replaces the tone's icon when another says it better (`Clock` for booking rules). */
+  icon?: LucideIcon;
   children?: ReactNode;
   /** Buttons or links after the message, e.g. "Try again". */
   actions?: ReactNode;
@@ -37,13 +39,15 @@ export interface NoticeProps {
 export function Notice({
   tone = 'info',
   title,
+  icon,
   children,
   actions,
   onDismiss,
   dismissLabel = 'Dismiss',
   className,
 }: NoticeProps) {
-  const { className: toneClass, icon: Icon } = TONE[tone];
+  const { className: toneClass, icon: toneIcon } = TONE[tone];
+  const Icon = icon ?? toneIcon;
   return (
     <div
       role={tone === 'danger' ? 'alert' : 'status'}

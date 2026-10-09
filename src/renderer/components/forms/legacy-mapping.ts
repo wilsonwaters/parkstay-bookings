@@ -18,6 +18,9 @@ import type {
   WatchInput,
   WatchUpdate,
 } from '../../../shared/types';
+import type { RefCallback } from 'react';
+import type { UseFormRegisterReturn } from 'react-hook-form';
+import type { CreatePrefill } from '../../app/routes';
 import type { BookingSchemaType } from '../../../shared/schemas/booking.schema';
 import type { SiteSnipeSchemaType } from '../../../shared/schemas/site-sniper.schema';
 import type { WatchSchemaType } from '../../../shared/schemas/watch.schema';
@@ -46,6 +49,23 @@ export function stayDate(date: string): Date {
   const local = new Date(year, month - 1, day);
   local.setFullYear(year);
   return local;
+}
+
+/**
+ * A date input's ref that also shows the field's starting `Date`. react-hook-form writes a
+ * `Date` default into the input's `value` as text the input rejects, so the input showed empty
+ * (when editing, or when E2's prefill fills the form) while the form kept the date.
+ */
+export function dateInputRef(
+  field: UseFormRegisterReturn,
+  value: () => unknown
+): RefCallback<HTMLInputElement> {
+  return (input) => {
+    field.ref(input);
+    if (!input || input.value) return;
+    const date = value();
+    if (date instanceof Date && !Number.isNaN(date.getTime())) input.valueAsDate = date;
+  };
 }
 
 /** Everyone in the party. */
@@ -134,9 +154,69 @@ export function watchToFormValues(watch: Partial<Watch> | undefined): Partial<Wa
   };
 }
 
+/**
+ * The legacy watch form's starting values from a create flow's prefill query (§12.10), the
+ * bridge E2's "Watch for availability" uses until U1 rebuilds the form. ParkStay only: a
+ * prefill for another provider is ignored. The place is filled only with its name (looked up
+ * by the page); guests are adults plus children.
+ */
+export function watchFromPrefill(
+  prefill: CreatePrefill,
+  place: { name: string; areaName?: string } | undefined
+): Partial<Watch> | undefined {
+  if (prefill.provider !== LEGACY_FORM_PROVIDER_ID) return undefined;
+  const watch: Partial<Watch> = {};
+  if (prefill.location && place?.name) {
+    watch.location = {
+      externalId: prefill.location,
+      name: place.name,
+      // The legacy form's park fields, filled as choosing the campground in it fills them.
+      areaName: place.areaName || place.name,
+    };
+    watch.stayParams = { parkId: prefill.location };
+  }
+  if (prefill.arrival && prefill.departure) {
+    watch.stay = {
+      arrival: prefill.arrival,
+      departure: prefill.departure,
+      adults: prefill.adults ?? 0,
+      children: prefill.children ?? 0,
+      infants: 0,
+      concessions: 0,
+    };
+  }
+  return watch;
+}
+
 // ---------------------------------------------------------------------------------------
 // Site Sniper
 // ---------------------------------------------------------------------------------------
+
+/**
+ * The legacy snipe form's starting values from a create flow's prefill query (§12.10), until
+ * U2 rebuilds the form. ParkStay only; adults and children go to their own fields.
+ */
+export function snipeFromPrefill(
+  prefill: CreatePrefill,
+  place: { name: string } | undefined
+): Partial<SiteSnipe> | undefined {
+  if (prefill.provider !== LEGACY_FORM_PROVIDER_ID) return undefined;
+  const snipe: Partial<SiteSnipe> = {};
+  if (prefill.location && place?.name) {
+    snipe.location = { externalId: prefill.location, name: place.name };
+  }
+  if (prefill.arrival && prefill.departure) {
+    snipe.stay = {
+      arrival: prefill.arrival,
+      departure: prefill.departure,
+      adults: prefill.adults ?? 2,
+      children: prefill.children ?? 0,
+      infants: 0,
+      concessions: 0,
+    };
+  }
+  return snipe;
+}
 
 export function snipeFormToInput(form: SiteSnipeSchemaType): SiteSnipeInput {
   return defined({

@@ -5,7 +5,7 @@
  */
 import { act, configure, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { PARKSTAY_LOCATIONS } from '../../../../tests/fixtures/catalog/parkstay-locations';
-import { catalogApi, placeNamed } from '../../../../tests/utils/renderer/catalog';
+import { catalogApi, placeApi, placeNamed } from '../../../../tests/utils/renderer/catalog';
 import {
   installFakeMap,
   KIMBERLEY_BBOX,
@@ -223,9 +223,39 @@ describe('Explore map', () => {
       expect(maps.current.popupAt).toEqual({ lng: bungarra.lng, lat: bungarra.lat });
       expect(mapRegion()).toContainElement(preview);
       expect(within(preview).getByText('Cape Range National Park · Pilbara')).toBeInTheDocument();
-      expect(within(preview).getByRole('img', { name: 'ParkStay WA' })).toBeInTheDocument();
+      // The provider's name shows, not only its monogram (§12.9).
+      expect(within(preview).getByRole('img', { name: 'ParkStay WA' })).toHaveTextContent(
+        'PSParkStay'
+      );
       await user.click(within(preview).getByRole('link', { name: 'View details' }));
       expect(currentRoute()).toBe('/places/parkstay/20');
+    });
+
+    it('comes back from "View details" as it was left: search, filters, camera, selection', async () => {
+      const route =
+        '/?q=Cape&regions=Pilbara&arrival=2099-01-10&departure=2099-01-12&adults=2&map=113.9,-22.2,9&sel=parkstay%3A20';
+      const { user } = renderWithApp({ route, api: placeApi() });
+      const preview = await screen.findByRole('group', { name: 'Bungarra' });
+      const left = currentRoute();
+      expect(left).toBe(route);
+      const details = within(preview).getByRole('link', { name: 'View details' });
+      expect(details).toHaveAttribute(
+        'href',
+        '#/places/parkstay/20?arrival=2099-01-10&departure=2099-01-12&adults=2'
+      );
+      await user.click(details);
+      await screen.findByRole('heading', { level: 1, name: 'Bungarra' });
+
+      await user.click(screen.getByRole('link', { name: 'Back to Explore' }));
+      expect(await screen.findByRole('group', { name: 'Bungarra' })).toBeInTheDocument();
+      expect(currentRoute()).toBe(left);
+      expect(maps.current.options.camera).toEqual({ lng: 113.9, lat: -22.2, zoom: 9 });
+      expect(screen.getByRole('combobox', { name: 'Where' })).toHaveValue('Cape');
+      expect(screen.getByRole('button', { name: 'Region, 1 selected' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Bungarra' })).toHaveAttribute(
+        'aria-current',
+        'true'
+      );
     });
 
     it('names the place in the preview only: no name pill on its pin while it is open', async () => {

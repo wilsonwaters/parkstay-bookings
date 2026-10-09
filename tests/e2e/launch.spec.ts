@@ -81,6 +81,9 @@ test('Explore lists the ParkStay campgrounds from the catalogue fixture', async 
   await expect(results.getByRole('heading', { level: 2, name: '3 places' })).toBeVisible();
   await results.getByRole('link', { name: 'Bungarra' }).click();
   await expectRoute(window, '/places/parkstay/20');
+  // Its detail page (E2): the name, and its sites from the fixture.
+  await expect(window.getByRole('heading', { level: 1, name: 'Bungarra' })).toBeVisible();
+  await expect(window.getByRole('heading', { level: 2, name: 'Sites' })).toBeVisible();
 
   expect(withoutGuardedRequests(await wa.consoleErrors(), wa.unexpectedRequests())).toEqual([]);
   expect(withoutRemoteImages(wa.unexpectedRequests())).toEqual([]);

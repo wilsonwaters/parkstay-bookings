@@ -12,14 +12,17 @@ import type { SiteSnipeSchemaType } from '../../../shared/schemas/site-sniper.sc
 import type { WatchSchemaType } from '../../../shared/schemas/watch.schema';
 import {
   bookingFormToInput,
+  dateInputRef,
   formDate,
   partySize,
   snipeFormToInput,
+  snipeFromPrefill,
   snipeToFormValues,
   stayDate,
   toCalendarDate,
   watchFormToInput,
   watchFormToUpdate,
+  watchFromPrefill,
   watchToFormValues,
 } from './legacy-mapping';
 
@@ -251,5 +254,83 @@ describe('legacy form mapping', () => {
       ]);
       expect(Number.isNaN(stayDate('garbage').getTime())).toBe(true);
     });
+  });
+});
+
+describe('the prefill bridge (E2, until U1 and U2 rebuild the forms)', () => {
+  const prefill = {
+    provider: 'parkstay',
+    location: '20',
+    arrival: '2026-11-06',
+    departure: '2026-11-08',
+    adults: 2,
+    children: 1,
+  };
+
+  it('fills the watch form: campground (as choosing it would), dates, adults plus children', () => {
+    const watch = watchFromPrefill(prefill, {
+      name: 'Bungarra',
+      areaName: 'Cape Range National Park',
+    });
+    expect(watch).toEqual({
+      location: { externalId: '20', name: 'Bungarra', areaName: 'Cape Range National Park' },
+      stayParams: { parkId: '20' },
+      stay: {
+        arrival: '2026-11-06',
+        departure: '2026-11-08',
+        adults: 2,
+        children: 1,
+        infants: 0,
+        concessions: 0,
+      },
+    });
+    const values = watchToFormValues(watch);
+    expect(values).toMatchObject({
+      campgroundId: '20',
+      campgroundName: 'Bungarra',
+      parkId: '20',
+      parkName: 'Cape Range National Park',
+      numGuests: 3,
+    });
+    expect(toCalendarDate(values.arrivalDate!)).toBe('2026-11-06');
+    expect(toCalendarDate(values.departureDate!)).toBe('2026-11-08');
+  });
+
+  it('leaves the campground out without its name, and the stay out without both dates', () => {
+    expect(watchFromPrefill({ ...prefill, departure: undefined }, undefined)).toEqual({});
+    expect(watchToFormValues({}).numGuests).toBe(2);
+  });
+
+  it('fills the snipe form with adults and children in their own fields', () => {
+    const values = snipeToFormValues(snipeFromPrefill(prefill, { name: 'Bungarra' }));
+    expect(values).toMatchObject({
+      campgroundId: '20',
+      campgroundName: 'Bungarra',
+      numAdult: 2,
+      numChild: 1,
+    });
+    expect(toCalendarDate(values.departureDate!)).toBe('2026-11-08');
+  });
+
+  it('ignores a prefill for any provider but ParkStay', () => {
+    expect(watchFromPrefill({ ...prefill, provider: 'airbnb' }, { name: 'X' })).toBeUndefined();
+    expect(snipeFromPrefill({ ...prefill, provider: undefined }, { name: 'X' })).toBeUndefined();
+  });
+
+  it("shows a date input's starting Date, which react-hook-form cannot", () => {
+    const input = document.createElement('input');
+    input.type = 'date';
+    const fieldRef = jest.fn();
+    const field = { name: 'arrivalDate', onChange: jest.fn(), onBlur: jest.fn(), ref: fieldRef };
+    dateInputRef(field, () => formDate('2026-11-06'))(input);
+    expect(fieldRef).toHaveBeenCalledWith(input);
+    expect(input.value).toBe('2026-11-06');
+
+    // A date the person has typed is never replaced.
+    input.value = '2026-12-01';
+    dateInputRef(field, () => formDate('2026-11-06'))(input);
+    expect(input.value).toBe('2026-12-01');
+    dateInputRef(field, () => new Date(NaN))(null);
+    expect(fieldRef).toHaveBeenLastCalledWith(null);
   });
 });
