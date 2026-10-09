@@ -12,6 +12,22 @@ describe('ExternalLink', () => {
     expect(link.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
   });
 
+  it('can carry a quieter second line, read after the label', () => {
+    render(
+      <ExternalLink
+        href="https://exploreparks.dbca.wa.gov.au/site/x"
+        detail="exploreparks.dbca.wa.gov.au"
+      >
+        More information
+      </ExternalLink>
+    );
+    const link = screen.getByRole('link', {
+      name: 'More information exploreparks.dbca.wa.gov.au (opens in your browser)',
+    });
+    // The icon sits with the label, on its first line.
+    expect(screen.getByText('More information')).toContainElement(link.querySelector('svg'));
+  });
+
   it('can look like a button', () => {
     render(
       <ExternalLink href="https://parkstay.dbca.wa.gov.au/x" variant="primary" fullWidth>

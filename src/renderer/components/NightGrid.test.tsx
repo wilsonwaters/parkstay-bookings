@@ -1,6 +1,11 @@
+import fs from 'fs';
+import path from 'path';
+import postcss from 'postcss';
+import tailwindcss from 'tailwindcss';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { availabilityFor } from '../../../tests/fixtures/catalog/place-detail';
+import type { UnitAvailability } from '../../shared/types/provider.types';
 import { NightGrid } from './NightGrid';
 
 const SITE = { one: 'site', many: 'sites' };
@@ -8,10 +13,28 @@ const STAY = { arrival: '2026-11-06', departure: '2026-11-08', adults: 2 };
 
 function renderGrid(shape = {}, stay = STAY) {
   const { units } = availabilityFor(stay, shape);
+  return renderUnits(units, stay);
+}
+
+function renderUnits(units: UnitAvailability[], stay = STAY) {
   return render(
-    <NightGrid units={units} arrival={stay.arrival} departure={stay.departure} unitNoun={SITE} />
+    <NightGrid
+      units={units}
+      arrival={stay.arrival}
+      departure={stay.departure}
+      unitNoun={SITE}
+      source="ParkStay"
+    />
   );
 }
+
+/** Pretends every element is `scrollWidth` wide inside `clientWidth`, for the overflow check. */
+function setWidths(scrollWidth: number, clientWidth: number) {
+  jest.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(scrollWidth);
+  jest.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(clientWidth);
+}
+
+afterEach(() => jest.restoreAllMocks());
 
 const rowNames = () =>
   within(screen.getByRole('table'))
@@ -28,8 +51,16 @@ describe('NightGrid', () => {
     const rows = within(table).getAllByRole('rowheader');
     expect(rows).toHaveLength(3);
     expect(rows.every((h) => h.getAttribute('scope') === 'row')).toBe(true);
-    // The table scrolls sideways from the keyboard: its region is focusable and named.
-    expect(screen.getByRole('region', { name: 'Availability by night, 6–8 Nov' })).toHaveAttribute(
+    // A table that fits is no tab stop.
+    expect(
+      screen.getByRole('region', { name: 'Availability by night, 6–8 Nov' })
+    ).not.toHaveAttribute('tabindex');
+  });
+
+  it('is a tab stop while it overflows, so it can be scrolled sideways from the keyboard', () => {
+    setWidths(1800, 640);
+    renderGrid({ fully: 3 }, { arrival: '2026-11-06', departure: '2026-12-06', adults: 2 });
+    expect(screen.getByRole('region', { name: /^Availability by night/ })).toHaveAttribute(
       'tabindex',
       '0'
     );
@@ -87,9 +118,54 @@ describe('NightGrid', () => {
     expect(screen.getByText(/Turn off "Fully available only"/)).toBeInTheDocument();
   });
 
-  it('labels nights not released yet as such, not as booked', () => {
+  it('says nights not released yet are not released, never that sites are taken', async () => {
+    const user = userEvent.setup();
     renderGrid({ fully: 0, partly: 0, rest: 'not-released' });
-    expect(screen.getByText('No sites are free on any of these nights.')).toBeInTheDocument();
+    expect(screen.getByText("These nights aren't released for booking yet")).toBeInTheDocument();
+    expect(screen.queryByText(/No sites are free/)).toBeNull();
+    await user.click(screen.getByRole('switch', { name: 'Fully available only' }));
+    const row = screen.getByRole('rowheader', { name: /^Site 01/ }).closest('tr')!;
+    expect(within(row).getAllByRole('cell')[0]).toHaveTextContent('Not released yet');
+  });
+
+  it("says the provider didn't say when no night is known, as for a class-listed place", async () => {
+    const user = userEvent.setup();
+    renderUnits([
+      {
+        unitId: '309',
+        unitName: 'One site - select on arrival',
+        nights: [],
+        fullyAvailable: false,
+      },
+    ]);
+    expect(
+      screen.getByText("ParkStay didn't say which nights are free; check on ParkStay")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/free for all|No sites are free/)).toBeNull();
+    expect(
+      screen.getByText('Turn off "Fully available only" to see each site\'s nights.')
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('switch', { name: 'Fully available only' }));
+    const row = screen.getByRole('rowheader', { name: /^One site/ }).closest('tr')!;
+    expect(
+      within(row)
+        .getAllByRole('cell')
+        .map((cell) => cell.textContent)
+    ).toEqual(['Unknown', 'Unknown']);
+  });
+
+  it('counts only known nights, and notes the sites it leaves out', () => {
+    const { units } = availabilityFor(STAY, { fully: 2, partly: 0, rest: 'booked' });
+    units[2].nights = [{ date: '2026-11-06', state: 'not-released' }];
+    units[3].nights = [];
+    renderUnits(units.slice(0, 4));
+    expect(screen.getByText('2 of 2 sites free for all 2 nights')).toBeInTheDocument();
+    expect(
+      screen.getByText("1 more site has nights that aren't released yet.")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("ParkStay didn't say which nights are free for 1 more site.")
+    ).toBeInTheDocument();
   });
 
   it('keeps a long stay to one column per night, scrolling sideways', async () => {
@@ -109,5 +185,54 @@ describe('NightGrid', () => {
     expect(key().map((item) => item.textContent)).toEqual(['Available']);
     await user.click(screen.getByRole('switch', { name: 'Fully available only' }));
     expect(key().map((item) => item.textContent)).toEqual(['Available', 'Closed']);
+  });
+});
+
+describe('NightGrid layout (with the real stylesheet)', () => {
+  let style: HTMLStyleElement;
+  const ROOT = path.resolve(__dirname, '../../..');
+  const read = (file: string) => fs.readFileSync(path.join(ROOT, file), 'utf8');
+
+  beforeAll(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const config = require(path.join(ROOT, 'tailwind.config.js'));
+    const result = await postcss([
+      tailwindcss({
+        ...config,
+        content: [
+          { raw: read('src/renderer/components/NightGrid.tsx'), extension: 'tsx' },
+          { raw: read('src/renderer/components/ui/VisuallyHidden.tsx'), extension: 'tsx' },
+        ],
+      }),
+    ]).process('@tailwind base; @tailwind utilities;', { from: undefined });
+    style = document.createElement('style');
+    style.textContent = result.css;
+    document.head.appendChild(style);
+  });
+  afterAll(() => style.remove());
+
+  /** The element that positions `el`: its nearest ancestor that is not statically positioned. */
+  function containingBlock(el: Element): Element | null {
+    let block = el.parentElement;
+    while (block && ['', 'static'].includes(getComputedStyle(block).position)) {
+      block = block.parentElement;
+    }
+    return block;
+  }
+
+  it("keeps every cell's hidden text inside the scrolling region, so the page never scrolls", async () => {
+    const user = userEvent.setup();
+    renderGrid({ fully: 4 }, { arrival: '2026-11-06', departure: '2026-12-06', adults: 2 });
+    await user.click(screen.getByRole('switch', { name: 'Fully available only' }));
+    const region = screen.getByRole('region', { name: /^Availability by night/ });
+    const hidden = [...region.querySelectorAll('*')].filter(
+      (el) => getComputedStyle(el).position === 'absolute'
+    );
+    // Every cell's words, and the caption.
+    expect(hidden.length).toBeGreaterThan(30 * 10);
+    for (const el of hidden) {
+      const block = containingBlock(el);
+      expect(block !== null && (block === region || region.contains(block))).toBe(true);
+    }
   });
 });

@@ -31,23 +31,37 @@ export function isFullyAvailable(unit: UnitAvailability, nights: readonly string
   return nights.length > 0 && nights.every((date) => nightOf(unit, date).state === 'available');
 }
 
-/** Free on some nights of the stay, but not all of them. */
-export function isPartlyAvailable(unit: UnitAvailability, nights: readonly string[]): boolean {
-  return (
-    !isFullyAvailable(unit, nights) &&
-    nights.some((date) => nightOf(unit, date).state === 'available')
-  );
+/**
+ * What a unit's nights say about the whole stay. Only known nights decide: a night the
+ * provider did not report, or one not released yet, never counts as taken.
+ * - `free`: every night is available;
+ * - `taken`: at least one night is booked or closed;
+ * - `not-released`: nothing taken, but some nights are not released for booking yet;
+ * - `unknown`: nothing taken or unreleased, but the provider did not say about some nights.
+ */
+export type UnitStanding = 'free' | 'taken' | 'not-released' | 'unknown';
+
+export function unitStanding(unit: UnitAvailability, nights: readonly string[]): UnitStanding {
+  const states = nights.map((date) => nightOf(unit, date).state);
+  if (states.length > 0 && states.every((state) => state === 'available')) return 'free';
+  if (states.some((state) => state === 'booked' || state === 'closed')) return 'taken';
+  if (states.some((state) => state === 'not-released')) return 'not-released';
+  return 'unknown';
 }
 
 export interface AvailabilitySummary {
   /** Units checked. */
   total: number;
+  /** Units whose known nights settle the whole stay: free, or taken on some night. */
+  known: number;
   /** Free for the whole stay. */
   fully: number;
-  /** Free for some nights only. */
+  /** Taken on some nights, free on others. */
   partly: number;
-  /** With at least one night not released for booking yet. */
+  /** Not settled yet: some nights are not released for booking. */
   notReleased: number;
+  /** Not settled: the provider did not say about some nights. */
+  unknown: number;
   nights: number;
 }
 
@@ -55,30 +69,80 @@ export function summariseAvailability(
   units: readonly UnitAvailability[],
   nights: readonly string[]
 ): AvailabilitySummary {
-  let fully = 0;
-  let partly = 0;
-  let notReleased = 0;
+  const summary: AvailabilitySummary = {
+    total: units.length,
+    known: 0,
+    fully: 0,
+    partly: 0,
+    notReleased: 0,
+    unknown: 0,
+    nights: nights.length,
+  };
   for (const unit of units) {
-    if (isFullyAvailable(unit, nights)) fully += 1;
-    else if (isPartlyAvailable(unit, nights)) partly += 1;
-    if (nights.some((date) => nightOf(unit, date).state === 'not-released')) notReleased += 1;
+    const standing = unitStanding(unit, nights);
+    if (standing === 'free') {
+      summary.known += 1;
+      summary.fully += 1;
+    } else if (standing === 'taken') {
+      summary.known += 1;
+      if (nights.some((date) => nightOf(unit, date).state === 'available')) summary.partly += 1;
+    } else if (standing === 'not-released') summary.notReleased += 1;
+    else summary.unknown += 1;
   }
-  return { total: units.length, fully, partly, notReleased, nights: nights.length };
+  return summary;
 }
 
 const plural = (count: number, noun: UnitNoun) => (count === 1 ? noun.one : noun.many);
+const span = (nights: number) => (nights === 1 ? '1 night' : `all ${nights} nights`);
 
-/** "8 of 24 sites free for all 2 nights", or "… free for 1 night". */
-export function summaryLine(summary: AvailabilitySummary, noun: UnitNoun): string {
-  const span = summary.nights === 1 ? '1 night' : `all ${summary.nights} nights`;
-  return `${summary.fully} of ${summary.total} ${plural(summary.total, noun)} free for ${span}`;
+/**
+ * The summary line, counting only units whose known nights settle the stay: "8 of 20 sites
+ * free for all 2 nights". With none settled, it says why: the nights are not released yet,
+ * or `source` (the provider's short name) did not say.
+ */
+export function summaryLine(summary: AvailabilitySummary, noun: UnitNoun, source: string): string {
+  if (summary.known > 0) {
+    return `${summary.fully} of ${summary.known} ${plural(summary.known, noun)} free for ${span(
+      summary.nights
+    )}`;
+  }
+  if (summary.notReleased > 0) return "These nights aren't released for booking yet";
+  return `${source} didn't say which nights are free; check on ${source}`;
+}
+
+/** The units the summary line leaves out, and why. */
+export function summaryNotes(
+  summary: AvailabilitySummary,
+  noun: UnitNoun,
+  source: string
+): string[] {
+  const notes: string[] = [];
+  const { notReleased, unknown } = summary;
+  if (notReleased > 0 && summary.known > 0) {
+    notes.push(
+      `${notReleased} more ${plural(notReleased, noun)} ${
+        notReleased === 1 ? 'has' : 'have'
+      } nights that aren't released yet.`
+    );
+  }
+  if (unknown > 0 && (summary.known > 0 || notReleased > 0)) {
+    notes.push(
+      `${source} didn't say which nights are free for ${unknown} more ${plural(unknown, noun)}.`
+    );
+  }
+  return notes;
 }
 
 /** Why "Fully available only" shows no rows, and what to do about it. */
 export function noFullRowsMessage(summary: AvailabilitySummary, noun: UnitNoun): string {
-  if (summary.partly === 0) return `No ${noun.many} are free on any of these nights.`;
-  const span = summary.nights === 1 ? 'that night' : `all ${summary.nights} nights`;
-  return `No ${noun.many} are free for ${span}. Turn off "Fully available only" to see ${noun.many} free for some of them.`;
+  const parts: string[] = [];
+  if (summary.known > 0) parts.push(`No ${noun.many} are free for ${span(summary.nights)}.`);
+  if (summary.partly > 0) {
+    parts.push(`Turn off "Fully available only" to see ${noun.many} free for some of them.`);
+  } else if (summary.notReleased + summary.unknown > 0) {
+    parts.push(`Turn off "Fully available only" to see each ${noun.one}'s nights.`);
+  }
+  return parts.join(' ');
 }
 
 /** "$30", or "$30.50" when there are cents. */

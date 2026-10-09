@@ -5,7 +5,12 @@
  * (architecture-notes §12.10). Pure.
  */
 
-import { compareDates, isCalendarDate } from '../../shared/utils/calendar-date';
+import {
+  addDays,
+  compareDates,
+  isCalendarDate,
+  nightsBetween,
+} from '../../shared/utils/calendar-date';
 import { DEFAULT_GUEST_LIMITS } from '../components/ui/GuestsField';
 
 export interface StayParams {
@@ -57,6 +62,37 @@ export function parseStayParams(search: string): StayParams {
     stay.departure = null;
   }
   return stay;
+}
+
+/** The provider's rules a stay from an address must keep to. */
+export interface StayRules {
+  /** The earliest arrival, `YYYY-MM-DD`: today in the provider's time zone. */
+  minDate?: string;
+  /** The longest stay. */
+  maxNights?: number;
+}
+
+/**
+ * A stay from an address, kept to the provider's rules: a stay that starts before `minDate`
+ * (or a departure with no arrival) is dropped, and one longer than `maxNights` ends after
+ * `maxNights` nights.
+ */
+export function clampStayParams(stay: StayParams, rules: StayRules): StayParams {
+  const out = { ...stay };
+  if (out.arrival && rules.minDate && compareDates(out.arrival, rules.minDate) < 0) {
+    out.arrival = null;
+    out.departure = null;
+  }
+  if (!out.arrival) out.departure = null;
+  if (
+    out.arrival &&
+    out.departure &&
+    rules.maxNights !== undefined &&
+    nightsBetween(out.arrival, out.departure) > rules.maxNights
+  ) {
+    out.departure = addDays(out.arrival, rules.maxNights);
+  }
+  return out;
 }
 
 /** The stay as query values for `buildPath`, in `STAY_PARAM_KEYS` order, without the blanks. */

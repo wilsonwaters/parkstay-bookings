@@ -603,6 +603,23 @@ describe('detail', () => {
     expect(s.locations.getDetail('fake', '1')?.detail.descriptionHtml).toBe(detail.descriptionHtml);
   });
 
+  it("leaves the place's own photos out of its description: the page shows them already", async () => {
+    const s = setup();
+    await s.catalog.sync();
+    const original = s.fake.catalog!.getLocation.bind(s.fake.catalog);
+    jest.spyOn(s.fake.catalog!, 'getLocation').mockImplementation(async (id, signal) => ({
+      ...(await original(id, signal)),
+      imageUrls: ['https://fake.example/img/hero.jpg'],
+      descriptionHtml: '<p>Calm</p><img src="/img/hero.jpg"><img src="/img/map.jpg" alt="Map">',
+    }));
+
+    const detail = await s.catalog.get('fake:1');
+
+    expect(detail.descriptionHtml).toBe(
+      '<p>Calm</p><img src="https://fake.example/img/map.jpg" alt="Map" />'
+    );
+  });
+
   it("fills an empty summary from the description's text, so search finds it", async () => {
     const s = setup();
     await s.catalog.sync();

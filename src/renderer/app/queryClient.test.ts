@@ -2,12 +2,16 @@ import { ApiError } from '../api';
 import { createQueryClient, shouldRetryQuery } from './queryClient';
 
 describe('shouldRetryQuery', () => {
-  it.each(['VALIDATION', 'CAPABILITY', 'NOT_FOUND', 'NOT_IMPLEMENTED', 'API_UNAVAILABLE'])(
-    'never retries %s: a retry cannot fix it',
-    (code) => {
-      expect(shouldRetryQuery(0, new ApiError('no', code))).toBe(false);
-    }
-  );
+  it.each([
+    'VALIDATION',
+    'CAPABILITY',
+    'NOT_FOUND',
+    'NOT_IMPLEMENTED',
+    'API_UNAVAILABLE',
+    'RATE_LIMITED',
+  ])('never retries %s: a retry cannot fix it, or is what it asks us not to do', (code) => {
+    expect(shouldRetryQuery(0, new ApiError('no', code))).toBe(false);
+  });
 
   it('retries any other failure once', () => {
     for (const error of [new ApiError('down', 'INTERNAL'), new ApiError('?'), new Error('x')]) {

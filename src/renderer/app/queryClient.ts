@@ -12,6 +12,8 @@ const NO_RETRY_CODES = new Set([
   'NOT_FOUND',
   'NOT_IMPLEMENTED',
   'API_UNAVAILABLE',
+  // Asking again at once is what a rate limit asks us not to do.
+  'RATE_LIMITED',
 ]);
 
 /** Queries retry once, except for failures a retry cannot fix. */

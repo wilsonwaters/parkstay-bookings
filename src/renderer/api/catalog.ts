@@ -187,5 +187,7 @@ export function useLocationCheck(key: string | null, stay: StayQuery | null) {
     staleTime: LOCATION_CHECK_STALE_TIME_MS,
     enabled: Boolean(key && stay),
     retry: false,
+    // Coming back online never re-asks the provider by itself either.
+    refetchOnReconnect: false,
   });
 }

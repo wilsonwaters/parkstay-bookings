@@ -451,7 +451,10 @@ export class LocationCatalogService {
     const at = this.clock();
     // Defence in depth: whatever the provider did, main sanitises before IPC.
     const descriptionHtml = fetched.descriptionHtml
-      ? sanitizeProviderHtml(fetched.descriptionHtml, provider.manifest.website)
+      ? sanitizeProviderHtml(fetched.descriptionHtml, provider.manifest.website, {
+          // The place's photos are its gallery; the description does not repeat them.
+          dropImages: Array.isArray(fetched.imageUrls) ? fetched.imageUrls : [],
+        })
       : undefined;
     const detail: LocationDetail = {
       ...fetched,

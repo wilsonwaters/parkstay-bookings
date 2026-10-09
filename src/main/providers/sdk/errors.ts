@@ -298,6 +298,9 @@ export function toApiError(error: unknown): ApiError {
     return { code: 'UNKNOWN_PROVIDER', message: error.message };
   }
   if (error instanceof AccessGateError) return { code: 'ACCESS_GATE', message: error.message };
+  if (error instanceof ProviderHttpError && error.status === 429) {
+    return { code: 'RATE_LIMITED', message: error.message };
+  }
   if (error instanceof ProviderAuthRequiredError) {
     return { code: 'AUTH_REQUIRED', message: error.message };
   }

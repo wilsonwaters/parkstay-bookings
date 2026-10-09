@@ -2,7 +2,6 @@ import type { NightState, UnitAvailability } from '../../shared/types/provider.t
 import {
   formatPrice,
   isFullyAvailable,
-  isPartlyAvailable,
   nightCellText,
   nightHeading,
   noFullRowsMessage,
@@ -10,6 +9,8 @@ import {
   stayRangeLabel,
   summariseAvailability,
   summaryLine,
+  summaryNotes,
+  unitStanding,
 } from './nightGrid';
 
 const SITE = { one: 'site', many: 'sites' };
@@ -38,44 +39,100 @@ describe('stayNights', () => {
   });
 });
 
+const summaryOf = (over: Partial<ReturnType<typeof summariseAvailability>>) => ({
+  total: 0,
+  known: 0,
+  fully: 0,
+  partly: 0,
+  notReleased: 0,
+  unknown: 0,
+  nights: 2,
+  ...over,
+});
+
+describe('unitStanding', () => {
+  it('lets only known nights decide: booked or closed takes a unit, nothing else does', () => {
+    expect(unitStanding(unit('a', ['available', 'available']), NIGHTS)).toBe('free');
+    expect(unitStanding(unit('b', ['available', 'booked']), NIGHTS)).toBe('taken');
+    expect(unitStanding(unit('c', ['closed', null]), NIGHTS)).toBe('taken');
+    expect(unitStanding(unit('d', ['available', 'not-released']), NIGHTS)).toBe('not-released');
+    expect(unitStanding(unit('e', ['available', null]), NIGHTS)).toBe('unknown');
+    expect(unitStanding(unit('f', [null, null]), NIGHTS)).toBe('unknown');
+    // An empty stay is never free.
+    expect(unitStanding(unit('g', ['available', 'available']), [])).toBe('unknown');
+    expect(isFullyAvailable(unit('g', ['available', 'available']), [])).toBe(false);
+  });
+});
+
 describe('summariseAvailability', () => {
-  it('counts units free for the whole stay, for some nights, and not released yet', () => {
+  it('counts only units whose known nights settle the stay, and notes the rest', () => {
     const units = [
       unit('a', ['available', 'available']),
       unit('b', ['available', 'booked']),
       unit('c', ['booked', 'booked']),
       unit('d', ['available', 'not-released']),
       unit('e', ['not-released', 'not-released']),
-      // A night the provider did not report is unknown, so not free.
+      // A night the provider did not report is unknown: not free, and not taken either.
       unit('f', ['available', null]),
     ];
     const summary = summariseAvailability(units, NIGHTS);
-    expect(summary).toEqual({ total: 6, fully: 1, partly: 3, notReleased: 2, nights: 2 });
-    expect(summaryLine(summary, SITE)).toBe('1 of 6 sites free for all 2 nights');
-    expect(isFullyAvailable(units[5], NIGHTS)).toBe(false);
-    expect(isPartlyAvailable(units[5], NIGHTS)).toBe(true);
+    expect(summary).toEqual({
+      total: 6,
+      known: 3,
+      fully: 1,
+      partly: 1,
+      notReleased: 2,
+      unknown: 1,
+      nights: 2,
+    });
+    expect(summaryLine(summary, SITE, 'ParkStay')).toBe('1 of 3 sites free for all 2 nights');
+    expect(summaryNotes(summary, SITE, 'ParkStay')).toEqual([
+      "2 more sites have nights that aren't released yet.",
+      "ParkStay didn't say which nights are free for 1 more site.",
+    ]);
+  });
+
+  it("says the provider didn't say when no night is known (a class-listed place)", () => {
+    const summary = summariseAvailability([unit('class', [null, null])], NIGHTS);
+    expect(summary).toMatchObject({ total: 1, known: 0, unknown: 1 });
+    expect(summaryLine(summary, SITE, 'ParkStay')).toBe(
+      "ParkStay didn't say which nights are free; check on ParkStay"
+    );
+    expect(summaryNotes(summary, SITE, 'ParkStay')).toEqual([]);
+    expect(noFullRowsMessage(summary, SITE)).toBe(
+      'Turn off "Fully available only" to see each site\'s nights.'
+    );
+  });
+
+  it("says the nights aren't released yet when none is, never that they are taken", () => {
+    const summary = summariseAvailability(
+      [unit('a', ['not-released', 'not-released']), unit('b', ['not-released', null])],
+      NIGHTS
+    );
+    expect(summaryLine(summary, SITE, 'ParkStay')).toBe(
+      "These nights aren't released for booking yet"
+    );
+    expect(summaryNotes(summary, SITE, 'ParkStay')).toEqual([]);
+    expect(noFullRowsMessage(summary, SITE)).not.toMatch(/No sites are free/);
   });
 
   it('reads well for one night and one unit', () => {
     const summary = summariseAvailability([unit('a', ['available', null])], ['2026-11-06']);
-    expect(summaryLine(summary, SITE)).toBe('1 of 1 site free for 1 night');
-  });
-
-  it('never counts an empty stay as free', () => {
-    expect(isFullyAvailable(unit('a', ['available', 'available']), [])).toBe(false);
+    expect(summaryLine(summary, SITE, 'ParkStay')).toBe('1 of 1 site free for 1 night');
   });
 });
 
 describe('noFullRowsMessage', () => {
-  it('suggests turning the switch off only when some units are partly free', () => {
-    expect(
-      noFullRowsMessage({ total: 3, fully: 0, partly: 2, notReleased: 0, nights: 2 }, SITE)
-    ).toBe(
+  it('suggests turning the switch off when some units are partly free, or unsettled', () => {
+    expect(noFullRowsMessage(summaryOf({ total: 3, known: 3, partly: 2 }), SITE)).toBe(
       'No sites are free for all 2 nights. Turn off "Fully available only" to see sites free for some of them.'
     );
-    expect(
-      noFullRowsMessage({ total: 3, fully: 0, partly: 0, notReleased: 0, nights: 2 }, SITE)
-    ).toBe('No sites are free on any of these nights.');
+    expect(noFullRowsMessage(summaryOf({ total: 3, known: 3 }), SITE)).toBe(
+      'No sites are free for all 2 nights.'
+    );
+    expect(noFullRowsMessage(summaryOf({ total: 3, known: 2, notReleased: 1 }), SITE)).toBe(
+      'No sites are free for all 2 nights. Turn off "Fully available only" to see each site\'s nights.'
+    );
   });
 });
 

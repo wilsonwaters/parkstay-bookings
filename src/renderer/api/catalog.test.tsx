@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { onlineManager, QueryClientProvider } from '@tanstack/react-query';
 import { createMockApi, fail, ok } from '@tests/utils/renderer/createMockApi';
 import { catalogApi, placeApi, syncingStatus } from '@tests/utils/renderer/catalog';
 import { createQueryClient } from '../app/queryClient';
+import { queryKeys } from './queryKeys';
 import {
   CATALOG_STALE_TIME_MS,
   normaliseCatalogQuery,
@@ -196,5 +197,27 @@ describe('place hooks', () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(checkLocation).toHaveBeenCalledTimes(1);
     expect(checkLocation).toHaveBeenCalledWith('parkstay:20', STAY);
+  });
+
+  it('useLocationCheck does not ask again when the computer comes back online', async () => {
+    const mock = createMockApi(placeApi());
+    window.api = mock.api;
+    const client = createQueryClient();
+    const { result } = renderHook(() => useLocationCheck('parkstay:20', STAY), {
+      wrapper: wrapper(client),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const query = client
+      .getQueryCache()
+      .find({ queryKey: queryKeys.catalog.check('parkstay:20', STAY) });
+    expect(query?.options).toMatchObject({ refetchOnReconnect: false, retry: false });
+    // Even once stale, a reconnect asks nothing.
+    act(() => {
+      query?.invalidate();
+      onlineManager.setOnline(false);
+      onlineManager.setOnline(true);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mock.api.catalog.checkLocation).toHaveBeenCalledTimes(1);
   });
 });

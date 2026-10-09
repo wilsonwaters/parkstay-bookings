@@ -1,4 +1,4 @@
-import { useId, useMemo, useState, type ReactNode, type Ref } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
 import { Check, CircleQuestionMark, Clock, Minus, X, type LucideIcon } from 'lucide-react';
 import type { NightState, UnitAvailability } from '../../shared/types/provider.types';
 import {
@@ -13,6 +13,7 @@ import {
   stayRangeLabel,
   summariseAvailability,
   summaryLine,
+  summaryNotes,
   type UnitNoun,
 } from './nightGrid';
 import { Button, Switch, VisuallyHidden } from './ui';
@@ -51,6 +52,11 @@ export interface NightGridProps {
   unitNoun?: UnitNoun;
   /** ISO 4217 code for prices, from the provider's manifest. */
   currency?: string;
+  /**
+   * Who the nights come from (the provider's short name), for the lines that say it did not
+   * report some: "ParkStay didn't say which nights are free; check on ParkStay".
+   */
+  source?: string;
   /** The table's caption. Default: "Availability by night, 6–8 Nov". */
   caption?: string;
   /** The summary line, so a page can move focus to it once a check completes. */
@@ -83,8 +89,11 @@ function NightCell({ state, label, short }: { state: NightState; label: string; 
  * never the check-out day), a row per unit, and every cell's state in words as well as an icon
  * (and its price when known). A summary line ("8 of 24 sites free for all 2 nights") and a
  * "Fully available only" switch (on by default) come first; the first 10 rows show, with
- * "Show all" for the rest. The table scrolls sideways with the unit names held in place, so a
- * 30-night stay stays readable. Domain-generic: Explore's place page and watch details use it.
+ * "Show all" for the rest. Only known nights count: a night not released yet, or one the
+ * source did not report, is never read as taken, and the summary says so when that is all
+ * there is. The table scrolls sideways inside its own region (a tab stop only while it
+ * overflows) with the unit names held in place, so a 30-night stay stays readable.
+ * Domain-generic: Explore's place page and watch details use it.
  */
 export function NightGrid({
   units,
@@ -92,11 +101,14 @@ export function NightGrid({
   departure,
   unitNoun = DEFAULT_UNIT_NOUN,
   currency,
+  source = 'The provider',
   caption,
   summaryRef,
   children,
 }: NightGridProps) {
   const captionId = useId();
+  const regionRef = useRef<HTMLDivElement>(null);
+  const [overflows, setOverflows] = useState(false);
   const [fullyOnly, setFullyOnly] = useState(true);
   const [showAll, setShowAll] = useState(false);
   const nights = useMemo(() => stayNights(arrival, departure), [arrival, departure]);
@@ -111,6 +123,21 @@ export function NightGrid({
     for (const unit of shown) for (const date of nights) states.add(nightOf(unit, date).state);
     return LEGEND_ORDER.filter((state) => states.has(state));
   }, [shown, nights]);
+  const notes = units.length > 0 ? summaryNotes(summary, unitNoun, source) : [];
+
+  // The table's region is a tab stop (to scroll it from the keyboard) only while it overflows.
+  const hasTable = rows.length > 0;
+  useLayoutEffect(() => {
+    const region = regionRef.current;
+    if (!region) return undefined;
+    const measure = () => setOverflows(region.scrollWidth > region.clientWidth + 1);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(region);
+    if (region.firstElementChild) observer.observe(region.firstElementChild);
+    return () => observer.disconnect();
+  }, [hasTable, nights.length, shown.length]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -118,7 +145,7 @@ export function NightGrid({
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
         <p ref={summaryRef} tabIndex={-1} className="text-base font-semibold text-fg">
           {units.length > 0
-            ? summaryLine(summary, unitNoun)
+            ? summaryLine(summary, unitNoun, source)
             : `No ${unitNoun.many} were listed for these dates`}
         </p>
         {units.length > 0 && (
@@ -130,7 +157,13 @@ export function NightGrid({
         )}
       </div>
 
-      {units.length > 0 && rows.length === 0 && (
+      {notes.map((note) => (
+        <p key={note} className="-mt-2 text-sm text-fg-secondary">
+          {note}
+        </p>
+      ))}
+
+      {units.length > 0 && rows.length === 0 && noFullRowsMessage(summary, unitNoun) && (
         <p className="text-sm text-fg-secondary">{noFullRowsMessage(summary, unitNoun)}</p>
       )}
 
@@ -162,12 +195,15 @@ export function NightGrid({
             </ul>
           )}
 
-          {/* Focusable, so the table can be scrolled sideways from the keyboard. */}
+          {/* `relative` makes it the containing block of the cells' visually hidden text, so
+              that text scrolls (and is clipped) with the table instead of widening the page.
+              Focusable while it overflows, so it can be scrolled sideways from the keyboard. */}
           <div
+            ref={regionRef}
             role="region"
             aria-labelledby={captionId}
-            tabIndex={0}
-            className="overflow-x-auto rounded-lg border border-border bg-surface"
+            tabIndex={overflows ? 0 : undefined}
+            className="relative overflow-x-auto rounded-lg border border-border bg-surface"
           >
             <table className="w-full border-collapse text-sm">
               <caption id={captionId} className="sr-only">

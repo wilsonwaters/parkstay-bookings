@@ -10,6 +10,7 @@ const DEFAULT_MESSAGES: Record<ApiErrorCode, string> = {
   UNKNOWN_PROVIDER: 'Unknown provider',
   PROVIDER_ERROR: 'The provider could not be reached',
   ACCESS_GATE: 'Waiting in the provider queue',
+  RATE_LIMITED: 'The provider asked for fewer requests',
   AUTH_REQUIRED: 'Sign in to the provider first',
   ACCOUNT_BUSY: 'The provider account is in use by a snipe or hold',
   HOLD_EXPIRED: 'The hold has expired',

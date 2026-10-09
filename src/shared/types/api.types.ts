@@ -27,6 +27,8 @@ export type ApiErrorCode =
   | 'UNKNOWN_PROVIDER'
   | 'PROVIDER_ERROR'
   | 'ACCESS_GATE'
+  /** The provider answered "too many requests" (HTTP 429): try again later, not at once. */
+  | 'RATE_LIMITED'
   | 'AUTH_REQUIRED'
   /** Signing out would lose a queue place or a hold in progress on the provider. */
   | 'ACCOUNT_BUSY'

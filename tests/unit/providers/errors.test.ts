@@ -29,6 +29,11 @@ describe('toApiError', () => {
       new ProviderHttpError({ providerId: 'fake', status: 500, url: 'https://x.example/a' }),
     ],
     [
+      'ProviderHttpError 429',
+      'RATE_LIMITED',
+      new ProviderHttpError({ providerId: 'fake', status: 429, url: 'https://x.example/a' }),
+    ],
+    [
       'ProviderTimeoutError',
       'PROVIDER_ERROR',
       new ProviderTimeoutError({ providerId: 'fake', url: 'https://x.example/a', timeoutMs: 100 }),

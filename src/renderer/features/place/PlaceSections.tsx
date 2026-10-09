@@ -24,11 +24,8 @@ export function PlaceSection({ title, children }: { title: string; children: Rea
 /** "More information", with the host it goes to under it. */
 export function MoreInformationLink({ info }: { info: { url: string; host: string } }) {
   return (
-    <ExternalLink href={info.url}>
-      <span className="flex flex-col">
-        <span>More information</span>{' '}
-        <span className="text-xs font-normal text-fg-secondary">{info.host}</span>
-      </span>
+    <ExternalLink href={info.url} detail={info.host}>
+      More information
     </ExternalLink>
   );
 }
@@ -111,11 +108,25 @@ export function SitesSection({
   const breakdown = unitTypeBreakdown(units);
   const guests = guestRangeLabel(units, noun);
   const title = noun.many.charAt(0).toUpperCase() + noun.many.slice(1);
+  const count = unitCount && unitCount > 0 ? unitCount : units.length;
+  // A provider can list kinds of unit rather than each one (ParkStay's "One site - select on
+  // arrival" for 56 sites): then the list is of unit types, and says so.
+  const byType = count !== units.length;
+  const listed = byType
+    ? units.length === 1
+      ? `Show the ${noun.one} type`
+      : `Show all ${units.length} ${noun.one} types`
+    : units.length === 1
+      ? `Show the ${noun.one}`
+      : `Show all ${units.length} ${noun.many}`;
   return (
     <PlaceSection title={title}>
-      <p className="text-base font-semibold text-fg">
-        {unitCountLabel(kind, unitCount && unitCount > 0 ? unitCount : units.length)}
-      </p>
+      <p className="text-base font-semibold text-fg">{unitCountLabel(kind, count)}</p>
+      {byType && (
+        <p className="mt-1 text-base text-fg-secondary">
+          Bookable as {units.length} {noun.one} {units.length === 1 ? 'type' : 'types'}
+        </p>
+      )}
       {breakdown.some((group) => group.type !== null) && (
         <ul role="list" className="mt-2 flex flex-col gap-1 text-base text-fg-secondary">
           {breakdown.map((group) => (
@@ -126,12 +137,7 @@ export function SitesSection({
         </ul>
       )}
       {guests && <p className="mt-2 text-base text-fg-secondary">{guests}</p>}
-      <Disclosure
-        summary={
-          units.length === 1 ? `Show the ${noun.one}` : `Show all ${units.length} ${noun.many}`
-        }
-        className="mt-4 max-w-2xl"
-      >
+      <Disclosure summary={listed} className="mt-4 max-w-2xl">
         <ul role="list" className="columns-2 gap-x-8 sm:columns-3">
           {units.map((unit) => (
             <li key={unit.unitId} className="break-inside-avoid py-0.5 text-fg">
@@ -144,12 +150,12 @@ export function SitesSection({
   );
 }
 
-/** Booking rules: the provider's release sentence, as a time cue. */
+/** Booking rules: the provider's release sentence, as calm information with a time cue. */
 export function BookingRulesSection({ releaseInfo }: { releaseInfo?: string }) {
   if (!releaseInfo) return null;
   return (
     <PlaceSection title="Booking rules">
-      <Notice tone="warning" icon={Clock} className="max-w-2xl">
+      <Notice tone="info" icon={Clock} className="max-w-2xl">
         {releaseInfo}
       </Notice>
     </PlaceSection>

@@ -14,7 +14,7 @@ import { SLOW_CHECK_MS } from './PlaceDetailPage';
 
 configure({ asyncUtilTimeout: 4000 });
 
-const STAY = '?arrival=2026-11-06&departure=2026-11-08&adults=2';
+const STAY = '?arrival=2099-11-06&departure=2099-11-08&adults=2';
 const SEARCH_PAGE = 'https://parkstay.dbca.wa.gov.au/search-availability/campground/?site_id=20';
 
 /** Renders the place page at `route` and waits for its detail. */
@@ -44,8 +44,7 @@ describe('Place detail page', () => {
   it('opens cold from a deep link: name, provider, region, photos and facilities', async () => {
     const { mock } = await renderPlace('/places/parkstay/20');
     expect(mock?.api.catalog.get).toHaveBeenCalledWith('parkstay:20');
-    const title = screen.getByRole('heading', { level: 1, name: 'Bungarra' });
-    expect(title).toHaveClass('font-display');
+    expect(screen.getByRole('heading', { level: 1, name: 'Bungarra' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'ParkStay WA' })).toHaveTextContent('ParkStay');
     expect(screen.getByText('Cape Range National Park · Pilbara')).toBeInTheDocument();
     expect(screen.getByText('Book online')).toBeInTheDocument();
@@ -116,6 +115,38 @@ describe('Place detail page', () => {
     expect(names[23]).toBe('Site 24');
   });
 
+  it('puts the check card before the place, and the results right after it', async () => {
+    const { user } = await renderPlace();
+    const about = screen.getByRole('region', { name: 'About' });
+    expect(card().compareDocumentPosition(about) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.click(checkButton());
+    const results = await screen.findByRole('region', { name: 'Availability' });
+    const order = [card(), results, about];
+    for (let i = 1; i < order.length; i++) {
+      expect(
+        order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    }
+  });
+
+  it("announces the place's name once its detail loads, after showing it was loading", async () => {
+    let release: () => void = () => undefined;
+    const api = placeApi();
+    const get = (api.catalog as Record<string, jest.Mock>).get;
+    const real = get.getMockImplementation()!;
+    get.mockImplementation(
+      (key: string) => new Promise((done) => (release = () => done(real(key))))
+    );
+    renderWithApp({ route: '/places/parkstay/20', api });
+    expect(
+      await screen.findByRole('heading', { level: 1, name: 'Loading place' })
+    ).toBeInTheDocument();
+    await waitFor(() => expect(get).toHaveBeenCalled());
+    act(() => release());
+    await screen.findByRole('heading', { level: 1, name: 'Bungarra' });
+    await waitFor(() => expect(politeRegion()?.textContent?.trim()).toBe('Bungarra'));
+  });
+
   it('names a single site plainly', async () => {
     await renderPlace(
       '/places/parkstay/20',
@@ -145,7 +176,8 @@ describe('Place detail page', () => {
     );
     const sites = screen.getByRole('region', { name: 'Sites' });
     expect(within(sites).getByText('56 sites')).toBeInTheDocument();
-    expect(within(sites).getByRole('button', { name: 'Show the site' })).toBeInTheDocument();
+    expect(within(sites).getByText('Bookable as 1 site type')).toBeInTheDocument();
+    expect(within(sites).getByRole('button', { name: 'Show the site type' })).toBeInTheDocument();
   });
 
   it('shows the booking rules as a time cue', async () => {
@@ -164,16 +196,33 @@ describe('Place detail page', () => {
     expect(within(card()).getByRole('button', { name: /^Guests/ })).toHaveTextContent('2 adults');
   });
 
+  it("keeps a stay from the address to the provider's rules, and rewrites the address", async () => {
+    await renderPlace('/places/parkstay/20?arrival=2099-11-06&departure=2100-01-06&adults=2');
+    await waitFor(() =>
+      expect(currentRoute()).toBe(
+        '/places/parkstay/20?arrival=2099-11-06&departure=2099-12-06&adults=2'
+      )
+    );
+    expect(within(card()).getByRole('button', { name: /^Dates/ })).toHaveTextContent(
+      'Fri 6 Nov – Sun 6 Dec'
+    );
+  });
+
+  it('drops a stay from the address that has already started', async () => {
+    await renderPlace('/places/parkstay/20?arrival=2020-01-01&departure=2020-01-03&adults=2');
+    await waitFor(() => expect(currentRoute()).toBe('/places/parkstay/20?adults=2'));
+    expect(within(card()).getByRole('button', { name: /^Dates/ })).toHaveTextContent('Add dates');
+  });
+
   it('checks the stay once, then shows the grid, focuses its summary and announces it', async () => {
     const { user, mock } = await renderPlace();
-    expect(checkButton()).toHaveClass('bg-accent');
     await user.click(checkButton());
 
     const summary = await findSummary('8 of 24 sites free for all 2 nights');
     expect(mock?.api.catalog.checkLocation).toHaveBeenCalledTimes(1);
     expect(mock?.api.catalog.checkLocation).toHaveBeenCalledWith('parkstay:20', {
-      arrival: '2026-11-06',
-      departure: '2026-11-08',
+      arrival: '2099-11-06',
+      departure: '2099-11-08',
       adults: 2,
       children: 0,
       infants: 0,
@@ -183,16 +232,17 @@ describe('Place detail page', () => {
     const grid = screen.getByRole('table', { name: 'Availability by night, 6–8 Nov' });
     expect(within(grid).getAllByRole('rowheader')).toHaveLength(8);
 
-    // Book now goes straight to these dates on ParkStay, and is the one coral action.
+    // Book now goes straight to these dates on ParkStay.
     const book = within(card()).getByRole('link', {
       name: 'Book on ParkStay (opens in your browser)',
     });
     expect(book).toHaveAttribute(
       'href',
-      `${SEARCH_PAGE}&arrival=2026/11/06&departure=2026/11/08&num_adult=2`
+      `${SEARCH_PAGE}&arrival=2099/11/06&departure=2099/11/08&num_adult=2`
     );
-    expect(book).toHaveClass('bg-accent');
-    expect(checkButton()).not.toHaveClass('bg-accent');
+    // Checking the same dates again stays possible.
+    expect(checkButton()).toBeEnabled();
+    expect(checkButton()).not.toHaveAttribute('aria-busy');
   });
 
   it('shows partly available sites once "Fully available only" is off', async () => {
@@ -226,10 +276,10 @@ describe('Place detail page', () => {
     await user.click(screen.getByRole('button', { name: /^Increase adults/ }));
     await user.click(screen.getByRole('button', { name: 'Done' }));
     expect(currentRoute()).toBe(
-      '/places/parkstay/20?arrival=2026-11-06&departure=2026-11-08&adults=3&children=0&infants=0'
+      '/places/parkstay/20?arrival=2099-11-06&departure=2099-11-08&adults=3&children=0&infants=0'
     );
     expect(await screen.findByText('Results for 6–8 Nov')).toBeInTheDocument();
-    expect(checkButton()).toHaveClass('bg-accent');
+    expect(checkButton()).toBeEnabled();
 
     await user.click(checkButton());
     await waitFor(() => expect(mock?.api.catalog.checkLocation).toHaveBeenCalledTimes(2));
@@ -287,7 +337,7 @@ describe('Place detail page', () => {
 
     it('says to slow down after a rate limit', async () => {
       await failWith(
-        fail('parkstay: HTTP 429 from https://parkstay.dbca.wa.gov.au/api', 'PROVIDER_ERROR')
+        fail('parkstay: HTTP 429 from https://parkstay.dbca.wa.gov.au/api', 'RATE_LIMITED')
       );
       expect(
         await within(card()).findByText('Too many checks in a short time. Try again in a minute.')
@@ -434,7 +484,7 @@ describe('Place detail page', () => {
       await renderPlace();
       expect(within(card()).getByRole('link', { name: 'Watch for availability' })).toHaveAttribute(
         'href',
-        '#/watches/new?provider=parkstay&location=20&arrival=2026-11-06&departure=2026-11-08&adults=2'
+        '#/watches/new?provider=parkstay&location=20&arrival=2099-11-06&departure=2099-11-08&adults=2'
       );
     });
 
@@ -443,7 +493,7 @@ describe('Place detail page', () => {
       const snipe = within(card()).getByRole('link', { name: 'Snipe a site, coming soon' });
       expect(snipe).toHaveAttribute(
         'href',
-        '#/site-sniper/new?provider=parkstay&location=20&arrival=2026-11-06&departure=2026-11-08&adults=2'
+        '#/site-sniper/new?provider=parkstay&location=20&arrival=2099-11-06&departure=2099-11-08&adults=2'
       );
       expect(within(snipe).getByText('Soon')).toBeInTheDocument();
     });
@@ -453,7 +503,7 @@ describe('Place detail page', () => {
     it('opens Explore with the stay when the page was not opened from Explore', async () => {
       const { user } = await renderPlace();
       await user.click(screen.getByRole('link', { name: 'Back to Explore' }));
-      expect(currentRoute()).toBe('/?arrival=2026-11-06&departure=2026-11-08&adults=2');
+      expect(currentRoute()).toBe('/?arrival=2099-11-06&departure=2099-11-08&adults=2');
     });
 
     it('goes back one step when it was opened from Explore', async () => {

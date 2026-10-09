@@ -26,7 +26,6 @@ import {
   type Guests,
 } from '../../components/ui';
 import { buttonClassName } from '../../components/ui/Button';
-import { cx } from '../../components/ui/cx';
 import { AvailabilitySection } from './AvailabilitySection';
 import { Gallery } from './Gallery';
 import {
@@ -43,7 +42,7 @@ import {
   sameStay,
   stayQueryOf,
 } from './placeModel';
-import { StayCard, type CheckAbility } from './StayCard';
+import { MAX_NIGHTS, StayCard, type CheckAbility } from './StayCard';
 import { usePlaceStay } from './usePlaceStay';
 
 /** After this long, a check says it is still going (EQ7: a busy DBCA queue can delay it). */
@@ -170,7 +169,10 @@ export default function PlaceDetailPage() {
   const loaded = Boolean(detail) && !detailQuery.isPlaceholderData;
   const shortName = manifest?.shortName ?? providerId;
 
-  const { stay, setStay } = usePlaceStay();
+  // Stays from the address keep to the provider's rules: from today in its time zone, and
+  // up to MAX_NIGHTS (no provider declares a limit of its own yet).
+  const minDate = todayIn(manifest?.timezone ?? FALLBACK_TIME_ZONE);
+  const { stay, setStay } = usePlaceStay({ minDate, maxNights: MAX_NIGHTS });
   const currentStay = useMemo(() => stayQueryOf(stay), [stay]);
 
   // ---- Check availability ---------------------------------------------------------------
@@ -220,6 +222,15 @@ export default function PlaceDetailPage() {
       announce(summaryRef.current.textContent?.trim() ?? '');
     }
   }, [check.isFetching, check.isError, check.error, check.data, manifest, shortName, announce]);
+
+  // Opened before anything about the place was known, the page said "Loading place"; say its
+  // name once the detail arrives (with a cached summary the name was there from the start).
+  const nameAnnounced = useRef(Boolean(detail));
+  useEffect(() => {
+    if (nameAnnounced.current || !detail) return;
+    nameAnnounced.current = true;
+    announce(detail.name);
+  }, [detail, announce]);
 
   const [slow, setSlow] = useState(false);
   useEffect(() => {
@@ -348,7 +359,31 @@ export default function PlaceDetailPage() {
         className="mt-10 grid gap-12 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-16"
         aria-busy={!loaded || undefined}
       >
-        <div className="flex min-w-0 flex-col gap-12">
+        {/* First in the page's order, so one column (below 1024 px) reads card, results, then
+            the place; from 1024 px it is the sticky right-hand column. */}
+        <div className="lg:sticky lg:top-[5.5rem] lg:col-start-2 lg:row-start-1">
+          <StayCard
+            shortName={shortName}
+            dates={dates}
+            guests={guests}
+            onDatesChange={onDatesChange}
+            onGuestsChange={onGuestsChange}
+            minDate={minDate}
+            datesError={datesError}
+            ability={ability}
+            onCheck={onCheck}
+            checking={check.isFetching}
+            slow={slow}
+            checked={checked}
+            failure={failure}
+            onRetry={() => void check.refetch()}
+            links={links}
+            watchHref={manifest?.capabilities.watches ? ROUTES.watchNew(prefill) : undefined}
+            snipeHref={manifest?.capabilities.snipes ? ROUTES.snipeNew(prefill) : undefined}
+          />
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-12 lg:col-start-1 lg:row-start-1">
           {requested && check.data && (
             <AvailabilitySection
               availability={check.data}
@@ -357,6 +392,7 @@ export default function PlaceDetailPage() {
               current={current}
               unitNoun={noun}
               currency={manifest?.currency}
+              source={shortName}
               timeZone={manifest?.timezone ?? FALLBACK_TIME_ZONE}
               summaryRef={summaryRef}
             />
@@ -371,28 +407,6 @@ export default function PlaceDetailPage() {
             <SitesSection units={units} unitCount={detail.unitCount} kind={detail.kind} />
           )}
           {loaded && detail && <BookingRulesSection releaseInfo={detail.releaseInfo} />}
-        </div>
-
-        <div className={cx('lg:sticky lg:top-[5.5rem]')}>
-          <StayCard
-            shortName={shortName}
-            dates={dates}
-            guests={guests}
-            onDatesChange={onDatesChange}
-            onGuestsChange={onGuestsChange}
-            minDate={todayIn(manifest?.timezone ?? FALLBACK_TIME_ZONE)}
-            datesError={datesError}
-            ability={ability}
-            onCheck={onCheck}
-            checking={check.isFetching}
-            slow={slow}
-            checked={checked}
-            failure={failure}
-            onRetry={() => void check.refetch()}
-            links={links}
-            watchHref={manifest?.capabilities.watches ? ROUTES.watchNew(prefill) : undefined}
-            snipeHref={manifest?.capabilities.snipes ? ROUTES.snipeNew(prefill) : undefined}
-          />
         </div>
       </div>
     </div>

@@ -196,6 +196,11 @@ describe('handle()', () => {
         new ProviderHttpError({ providerId: 'fake', status: 503, url: 'https://x.example/a?q=1' }),
       ],
       ['AccessGateError', 'ACCESS_GATE', new AccessGateError('fake', 'waiting')],
+      [
+        'ProviderHttpError 429',
+        'RATE_LIMITED',
+        new ProviderHttpError({ providerId: 'fake', status: 429, url: 'https://x.example/a' }),
+      ],
       ['ProviderAuthRequiredError', 'AUTH_REQUIRED', new ProviderAuthRequiredError('fake')],
     ])('a %s becomes %s with its message', async (_name, code, thrown) => {
       register(contract.providers.list, () => {

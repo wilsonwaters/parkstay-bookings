@@ -179,16 +179,13 @@ export type CheckFailure = 'access-gate' | 'rate-limit' | 'other';
 
 /**
  * What a failed check means. The access gate only counts for a provider that has one
- * (`capabilities.accessGate`, §12.2). A rate limit reaches the renderer as the provider's
- * HTTP 429 (there is no code of its own yet).
+ * (`capabilities.accessGate`, §12.2); `RATE_LIMITED` is the provider's HTTP 429.
  */
 export function checkFailure(
-  error: { code?: string; message?: string } | null | undefined,
+  error: { code?: string } | null | undefined,
   manifest: Pick<ProviderManifest, 'capabilities'> | undefined
 ): CheckFailure {
   if (error?.code === 'ACCESS_GATE' && manifest?.capabilities.accessGate) return 'access-gate';
-  if (error?.code === 'PROVIDER_ERROR' && /\bHTTP 429\b/.test(error.message ?? '')) {
-    return 'rate-limit';
-  }
+  if (error?.code === 'RATE_LIMITED') return 'rate-limit';
   return 'other';
 }

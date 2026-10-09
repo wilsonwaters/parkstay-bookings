@@ -189,13 +189,9 @@ describe('checkFailure', () => {
     expect(checkFailure({ code: 'ACCESS_GATE' }, ungated)).toBe('other');
   });
 
-  it('is a rate limit when the provider answered HTTP 429', () => {
-    expect(
-      checkFailure({ code: 'PROVIDER_ERROR', message: 'parkstay: HTTP 429 from https://x' }, gated)
-    ).toBe('rate-limit');
-    expect(
-      checkFailure({ code: 'PROVIDER_ERROR', message: 'parkstay: HTTP 500 from https://x' }, gated)
-    ).toBe('other');
+  it('is a rate limit by its code, RATE_LIMITED, never by the wording', () => {
+    expect(checkFailure({ code: 'RATE_LIMITED' }, ungated)).toBe('rate-limit');
+    expect(checkFailure({ code: 'PROVIDER_ERROR' }, gated)).toBe('other');
     expect(checkFailure(undefined, gated)).toBe('other');
   });
 });

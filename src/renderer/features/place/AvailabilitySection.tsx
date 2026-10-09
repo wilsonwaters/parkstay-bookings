@@ -16,6 +16,8 @@ export interface AvailabilitySectionProps {
   current: boolean;
   unitNoun: UnitNoun;
   currency?: string;
+  /** The provider's short name, for nights it did not report. */
+  source: string;
   /** The provider's time zone, for the release time. */
   timeZone: string;
   summaryRef: Ref<HTMLParagraphElement>;
@@ -33,6 +35,7 @@ export function AvailabilitySection({
   current,
   unitNoun,
   currency,
+  source,
   timeZone,
   summaryRef,
 }: AvailabilitySectionProps) {
@@ -47,6 +50,7 @@ export function AvailabilitySection({
         departure={departure}
         unitNoun={unitNoun}
         currency={currency}
+        source={source}
         caption={`Availability by night, ${range}`}
         summaryRef={summaryRef}
       >
