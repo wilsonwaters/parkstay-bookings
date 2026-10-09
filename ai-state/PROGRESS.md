@@ -6,9 +6,10 @@ _Last updated: 2026-10-09 (orchestrator)_
 Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
 
 ## Currently in flight
-- **U1** (#35) Watches provider-first: IMPLEMENTED on lane/m (`13e77bf` design, `98e74cf` shared stay-field rules, `c37409c` cleared max price → NULL, `7be976a` feature; rebased onto E2 with 11 conflicts resolved; E2's legacy watch bridge deleted). Gate green ×3 (2862), e2e 13/13, axe 0 critical/serious on 27 states. Shared blocks for U2/U3: StepFlow, ProviderPicker, LocationCombobox, stay/{ProviderStayFields, UnitPicker}, useNow, useAccountStatus; NightGrid gains `fullyAvailableOnly`. Review running.
+- **U1** (#35) Watches provider-first: IMPLEMENTED on lane/m (`13e77bf` design, `98e74cf` shared stay-field rules, `c37409c` cleared max price → NULL, `7be976a` feature; rebased onto E2 with 11 conflicts resolved; E2's legacy watch bridge deleted). Gate green ×3 (2862), e2e 13/13, axe 0 critical/serious on 27 states. Shared blocks for U2/U3: StepFlow, ProviderPicker, LocationCombobox, stay/{ProviderStayFields, UnitPicker}, useNow, useAccountStatus; NightGrid gains `fullyAvailableOnly`. Review REQUEST_CHANGES: a legacy interval outside the options (5 min, the v1 default) blanks "Check every" and blocks Save on Edit. Minors: "Paused" filter includes held/booked; stepper/boolean stay fields never show errors; provider filter flashes "Unknown provider". Design critique: no photos anywhere (reads like an admin list), tall text-only cards, flat 10-row review. Merge risk with the V3 class-listed fix: low (merge-tree clean). Fix by the original implementer running, lane M (rebased onto the class-listed fix).
 - **E3** (#34) Date-aware discovery: implementing (M), lane R.
 - **U5** (#39) Notifications and system surfaces: implementing (M), lane W (reuses V4's desktop-title helper per §12.31).
+- **U4** (#38) Settings and accounts: design phase (L), lane A; extends U1's `api/accounts.ts`; boundary with U5 (U4 owns Settings; U5 owns bell, toasts, About).
 - Next (multiple agents approved): then P7, U3, U5, U2, U4; E2/E3 (E1 merged); Q2 last.
 
 ## Notes
