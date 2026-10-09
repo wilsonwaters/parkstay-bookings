@@ -6,7 +6,7 @@ _Last updated: 2026-10-09 (orchestrator)_
 Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
 
 ## Currently in flight
-- **U1** (#35) Watches provider-first: design phase (L task), lane M; reuses E1's catalogue hooks and cards; E1 merged; implementation after design approval.
+- **U1** (#35) Watches provider-first: design approved (`9d69091` on lane/m). Shared blocks: `StepFlow`, `ProviderPicker`, `LocationCombobox`, `stay/{ProviderStayFields, UnitPicker}`, `useNow`, `useAccountStatus`; stay-field validator moved to `shared/utils`; reuses E2's `NightGrid` (no rewritten AvailabilityGrid) and E2's `useLocationDetail`; provider filter always shown (§12.9); `0` max price stored as NULL on update. Implementing in lane M: list and create/edit first, WatchDetail after E2 merges.
 - **E2** (#33) Location detail: implementing (M), lane R. Creates the shared `components/NightGrid.tsx` that U1 reuses; also shows the provider name in E1's map preview.
 - Next (two agents at a time): then P7, U3, U5, U2, U4; E2/E3 (E1 merged); Q2 last.
 
