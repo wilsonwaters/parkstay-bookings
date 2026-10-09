@@ -10,6 +10,10 @@
  * `CampgroundFacts` is what the module has learnt about each campground, in memory: its
  * type and booking window from the map, and its release and site-class facts from the
  * latest availability view. Availability, the release policy and holds read it.
+ *
+ * The map is the one large download (1.2 MB). The detail of a campground the caller already
+ * has a summary of (the core's stored catalogue) is built from that summary, so the first
+ * detail after a launch does not download the map again.
  */
 
 import type { LocationDetail, LocationSummary, UnitSummary } from '@shared/types/catalog.types';
@@ -19,18 +23,31 @@ import { makeLocationKey } from '@shared/utils/location-key';
 import type { ProviderContext, ProviderLogger } from '../sdk/context';
 import { ProviderError, ProviderParseError, throwIfAborted } from '../sdk/errors';
 import { sanitizeProviderHtml } from '../sdk/html';
-import type { CatalogModule } from '../sdk/provider';
+import type { CatalogModule, GetLocationOptions } from '../sdk/provider';
 import type { CampsiteViews } from './availability';
 import type { ParkStayClient } from './client';
 import { PARKSTAY_BASE_URL, PARKSTAY_PROVIDER_ID } from './constants';
 import { parkstayLinks } from './links';
 import type { ParkStayReleasePolicy } from './release-policy';
+import { isClassListing, toClassUnitSummary } from './site-classes';
 import type {
   RawCampgroundFeature,
   RawCampgroundMap,
   RawCampsite,
   RawCampsiteAvailabilityView,
 } from './types';
+
+/** `campground_type` → booking mode (0 online, 1 offline, 2 other operator, 4 application). */
+const BOOKING_MODES: Record<number, BookingMode> = {
+  0: 'online',
+  1: 'offline',
+  2: 'external',
+  4: 'application',
+};
+
+const CAMPGROUND_TYPES: Partial<Record<BookingMode, number>> = Object.fromEntries(
+  Object.entries(BOOKING_MODES).map(([type, mode]) => [mode, Number(type)])
+);
 
 // ---------------------------------------------------------------------------------------
 // Campground facts
@@ -41,25 +58,40 @@ export interface ViewFacts {
   siteType: number;
   releaseDate?: string;
   bookingTimeOpen: boolean;
-  /** For class listings: the unit id the view gave → its campsite class id. */
+  /**
+   * For class listings: each site id a view gave for a class → its campsite class id, kept
+   * across views. Unit ids stored before #21 were such site ids (`site-classes.ts`).
+   */
   classOfUnit: ReadonlyMap<string, string>;
   /** When the view was read (epoch ms). */
   at: number;
 }
 
 export class CampgroundFacts {
-  private readonly fromMap = new Map<string, { type: number; maxAdvance: number }>();
+  private readonly fromMap = new Map<string, { type: number; maxAdvance?: number }>();
   private readonly fromView = new Map<string, ViewFacts>();
 
   rememberFeature(externalId: string, campgroundType: number, maxAdvanceBooking: number): void {
     this.fromMap.set(externalId, { type: campgroundType, maxAdvance: maxAdvanceBooking });
   }
 
+  /**
+   * The campground type from a stored summary's booking mode, when the map has not been read
+   * in this run. The booking window stays unknown (the default, 180 days, applies).
+   */
+  rememberBookingMode(externalId: string, mode: BookingMode): void {
+    const type = CAMPGROUND_TYPES[mode];
+    if (type !== undefined && !this.fromMap.has(externalId)) this.fromMap.set(externalId, { type });
+  }
+
   rememberView(externalId: string, view: RawCampsiteAvailabilityView, at: Date): void {
     const siteType = typeof view.site_type === 'number' ? view.site_type : 0;
     const classOfUnit = new Map<string, string>();
     if (siteType !== 0) {
-      // A class listing's `type` is the campsite class; its `id` one free site in it.
+      // A class listing's `type` is the campsite class; its `id` one site in it.
+      for (const [unitId, classId] of this.fromView.get(externalId)?.classOfUnit ?? []) {
+        classOfUnit.set(unitId, classId);
+      }
       for (const site of view.sites) classOfUnit.set(String(site.id), String(site.type));
     }
     this.fromView.set(externalId, {
@@ -88,13 +120,6 @@ export class CampgroundFacts {
 // ---------------------------------------------------------------------------------------
 // Mapping
 // ---------------------------------------------------------------------------------------
-
-const BOOKING_MODES: Record<number, BookingMode> = {
-  0: 'online',
-  1: 'offline',
-  2: 'external',
-  4: 'application',
-};
 
 /** What an "other operator" (type 2) location is, from its name. */
 export function kindFromName(name: string): LocationKind {
@@ -257,11 +282,23 @@ export function createCatalog({ ctx, client, facts, views, release }: CatalogDep
     return locations;
   }
 
+  const cacheFresh = (): boolean => !!cache && ctx.clock().getTime() - cache.at <= ttlMs;
+
+  /**
+   * The campground's summary: from the map read in this run while it is fresh, else the
+   * caller's (the core's stored catalogue), else from the map, read again.
+   */
   async function summaryOf(
     externalId: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    given?: LocationSummary
   ): Promise<LocationSummary | undefined> {
-    if (!cache || ctx.clock().getTime() - cache.at > ttlMs) await listLocations(signal);
+    if (cacheFresh()) return cache!.byId.get(externalId);
+    if (given && given.providerId === ctx.id && given.externalId === externalId) {
+      facts.rememberBookingMode(externalId, given.bookingMode);
+      return given;
+    }
+    await listLocations(signal);
     return cache?.byId.get(externalId);
   }
 
@@ -271,9 +308,13 @@ export function createCatalog({ ctx, client, facts, views, release }: CatalogDep
     return { arrival: addDays(today, 1), departure: addDays(today, 2), adults: 1 };
   }
 
-  async function getLocation(externalId: string, signal?: AbortSignal): Promise<LocationDetail> {
+  async function getLocation(
+    externalId: string,
+    signal?: AbortSignal,
+    options?: GetLocationOptions
+  ): Promise<LocationDetail> {
     throwIfAborted(signal);
-    const summary = await summaryOf(externalId, signal);
+    const summary = await summaryOf(externalId, signal, options?.summary);
     if (!summary) {
       throw new ProviderError({
         providerId: ctx.id,
@@ -287,7 +328,9 @@ export function createCatalog({ ctx, client, facts, views, release }: CatalogDep
       if (view.long_description) {
         detail.descriptionHtml = sanitizeProviderHtml(view.long_description, PARKSTAY_BASE_URL);
       }
-      detail.units = view.sites.map((site) => toUnitSummary(site, view.classes));
+      detail.units = isClassListing(view)
+        ? view.sites.map(toClassUnitSummary)
+        : view.sites.map((site) => toUnitSummary(site, view.classes));
     }
     const releaseInfo = await release.describe(externalId, signal);
     if (releaseInfo) detail.releaseInfo = releaseInfo;

@@ -150,6 +150,21 @@ describe('ParkStayClient against the fixture server', () => {
     await expect(client().getApi('/campground_map/')).rejects.toBeInstanceOf(ProviderHttpError);
   });
 
+  it('turns HTTP 429 into a retryable ProviderHttpError with status 429, for a GET and a form POST', async () => {
+    const throttled = { status: 429, body: { detail: 'Request was throttled.' } };
+    server.overrides.set('/api/campground_map/', throttled);
+    await expect(client().getApi('/campground_map/')).rejects.toMatchObject({
+      name: 'ProviderHttpError',
+      status: 429,
+      retryable: true,
+    });
+    // A rate limit on create_booking is not a refusal (which would read as "taken").
+    server.createBooking = throttled;
+    await expect(
+      client().postApiForm('/create_booking', { arrival: '2026/11/10' })
+    ).rejects.toMatchObject({ name: 'ProviderHttpError', status: 429, retryable: true });
+  });
+
   it('turns a body that is not JSON into ProviderParseError', async () => {
     server.overrides.set('/api/campground_map/', { status: 200, body: undefined });
     // JSON.stringify(undefined) sends an empty body.

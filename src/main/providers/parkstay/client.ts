@@ -134,7 +134,8 @@ export class ParkStayClient {
 
   /**
    * POSTs a form to an API path. Resolves with the JSON body of a 2xx or 4xx answer
-   * (`create_booking` explains a refusal in a 400 JSON body); anything else rejects.
+   * (`create_booking` explains a refusal in a 400 JSON body); anything else rejects, and so
+   * do 408 and 429 (a timeout or a rate limit is not a refusal, whatever the body says).
    */
   async postApiForm(
     path: string,
@@ -153,7 +154,8 @@ export class ParkStayClient {
       })
     );
     const body = await this.readApiBody(url, response);
-    if (response.status >= 400 && response.status < 500) {
+    const refusal = response.status >= 400 && response.status < 500;
+    if (refusal && response.status !== 408 && response.status !== 429) {
       try {
         return { status: response.status, body: JSON.parse(body) as unknown };
       } catch {

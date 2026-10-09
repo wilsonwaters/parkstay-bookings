@@ -6,6 +6,7 @@
  *
  * - `catalog.ts`: every campground (`/api/campground_map/`) and a campground's detail;
  * - `availability.ts`: per-campground nights with prices, and bulk free-site counts;
+ * - `site-classes.ts`: campgrounds listed by site class (Lucky Bay), one unit per class;
  * - `queue/`: the DBCA virtual queue as the access gate;
  * - `release-policy.ts`: daily rollover, scheduled and cancellation releases;
  * - `holds.ts`: 30-minute `create_booking` holds and the payment page;

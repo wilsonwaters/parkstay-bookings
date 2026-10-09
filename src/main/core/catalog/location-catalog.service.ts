@@ -446,7 +446,7 @@ export class LocationCatalogService {
       providerId,
       this.timings.detailTimeoutMs,
       this.lifetime.signal,
-      (signal) => provider.catalog!.getLocation(externalId, signal)
+      (signal) => provider.catalog!.getLocation(externalId, signal, { summary })
     );
     const at = this.clock();
     // Defence in depth: whatever the provider did, main sanitises before IPC.

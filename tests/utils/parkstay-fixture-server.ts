@@ -8,7 +8,16 @@
  * - `queueGate: 'html'` answers every `/api/` request with the queue middleware's redirect
  *   page (a 200 `text/html`, `queue_middleware.py:99,116`), and `'redirect'` with a 302 to
  *   the waiting room;
- * - `create_booking` and `check-create-session` answer what the test sets.
+ * - `create_booking` and `check-create-session` answer what the test sets, except at a
+ *   campground whose view (set in `views`) lists site classes, where `create_booking` does
+ *   what ParkStay does: it refuses a `campsite` (`api.py:3112-3123`) and, for a
+ *   `campsite_class`, holds a site of the class free for the whole stay (the class entry's
+ *   `id` when all its nights are bookable, recorded in `classHolds`) or refuses the class
+ *   (`utils.py:186-202`).
+ *
+ * `campsite_availablity_view_43_classes.json` is Lucky Bay (43), a campground listed by class,
+ * for 6–9 Nov 2026, recorded live on 9 Oct 2026 (its description trimmed; no booking or
+ * person in it): one class, 56 sites, one free each night but never the same one.
  *
  * It runs under Jest and inside Electron (`tests/electron/`), so it uses only Node's `http`.
  * Every request is recorded, and `maxInFlight` is the most it ever handled at once.
@@ -51,6 +60,19 @@ export interface FixtureAnswer {
   body: unknown;
 }
 
+/** What the server reads of a view that lists campsite classes. */
+interface ClassListing {
+  site_type?: number;
+  sites: Array<{ id: number; type: number; availability: unknown[][] }>;
+}
+
+/** A class hold the server placed: the site of the class it picked. */
+export interface ClassHold {
+  campground: string;
+  campsiteClass: string;
+  site: number;
+}
+
 export interface ParkStayFixtureServer {
   /** `http://127.0.0.1:<port>` */
   readonly url: string;
@@ -70,6 +92,8 @@ export interface ParkStayFixtureServer {
   views: Map<string, unknown>;
   /** Forces an answer for a path (`/api/campground_map/`). */
   overrides: Map<string, FixtureAnswer>;
+  /** The class holds placed at campgrounds listed by class, in order. */
+  readonly classHolds: ClassHold[];
   /** Requests to paths that start with `prefix`. */
   requestsTo(prefix: string): RecordedRequest[];
   close(): Promise<void>;
@@ -90,6 +114,7 @@ export async function startParkStayFixtureServer(): Promise<ParkStayFixtureServe
     map.features.map((f: any) => [String(f.id), f.properties.campground_type])
   );
   const requests: RecordedRequest[] = [];
+  const classHolds: ClassHold[] = [];
   let inFlight = 0;
   let queueCalls = 0;
 
@@ -174,11 +199,38 @@ export async function startParkStayFixtureServer(): Promise<ParkStayFixtureServe
       return json(res, 200, { ...body, id: Number(id) });
     }
     if (p.startsWith('/api/create_booking') && req.method === 'POST') {
+      const form = new URLSearchParams(record.body);
+      const campground = form.get('campground') ?? '';
+      const listing = state.views.get(campground) as ClassListing | undefined;
+      if (listing && (listing.site_type === 1 || listing.site_type === 2)) {
+        return classBooking(res, campground, listing, form);
+      }
       return json(res, state.createBooking.status, state.createBooking.body);
     }
     if (p === '/api/search_suggest')
       return json(res, 200, { type: 'FeatureCollection', features: [] });
     json(res, 404, { detail: 'Not found.' });
+  }
+
+  /** `create_booking` at a campground listed by class, as ParkStay answers it. */
+  function classBooking(
+    res: http.ServerResponse,
+    campground: string,
+    view: ClassListing,
+    form: URLSearchParams
+  ): void {
+    const refuse = (msg: unknown) => json(res, 400, { status: 'error', msg });
+    if (form.get('campsite')) return refuse("Campground doesn't support per-site bookings.");
+    const campsiteClass = form.get('campsite_class') ?? '';
+    if (!campsiteClass) return refuse('Must specify campsite_class and campground.');
+    const entry = view.sites.find((site) => String(site.type) === campsiteClass);
+    // ParkStay reads the class's first site before checking there is one (`utils.py:68`).
+    if (!entry) return json(res, 500, {});
+    if (!entry.availability.every((night) => night[0] === true)) {
+      return refuse({ error: "['Campsite class unavailable for specified time period.']" });
+    }
+    classHolds.push({ campground, campsiteClass, site: entry.id });
+    json(res, state.createBooking.status, state.createBooking.body);
   }
 
   const server = http.createServer((req, res) => {
@@ -246,6 +298,7 @@ export async function startParkStayFixtureServer(): Promise<ParkStayFixtureServe
     },
     views: state.views,
     overrides: state.overrides,
+    classHolds,
     requestsTo: (prefix) => requests.filter((r) => r.path.startsWith(prefix)),
     close: () =>
       new Promise<void>((resolve) => {

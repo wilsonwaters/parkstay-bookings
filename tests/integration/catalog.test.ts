@@ -357,6 +357,38 @@ describe('the location catalogue on a real database', () => {
       expect(stale).toEqual({ ...first, stale: true });
     });
 
+    it("after a launch, get('parkstay:20') builds on the stored summary: no campground_map download", async () => {
+      const { catalog, locations, db } = await build({ parkstay: true });
+      await catalog.sync('parkstay');
+      expect(mapRequests()).toBe(1);
+
+      // The next launch: a new ParkStay module (nothing in memory) over the same database,
+      // whose catalogue is still fresh, so no sync runs.
+      const relaunched = createTestParkStay(server).registry;
+      const again = new LocationCatalogService({
+        registry: relaunched,
+        locations,
+        providerState: new ProviderStateRepository(db),
+        events: { emit: () => undefined },
+        logger: createMemoryLogger(),
+        clock: () => world.clock.now,
+      });
+      try {
+        const detail = await again.get('parkstay:20');
+        expect(mapRequests()).toBe(1);
+        expect(detail).toMatchObject({
+          key: 'parkstay:20',
+          name: 'Bungarra',
+          bookingMode: 'online',
+        });
+        expect(detail.units).toHaveLength(5);
+        expect(detail.releaseInfo).toMatch(/^Bookable up to 31 March 2027/);
+      } finally {
+        again.stop();
+        await relaunched.disposeAll();
+      }
+    });
+
     it("get('parkstay:999') is NOT_FOUND", async () => {
       const { catalog } = await build({ parkstay: true });
       await catalog.sync('parkstay');

@@ -5,6 +5,10 @@
  * so the person pays on the same session at `/booking/` (`api.py:3373-3376`): the payment
  * window must use the provider's partition.
  *
+ * A class unit (`class:<id>`, `site-classes.ts`) is held with `campsite_class`: ParkStay
+ * refuses a site at such a campground, and itself picks the first site of the class that is
+ * free for the whole stay (`utils.py:186-202`).
+ *
  * Answers: `{status:'success', pk}`; 400 `{inprogress_booking:true}` when the session
  * already has a booking; 400 "The system is currently closed for bookings."; any other 400
  * when the site was taken or the request was refused.
@@ -34,6 +38,7 @@ import type {
 import type { CampgroundFacts } from './catalog';
 import { toParkStayDate, type ParkStayClient } from './client';
 import { BOOKING_PREFIX, HOLD_MINUTES, PARKSTAY_BASE_URL, PAYMENT_ORIGINS } from './constants';
+import { classIdOfUnit } from './site-classes';
 import type { RawCreateBookingResponse } from './types';
 
 /** `msg` as text: a string, `{ error }`, or anything else serialised. */
@@ -101,10 +106,12 @@ export function createBookingForm(
   const postcode = stringParam(request, 'postcode');
   if (postcode) form.postcode = postcode;
 
-  // A campground listed by class is booked by class; the view said which class a unit is in.
+  // A campground listed by class is booked by class: a class unit names its class, and a
+  // view said which class an older unit id (a site of the class) is in.
   const view = facts?.view(externalId);
   const unitClass =
-    unitId && view && view.siteType !== 0 ? view.classOfUnit.get(unitId) : undefined;
+    classIdOfUnit(unitId) ??
+    (unitId && view && view.siteType !== 0 ? view.classOfUnit.get(unitId) : undefined);
   const campsiteClass = request.unitGroupId ?? unitClass;
   if (unitId && !unitClass) form.campsite = unitId;
   else if (campsiteClass) form.campsite_class = campsiteClass;
@@ -114,7 +121,8 @@ export function createBookingForm(
 export function createHolds({ ctx, client, facts, findFreeUnit }: HoldsDeps): HoldsModule {
   async function create(request: HoldRequest, signal?: AbortSignal): Promise<HoldResult> {
     throwIfAborted(signal);
-    // Any unit will do: take the first one that is free for the whole stay.
+    // Any unit will do: take the first one that is free for the whole stay (at a campground
+    // listed by class, a class; ParkStay then picks the site).
     if (!request.unitId && !request.unitGroupId) {
       const unitId = await findFreeUnit(request.externalId, request.stay, signal);
       if (!unitId) return { ok: false, reason: 'taken', message: 'No site is free for the stay' };
