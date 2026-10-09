@@ -179,3 +179,53 @@ describe('stayRangeLabel', () => {
     expect(stayRangeLabel('2026-12-30', '2027-01-02')).toBe('30 Dec 2026 – 2 Jan 2027');
   });
 });
+
+describe('split nights (free, but not on the same unit as the nights next to them)', () => {
+  // A class-listed place: free on the 6th, then free only on another site on the 7th.
+  const split: UnitAvailability = {
+    unitId: 'class:117',
+    unitName: 'One site - select on arrival',
+    nights: [
+      { date: '2026-11-06', state: 'available', price: 20 },
+      { date: '2026-11-07', state: 'unknown', reason: 'split', price: 20 },
+    ],
+    fullyAvailable: false,
+  };
+
+  it('settle the stay as not free on one unit, never as unknown', () => {
+    expect(unitStanding(split, NIGHTS)).toBe('split');
+    expect(isFullyAvailable(split, NIGHTS)).toBe(false);
+    // Booked or closed still decides first.
+    const taken = {
+      ...split,
+      nights: [...split.nights.slice(1), { date: NIGHTS[0], state: 'booked' as const }],
+    };
+    expect(unitStanding(taken, NIGHTS)).toBe('taken');
+  });
+
+  it('count as known and partly free, with a note in the unit noun, not the source', () => {
+    const summary = summariseAvailability([split, unit('b', ['available', 'available'])], NIGHTS);
+    expect(summary).toMatchObject({
+      total: 2,
+      known: 2,
+      fully: 1,
+      partly: 1,
+      unknown: 0,
+      split: 1,
+    });
+    expect(summaryLine(summary, SITE, 'ParkStay')).toBe('1 of 2 sites free for all 2 nights');
+    expect(summaryNotes(summary, SITE, 'ParkStay')).toEqual([
+      'Free on some nights, but not on one site for the whole stay.',
+    ]);
+    const alone = summariseAvailability([split], NIGHTS);
+    expect(summaryLine(alone, SITE, 'ParkStay')).toBe('0 of 1 site free for all 2 nights');
+    expect(noFullRowsMessage(alone, SITE)).toBe(
+      'No sites are free for all 2 nights. Turn off "Fully available only" to see sites free for some of them.'
+    );
+  });
+
+  it('say "Free on another site" in the cell, with no price', () => {
+    expect(nightCellText(split.nights[1], 'AUD', SITE)).toEqual({ label: 'Free on another site' });
+    expect(nightCellText(split.nights[1]).label).toBe('Free on another unit');
+  });
+});

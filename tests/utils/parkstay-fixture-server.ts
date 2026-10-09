@@ -11,9 +11,11 @@
  * - `create_booking` and `check-create-session` answer what the test sets, except at a
  *   campground whose view (set in `views`) lists site classes, where `create_booking` does
  *   what ParkStay does: it refuses a `campsite` (`api.py:3112-3123`) and, for a
- *   `campsite_class`, holds a site of the class free for the whole stay (the class entry's
- *   `id` when all its nights are bookable, recorded in `classHolds`) or refuses the class
- *   (`utils.py:186-202`).
+ *   `campsite_class`, holds the first site of the class free on every night of the posted
+ *   stay, or refuses the class (`utils.py:186-202`). The sites are `classSites` when set (in
+ *   ParkStay's order, which has no `ORDER BY`: by id in practice); otherwise the class entry
+ *   stands for them, its nights read from the view and its `id` as the site. Holds placed
+ *   are recorded in `classHolds`.
  *
  * `campsite_availablity_view_43_classes.json` is Lucky Bay (43), a campground listed by class,
  * for 6–9 Nov 2026, recorded live on 9 Oct 2026 (its description trimmed; no booking or
@@ -66,6 +68,15 @@ interface ClassListing {
   sites: Array<{ id: number; type: number; availability: unknown[][] }>;
 }
 
+/** A site of a campground listed by class, as `create_booking` sees it. */
+export interface ClassSite {
+  id: number;
+  name: string;
+  campsiteClass: string;
+  /** The nights it is free, `YYYY-MM-DD`. */
+  freeNights: string[];
+}
+
 /** A class hold the server placed: the site of the class it picked. */
 export interface ClassHold {
   campground: string;
@@ -92,6 +103,8 @@ export interface ParkStayFixtureServer {
   views: Map<string, unknown>;
   /** Forces an answer for a path (`/api/campground_map/`). */
   overrides: Map<string, FixtureAnswer>;
+  /** The sites of campgrounds listed by class, by campground id, for `create_booking`. */
+  classSites: Map<string, ClassSite[]>;
   /** The class holds placed at campgrounds listed by class, in order. */
   readonly classHolds: ClassHold[];
   /** Requests to paths that start with `prefix`. */
@@ -102,6 +115,17 @@ export interface ParkStayFixtureServer {
 const PARKSTAY_REFERER = 'https://parkstay.dbca.wa.gov.au';
 const SLASH_DATE = /^\d{4}\/\d{2}\/\d{2}$/;
 const WAITING_ROOM = '/site-queue/waiting-room/parkstayv2/';
+
+/** The nights of a stay posted as `YYYY/MM/DD`, as `YYYY-MM-DD`; none when unreadable. */
+function stayNights(arrival: string, departure: string): string[] {
+  const day = (text: string) =>
+    SLASH_DATE.test(text) ? Date.parse(text.replace(/\//g, '-')) : NaN;
+  const nights: string[] = [];
+  for (let at = day(arrival); at < day(departure); at += 86_400_000) {
+    nights.push(new Date(at).toISOString().slice(0, 10));
+  }
+  return nights;
+}
 
 function json(res: http.ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { 'content-type': 'application/json' });
@@ -115,6 +139,7 @@ export async function startParkStayFixtureServer(): Promise<ParkStayFixtureServe
   );
   const requests: RecordedRequest[] = [];
   const classHolds: ClassHold[] = [];
+  const classSites = new Map<string, ClassSite[]>();
   let inFlight = 0;
   let queueCalls = 0;
 
@@ -223,13 +248,30 @@ export async function startParkStayFixtureServer(): Promise<ParkStayFixtureServe
     if (form.get('campsite')) return refuse("Campground doesn't support per-site bookings.");
     const campsiteClass = form.get('campsite_class') ?? '';
     if (!campsiteClass) return refuse('Must specify campsite_class and campground.');
+    const nights = stayNights(form.get('arrival') ?? '', form.get('departure') ?? '');
     const entry = view.sites.find((site) => String(site.type) === campsiteClass);
+    const sites: ClassSite[] =
+      classSites.get(campground)?.filter((site) => site.campsiteClass === campsiteClass) ??
+      (entry
+        ? [
+            {
+              id: entry.id,
+              name: String(entry.id),
+              campsiteClass,
+              freeNights: entry.availability
+                .filter((night) => night[0] === true)
+                .map((night) => String(night[5])),
+            },
+          ]
+        : []);
     // ParkStay reads the class's first site before checking there is one (`utils.py:68`).
-    if (!entry) return json(res, 500, {});
-    if (!entry.availability.every((night) => night[0] === true)) {
+    if (sites.length === 0) return json(res, 500, {});
+    const free = sites.filter((site) => nights.every((date) => site.freeNights.includes(date)));
+    if (nights.length === 0 || free.length === 0) {
       return refuse({ error: "['Campsite class unavailable for specified time period.']" });
     }
-    classHolds.push({ campground, campsiteClass, site: entry.id });
+    // "for now, pick the first campsite in the list" (`utils.py:200-202`)
+    classHolds.push({ campground, campsiteClass, site: free[0].id });
     json(res, state.createBooking.status, state.createBooking.body);
   }
 
@@ -298,6 +340,7 @@ export async function startParkStayFixtureServer(): Promise<ParkStayFixtureServe
     },
     views: state.views,
     overrides: state.overrides,
+    classSites,
     classHolds,
     requestsTo: (prefix) => requests.filter((r) => r.path.startsWith(prefix)),
     close: () =>

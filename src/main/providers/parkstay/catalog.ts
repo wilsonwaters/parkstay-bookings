@@ -58,11 +58,10 @@ export interface ViewFacts {
   siteType: number;
   releaseDate?: string;
   bookingTimeOpen: boolean;
-  /**
-   * For class listings: each site id a view gave for a class → its campsite class id, kept
-   * across views. Unit ids stored before #21 were such site ids (`site-classes.ts`).
-   */
+  /** For class listings: the site id the view gave for each class → its campsite class id. */
   classOfUnit: ReadonlyMap<string, string>;
+  /** For class listings: the campsite class ids, in the view's order. */
+  classIds: readonly string[];
   /** When the view was read (epoch ms). */
   at: number;
 }
@@ -89,9 +88,6 @@ export class CampgroundFacts {
     const classOfUnit = new Map<string, string>();
     if (siteType !== 0) {
       // A class listing's `type` is the campsite class; its `id` one site in it.
-      for (const [unitId, classId] of this.fromView.get(externalId)?.classOfUnit ?? []) {
-        classOfUnit.set(unitId, classId);
-      }
       for (const site of view.sites) classOfUnit.set(String(site.id), String(site.type));
     }
     this.fromView.set(externalId, {
@@ -99,6 +95,7 @@ export class CampgroundFacts {
       releaseDate: view.release_date ?? undefined,
       bookingTimeOpen: view.booking_time_open !== false,
       classOfUnit,
+      classIds: [...new Set(classOfUnit.values())],
       at: at.getTime(),
     });
   }

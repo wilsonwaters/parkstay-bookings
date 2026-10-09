@@ -227,6 +227,13 @@ export interface StayQuery {
 
 export type NightState = 'available' | 'booked' | 'closed' | 'not-released' | 'unknown';
 
+/**
+ * Why a night is not `available` although the provider reported room: `split`, free, but not
+ * on the same unit as the available nights next to it (a unit that stands for several, such
+ * as a class of sites booked whole stays on one site). Matching treats it as not available.
+ */
+export type NightReason = 'split';
+
 export interface NightStatus {
   /** Calendar date `YYYY-MM-DD`. */
   date: string;
@@ -234,12 +241,18 @@ export interface NightStatus {
   price?: number;
   /** The provider's own wording, e.g. `Booked` or `$30.00`. */
   label?: string;
+  reason?: NightReason;
 }
 
 export interface UnitAvailability {
   unitId: string;
   unitName: string;
   unitType?: string;
+  /**
+   * Unit ids the caller asked about (`unitIds`, `knownUnitIds`) that name this unit by an id
+   * the provider used for it before, e.g. a site of a class the provider now lists as one unit.
+   */
+  aliases?: string[];
   nights: NightStatus[];
   /** Every night of the stay is available. */
   fullyAvailable: boolean;

@@ -22,7 +22,8 @@
  * answers "Campsite class unavailable for specified time period." (`utils.py:186-202`).
  *
  * So the module shows each class as one unit, `class:<class id>`, whatever site `id` the view
- * gave, and a hold for it posts `campsite_class`: ParkStay picks the free site.
+ * gave, and a hold for it posts `campsite_class`: ParkStay picks the free site. Unit ids kept
+ * from before #21 are site ids; they name a class through `classesOfSiteId`, from the view.
  */
 
 import type { UnitSummary } from '@shared/types/catalog.types';
@@ -65,17 +66,33 @@ export function toClassUnitSummary(entry: RawCampsite): UnitSummary {
 }
 
 /**
+ * Which classes a site id stored before #21 names, from the view alone: the class whose
+ * entry gave that id, else every class (the view does not say which class a site is in; Lucky
+ * Bay has only one). Anything but a site id (a number) names none.
+ */
+export function classesOfSiteId(
+  view: Pick<RawCampsiteAvailabilityView, 'sites'>,
+  unitId: string
+): RawCampsite[] {
+  if (!/^\d+$/.test(unitId)) return [];
+  const named = view.sites.filter((entry) => String(entry.id) === unitId);
+  return named.length > 0 ? named : [...view.sites];
+}
+
+/**
  * Which nights a class can offer as stays: `free[site][night]` says whether a site of the
  * class is free that night. Each run of nights chosen lies on one site (ParkStay books a
  * class run on one site), and two runs are never next to each other, which would read as one
- * stay. The most nights win. A site free every night gives every night; one free night on a
- * different site each night gives every other night.
+ * stay. The most nights win, then the longest runs (the sum of their squared lengths). A
+ * site free every night gives every night; one free night on a different site each night
+ * gives every other night.
  */
 export function bookableClassNights(
   free: readonly (readonly boolean[])[],
   nights: number
 ): boolean[] {
-  // runFrom[i]: the earliest night a run ending on night i can start on one site, or -1.
+  // runFrom[i]: the earliest night a run ending on night i can start on one site, or -1. Any
+  // later start works too: the same site is free on the shorter run.
   const runFrom: number[] = [];
   const runStart = free.map(() => -1);
   for (let i = 0; i < nights; i++) {
@@ -91,20 +108,30 @@ export function bookableClassNights(
     runFrom.push(earliest);
   }
 
-  // best[k]: the most nights among the first k; from[k]: where the run ending at night k-1
-  // starts when that night is taken, else -1. The longest run is always the best to take.
-  const best = [0];
-  const from = [-1];
+  // best[k]: the best choice among the first k nights; from[k]: where the run ending on night
+  // k-1 starts when that night is chosen, else -1.
+  interface Score {
+    nights: number;
+    runs: number;
+  }
+  const better = (a: Score, b: Score): boolean =>
+    a.nights > b.nights || (a.nights === b.nights && a.runs > b.runs);
+  const best: Score[] = [{ nights: 0, runs: 0 }];
+  const from: number[] = [-1];
   for (let k = 1; k <= nights; k++) {
-    const start = runFrom[k - 1];
-    const take = start < 0 ? -1 : (start === 0 ? 0 : best[start - 1]) + (k - start);
-    if (take > best[k - 1]) {
-      best.push(take);
-      from.push(start);
-    } else {
-      best.push(best[k - 1]);
-      from.push(-1);
+    let top = best[k - 1];
+    let start = -1;
+    for (let s = runFrom[k - 1]; s >= 0 && s < k; s++) {
+      const before = s === 0 ? best[0] : best[s - 1];
+      const length = k - s;
+      const score = { nights: before.nights + length, runs: before.runs + length * length };
+      if (better(score, top)) {
+        top = score;
+        start = s;
+      }
     }
+    best.push(top);
+    from.push(start);
   }
 
   const chosen: boolean[] = Array(nights).fill(false);

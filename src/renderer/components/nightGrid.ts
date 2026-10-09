@@ -32,19 +32,30 @@ export function isFullyAvailable(unit: UnitAvailability, nights: readonly string
 }
 
 /**
+ * A night free, but not on the same unit as the available nights next to it (the provider's
+ * `reason: 'split'`): it settles the stay as not free on one unit, without being taken.
+ */
+export function isSplitNight(night: NightStatus): boolean {
+  return night.reason === 'split';
+}
+
+/**
  * What a unit's nights say about the whole stay. Only known nights decide: a night the
  * provider did not report, or one not released yet, never counts as taken.
  * - `free`: every night is available;
  * - `taken`: at least one night is booked or closed;
+ * - `split`: nothing taken, but some nights are free only on another unit than the nights
+ *   next to them, so no one unit is free for the whole stay;
  * - `not-released`: nothing taken, but some nights are not released for booking yet;
  * - `unknown`: nothing taken or unreleased, but the provider did not say about some nights.
  */
-export type UnitStanding = 'free' | 'taken' | 'not-released' | 'unknown';
+export type UnitStanding = 'free' | 'taken' | 'split' | 'not-released' | 'unknown';
 
 export function unitStanding(unit: UnitAvailability, nights: readonly string[]): UnitStanding {
   const states = nights.map((date) => nightOf(unit, date).state);
   if (states.length > 0 && states.every((state) => state === 'available')) return 'free';
   if (states.some((state) => state === 'booked' || state === 'closed')) return 'taken';
+  if (nights.some((date) => isSplitNight(nightOf(unit, date)))) return 'split';
   if (states.some((state) => state === 'not-released')) return 'not-released';
   return 'unknown';
 }
@@ -62,6 +73,8 @@ export interface AvailabilitySummary {
   notReleased: number;
   /** Not settled: the provider did not say about some nights. */
   unknown: number;
+  /** Of `known`: free on some nights, but not on one unit for the whole stay. */
+  split?: number;
   nights: number;
 }
 
@@ -86,6 +99,10 @@ export function summariseAvailability(
     } else if (standing === 'taken') {
       summary.known += 1;
       if (nights.some((date) => nightOf(unit, date).state === 'available')) summary.partly += 1;
+    } else if (standing === 'split') {
+      summary.known += 1;
+      summary.partly += 1;
+      summary.split = (summary.split ?? 0) + 1;
     } else if (standing === 'not-released') summary.notReleased += 1;
     else summary.unknown += 1;
   }
@@ -118,6 +135,9 @@ export function summaryNotes(
 ): string[] {
   const notes: string[] = [];
   const { notReleased, unknown } = summary;
+  if ((summary.split ?? 0) > 0) {
+    notes.push(`Free on some nights, but not on one ${noun.one} for the whole stay.`);
+  }
   if (notReleased > 0 && summary.known > 0) {
     notes.push(
       `${notReleased} more ${plural(notReleased, noun)} ${
@@ -164,14 +184,21 @@ export const NIGHT_STATE_LABELS: Record<NightState, string> = {
   unknown: 'Unknown',
 };
 
+/** A split night in words: "Free on another site". */
+export function splitNightLabel(noun: UnitNoun = DEFAULT_UNIT_NOUN): string {
+  return `Free on another ${noun.one}`;
+}
+
 /**
  * What a cell says. `label` is the whole state in words ("Available, $30"), for screen
  * readers; `short` is the little text shown beside the icon (the price), if any.
  */
 export function nightCellText(
   night: NightStatus,
-  currency?: string
+  currency?: string,
+  noun: UnitNoun = DEFAULT_UNIT_NOUN
 ): { label: string; short?: string } {
+  if (isSplitNight(night)) return { label: splitNightLabel(noun) };
   const label = NIGHT_STATE_LABELS[night.state];
   if (night.state === 'available' && night.price !== undefined && Number.isFinite(night.price)) {
     const price = formatPrice(night.price, currency);

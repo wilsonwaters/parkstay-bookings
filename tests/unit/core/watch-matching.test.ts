@@ -43,6 +43,14 @@ describe('watch matching', () => {
         '3',
       ]);
     });
+
+    it('wants a unit the provider says a kept id names (aliases), and only that one', () => {
+      const regrouped = [{ ...unit('class:117', []), aliases: ['309'] }, unit('class:118', [])];
+      expect(wantedUnits({ unitIds: ['309'] }, regrouped).map((u) => u.unitId)).toEqual([
+        'class:117',
+      ]);
+      expect(wantedUnits({ unitIds: ['350'] }, regrouped)).toEqual([]);
+    });
   });
 
   describe('full matches', () => {

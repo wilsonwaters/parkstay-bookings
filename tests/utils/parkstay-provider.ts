@@ -25,7 +25,11 @@ import {
   FIXED_NOW,
   type MemoryLogger,
 } from './fake-provider';
-import { parkStayFixture, type ParkStayFixtureServer } from './parkstay-fixture-server';
+import {
+  parkStayFixture,
+  type ClassSite,
+  type ParkStayFixtureServer,
+} from './parkstay-fixture-server';
 
 export type ParkStayUnderTest = ProviderWith<'snipes'> &
   ProviderWith<'catalog'> &
@@ -101,4 +105,23 @@ export function luckyBayView(freeSite?: number): RawCampsiteAvailabilityView {
       })
     ),
   };
+}
+
+/**
+ * Lucky Bay's 56 sites for the fixture server's `create_booking`, from the recorded
+ * breakdown: each site's free nights, plus every night of the stay for the sites named in
+ * `freeForStay`. Ids are made up (309 + the site's place by name; the view gave 309 for the
+ * first, "01"), in id order as ParkStay lists them.
+ */
+export function luckyBaySites(freeForStay: string[] = []): ClassSite[] {
+  const [entry] = luckyBayView().sites;
+  const dates = entry.availability.map((night) => night[5]);
+  return (entry.breakdown ?? []).map((row, i) => ({
+    id: 309 + i,
+    name: row.name,
+    campsiteClass: String(entry.type),
+    freeNights: freeForStay.includes(row.name)
+      ? dates
+      : dates.filter((_, offset) => row.availability[offset]?.[0] === true),
+  }));
 }
