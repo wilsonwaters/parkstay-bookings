@@ -2,8 +2,8 @@
  * What a watch finds in one availability check. Pure: everything comes from the one
  * `LocationAvailability` the provider returned, so partial matches cost no extra request.
  *
- * - Wanted units: every unit, or those the watch names by id or by name (legacy watches
- *   stored site names).
+ * - Wanted units: every unit, or those the watch names by id, by name (legacy watches
+ *   stored site names) or by an id the provider used for the unit before (`aliases`).
  * - Price rule: `maxPrice` applies per night, and only when every night of the stay (or of
  *   the run) has a price. Otherwise the unit passes with `priceKnown: false`.
  * - Full match: a unit with every night available that passes the price rule.
@@ -20,14 +20,17 @@ export interface MatchCriteria {
   maxPrice?: number;
 }
 
-/** The units the watch wants: any, or those named by id or name. */
+/** The units the watch wants: any, or those named by id, name or an earlier id. */
 export function wantedUnits(
   criteria: Pick<MatchCriteria, 'unitIds'>,
   units: readonly UnitAvailability[]
 ): UnitAvailability[] {
   if (criteria.unitIds.length === 0) return [...units];
   return units.filter(
-    (unit) => criteria.unitIds.includes(unit.unitId) || criteria.unitIds.includes(unit.unitName)
+    (unit) =>
+      criteria.unitIds.includes(unit.unitId) ||
+      criteria.unitIds.includes(unit.unitName) ||
+      (unit.aliases ?? []).some((alias) => criteria.unitIds.includes(alias))
   );
 }
 

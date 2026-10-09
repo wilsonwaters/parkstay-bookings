@@ -154,6 +154,35 @@ describe('NightGrid', () => {
     ).toEqual(['Unknown', 'Unknown']);
   });
 
+  it('words a split night (free, but on another site) as settled, in the unit noun', async () => {
+    const user = userEvent.setup();
+    renderUnits([
+      {
+        unitId: 'class:117',
+        unitName: 'One site - select on arrival',
+        nights: [
+          { date: '2026-11-06', state: 'available', price: 20, label: '$20.00' },
+          { date: '2026-11-07', state: 'unknown', reason: 'split', price: 20, label: '$20.00' },
+        ],
+        fullyAvailable: false,
+      },
+    ]);
+    expect(screen.getByText('0 of 1 site free for all 2 nights')).toBeInTheDocument();
+    expect(
+      screen.getByText('Free on some nights, but not on one site for the whole stay.')
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/didn't say/)).toBeNull();
+    await user.click(screen.getByRole('switch', { name: 'Fully available only' }));
+    const row = screen.getByRole('rowheader', { name: /^One site/ }).closest('tr')!;
+    expect(
+      within(row)
+        .getAllByRole('cell')
+        .map((cell) => cell.textContent)
+    ).toEqual(['$20Available, $20', 'Free on another site']);
+    const key = within(screen.getByRole('list', { name: 'Key' })).getAllByRole('listitem');
+    expect(key.map((item) => item.textContent)).toEqual(['Available', 'Free on another site']);
+  });
+
   it('counts only known nights, and notes the sites it leaves out', () => {
     const { units } = availabilityFor(STAY, { fully: 2, partly: 0, rest: 'booked' });
     units[2].nights = [{ date: '2026-11-06', state: 'not-released' }];

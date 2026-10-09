@@ -270,11 +270,12 @@ export class WatchService {
         return result({ expired: true, error: 'The arrival date has passed' });
       }
 
-      // One request: every unit, night by night. Wanted units are picked here, by id or name.
+      // One request: every unit, night by night. Wanted units are picked here, by id, name
+      // or an earlier id the provider recognises (`knownUnitIds` → `aliases`).
       const availability = await provider.availability.check(
         watch.location.externalId,
         toStayQuery(watch.stay, watch.stayParams),
-        { signal }
+        { signal, ...(watch.unitIds.length > 0 ? { knownUnitIds: [...watch.unitIds] } : {}) }
       );
       if (signal?.aborted) return result({ error: 'The check was stopped' });
 

@@ -7,7 +7,9 @@
  *
  * A class unit (`class:<id>`, `site-classes.ts`) is held with `campsite_class`: ParkStay
  * refuses a site at such a campground, and itself picks the first site of the class that is
- * free for the whole stay (`utils.py:186-202`).
+ * free for the whole stay (`utils.py:186-202`). A site id kept from before #21 is first
+ * resolved to a class by a fresh check, unless this run's view says the campground lists
+ * sites, so it is never posted as `campsite` where ParkStay books classes.
  *
  * Answers: `{status:'success', pk}`; 400 `{inprogress_booking:true}` when the session
  * already has a booking; 400 "The system is currently closed for bookings."; any other 400
@@ -73,11 +75,15 @@ export interface HoldsDeps {
   ctx: Pick<ProviderContext, 'id' | 'clock' | 'logger'>;
   client: ParkStayClient;
   facts: CampgroundFacts;
-  /** A fully available unit for the stay, from a fresh availability check, if there is one. */
+  /**
+   * A fully available unit for the stay, from a fresh availability check, if there is one:
+   * any unit, or one of those `unitIds` name.
+   */
   findFreeUnit(
     externalId: string,
     stay: HoldRequest['stay'],
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    unitIds?: string[]
   ): Promise<string | undefined>;
 }
 
@@ -106,12 +112,16 @@ export function createBookingForm(
   const postcode = stringParam(request, 'postcode');
   if (postcode) form.postcode = postcode;
 
-  // A campground listed by class is booked by class: a class unit names its class, and a
-  // view said which class an older unit id (a site of the class) is in.
+  // A campground listed by class is booked by class: a class unit names its class; a site id
+  // the view gave names its class, and any site id the class when there is only one.
   const view = facts?.view(externalId);
+  const byClass = !!unitId && !!view && view.siteType !== 0;
   const unitClass =
     classIdOfUnit(unitId) ??
-    (unitId && view && view.siteType !== 0 ? view.classOfUnit.get(unitId) : undefined);
+    (byClass
+      ? (view.classOfUnit.get(unitId) ??
+        (view.classIds.length === 1 ? view.classIds[0] : undefined))
+      : undefined);
   const campsiteClass = request.unitGroupId ?? unitClass;
   if (unitId && !unitClass) form.campsite = unitId;
   else if (campsiteClass) form.campsite_class = campsiteClass;
@@ -127,6 +137,17 @@ export function createHolds({ ctx, client, facts, findFreeUnit }: HoldsDeps): Ho
       const unitId = await findFreeUnit(request.externalId, request.stay, signal);
       if (!unitId) return { ok: false, reason: 'taken', message: 'No site is free for the stay' };
       request = { ...request, unitId };
+    } else if (request.unitId && !request.unitGroupId && !classIdOfUnit(request.unitId)) {
+      // A site id: unless this run's view says the campground lists sites, a fresh check says
+      // which unit it is now (a class, where ParkStay books classes) and whether it is free.
+      if (facts.view(request.externalId)?.siteType !== 0) {
+        const unitId = await findFreeUnit(request.externalId, request.stay, signal, [
+          request.unitId,
+        ]);
+        if (!unitId)
+          return { ok: false, reason: 'taken', message: 'The site is not free for the stay' };
+        request = { ...request, unitId };
+      }
     }
     const form = createBookingForm(request, facts);
     const { status, body } = await client.postApiForm('/create_booking', form, { signal });

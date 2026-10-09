@@ -23,7 +23,14 @@ import {
   startParkStayFixtureServer,
   type ParkStayFixtureServer,
 } from '@tests/utils/parkstay-fixture-server';
-import { createTestParkStay, type TestParkStay } from '@tests/utils/parkstay-provider';
+import {
+  createTestParkStay,
+  LUCKY_BAY_CLASS,
+  LUCKY_BAY_STAY,
+  luckyBaySites,
+  luckyBayView,
+  type TestParkStay,
+} from '@tests/utils/parkstay-provider';
 
 // Only `Date` is faked (2 Oct 2026), so the fixture's November stay is in the future.
 const REAL_TIMERS = [
@@ -61,6 +68,7 @@ describe('SiteSniperService on ParkStay (fixture server)', () => {
     server.requests.length = 0;
     server.views.clear();
     server.overrides.clear();
+    server.classSites.clear();
     server.createBooking = { status: 200, body: parkStayFixture('create-booking-success.json') };
     db = openDatabase(':memory:');
     userId = insertUser(db, 'me@example.com').id;
@@ -135,6 +143,38 @@ describe('SiteSniperService on ParkStay (fixture server)', () => {
       paymentUrl: 'https://parkstay.dbca.wa.gov.au/booking/',
     });
     expect(notifications.notifySnipeHeld).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds the class for a Lucky Bay snipe kept with a site id from before #21 (#21)', async () => {
+    // A fresh run (nothing in memory); the view names site 338, ParkStay takes 05 (id 313).
+    server.views.set('43', luckyBayView(338));
+    server.classSites.set('43', luckyBaySites(['05', '30']));
+    server.classHolds.length = 0;
+    const snipe = await service.create(userId, {
+      providerId: 'parkstay',
+      name: 'Lucky Bay',
+      location: { externalId: '43', name: 'Lucky Bay (Cape Le Grand)' },
+      stay: LUCKY_BAY_STAY,
+      unitIds: ['350'],
+      stayParams: { gearType: 'all', numVehicles: 1, postcode: '6000' },
+      releaseMode: SnipeReleaseMode.CANCELLATION,
+    });
+    repo.activate(snipe.id);
+    repo.updateStatus(snipe.id, SnipeStatus.SNIPING);
+
+    const result = await attempt(snipe.id);
+
+    expect(result).toMatchObject({ result: SnipeResult.HELD, matchedSiteId: LUCKY_BAY_CLASS });
+    const posts = server.requestsTo('/api/create_booking');
+    expect(posts).toHaveLength(1);
+    const form = new URLSearchParams(posts[0].body);
+    expect(form.get('campsite_class')).toBe('117');
+    expect(form.has('campsite')).toBe(false);
+    expect(server.classHolds).toEqual([{ campground: '43', campsiteClass: '117', site: 313 }]);
+    expect(repo.findById(snipe.id)).toMatchObject({
+      status: SnipeStatus.HELD,
+      holdUnitId: LUCKY_BAY_CLASS,
+    });
   });
 
   it('logs the night state of every unit it polled', async () => {

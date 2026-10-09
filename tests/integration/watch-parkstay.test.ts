@@ -19,7 +19,12 @@ import {
   startParkStayFixtureServer,
   type ParkStayFixtureServer,
 } from '@tests/utils/parkstay-fixture-server';
-import { createTestParkStay } from '@tests/utils/parkstay-provider';
+import {
+  createTestParkStay,
+  LUCKY_BAY_CLASS,
+  LUCKY_BAY_STAY,
+  luckyBayView,
+} from '@tests/utils/parkstay-provider';
 
 // Only `Date` is faked (2 Oct 2026), so the fixture's November stay is in the future.
 const REAL_TIMERS = [
@@ -102,6 +107,46 @@ describe('WatchService on ParkStay (fixture server)', () => {
     );
     expect(server.requestsTo('/api/campsite_availablity_view/20/')).toHaveLength(1);
     expect((await service.get(watch.id))?.lastResult).toBe(WatchResult.FOUND);
+  });
+
+  describe('at Lucky Bay, listed by site class (#21)', () => {
+    const luckyBay = (unitIds: string[]): WatchInput => ({
+      providerId: 'parkstay',
+      name: 'Lucky Bay',
+      location: { externalId: '43', name: 'Lucky Bay (Cape Le Grand)' },
+      stay: LUCKY_BAY_STAY,
+      stayParams: { gearType: 'all' },
+      unitIds,
+    });
+
+    beforeEach(() => {
+      // A site is free for the whole stay; the view names site 330.
+      server.views.set('43', luckyBayView(330));
+    });
+
+    it.each([
+      ['the class unit id', LUCKY_BAY_CLASS],
+      ['a site id kept from before #21 that no view named', '350'],
+      ['the site id an earlier view named', '309'],
+    ])('a watch on %s finds the class free', async (_name, unitId) => {
+      const watch = await service.create(userId, luckyBay([unitId]));
+
+      const result = await service.execute(watch.id);
+
+      expect(result.found).toBe(true);
+      expect(result.matches).toEqual([
+        expect.objectContaining({ unitId: LUCKY_BAY_CLASS, partial: false, total: 60 }),
+      ]);
+      // The watch's ids reach the provider, which recognises them without filtering.
+      const [check] = server.requestsTo('/api/campsite_availablity_view/43/');
+      expect(check.query.get('arrival')).toBe('2026/11/06');
+    });
+
+    it('a watch on a site id still finds nothing while no site is free for the stay', async () => {
+      server.views.set('43', luckyBayView());
+      const watch = await service.create(userId, luckyBay(['309']));
+      expect((await service.execute(watch.id)).found).toBe(false);
+    });
   });
 
   it('applies the price limit to the real prices', async () => {

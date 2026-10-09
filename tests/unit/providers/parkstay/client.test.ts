@@ -165,6 +165,21 @@ describe('ParkStayClient against the fixture server', () => {
     ).rejects.toMatchObject({ name: 'ProviderHttpError', status: 429, retryable: true });
   });
 
+  it('turns HTTP 408 into a retryable ProviderHttpError with status 408, for a form POST too', async () => {
+    const timedOut = { status: 408, body: { detail: 'Request timed out.' } };
+    server.overrides.set('/api/campground_map/', timedOut);
+    await expect(client().getApi('/campground_map/')).rejects.toMatchObject({
+      name: 'ProviderHttpError',
+      status: 408,
+      retryable: true,
+    });
+    // A timeout on create_booking is not a refusal either.
+    server.createBooking = timedOut;
+    await expect(
+      client().postApiForm('/create_booking', { arrival: '2026/11/10' })
+    ).rejects.toMatchObject({ name: 'ProviderHttpError', status: 408, retryable: true });
+  });
+
   it('turns a body that is not JSON into ProviderParseError', async () => {
     server.overrides.set('/api/campground_map/', { status: 200, body: undefined });
     // JSON.stringify(undefined) sends an empty body.

@@ -37,7 +37,7 @@ import { toParkStayDate, type ParkStayClient } from './client';
 import { DEFAULT_MAX_ADVANCE_DAYS } from './constants';
 import { parkstayLinks } from './links';
 import { isReleased, type ParkStayReleasePolicy } from './release-policy';
-import { bookableClassNights, classUnitId, isClassListing } from './site-classes';
+import { bookableClassNights, classesOfSiteId, classUnitId, isClassListing } from './site-classes';
 import type {
   RawBulkAvailability,
   RawCampsite,
@@ -142,9 +142,10 @@ function freeSitesByNight(entry: RawCampsite, offsets: readonly number[]): boole
  * free for the whole stay, ParkStay marks every night bookable. Otherwise its breakdown says
  * which sites are free each night: the nights one site can offer as a stay
  * (`bookableClassNights`) are available; a night whose free sites cannot join the available
- * nights next to it is `unknown` (shown available, the core would read one stay that no site
- * can take); and a night with no free site is booked, closed or not released as for a site.
- * Without a breakdown, the class's own labels are read as a site's.
+ * nights next to it is `unknown` with the reason `split` (shown available, the core would
+ * read one stay that no site can take); and a night with no free site is booked, closed or
+ * not released as for a site. Without a breakdown, the class's own labels are read as a
+ * site's.
  */
 export function classNights(
   entry: RawCampsite,
@@ -159,7 +160,7 @@ export function classNights(
     const night = toNightStatus(tuple, released(tuple[5]));
     if (!free || !chosen) return night;
     if (chosen[i]) return { ...night, state: 'available' };
-    if (free.some((site) => site[i])) return { ...night, state: 'unknown' };
+    if (free.some((site) => site[i])) return { ...night, state: 'unknown', reason: 'split' };
     // No site is free; a price label then means taken and closed sites together.
     if (night.state === 'available' || night.state === 'unknown') {
       return { ...night, state: released(tuple[5]) ? 'booked' : 'not-released' };
@@ -237,7 +238,7 @@ export function createAvailability({
     stay: StayQuery,
     options: AvailabilityCheckOptions = {}
   ): Promise<LocationAvailability> {
-    const { signal, unitIds } = options;
+    const { signal, unitIds, knownUnitIds } = options;
     const view = await views.fetch(externalId, stay, signal);
     const nights = eachNight(stay.arrival, stay.departure);
     const today = release.today();
@@ -255,18 +256,17 @@ export function createAvailability({
     // Only the stay's own nights.
     const inStay = (date: string): boolean => date >= stay.arrival && date < stay.departure;
     const byClass = isClassListing(view);
+    // At a class listing, a site id kept from before #21 names a class (`classesOfSiteId`).
+    const asked = [...new Set([...(unitIds ?? []), ...(knownUnitIds ?? [])])];
+    const aliasesOf = (site: RawCampsite): string[] =>
+      byClass ? asked.filter((id) => classesOfSiteId(view, id).includes(site)) : [];
     const wanted = unitIds?.length ? new Set(unitIds) : undefined;
-    const classOfUnit = facts.view(externalId)?.classOfUnit;
-    const isWanted = (unitId: string, site: RawCampsite): boolean =>
-      !wanted ||
-      wanted.has(unitId) ||
-      // A class is also asked for by a site id a view gave for it (unit ids before #21).
-      (byClass && [...wanted].some((id) => classOfUnit?.get(id) === String(site.type)));
 
     const units: UnitAvailability[] = [];
     for (const site of view.sites) {
       const unitId = (byClass && classUnitId(site)) || String(site.id);
-      if (!isWanted(unitId, site)) continue;
+      const aliases = aliasesOf(site);
+      if (wanted && !wanted.has(unitId) && !aliases.some((id) => wanted.has(id))) continue;
       const siteNights = byClass
         ? classNights(site, inStay, released)
         : site.availability
@@ -286,6 +286,7 @@ export function createAvailability({
         unitId,
         unitName: site.name,
         ...(className ? { unitType: className } : {}),
+        ...(aliases.length > 0 ? { aliases } : {}),
         nights: unitNights,
         fullyAvailable,
         ...(total !== undefined ? { total } : {}),

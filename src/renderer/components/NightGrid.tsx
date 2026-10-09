@@ -1,9 +1,18 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
-import { Check, CircleQuestionMark, Clock, Minus, X, type LucideIcon } from 'lucide-react';
-import type { NightState, UnitAvailability } from '../../shared/types/provider.types';
+import {
+  ArrowLeftRight,
+  Check,
+  CircleQuestionMark,
+  Clock,
+  Minus,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
+import type { NightState, NightStatus, UnitAvailability } from '../../shared/types/provider.types';
 import {
   DEFAULT_UNIT_NOUN,
   isFullyAvailable,
+  isSplitNight,
   NIGHT_STATE_LABELS,
   nightCellText,
   nightHeading,
@@ -14,6 +23,7 @@ import {
   summariseAvailability,
   summaryLine,
   summaryNotes,
+  splitNightLabel,
   type UnitNoun,
 } from './nightGrid';
 import { Button, Switch, VisuallyHidden } from './ui';
@@ -38,9 +48,29 @@ const STATE_LOOK: Record<NightState, { icon: LucideIcon; cell: string; glyph: st
   },
 };
 
-const LEGEND_ORDER: NightState[] = ['available', 'booked', 'closed', 'not-released', 'unknown'];
+/** A cell's look: its state, or `split` (free on another unit than the nights next to it). */
+type CellKind = NightState | 'split';
+
+const SPLIT_LOOK = {
+  icon: ArrowLeftRight,
+  cell: 'border border-dashed border-available bg-surface text-available-fg',
+  glyph: 'text-available',
+};
+
+const lookOf = (kind: CellKind) => (kind === 'split' ? SPLIT_LOOK : STATE_LOOK[kind]);
+
+const LEGEND_ORDER: CellKind[] = [
+  'available',
+  'split',
+  'booked',
+  'closed',
+  'not-released',
+  'unknown',
+];
 
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+const cellKind = (night: NightStatus): CellKind => (isSplitNight(night) ? 'split' : night.state);
 
 export interface NightGridProps {
   /** Each unit's nights, as a provider's availability check returns them. */
@@ -65,8 +95,8 @@ export interface NightGridProps {
   children?: ReactNode;
 }
 
-function NightCell({ state, label, short }: { state: NightState; label: string; short?: string }) {
-  const look = STATE_LOOK[state];
+function NightCell({ kind, label, short }: { kind: CellKind; label: string; short?: string }) {
+  const look = lookOf(kind);
   const Icon = look.icon;
   return (
     <td className="px-1 py-1.5 text-center">
@@ -119,9 +149,9 @@ export function NightGrid({
   );
   const shown = showAll ? rows : rows.slice(0, NIGHT_GRID_ROWS);
   const present = useMemo(() => {
-    const states = new Set<NightState>();
-    for (const unit of shown) for (const date of nights) states.add(nightOf(unit, date).state);
-    return LEGEND_ORDER.filter((state) => states.has(state));
+    const kinds = new Set<CellKind>();
+    for (const unit of shown) for (const date of nights) kinds.add(cellKind(nightOf(unit, date)));
+    return LEGEND_ORDER.filter((kind) => kinds.has(kind));
   }, [shown, nights]);
   const notes = units.length > 0 ? summaryNotes(summary, unitNoun, source) : [];
 
@@ -174,11 +204,11 @@ export function NightGrid({
               aria-label="Key"
               className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-fg-secondary"
             >
-              {present.map((state) => {
-                const look = STATE_LOOK[state];
+              {present.map((kind) => {
+                const look = lookOf(kind);
                 const Icon = look.icon;
                 return (
-                  <li key={state} className="flex items-center gap-1.5">
+                  <li key={kind} className="flex items-center gap-1.5">
                     <span
                       aria-hidden="true"
                       className={cx(
@@ -188,7 +218,7 @@ export function NightGrid({
                     >
                       <Icon size={14} className={look.glyph} />
                     </span>
-                    {NIGHT_STATE_LABELS[state]}
+                    {kind === 'split' ? splitNightLabel(unitNoun) : NIGHT_STATE_LABELS[kind]}
                   </li>
                 );
               })}
@@ -247,8 +277,8 @@ export function NightGrid({
                       return (
                         <NightCell
                           key={date}
-                          state={night.state}
-                          {...nightCellText(night, currency)}
+                          kind={cellKind(night)}
+                          {...nightCellText(night, currency, unitNoun)}
                         />
                       );
                     })}

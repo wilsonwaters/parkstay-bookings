@@ -188,9 +188,10 @@ export function createParkStayModules(
       ctx,
       client,
       facts,
-      findFreeUnit: async (externalId, stay, signal) =>
-        (await availability.check(externalId, stay, { signal })).units.find((u) => u.fullyAvailable)
-          ?.unitId,
+      findFreeUnit: async (externalId, stay, signal, unitIds) =>
+        (await availability.check(externalId, stay, { signal, unitIds })).units.find(
+          (u) => u.fullyAvailable
+        )?.unitId,
     }),
     auth: createParkStayAuth(options.endpoints),
     dispose: async () => access.dispose(),

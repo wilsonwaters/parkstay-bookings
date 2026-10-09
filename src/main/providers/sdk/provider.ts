@@ -77,8 +77,16 @@ export type FullCatalogModule = CatalogModule & Required<Pick<CatalogModule, 'li
 export type SearchCatalogModule = CatalogModule & Required<Pick<CatalogModule, 'searchArea'>>;
 
 export interface AvailabilityCheckOptions {
-  /** Only these units. */
+  /**
+   * Only these units: those with one of these ids, or that one of them names by an id the
+   * provider used before (listed in `UnitAvailability.aliases`).
+   */
   unitIds?: string[];
+  /**
+   * Unit ids the caller keeps (a watch's units), to be recognised without filtering: a unit
+   * that one of them names by an earlier id lists it in `UnitAvailability.aliases`.
+   */
+  knownUnitIds?: string[];
   signal?: AbortSignal;
 }
 
