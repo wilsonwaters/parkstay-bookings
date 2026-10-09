@@ -26,6 +26,7 @@ export const WA_VIEW: MapViewState = {
 };
 
 export const KIMBERLEY_BBOX: BoundingBox = [121.5, -19.5, 129, -14];
+export const SOUTH_COAST_BBOX: BoundingBox = [117, -35.5, 124.5, -32.5];
 
 export class FakeMapController implements MapController {
   readonly options: MapControllerOptions;
@@ -33,14 +34,19 @@ export class FakeMapController implements MapController {
   setDataCalls = 0;
   hovered: string | null = null;
   selected: string | null = null;
-  fits: { bbox: BoundingBox; maxZoom?: number }[] = [];
+  fits: { bbox: BoundingBox; maxZoom?: number; animate?: boolean }[] = [];
   flights: { lng: number; lat: number; zoom?: number }[] = [];
   resizes = 0;
   destroyed = false;
   view: MapViewState = WA_VIEW;
   /** Where the popup's content is shown, in the document so tests can find it. */
   readonly popupHost: HTMLDivElement;
+  /** Mapbox's canvas: where keyboard users pan and zoom. */
+  readonly canvas: HTMLCanvasElement;
   popupAt: { lng: number; lat: number } | null = null;
+  /** The place the open popup previews, if it is a preview. */
+  popupPlace: string | null = null;
+  overlayInsets = { top: 0 };
 
   private moveListeners = new Set<(view: MapViewState) => void>();
   private hoverListeners = new Set<(key: string | null) => void>();
@@ -50,8 +56,11 @@ export class FakeMapController implements MapController {
     this.options = options;
     this.popupHost = document.createElement('div');
     this.popupHost.dataset.fakeMapPopup = '';
-    // Inside the map container, as Mapbox puts its popups.
-    options.container.appendChild(this.popupHost);
+    // A focusable canvas and the popups inside the map container, as Mapbox puts them.
+    this.canvas = document.createElement('canvas');
+    this.canvas.tabIndex = 0;
+    this.canvas.setAttribute('aria-label', 'Map');
+    options.container.append(this.canvas, this.popupHost);
   }
 
   setData(items: readonly LocationSummary[]) {
@@ -64,8 +73,8 @@ export class FakeMapController implements MapController {
   setSelected(key: string | null) {
     this.selected = key;
   }
-  fitBounds(bbox: BoundingBox, options: { maxZoom?: number } = {}) {
-    this.fits.push({ bbox, maxZoom: options.maxZoom });
+  fitBounds(bbox: BoundingBox, options: { maxZoom?: number; animate?: boolean } = {}) {
+    this.fits.push({ bbox, maxZoom: options.maxZoom, animate: options.animate });
   }
   flyTo(target: { lng: number; lat: number; zoom?: number }) {
     this.flights.push(target);
@@ -82,13 +91,22 @@ export class FakeMapController implements MapController {
     this.clickListeners.add(listener);
     return () => this.clickListeners.delete(listener);
   }
-  showPopup(at: { lng: number; lat: number }, content: HTMLElement) {
+  showPopup(
+    at: { lng: number; lat: number },
+    content: HTMLElement,
+    options: { place?: string } = {}
+  ) {
     this.popupAt = at;
+    this.popupPlace = options.place ?? null;
     if (content.parentElement !== this.popupHost) this.popupHost.replaceChildren(content);
   }
   hidePopup() {
     this.popupAt = null;
+    this.popupPlace = null;
     this.popupHost.replaceChildren();
+  }
+  setOverlayInsets(insets: { top: number }) {
+    this.overlayInsets = insets;
   }
   getView() {
     return this.view;
@@ -98,14 +116,18 @@ export class FakeMapController implements MapController {
   }
   destroy() {
     this.destroyed = true;
+    this.canvas.remove();
     this.popupHost.remove();
   }
 
-  /** The map stopped moving at `bbox` (a person moved it unless `userInitiated` is false). */
-  emitMove(bbox: BoundingBox, userInitiated = true) {
+  /**
+   * The map stopped moving at `bbox`: a person moved it, unless `userInitiated` is false (a
+   * fit or a fly the app asked for).
+   */
+  emitMove(bbox: BoundingBox, userInitiated = true, zoom = 6) {
     const [west, south, east, north] = bbox;
     this.view = {
-      camera: { lng: (west + east) / 2, lat: (south + north) / 2, zoom: 6 },
+      camera: { lng: (west + east) / 2, lat: (south + north) / 2, zoom },
       bbox,
       userInitiated,
     };

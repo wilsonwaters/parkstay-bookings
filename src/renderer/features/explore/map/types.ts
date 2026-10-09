@@ -8,7 +8,10 @@ export interface MapViewState {
   camera: MapCamera;
   /** `[west, south, east, north]` of what is visible. */
   bbox: BoundingBox;
-  /** The person moved the map (drag, wheel, keys), rather than code (a fit or a fly-to). */
+  /**
+   * The person moved the map (drag, wheel, keys, the zoom buttons, a click on a cluster), rather
+   * than code (the first view, a fit to results, a fly to a place, a pan to fit a popup).
+   */
   userInitiated: boolean;
 }
 
@@ -25,12 +28,18 @@ export type MapClick =
 
 /** The colours the map is drawn with, as CSS colours read from the design tokens. */
 export interface MapTokens {
-  /** ink-900: cluster and dot outlines, hovered pins, text. */
+  /** ink-900: pins, clusters, hovered pills, text on pills. */
   ink: string;
-  /** sand-0: pin fill, text on ink. */
+  /** ink-700: place names on the base map. */
+  ink700: string;
+  /** sand-0: pin rings, cluster counts, pills, label halos, roads at street zooms. */
   white: string;
   /** sand-50: land. */
   sand50: string;
+  /** sand-200: roads and road casings. */
+  sand200: string;
+  /** sand-500: casings of unsealed tracks, the state border. */
+  sand500: string;
   /** ocean-100: water. */
   ocean100: string;
   /** ocean-200: rivers and creeks. */
@@ -50,16 +59,30 @@ export interface MapController {
   setData(items: readonly LocationSummary[]): void;
   setHovered(key: string | null): void;
   setSelected(key: string | null): void;
-  fitBounds(bbox: BoundingBox, options?: { maxZoom?: number }): void;
+  /** Frames `bbox`; `animate: false` jumps (the first view of a search opened from a link). */
+  fitBounds(bbox: BoundingBox, options?: { maxZoom?: number; animate?: boolean }): void;
   flyTo(target: { lng: number; lat: number; zoom?: number }): void;
   /** Subscribes to the end of every move; returns an unsubscribe. */
   onMoveEnd(listener: (view: MapViewState) => void): () => void;
   /** The location under the pointer, or null when it leaves. */
   onFeatureHover(listener: (key: string | null) => void): () => void;
   onFeatureClick(listener: (click: MapClick) => void): () => void;
-  /** Shows `content` in a popup above a point (the preview, or a list of places). */
-  showPopup(at: { lng: number; lat: number }, content: HTMLElement): void;
+  /**
+   * Shows `content` in a popup at a point (the preview, or a list of places), panning the map
+   * if it would not fit. `place` is the location it previews: its name pill is not shown while
+   * the popup is open, as the popup carries the name.
+   */
+  showPopup(
+    at: { lng: number; lat: number },
+    content: HTMLElement,
+    options?: { place?: string }
+  ): void;
   hidePopup(): void;
+  /**
+   * How much of the map's top edge Explore's own controls cover ("Search as I move the map"),
+   * so fits and popups keep clear of them.
+   */
+  setOverlayInsets(insets: { top: number }): void;
   getView(): MapViewState;
   /** Fits the map to its container again, after the container was hidden or resized. */
   resize(): void;

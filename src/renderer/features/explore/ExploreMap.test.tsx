@@ -3,17 +3,21 @@
  * these tests drive the map's side (pins hovered and clicked, the map moved) and check the
  * list, the URL and what Explore asks of the map.
  */
-import { act, configure, screen, waitFor, within } from '@testing-library/react';
+import { act, configure, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { PARKSTAY_LOCATIONS } from '../../../../tests/fixtures/catalog/parkstay-locations';
 import { catalogApi, placeNamed } from '../../../../tests/utils/renderer/catalog';
 import {
   installFakeMap,
   KIMBERLEY_BBOX,
+  SOUTH_COAST_BBOX,
+  WA_VIEW,
   type FakeMaps,
 } from '../../../../tests/utils/renderer/fakeMapController';
 import { currentRoute, renderWithApp } from '../../../../tests/utils/renderer/renderWithApp';
-import { boundsOf } from './map/geo';
+import { boundsOf, centreOf } from './map/geo';
 import { createMapboxController } from './map/mapboxController';
+import { orderPlaces } from './results/order';
+import { CAMERA_WRITE_DELAY_MS } from './state/useExploreParams';
 
 // These render the whole app with 169 places: give async queries room on a busy CI runner.
 configure({ asyncUtilTimeout: 4000 });
@@ -56,12 +60,48 @@ afterEach(() => {
 
 const results = () => screen.getByRole('region', { name: 'Results' });
 const resultsHeading = () => within(results()).getByRole('heading', { level: 2 });
+const cardNames = () =>
+  within(results())
+    .queryAllByRole('link')
+    .map((card) => card.getAttribute('aria-labelledby'))
+    .map((id) => (id ? document.getElementById(id)?.textContent : null));
 const mapRegion = () => screen.getByRole('region', { name: 'Map of places' });
+const inRegion = (region: string) => PARKSTAY_LOCATIONS.filter((p) => p.area?.region === region);
 
-async function renderMap(route = '/') {
+/** Renders the app with the map and waits for the first results. */
+async function renderMap(route = '/', heading: string | RegExp = '169 places') {
   const view = renderWithApp({ route, api: catalogApi() });
-  await screen.findByRole('heading', { level: 2, name: '169 places in map area' });
+  await screen.findByRole('heading', { level: 2, name: heading });
   return view;
+}
+
+/**
+ * Runs `moves` with fake timers, then lets more than the camera's write delay pass, so a
+ * camera write the moves scheduled has certainly happened (or certainly not) by the assert.
+ */
+function afterCameraDelay(moves: () => void) {
+  jest.useFakeTimers();
+  try {
+    moves();
+    act(() => {
+      jest.advanceTimersByTime(CAMERA_WRITE_DELAY_MS * 2);
+    });
+  } finally {
+    jest.useRealTimers();
+  }
+}
+
+/** Collects every text the results heading shows from now on. */
+function watchHeading() {
+  const seen: string[] = [];
+  const record = () => {
+    const text = within(results()).queryByRole('heading', { level: 2 })?.textContent ?? '';
+    if (seen[seen.length - 1] !== text) seen.push(text);
+  };
+  record();
+  const observer = new MutationObserver(record);
+  observer.observe(results(), { childList: true, subtree: true, characterData: true });
+  return { seen, stop: () => observer.disconnect() };
 }
 
 describe('Explore map', () => {
@@ -75,11 +115,50 @@ describe('Explore map', () => {
     expect(screen.queryByText(/The map isn't available in this build/)).not.toBeInTheDocument();
   });
 
-  it('starts at the camera in the URL and writes the camera back after the map stops', async () => {
-    await renderMap('/?map=115.5,-33.5,8');
+  it('starts at the camera in the URL, and writes the camera back after a person moves the map', async () => {
+    // A camera of the person's: the list follows the map from the start.
+    await renderMap('/?map=115.5,-33.5,8', '169 places in map area');
     expect(maps.current.options.camera).toEqual({ lng: 115.5, lat: -33.5, zoom: 8 });
-    maps.current.emitMove(KIMBERLEY_BBOX);
-    await waitFor(() => expect(currentRoute()).toBe('/?map=125.25,-16.75,6'), { timeout: 2000 });
+    afterCameraDelay(() => maps.current.emitMove(KIMBERLEY_BBOX));
+    expect(currentRoute()).toBe('/?map=125.25,-16.75,6');
+  });
+
+  it('never writes a camera the person did not make: the first view, a fit or a fly', async () => {
+    const { user } = await renderMap();
+    // The first view, reported again when the map settles.
+    afterCameraDelay(() => maps.current.emitMove(WA_VIEW.bbox, false));
+    expect(currentRoute()).toBe('/');
+
+    await user.click(screen.getByRole('button', { name: 'Book online' }));
+    await waitFor(() => expect(maps.current.fits).toHaveLength(1));
+    afterCameraDelay(() => maps.current.emitMove(maps.current.fits[0].bbox, false));
+    expect(currentRoute()).toBe('/?online=1');
+  });
+
+  it('drops the camera from the URL for a new search, which fits the map instead', async () => {
+    const { user } = await renderMap('/?map=125.25,-16.75,6', /^169 places in map area$/);
+    await user.click(screen.getByRole('button', { name: 'Book online' }));
+    expect(currentRoute()).toBe('/?online=1');
+    await waitFor(() => expect(maps.current.fits).toHaveLength(1));
+  });
+
+  it('does not let a camera still waiting to be written undo a new search', async () => {
+    await renderMap();
+    afterCameraDelay(() => {
+      maps.current.emitMove(KIMBERLEY_BBOX);
+      fireEvent.click(screen.getByRole('button', { name: 'Book online' }));
+    });
+    expect(currentRoute()).toBe('/?online=1');
+  });
+
+  it('frames the results at once when opened at a search with no camera (a link, or Back)', async () => {
+    await renderMap('/?regions=Pilbara', '39 places');
+    await waitFor(() => expect(maps.current.fits).toHaveLength(1));
+    expect(maps.current.fits[0]).toEqual({
+      bbox: boundsOf(inRegion('Pilbara')),
+      maxZoom: undefined,
+      animate: false,
+    });
   });
 
   it('replaces the map data only when the set of results changes', async () => {
@@ -95,29 +174,32 @@ describe('Explore map', () => {
   });
 
   describe('hover', () => {
+    /** The place on the first card. */
+    const firstPlace = () => placeNamed(cardNames()[0] ?? '');
+
     it('highlights the pin of a hovered or focused card', async () => {
       const { user } = await renderMap();
-      const bungarra = placeNamed('Bungarra');
-      const card = screen.getByRole('link', { name: 'Bungarra' });
+      const place = firstPlace();
+      const card = screen.getByRole('link', { name: place.name });
       await user.hover(card);
-      expect(maps.current.hovered).toBe(bungarra.key);
+      expect(maps.current.hovered).toBe(place.key);
       await user.unhover(card);
       expect(maps.current.hovered).toBeNull();
       act(() => card.focus());
-      expect(maps.current.hovered).toBe(bungarra.key);
+      expect(maps.current.hovered).toBe(place.key);
     });
 
     it('highlights the card of a hovered pin, without scrolling to it', async () => {
       await renderMap();
-      const bungarra = placeNamed('Bungarra');
-      maps.current.emitHover(bungarra.key);
-      expect(screen.getByRole('link', { name: 'Bungarra' })).toHaveAttribute(
+      const place = firstPlace();
+      maps.current.emitHover(place.key);
+      expect(screen.getByRole('link', { name: place.name })).toHaveAttribute(
         'data-highlighted',
         'true'
       );
       expect(scrollIntoView).not.toHaveBeenCalled();
       maps.current.emitHover(null);
-      expect(screen.getByRole('link', { name: 'Bungarra' })).not.toHaveAttribute(
+      expect(screen.getByRole('link', { name: place.name })).not.toHaveAttribute(
         'data-highlighted'
       );
     });
@@ -127,6 +209,8 @@ describe('Explore map', () => {
     it('selects its card, scrolls to it, and opens a preview that leads to the detail page', async () => {
       const { user } = await renderMap();
       const bungarra = placeNamed('Bungarra');
+      // Its card is further down the list than the first 40: it is added to the page.
+      expect(screen.queryByRole('link', { name: 'Bungarra' })).not.toBeInTheDocument();
       maps.current.emitClick({ type: 'location', key: bungarra.key });
 
       await waitFor(() => expect(currentRoute()).toBe('/?sel=parkstay%3A20'));
@@ -142,6 +226,36 @@ describe('Explore map', () => {
       expect(within(preview).getByRole('img', { name: 'ParkStay WA' })).toBeInTheDocument();
       await user.click(within(preview).getByRole('link', { name: 'View details' }));
       expect(currentRoute()).toBe('/places/parkstay/20');
+    });
+
+    it('names the place in the preview only: no name pill on its pin while it is open', async () => {
+      await renderMap();
+      const bungarra = placeNamed('Bungarra');
+      maps.current.emitClick({ type: 'location', key: bungarra.key });
+      await screen.findByRole('group', { name: 'Bungarra' });
+      expect(maps.current.popupPlace).toBe(bungarra.key);
+    });
+
+    it('returns focus to the card from "Close preview", or to the map without a card', async () => {
+      const { user } = await renderMap();
+      const bungarra = placeNamed('Bungarra');
+      maps.current.emitClick({ type: 'location', key: bungarra.key });
+      const preview = await screen.findByRole('group', { name: 'Bungarra' });
+      await user.click(within(preview).getByRole('button', { name: 'Close preview' }));
+      await waitFor(() => expect(currentRoute()).toBe('/'));
+      expect(screen.getByRole('link', { name: 'Bungarra' })).toHaveFocus();
+    });
+
+    it('returns focus to the map when the previewed place has no card in the list', async () => {
+      const kimberleyPlace = inRegion('Kimberley')[0];
+      const { user } = await renderMap(
+        `/?regions=Pilbara&sel=${encodeURIComponent(kimberleyPlace.key)}`,
+        '39 places'
+      );
+      const preview = await screen.findByRole('group', { name: kimberleyPlace.name });
+      await user.click(within(preview).getByRole('button', { name: 'Close preview' }));
+      await waitFor(() => expect(currentRoute()).toBe('/?regions=Pilbara'));
+      expect(maps.current.canvas).toHaveFocus();
     });
 
     it('closes the preview with Escape, or a click on empty map', async () => {
@@ -183,11 +297,36 @@ describe('Explore map', () => {
   });
 
   describe('search as I move the map', () => {
-    it('narrows the list to the map area while on', async () => {
+    it('lists every result until the person moves the map, then the places in the map area', async () => {
       await renderMap();
+      // The app's own moves (the first view, a fit) do not narrow the list.
+      maps.current.emitMove(KIMBERLEY_BBOX, false);
+      expect(resultsHeading()).toHaveTextContent(/^169 places$/);
       maps.current.emitMove(KIMBERLEY_BBOX);
       expect(resultsHeading()).toHaveTextContent(/^7 places in map area$/);
       expect(screen.queryByRole('button', { name: 'Search this area' })).not.toBeInTheDocument();
+    });
+
+    it('shows a new search whole at once, never the old map area, and announces it', async () => {
+      const { user } = await renderMap();
+      maps.current.emitMove(KIMBERLEY_BBOX);
+      expect(resultsHeading()).toHaveTextContent(/^7 places in map area$/);
+      const live = document.querySelector('[aria-live="polite"][aria-atomic="true"]');
+
+      const heading = watchHeading();
+      await user.click(screen.getByRole('button', { name: /^Region/ }));
+      await user.click(screen.getByRole('checkbox', { name: 'South Coast, 17 places' }));
+      await waitFor(() => expect(resultsHeading()).toHaveTextContent(/^17 places$/));
+      // The fit to the South Coast lands: still the whole search, not "in map area".
+      await waitFor(() => expect(maps.current.fits).toHaveLength(1));
+      expect(maps.current.fits[0].bbox).toEqual(boundsOf(inRegion('South Coast')));
+      maps.current.emitMove(SOUTH_COAST_BBOX, false);
+      await waitFor(() => expect(live?.textContent?.trim()).toBe('17 places'));
+      heading.stop();
+      expect(heading.seen).not.toContain('No places in this part of the map');
+      expect(heading.seen.filter((text) => /in map area/.test(text))).toEqual([
+        '7 places in map area',
+      ]);
     });
 
     it('offers "Search this area" when off, and narrows only when it is applied', async () => {
@@ -195,7 +334,7 @@ describe('Explore map', () => {
       await user.click(screen.getByRole('switch', { name: 'Search as I move the map' }));
       expect(currentRoute()).toBe('/?follow=0');
       maps.current.emitMove(KIMBERLEY_BBOX);
-      expect(resultsHeading()).toHaveTextContent(/^169 places in map area$/);
+      expect(resultsHeading()).toHaveTextContent(/^169 places$/);
       await user.click(screen.getByRole('button', { name: 'Search this area' }));
       expect(resultsHeading()).toHaveTextContent(/^7 places in map area$/);
       expect(screen.queryByRole('button', { name: 'Search this area' })).not.toBeInTheDocument();
@@ -211,7 +350,37 @@ describe('Explore map', () => {
       expect(maps.current.fits.at(-1)).toEqual({
         bbox: [112.5, -35.6, 129.2, -13.5],
         maxZoom: undefined,
+        animate: undefined,
       });
+      expect(resultsHeading()).toHaveTextContent(/^169 places$/);
+      expect(currentRoute()).not.toContain('map=');
+    });
+  });
+
+  describe('order', () => {
+    it('lists the places nearest the middle of the map first, then of the map area', async () => {
+      await renderMap();
+      const nearest = (centre: [number, number]) =>
+        orderPlaces(PARKSTAY_LOCATIONS, centre)
+          .slice(0, 3)
+          .map((p) => p.name);
+      // Not "14 Mile" and "3 Mile Camp" (the A to Z start): the middle of WA's places.
+      expect(cardNames().slice(0, 3)).toEqual(nearest(centreOf(boundsOf(PARKSTAY_LOCATIONS)!)));
+      expect(cardNames()[0]).not.toBe('14 Mile');
+
+      maps.current.emitMove(KIMBERLEY_BBOX);
+      const kimberley = orderPlaces(inRegion('Kimberley'), centreOf(KIMBERLEY_BBOX));
+      expect(cardNames()).toEqual(kimberley.map((p) => p.name));
+    });
+
+    it('keeps the order of a text search (most relevant first)', async () => {
+      const { user } = await renderMap();
+      await user.type(screen.getByRole('combobox', { name: 'Where' }), 'Cape');
+      await waitFor(() => expect(resultsHeading()).toHaveTextContent(/^21 places$/));
+      const relevance = PARKSTAY_LOCATIONS.filter((p) =>
+        [p.name, p.area?.name, p.area?.region].some((f) => f?.toLowerCase().includes('cape'))
+      );
+      expect(cardNames()).toEqual(relevance.map((p) => p.name));
     });
   });
 
@@ -250,10 +419,26 @@ describe('Explore map', () => {
       await user.click(screen.getByRole('option', { name: /Lucky Bay \(Cape Le Grand\)/ }));
       await waitFor(() => expect(currentRoute()).toContain(`sel=${encodeURIComponent(lucky.key)}`));
       expect(currentRoute()).not.toContain('q=');
-      expect(maps.current.flights).toEqual([{ lng: lucky.lng, lat: lucky.lat }]);
-      await screen.findByRole('heading', { level: 2, name: '169 places in map area' });
+      // The person chose where the map goes: the camera is in the URL at once, with the place.
+      const fixed = (n: number) => String(Number(n.toFixed(5)));
+      expect(currentRoute()).toContain(`map=${fixed(lucky.lng)},${fixed(lucky.lat)},12`);
+      expect(maps.current.flights).toEqual([{ lng: lucky.lng, lat: lucky.lat, zoom: 12 }]);
+      await screen.findByRole('heading', { level: 2, name: '169 places' });
       // The text typed to find it was a search (fitted); clearing it again is not.
       expect(maps.current.fits).toHaveLength(1);
+      // The fit for the typed text, cut short by the fly, ends first: the list stays whole.
+      maps.current.emitMove(KIMBERLEY_BBOX, false);
+      expect(resultsHeading()).toHaveTextContent(/^169 places$/);
+      // Landed: the list follows the map there.
+      const around: [number, number, number, number] = [
+        lucky.lng - 0.1,
+        lucky.lat - 0.1,
+        lucky.lng + 0.1,
+        lucky.lat + 0.1,
+      ];
+      maps.current.emitMove(around, false, 12);
+      expect(resultsHeading()).toHaveTextContent(/places? in map area$/);
+      expect(cardNames()[0]).toBe(lucky.name);
     });
   });
 

@@ -96,6 +96,19 @@ describe('Explore (list-only)', () => {
     expect(createMapboxController).not.toHaveBeenCalled();
   });
 
+  it('lists places A to Z without a map, names that start with a number last', async () => {
+    const { user } = await renderExplore();
+    const names = () =>
+      cards().map(
+        (card) => document.getElementById(card.getAttribute('aria-labelledby')!)?.textContent
+      );
+    expect(names().slice(0, 3)).toEqual(['Amherst Point', 'Baden Powell', 'Bald Hill']);
+    for (let page = 0; page < 4; page += 1) {
+      await user.click(screen.getByRole('button', { name: 'Show more places' }));
+    }
+    expect(names().slice(-2)).toEqual(['3 Mile Camp', '14 Mile']);
+  });
+
   it('adds 40 more cards with "Show more places"', async () => {
     const { user } = await renderExplore();
     expect(screen.getByText('Showing 40 of 169')).toBeInTheDocument();

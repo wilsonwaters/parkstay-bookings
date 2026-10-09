@@ -7,6 +7,7 @@ import { Button, EmptyState, Skeleton } from '../../../components/ui';
 import { cx } from '../../../components/ui/cx';
 import { useMinWidth } from '../../../components/ui/useMinWidth';
 import { useIsHighlighted } from '../state/highlight';
+import { cardId } from './cardId';
 
 /** Cards rendered at first, and added by each "Show more places". */
 export const PAGE_SIZE = 40;
@@ -31,6 +32,12 @@ export interface ResultsListProps {
   /** `split`: beside the map; `full`: the whole width (list-only, or a narrow window). */
   width: 'split' | 'full';
   selectedKey: string | null;
+  /**
+   * A place chosen on the map or in Where: its card is added to the page if it is further down
+   * the list, then scrolled into view, and `onRevealed` is called.
+   */
+  revealKey?: string | null;
+  onRevealed?: () => void;
   /** Changes when a new search replaces the results, so the list starts again at 40. */
   resetKey: string;
   onHighlight: (key: string | null) => void;
@@ -41,10 +48,7 @@ export interface ResultsListProps {
   notices?: ReactNode;
 }
 
-/** The DOM id of a location's card, so a pin can scroll it into view. */
-export function cardId(key: string): string {
-  return `place-${key.replace(/[^A-Za-z0-9_-]/g, '_')}`;
-}
+export { cardId };
 
 /** A card that re-renders only when its own highlight or selection changes. */
 const ResultCard = memo(function ResultCard({
@@ -111,6 +115,8 @@ export function ResultsList({
   inMapArea,
   width,
   selectedKey,
+  revealKey = null,
+  onRevealed,
   resetKey,
   onHighlight,
   onRetry,
@@ -137,6 +143,19 @@ export function ResultsList({
     const index = items.findIndex((item) => item.key === selectedKey);
     if (index >= shown) setShown(Math.ceil((index + 1) / PAGE_SIZE) * PAGE_SIZE);
   }, [selectedKey, items, shown]);
+
+  // Bring a chosen place's card into view, once it is on the page.
+  useEffect(() => {
+    if (!revealKey) return;
+    const index = items.findIndex((item) => item.key === revealKey);
+    if (index < 0) return;
+    if (index >= shown) {
+      setShown(Math.ceil((index + 1) / PAGE_SIZE) * PAGE_SIZE);
+      return;
+    }
+    document.getElementById(cardId(revealKey))?.scrollIntoView?.({ block: 'nearest' });
+    onRevealed?.();
+  }, [revealKey, items, shown, onRevealed]);
 
   const busy = state.kind === 'loading' || state.kind === 'syncing';
   const count = items.length;

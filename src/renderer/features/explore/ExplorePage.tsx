@@ -32,14 +32,15 @@ import { cx } from '../../components/ui/cx';
 import { useMinWidth } from '../../components/ui/useMinWidth';
 import { buildFacets, type ExploreFilters } from './filters/facets';
 import { FilterRow } from './filters/FilterRow';
-import { boundsOf, WA_BOUNDS, withinBbox } from './map/geo';
+import { boundsOf, centreOf, PLACE_ZOOM, WA_BOUNDS, withinBbox } from './map/geo';
 import { detectMapSupport } from './map/mapSupport';
 import type { FitRequest, FlyRequest } from './map/MapView';
-import type { MapViewState } from './map/types';
-import { cardId, ResultsList, type ResultsState } from './results/ResultsList';
+import type { MapCamera, MapViewState } from './map/types';
+import { orderPlaces } from './results/order';
+import { ResultsList, type ResultsState } from './results/ResultsList';
 import { SearchPill } from './search/SearchPill';
 import { buildSuggestionIndex, type Suggestion } from './search/suggestions';
-import { hasActiveFilters, type KnownValues } from './state/exploreParams';
+import { hasActiveFilters, type ExploreParams, type KnownValues } from './state/exploreParams';
 import { createHighlightStore, HighlightContext } from './state/highlight';
 import { useExploreParams } from './state/useExploreParams';
 import { useOnline } from './state/useOnline';
@@ -60,11 +61,34 @@ const HEADER_HEIGHT = 64;
 const unique = (values: Iterable<string | undefined>) =>
   [...new Set(values)].filter((v): v is string => Boolean(v)).sort();
 
-/** The last results that loaded, kept on screen while a later search fails. */
-function useLastResult(data: CatalogSearchResult | undefined, failed: boolean) {
-  const last = useRef<CatalogSearchResult | undefined>(undefined);
-  if (data && !failed) last.current = data;
-  return last.current;
+/** Results on screen: the search they answer, and which results they are (see `epoch`). */
+interface ShownResult {
+  data: CatalogSearchResult;
+  key: string;
+  /**
+   * Counts the searches shown, from 0. The map area applies to one epoch: a new search starts
+   * with the whole list, even when it returns to an earlier search.
+   */
+  epoch: number;
+}
+
+/**
+ * The results to show: the latest that loaded for the current search, else the last good ones
+ * (kept while a new search loads, or after one fails).
+ */
+function useShownResult(
+  search: { data?: CatalogSearchResult; isError: boolean; isPlaceholderData: boolean },
+  key: string
+): ShownResult | undefined {
+  const shown = useRef<ShownResult | undefined>(undefined);
+  const { data, isError, isPlaceholderData } = search;
+  if (data && !isError && !isPlaceholderData) {
+    const last = shown.current;
+    if (!last) shown.current = { data, key, epoch: 0 };
+    else if (last.key !== key) shown.current = { data, key, epoch: last.epoch + 1 };
+    else if (last.data !== data) shown.current = { ...last, data };
+  }
+  return shown.current;
 }
 
 /**
@@ -117,8 +141,10 @@ export default function ExplorePage() {
 
   const search = useCatalogSearch(query);
   const textSearch = useCatalogSearch({ text: params.q }, { enabled: Boolean(params.q) });
-  const result = useLastResult(search.data, search.isError);
+  const shown = useShownResult(search, queryKey);
+  const result = shown?.data;
   const results = result?.items ?? EMPTY;
+  const epoch = shown?.epoch ?? null;
   // An empty catalogue is either waiting for its first sync (5 s after launch), syncing, or
   // failed: ask main which, and keep asking while it is empty.
   const catalogueEmpty = Boolean(allQuery.data && allQuery.data.total === 0);
@@ -146,104 +172,168 @@ export default function ExplorePage() {
   const [mapAttempt, setMapAttempt] = useState(0);
   const mapMode = support.available && !mapFailure;
 
+  // The list follows the map only once the person has moved it, over the results on screen
+  // (`movedFor` is their epoch): a view the app made (the first one, a fit to new results)
+  // never narrows the list or reaches the URL. Opening Explore at a camera in the URL counts
+  // as moved: it was the person's.
   const [liveBbox, setLiveBbox] = useState<BoundingBox | null>(null);
-  const [appliedArea, setAppliedArea] = useState<BoundingBox | null>(null);
-  const area = mapMode ? (params.follow ? liveBbox : appliedArea) : null;
+  const [movedFor, setMovedFor] = useState<number | null>(() => (params.map ? 0 : null));
+  const [applied, setApplied] = useState<{ epoch: number; bbox: BoundingBox } | null>(null);
+  const area: BoundingBox | null =
+    !mapMode || epoch === null
+      ? null
+      : params.follow
+        ? movedFor === epoch
+          ? liveBbox
+          : null
+        : applied?.epoch === epoch
+          ? applied.bbox
+          : null;
   const visible = useMemo(
     () => (area ? results.filter((item) => withinBbox(item, area)) : results),
     [results, area]
+  );
+  const epochRef = useRef(epoch);
+  epochRef.current = epoch;
+  const lastCamera = useRef<MapCamera | null>(params.map);
+  /**
+   * A place chosen in Where: the map's stop there is the person's view. (A fit the fly cut
+   * short also ends a move; only the landing at the place counts.)
+   */
+  const flyingTo = useRef<{ lng: number; lat: number } | null>(null);
+
+  // The list's order: a text search keeps its relevance order; otherwise nearest the middle of
+  // the map area (or of the results the map shows), or by name without a map.
+  const resultsBounds = useMemo(() => boundsOf(results), [results]);
+  const [centreLng, centreLat] = mapMode ? centreOf(area ?? resultsBounds ?? WA_BBOX) : [];
+  const listed = useMemo(
+    () =>
+      params.q
+        ? visible
+        : orderPlaces(
+            visible,
+            centreLng === undefined || centreLat === undefined ? null : [centreLng, centreLat]
+          ),
+    [visible, params.q, centreLng, centreLat]
   );
 
   const requestId = useRef(0);
   const [fitRequest, setFitRequest] = useState<FitRequest | null>(null);
   const [flyRequest, setFlyRequest] = useState<FlyRequest | null>(null);
-  const fit = useCallback((bbox: BoundingBox, maxZoom?: number) => {
+  const fit = useCallback((bbox: BoundingBox, options: { animate?: boolean } = {}) => {
     requestId.current += 1;
-    setFitRequest({ id: requestId.current, bbox, maxZoom });
+    setFitRequest({ id: requestId.current, bbox, animate: options.animate });
   }, []);
 
-  // A new search (text or filters, not the map area) fits the map to its results.
-  const settledQuery = useRef(queryKey);
+  // A new search (text or filters, not the map area) fits the map to its results. Opened at a
+  // search with no camera of the person's (a link, or Back), the first results are framed
+  // at once; the app's own first view of all of WA is not a search.
+  const settledQuery = useRef<string | null>(params.map || !searching ? queryKey : null);
   const noFitFor = useRef<string | null>(null);
   useEffect(() => {
     if (!search.isSuccess || search.isPlaceholderData || settledQuery.current === queryKey) return;
+    const first = settledQuery.current === null;
     settledQuery.current = queryKey;
-    setAppliedArea(null);
     if (noFitFor.current === queryKey) {
       noFitFor.current = null;
       return;
     }
     const bbox = boundsOf(search.data.items);
-    if (bbox) fit(bbox);
+    if (bbox) fit(bbox, { animate: !first });
   }, [queryKey, search.isSuccess, search.isPlaceholderData, search.data, fit]);
 
   const onView = useCallback(
     (view: MapViewState) => {
       setLiveBbox(view.bbox);
-      setCamera(view.camera);
+      lastCamera.current = view.camera;
+      if (view.userInitiated) setCamera(view.camera);
+      const target = flyingTo.current;
+      const landed =
+        target !== null &&
+        Math.abs(view.camera.lng - target.lng) < 1e-6 &&
+        Math.abs(view.camera.lat - target.lat) < 1e-6;
+      if (view.userInitiated || landed) {
+        flyingTo.current = null;
+        setMovedFor(epochRef.current);
+      }
     },
     [setCamera]
   );
 
+  /** A new search: the camera in the URL gives way to the fit to its results. */
+  const updateSearch = useCallback(
+    (patch: Partial<ExploreParams>) => update({ ...patch, map: null }),
+    [update]
+  );
+
   // ---- Highlight and selection -----------------------------------------------------------
   const [highlight] = useState(createHighlightStore);
-  const scrollTo = useRef<string | null>(null);
+  /** A place chosen on the map or in Where, whose card the list brings into view. */
+  const [reveal, setReveal] = useState<string | null>(null);
+  const onRevealed = useCallback(() => setReveal(null), []);
 
   const select = useCallback(
     (key: string | null) => {
-      scrollTo.current = key;
+      setReveal(key);
       update({ sel: key });
     },
     [update]
   );
-
-  // Bring the selected card into view once it is on the page.
-  useEffect(() => {
-    const key = scrollTo.current;
-    if (!key || params.sel !== key) return;
-    const card = document.getElementById(cardId(key));
-    if (card) {
-      card.scrollIntoView?.({ block: 'nearest' });
-      scrollTo.current = null;
-    }
-  });
 
   const onSuggestion = (suggestion: Suggestion) => {
     if (suggestion.kind === 'region') {
       const unchanged =
         !params.q && params.regions.length === 1 && params.regions[0] === suggestion.target;
       if (unchanged) {
-        const bbox = boundsOf(results);
-        if (bbox) fit(bbox);
-      } else update({ regions: [suggestion.target], q: '' });
+        // The same region again: frame it again, as a new search would.
+        setMovedFor(null);
+        update({ map: null }, { replace: true });
+        if (resultsBounds) fit(resultsBounds);
+      } else updateSearch({ regions: [suggestion.target], q: '' });
     } else if (suggestion.kind === 'area') {
-      update({ q: suggestion.target });
+      updateSearch({ q: suggestion.target });
     } else {
       const place = catalogueByKey.get(suggestion.target);
       // The text typed to find the place is cleared; that is not a new search to fit to.
       if (params.q)
         noFitFor.current = JSON.stringify(normaliseCatalogQuery({ ...query, text: '' }));
-      scrollTo.current = suggestion.target;
-      update({ sel: suggestion.target, q: '' });
+      setReveal(suggestion.target);
       if (place && hasMapLocation(place)) {
-        requestId.current += 1;
-        setFlyRequest({ id: requestId.current, lng: place.lng, lat: place.lat });
-      }
+        // The person chose where the map goes: the camera is theirs (in the URL, with the
+        // selection, in one history entry), and the list follows it once the map lands.
+        const camera = {
+          lng: place.lng,
+          lat: place.lat,
+          zoom: Math.max(lastCamera.current?.zoom ?? 0, PLACE_ZOOM),
+        };
+        update({ sel: suggestion.target, q: '', map: mapMode ? camera : null });
+        if (mapMode) {
+          flyingTo.current = { lng: camera.lng, lat: camera.lat };
+          requestId.current += 1;
+          setFlyRequest({ id: requestId.current, ...camera });
+        }
+      } else update({ sel: suggestion.target, q: '' });
     }
   };
 
   // ---- Actions ---------------------------------------------------------------------------
   const clearFilters = () =>
-    update({ providers: [], kinds: [], regions: [], amenities: [], online: false });
+    updateSearch({ providers: [], kinds: [], regions: [], amenities: [], online: false });
   const clearSearch = () =>
-    update({ q: '', providers: [], kinds: [], regions: [], amenities: [], online: false });
+    updateSearch({ q: '', providers: [], kinds: [], regions: [], amenities: [], online: false });
   const showAll = () => {
-    setAppliedArea(null);
+    setMovedFor(null);
+    setApplied(null);
+    update({ map: null }, { replace: true });
     fit(WA_BBOX);
   };
   const setFollow = (follow: boolean) => {
-    setAppliedArea(follow ? null : liveBbox);
+    // Turning it off keeps the list as it is; turning it on follows the map from here.
+    setApplied(!follow && area && epoch !== null ? { epoch, bbox: area } : null);
     update({ follow });
+  };
+  const searchArea = (bbox: BoundingBox) => {
+    if (epoch !== null) setApplied({ epoch, bbox });
   };
 
   const onDates = ({ arrival, departure }: { arrival?: string; departure?: string }) =>
@@ -275,7 +365,8 @@ export default function ExplorePage() {
   else if (area && visible.length === 0) state = { kind: 'empty-area' };
   else state = { kind: 'results' };
 
-  // ---- Announce the count after a search or filter change ----------------------------------
+  // ---- Announce the count once a new search's results are on screen ---------------------------
+  // (Not for the first results, and not for map moves.)
   const message =
     state.kind === 'results'
       ? `${placesLabel(visible.length)}${area ? ' in map area' : ''}`
@@ -284,15 +375,20 @@ export default function ExplorePage() {
         : state.kind === 'empty-area'
           ? 'No places in this part of the map'
           : null;
-  const announcedQuery = useRef(queryKey);
+  const announcedEpoch = useRef<number | null>(null);
   useEffect(() => {
-    if (!message || search.isFetching || announcedQuery.current === queryKey) return undefined;
+    if (epoch === null) return undefined;
+    if (announcedEpoch.current === null) {
+      announcedEpoch.current = epoch;
+      return undefined;
+    }
+    if (!message || announcedEpoch.current === epoch) return undefined;
     const timer = setTimeout(() => {
-      announcedQuery.current = queryKey;
+      announcedEpoch.current = epoch;
       announce(message);
     }, ANNOUNCE_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [message, queryKey, search.isFetching, announce]);
+  }, [message, epoch, announce]);
 
   // ---- Below 1024 px: one pane at a time --------------------------------------------------
   const listPaneRef = useRef<HTMLDivElement>(null);
@@ -404,7 +500,7 @@ export default function ExplorePage() {
               departure: params.departure ?? undefined,
             }}
             guests={guests}
-            onQueryChange={(q) => update({ q })}
+            onQueryChange={(q) => updateSearch({ q })}
             onSuggestion={onSuggestion}
             onDatesChange={onDates}
             onGuestsChange={onGuests}
@@ -414,7 +510,7 @@ export default function ExplorePage() {
               params={params}
               facets={facets}
               showKinds={facets.kinds.length > 1}
-              onChange={(patch) => update(patch)}
+              onChange={updateSearch}
               onClearAll={clearFilters}
             />
           </div>
@@ -434,10 +530,12 @@ export default function ExplorePage() {
           >
             <ResultsList
               state={state}
-              items={visible}
+              items={listed}
               inMapArea={Boolean(area)}
               width={mapMode ? 'split' : 'full'}
               selectedKey={params.sel}
+              revealKey={reveal}
+              onRevealed={onRevealed}
               resetKey={queryKey}
               onHighlight={highlight.set}
               onRetry={() => refresh.mutate(undefined)}
@@ -481,7 +579,7 @@ export default function ExplorePage() {
                   onView={onView}
                   onSelect={select}
                   onFollowChange={setFollow}
-                  onSearchArea={setAppliedArea}
+                  onSearchArea={searchArea}
                   onFailed={setMapFailure}
                 />
               </Suspense>

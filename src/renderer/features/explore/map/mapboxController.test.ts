@@ -30,9 +30,12 @@ class FakeMap {
   fitBounds = jest.fn();
   flyTo = jest.fn();
   easeTo = jest.fn();
+  panBy = jest.fn();
   resize = jest.fn();
   remove = jest.fn();
   zoom = 5;
+  moving = false;
+  container = document.createElement('div');
 
   constructor(options: Record<string, unknown>) {
     this.options = options;
@@ -67,6 +70,12 @@ class FakeMap {
   }
   getCanvas() {
     return this.canvas;
+  }
+  getContainer() {
+    return this.container;
+  }
+  isMoving() {
+    return this.moving;
   }
   getSource(id: string) {
     return this.sources.get(id);
@@ -145,8 +154,12 @@ class FakePopup {
   open = false;
   content: HTMLElement | null = null;
   lngLat: [number, number] | null = null;
+  element = document.createElement('div');
   constructor(readonly options: unknown) {
     FakePopup.last = this;
+  }
+  getElement() {
+    return this.element;
   }
   setLngLat(lngLat: [number, number]) {
     this.lngLat = lngLat;
@@ -154,6 +167,7 @@ class FakePopup {
   }
   setDOMContent(content: HTMLElement) {
     this.content = content;
+    this.element.replaceChildren(content);
     return this;
   }
   addTo() {
@@ -187,8 +201,11 @@ jest.mock('mapbox-gl', () => {
 
 const TOKENS: MapTokens = {
   ink: 'token-ink',
+  ink700: 'token-ink-700',
   white: 'token-white',
   sand50: 'token-sand-50',
+  sand200: 'token-sand-200',
+  sand500: 'token-sand-500',
   ocean100: 'token-ocean-100',
   ocean200: 'token-ocean-200',
   eucalypt50: 'token-eucalypt-50',
@@ -271,7 +288,7 @@ describe('createMapboxController', () => {
     expect(map.options).not.toHaveProperty('bounds');
   });
 
-  it('adds the pill image, the clustered source and the four layers when the style loads', async () => {
+  it('adds the pill image, the clustered source and the five layers when the style loads', async () => {
     const { map } = await loaded();
     expect(map.images.get(PILL_IMAGE_ID)).toMatchObject({ options: { sdf: true } });
     expect(map.sources.has(SOURCE_ID)).toBe(true);
@@ -386,8 +403,10 @@ describe('createMapboxController', () => {
       callback(null, [leaf('a:1', [120, -30]), leaf('a:2', [121, -31])])
     );
     source.getClusterExpansionZoom.mockImplementation((_id, callback) => callback(null, 8));
-    map.fire('click', { point: { x: 0, y: 0 }, lngLat: { lng: 120, lat: -30 } });
-    expect(map.easeTo).toHaveBeenCalledWith({ center: [120, -30], zoom: 8 });
+    const originalEvent = new MouseEvent('click');
+    map.fire('click', { point: { x: 0, y: 0 }, lngLat: { lng: 120, lat: -30 }, originalEvent });
+    // The person's click moved the map: the move ends as theirs (written to the URL).
+    expect(map.easeTo).toHaveBeenCalledWith({ center: [120, -30], zoom: 8 }, { originalEvent });
 
     source.getClusterLeaves.mockImplementation((_id, _limit, _offset, callback) =>
       callback(null, [leaf('a:1', [120, -30]), leaf('a:2', [120, -30])])
@@ -424,30 +443,80 @@ describe('createMapboxController', () => {
     expect(controller.getView().bbox).toEqual([110, -14, 116, -10]);
   });
 
-  it('fits results up to zoom 11, flies in, shows popups and cleans up', async () => {
+  it('fits results up to zoom 11, clear of the controls on top of the map, and flies in', async () => {
     const { controller, map } = await loaded();
+    const bounds = [
+      [115, -34],
+      [116, -33],
+    ];
     controller.fitBounds([115, -34, 116, -33]);
-    expect(map.fitBounds).toHaveBeenCalledWith(
-      [
-        [115, -34],
-        [116, -33],
-      ],
-      { padding: 48, maxZoom: 11 }
-    );
+    expect(map.fitBounds).toHaveBeenLastCalledWith(bounds, {
+      padding: { top: 48, right: 48, bottom: 48, left: 48 },
+      maxZoom: 11,
+    });
+    // "Search as I move the map" covers the top 64 px: fits keep 16 px below it.
+    controller.setOverlayInsets({ top: 64 });
+    controller.fitBounds([115, -34, 116, -33], { animate: false });
+    expect(map.fitBounds).toHaveBeenLastCalledWith(bounds, {
+      padding: { top: 80, right: 48, bottom: 48, left: 48 },
+      maxZoom: 11,
+      animate: false,
+    });
     controller.flyTo({ lng: 115, lat: -33 });
     expect(map.flyTo).toHaveBeenCalledWith({ center: [115, -33], zoom: 12 });
+  });
+
+  it("shows a place's preview in a popup instead of its name pill, and cleans up", async () => {
+    const { controller, map } = await loaded();
+    controller.setData([PLACE]);
+    controller.setSelected(PLACE.key);
+    const [marker] = FakeMarker.instances;
+    expect(marker.onMap).toBe(true);
 
     const content = document.createElement('div');
-    controller.showPopup({ lng: 115, lat: -33 }, content);
+    controller.showPopup({ lng: 115.21, lat: -34.09 }, content, { place: PLACE.key });
     expect(FakePopup.last.open).toBe(true);
     expect(FakePopup.last.content).toBe(content);
-    expect(FakePopup.last.lngLat).toEqual([115, -33]);
+    expect(FakePopup.last.lngLat).toEqual([115.21, -34.09]);
+    // The preview names the place: no DOM pill, and its map pill is faded out.
+    expect(marker.onMap).toBe(false);
+    expect(map.featureState.get(PLACE.key)).toMatchObject({ previewed: true });
+    controller.setHovered(PLACE.key);
+    expect(marker.onMap).toBe(false);
+
     controller.hidePopup();
     expect(FakePopup.last.open).toBe(false);
+    expect(map.featureState.get(PLACE.key)).toMatchObject({ previewed: false });
+    expect(marker.onMap).toBe(true);
 
     controller.destroy();
     expect(map.remove).toHaveBeenCalledTimes(1);
     controller.destroy();
     expect(map.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('pans a popup that would not fit into the map, after any move in progress', async () => {
+    const { controller, map } = await loaded();
+    const rect = (top: number, left: number, bottom: number, right: number) =>
+      ({ top, left, bottom, right, width: right - left, height: bottom - top }) as DOMRect;
+    jest.spyOn(map.container, 'getBoundingClientRect').mockReturnValue(rect(219, 770, 900, 1425));
+    const popupBox = jest
+      .spyOn(FakePopup.last.element, 'getBoundingClientRect')
+      .mockReturnValue(rect(578, 951, 911, 1259));
+    controller.setOverlayInsets({ top: 52 });
+
+    // Flying to the place: wait for the landing.
+    map.moving = true;
+    controller.showPopup({ lng: 115, lat: -33 }, document.createElement('div'));
+    expect(map.panBy).not.toHaveBeenCalled();
+    map.moving = false;
+    map.fire('moveend', {});
+    // 11 px past the bottom, plus the 12 px margin.
+    expect(map.panBy).toHaveBeenCalledWith([0, 23], { duration: 250 });
+
+    // In view after the pan: no more panning.
+    popupBox.mockReturnValue(rect(555, 951, 888, 1259));
+    map.fire('moveend', {});
+    expect(map.panBy).toHaveBeenCalledTimes(1);
   });
 });

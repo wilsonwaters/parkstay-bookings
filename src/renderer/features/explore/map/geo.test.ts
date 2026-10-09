@@ -1,4 +1,12 @@
-import { boundsOf, hasMapLocation, pillLabel, toFeatureCollection, withinBbox } from './geo';
+import {
+  boundsOf,
+  centreOf,
+  hasMapLocation,
+  nudgeIntoView,
+  pillLabel,
+  toFeatureCollection,
+  withinBbox,
+} from './geo';
 
 const at = (lng: number, lat: number) => ({ lng, lat });
 
@@ -62,5 +70,40 @@ describe('map geometry', () => {
     expect(pillLabel('Lucky Bay')).toBe('Lucky Bay');
     const [feature] = toFeatureCollection([{ key: 'k:1', name, lng: 115, lat: -34 }]).features;
     expect(feature.properties.name).toBe(name);
+  });
+
+  it('finds the middle of a box', () => {
+    expect(centreOf([112.5, -35.6, 129.2, -13.5])).toEqual([120.85, -24.55]);
+  });
+
+  describe('nudging a popup into the map', () => {
+    const map = { top: 200, right: 1400, bottom: 900, left: 760 };
+    const insets = { top: 64, right: 12, bottom: 12, left: 12 };
+    const box = (top: number, left: number, height = 300, width = 288) => ({
+      top,
+      left,
+      bottom: top + height,
+      right: left + width,
+    });
+
+    it('leaves a popup that fits alone', () => {
+      expect(nudgeIntoView(box(300, 900), map, insets)).toEqual([0, 0]);
+    });
+
+    it('pans down past the bottom edge, and up under the controls at the top', () => {
+      // 11 px past the bottom, plus the 12 px margin.
+      expect(nudgeIntoView(box(611, 900), map, insets)).toEqual([0, 23]);
+      // Under the "Search as I move the map" pill.
+      expect(nudgeIntoView(box(220, 900), map, insets)).toEqual([0, -44]);
+    });
+
+    it('pans sideways past the left and right edges', () => {
+      expect(nudgeIntoView(box(300, 700), map, insets)).toEqual([-72, 0]);
+      expect(nudgeIntoView(box(300, 1200), map, insets)).toEqual([100, 0]);
+    });
+
+    it('keeps the top in view when the popup is taller than the map', () => {
+      expect(nudgeIntoView(box(400, 900, 800), map, insets)).toEqual([0, 136]);
+    });
   });
 });

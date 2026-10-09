@@ -10,7 +10,7 @@
 
 import type { GeoJSONSource, Map as MapboxMap, MapMouseEvent, Marker, Popup } from 'mapbox-gl';
 import type { BoundingBox, LocationSummary } from '../../../../shared/types/catalog.types';
-import { pillLabel, toFeatureCollection, WA_BOUNDS } from './geo';
+import { nudgeIntoView, PLACE_ZOOM, pillLabel, toFeatureCollection, WA_BOUNDS } from './geo';
 import {
   buildLayers,
   CLUSTER_MAX_ZOOM,
@@ -28,8 +28,13 @@ import { applyWaPalette } from './waPalette';
 export const STYLE_URL = 'mapbox://styles/mapbox/outdoors-v12';
 /** How long the first load may take before Explore gives up and shows the list. */
 export const LOAD_TIMEOUT_MS = 30_000;
-const FIT_PADDING = 48;
-const FLY_ZOOM = 12;
+/** Space kept around fitted results, and below Explore's controls at the top. */
+export const FIT_PADDING = 48;
+const FIT_GAP = 16;
+/** Space kept between a popup and the map's edges (or Explore's controls). */
+export const POPUP_MARGIN = 12;
+/** How long a pan to fit a popup takes. Mapbox jumps instead under reduced motion. */
+const POPUP_PAN_MS = 250;
 
 type MapboxModule = typeof import('mapbox-gl');
 
@@ -95,7 +100,10 @@ export const createMapboxController: CreateMapController = async ({
   let collection = toFeatureCollection([]);
   let hovered: string | null = null;
   let selected: string | null = null;
+  /** The place whose preview is open. */
+  let previewed: string | null = null;
   let pointerKey: string | null = null;
+  let insetTop = 0;
   let destroyed = false;
 
   const moveListeners = new Set<(view: MapViewState) => void>();
@@ -109,7 +117,8 @@ export const createMapboxController: CreateMapController = async ({
   };
 
   // The one DOM pill for the hovered or selected place: on top of everything, even when the
-  // place is inside a cluster. Decorative: the card and the preview carry its name.
+  // place is inside a cluster. Decorative: the card and the preview carry its name. Not shown
+  // for the place whose preview is open, which already names it.
   const markerElement = document.createElement('div');
   markerElement.setAttribute('aria-hidden', 'true');
   markerElement.setAttribute('role', 'presentation');
@@ -125,7 +134,7 @@ export const createMapboxController: CreateMapController = async ({
 
   const updateMarker = () => {
     const key = hovered ?? selected;
-    const item = key ? byKey.get(key) : undefined;
+    const item = key && key !== previewed ? byKey.get(key) : undefined;
     if (!item) {
       if (markerShown) marker.remove();
       markerShown = false;
@@ -142,7 +151,7 @@ export const createMapboxController: CreateMapController = async ({
     closeOnClick: false,
     closeOnMove: false,
     focusAfterOpen: false,
-    offset: 18,
+    offset: 20,
     maxWidth: 'none',
     className: 'ws-map-popup',
   });
@@ -165,6 +174,7 @@ export const createMapboxController: CreateMapController = async ({
     source()?.setData(collection);
     setState(hovered, { hover: true });
     setState(selected, { selected: true });
+    setState(previewed, { previewed: true });
   };
   map.on('style.load', setup);
 
@@ -237,7 +247,7 @@ export const createMapboxController: CreateMapController = async ({
     for (const listener of clickListeners) listener(click);
   };
 
-  const openCluster = (feature: RenderedFeature) => {
+  const openCluster = (feature: RenderedFeature, event: MapMouseEvent) => {
     const clusters = source();
     const clusterId = feature.properties?.cluster_id;
     const pointCount = Number(feature.properties?.point_count ?? 0);
@@ -262,7 +272,8 @@ export const createMapboxController: CreateMapController = async ({
       }
       clusters.getClusterExpansionZoom(clusterId, (zoomError, zoom) => {
         if (zoomError || typeof zoom !== 'number') return;
-        map.easeTo({ center: [lng, lat], zoom });
+        // The person's click moved the map: its `originalEvent` makes the move theirs.
+        map.easeTo({ center: [lng, lat], zoom }, { originalEvent: event.originalEvent });
       });
     });
   };
@@ -271,7 +282,7 @@ export const createMapboxController: CreateMapController = async ({
     const features = featuresAt(event);
     const cluster = features.find((f) => f.layer?.id === LAYER_IDS.clusters);
     if (cluster) {
-      openCluster(cluster);
+      openCluster(cluster, event);
       return;
     }
     const keys = [...new Set(features.map(keyOf).filter((k): k is string => k !== null))];
@@ -281,6 +292,37 @@ export const createMapboxController: CreateMapController = async ({
       emitClick({ type: 'locations', keys, lng, lat });
     } else emitClick({ type: 'empty' });
   });
+
+  // ---- Keeping a popup on screen ---------------------------------------------------------
+  /**
+   * Pans the map just enough for the open popup to fit inside it, clear of Explore's controls.
+   * Waits for a move in progress (a fly to the place) to end first. Mapbox only chooses which
+   * side of the point a popup goes; a tall preview in a short map can fit neither side.
+   */
+  const keepPopupInView = (attempt = 0) => {
+    if (destroyed || !popup.isOpen()) return;
+    if (map.isMoving()) {
+      map.once('moveend', () => keepPopupInView(attempt));
+      return;
+    }
+    const element = popup.getElement();
+    if (!element) return;
+    const [dx, dy] = nudgeIntoView(
+      element.getBoundingClientRect(),
+      map.getContainer().getBoundingClientRect(),
+      {
+        top: insetTop + POPUP_MARGIN,
+        right: POPUP_MARGIN,
+        bottom: POPUP_MARGIN,
+        left: POPUP_MARGIN,
+      }
+    );
+    // Panning can move the popup to the point's other side: check again, a couple of times.
+    if ((dx !== 0 || dy !== 0) && attempt < 2) {
+      map.once('moveend', () => keepPopupInView(attempt + 1));
+      map.panBy([dx, dy], { duration: POPUP_PAN_MS });
+    }
+  };
 
   // ---- First load ----------------------------------------------------------------------
   await new Promise<void>((resolve, reject) => {
@@ -354,11 +396,20 @@ export const createMapboxController: CreateMapController = async ({
           [west, south],
           [east, north],
         ],
-        { padding: FIT_PADDING, maxZoom: options.maxZoom ?? FIT_MAX_ZOOM }
+        {
+          padding: {
+            top: Math.max(FIT_PADDING, insetTop + FIT_GAP),
+            right: FIT_PADDING,
+            bottom: FIT_PADDING,
+            left: FIT_PADDING,
+          },
+          maxZoom: options.maxZoom ?? FIT_MAX_ZOOM,
+          ...(options.animate === false ? { animate: false } : {}),
+        }
       );
     },
     flyTo({ lng, lat, zoom }) {
-      map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), zoom ?? FLY_ZOOM) });
+      map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), zoom ?? PLACE_ZOOM) });
     },
     onMoveEnd(listener) {
       moveListeners.add(listener);
@@ -372,12 +423,27 @@ export const createMapboxController: CreateMapController = async ({
       clickListeners.add(listener);
       return () => clickListeners.delete(listener);
     },
-    showPopup({ lng, lat }, content) {
-      popup.setLngLat([lng, lat]).setDOMContent(content);
+    showPopup({ lng, lat }, content, options = {}) {
+      const place = options.place ?? null;
+      if (place !== previewed) {
+        setState(previewed, { previewed: false });
+        previewed = place;
+        setState(previewed, { previewed: true });
+      }
+      if (popup.getElement()?.contains(content) !== true) popup.setDOMContent(content);
+      popup.setLngLat([lng, lat]);
       if (!popup.isOpen()) popup.addTo(map);
+      updateMarker();
+      keepPopupInView();
     },
     hidePopup() {
       popup.remove();
+      setState(previewed, { previewed: false });
+      previewed = null;
+      updateMarker();
+    },
+    setOverlayInsets({ top }) {
+      insetTop = Math.max(0, top);
     },
     getView: () => view(false),
     resize() {

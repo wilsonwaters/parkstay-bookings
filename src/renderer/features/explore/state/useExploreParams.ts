@@ -19,7 +19,10 @@ export interface UseExploreParams {
   params: ExploreParams;
   /** Changes some values. Pushes a history entry unless `replace` is set. */
   update(patch: ExploreParamsPatch, options?: { replace?: boolean }): void;
-  /** Records the map camera: debounced 500 ms, and replaces rather than pushes. */
+  /**
+   * Records the camera of a map the person moved: debounced 500 ms, and replaces rather than
+   * pushes. An `update` that sets `map` itself cancels a camera still waiting to be written.
+   */
   setCamera(camera: MapCamera): void;
 }
 
@@ -62,16 +65,19 @@ export function useExploreParams(known: KnownValues = {}): UseExploreParams {
     [navigate]
   );
 
+  const cameraTimer = useRef<ReturnType<typeof setTimeout>>();
+
   const update = useCallback(
     (patch: ExploreParamsPatch, options: { replace?: boolean } = {}) => {
       const base = current();
       const changes = typeof patch === 'function' ? patch(base) : patch;
+      // A new search clears the camera (or a place sets one): an older one must not land later.
+      if ('map' in changes) clearTimeout(cameraTimer.current);
       write({ ...base, ...changes }, options.replace ?? false);
     },
     [current, write]
   );
 
-  const cameraTimer = useRef<ReturnType<typeof setTimeout>>();
   const setCamera = useCallback(
     (camera: MapCamera) => {
       clearTimeout(cameraTimer.current);

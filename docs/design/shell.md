@@ -134,7 +134,7 @@ With no `window.api` (the renderer opened in a plain browser with `npm run dev:r
 | Explore page title | heading level 1 (visually hidden) | Explore places to stay |
 | Explore search | search, combobox, button | Search places · Where · Search |
 | Explore filters | group, buttons | Filters · Provider · Type · Region · Facilities · Book online · Clear all (a chip with choices: "Region, 1 selected") |
-| Explore results | region, heading level 2 | Results · "169 places", or "169 places in map area" |
+| Explore results | region, heading level 2 | Results · "169 places", or "12 places in map area" once the person has moved the map |
 | Explore map | region, switch | Map of places · Search as I move the map |
 | Explore below 1024 px | button | Show map · Show list |
 

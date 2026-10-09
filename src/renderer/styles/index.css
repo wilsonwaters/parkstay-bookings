@@ -80,3 +80,34 @@
     @apply rounded-lg border border-border bg-surface p-6 shadow-card;
   }
 }
+
+/*
+ * Explore's map (docs/design/map.md): Mapbox's popups and zoom buttons in the app's style.
+ * mapbox-gl.css loads after this file, so every rule names one class more than Mapbox's own.
+ */
+
+/* The preview and the list of places on one spot: a card, with no tip. */
+.mapboxgl-popup.ws-map-popup .mapboxgl-popup-content {
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--ws-radius-xl);
+  background: rgb(var(--ws-surface));
+  box-shadow: var(--ws-shadow-pop);
+  font: inherit;
+}
+
+.mapboxgl-popup.ws-map-popup .mapboxgl-popup-tip {
+  display: none;
+}
+
+/* The zoom buttons: the pill shadow and the app's focus ring. */
+.ws-map.mapboxgl-map .mapboxgl-ctrl-group:not(:empty) {
+  border-radius: var(--ws-radius-md);
+  box-shadow: var(--ws-shadow-pill);
+}
+
+.ws-map.mapboxgl-map .mapboxgl-ctrl-group button:focus:focus-visible {
+  box-shadow: none;
+  outline: 2px solid rgb(var(--ws-focus));
+  outline-offset: 2px;
+}

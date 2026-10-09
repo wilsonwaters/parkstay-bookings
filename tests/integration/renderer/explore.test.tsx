@@ -2,11 +2,15 @@
  * The Explore journey through the whole renderer: the shell opens on Explore, a search, a
  * region filter, then a card to its detail page. And Explore with 5,000 places.
  */
-import { screen, waitFor, within } from '@testing-library/react';
+import { configure, screen, waitFor, within } from '@testing-library/react';
 import { PARKSTAY_LOCATIONS } from '../../fixtures/catalog/parkstay-locations';
 import { SYNTHETIC_LOCATIONS_5K } from '../../fixtures/catalog/synthetic-locations';
 import { catalogApi } from '../../utils/renderer/catalog';
 import { currentRoute, renderWithApp } from '../../utils/renderer/renderWithApp';
+
+// These render the whole app with 169 (and 5,000) places: give async queries room on a busy
+// runner, as the Explore suites do.
+configure({ asyncUtilTimeout: 4000 });
 
 describe('Explore journey', () => {
   it('searches, filters by region and opens a place', async () => {

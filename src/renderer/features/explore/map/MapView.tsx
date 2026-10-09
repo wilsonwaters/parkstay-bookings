@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
@@ -15,6 +15,7 @@ import {
 } from '../../../components/ui';
 import { buttonClassName } from '../../../components/ui/Button';
 import { ROUTES } from '../../../app/routes';
+import { cardId } from '../results/cardId';
 import { useHighlightStore } from '../state/highlight';
 import { createMapboxController } from './mapboxController';
 import type { MapCamera, MapController, MapViewState } from './types';
@@ -24,12 +25,15 @@ export interface FitRequest {
   id: number;
   bbox: BoundingBox;
   maxZoom?: number;
+  /** False jumps there: the first view of a search opened from a link or Back. */
+  animate?: boolean;
 }
 
 export interface FlyRequest {
   id: number;
   lng: number;
   lat: number;
+  zoom?: number;
 }
 
 export interface MapViewProps {
@@ -46,7 +50,7 @@ export interface MapViewProps {
   shown: boolean;
   fitRequest: FitRequest | null;
   flyRequest: FlyRequest | null;
-  /** Every time the map stops moving. */
+  /** When the map is ready, and every time it stops moving. */
   onView: (view: MapViewState) => void;
   /** A pin, a listed place or nothing (empty map, Escape, close) was chosen. */
   onSelect: (key: string | null) => void;
@@ -84,6 +88,7 @@ export default function MapView({
   onFailed,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const controlsRef = useRef<HTMLDivElement>(null);
   const [controller, setController] = useState<MapController | null>(null);
   const highlight = useHighlightStore();
 
@@ -160,15 +165,33 @@ export default function MapView({
   }, [controller]);
   useEffect(() => setAreaChanged(false), [follow]);
 
+  // Fits and popups keep clear of the controls floating on top of the map.
+  useLayoutEffect(() => {
+    const controls = controlsRef.current;
+    if (!controller || !controls) return undefined;
+    const measure = () =>
+      controller.setOverlayInsets({ top: controls.offsetTop + controls.offsetHeight });
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(controls);
+    return () => observer.disconnect();
+  }, [controller]);
+
   useEffect(() => {
     if (controller && fitRequest) {
-      controller.fitBounds(fitRequest.bbox, { maxZoom: fitRequest.maxZoom });
+      controller.fitBounds(fitRequest.bbox, {
+        maxZoom: fitRequest.maxZoom,
+        animate: fitRequest.animate,
+      });
       setAreaChanged(false);
     }
   }, [controller, fitRequest]);
 
   useEffect(() => {
-    if (controller && flyRequest) controller.flyTo({ lng: flyRequest.lng, lat: flyRequest.lat });
+    if (controller && flyRequest) {
+      controller.flyTo({ lng: flyRequest.lng, lat: flyRequest.lat, zoom: flyRequest.zoom });
+    }
   }, [controller, flyRequest]);
 
   // Shown again after being hidden behind the list: fit the canvas to its box.
@@ -202,13 +225,32 @@ export default function MapView({
   useEffect(() => {
     if (!controller) return;
     if (spot) controller.showPopup({ lng: spot.lng, lat: spot.lat }, popupElement);
-    else if (preview) controller.showPopup({ lng: preview.lng, lat: preview.lat }, popupElement);
-    else controller.hidePopup();
+    else if (preview) {
+      controller.showPopup({ lng: preview.lng, lat: preview.lat }, popupElement, {
+        place: preview.key,
+      });
+    } else controller.hidePopup();
   }, [controller, spot, preview, popupElement]);
+
+  /**
+   * Closes the preview. If focus was in it, focus goes to the place's card, or to the map
+   * when the card is not on screen (a pin cannot take focus; the map is where it was).
+   */
+  const closePreview = () => {
+    const key = selectedKey;
+    const hadFocus = popupElement.contains(document.activeElement);
+    onSelect(null);
+    if (!hadFocus) return;
+    const card = key ? document.getElementById(cardId(key)) : null;
+    card?.focus();
+    if (!card || document.activeElement !== card) {
+      containerRef.current?.querySelector<HTMLElement>('canvas')?.focus({ preventScroll: true });
+    }
+  };
 
   const closePopup = () => {
     if (spot) setSpot(null);
-    else onSelect(null);
+    else closePreview();
   };
   // Escape closes the preview (or the list), unless a popover above it takes Escape first.
   useOverlay({ open: popupOpen, modal: false, elementRef: popupRef, onEscape: closePopup });
@@ -228,7 +270,10 @@ export default function MapView({
         </div>
       )}
 
-      <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-3">
+      <div
+        ref={controlsRef}
+        className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-3"
+      >
         <div className="pointer-events-auto rounded-full bg-surface py-2 pl-4 pr-3 shadow-pill">
           <Switch
             label="Search as I move the map"
@@ -286,13 +331,13 @@ export default function MapView({
           </div>
         ) : preview ? (
           <div role="group" aria-label={preview.name} className="relative w-72">
-            <LocationPhoto location={preview} className="aspect-[16/9] rounded-t-lg" />
+            <LocationPhoto location={preview} className="aspect-[16/9]" />
             <IconButton
               label="Close preview"
               icon={<X size={16} />}
               size="sm"
               variant="secondary"
-              onClick={() => onSelect(null)}
+              onClick={closePreview}
               className="absolute right-2 top-2 !rounded-full !border-0 shadow-pill"
             />
             <div className="flex flex-col gap-1 p-3">

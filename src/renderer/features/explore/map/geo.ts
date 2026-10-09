@@ -18,6 +18,43 @@ export const WA_BOUNDS: [[number, number], [number, number]] = [
 /** The longest name a map pill shows before it is cut with "…". */
 export const PILL_LABEL_MAX = 22;
 
+/** The zoom the map flies to for a place chosen in Where (or closer, if it is already closer). */
+export const PLACE_ZOOM = 12;
+
+/** The middle of a box, `[lng, lat]` (the antimeridian is not crossed in WA). */
+export function centreOf([west, south, east, north]: BoundingBox): [number, number] {
+  return [(west + east) / 2, (south + north) / 2];
+}
+
+/** A screen rectangle, as `getBoundingClientRect()` gives it. */
+export interface ScreenBox {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+/**
+ * How far to pan the map, `[dx, dy]` in pixels (positive pans right and down, as Mapbox's
+ * `panBy` takes it), so `inner` (a popup) sits inside `outer` (the map) less `insets`. When
+ * `inner` is larger than the room, its top (or left) edge is kept in view.
+ */
+export function nudgeIntoView(
+  inner: ScreenBox,
+  outer: ScreenBox,
+  insets: ScreenBox
+): [number, number] {
+  const axis = (start: number, end: number, min: number, max: number) => {
+    if (end - start > max - min || start < min) return start - min;
+    if (end > max) return end - max;
+    return 0;
+  };
+  return [
+    Math.round(axis(inner.left, inner.right, outer.left + insets.left, outer.right - insets.right)),
+    Math.round(axis(inner.top, inner.bottom, outer.top + insets.top, outer.bottom - insets.bottom)),
+  ];
+}
+
 /**
  * True when the location lies inside `bbox` (`[west, south, east, north]`, edges included).
  * A box whose west edge is east of its east edge crosses the antimeridian. A location with no

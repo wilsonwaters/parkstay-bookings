@@ -26,7 +26,7 @@ const PLACES = PARKSTAY_LOCATIONS.slice(0, 10);
 function renderList(props: Partial<ResultsListProps> = {}) {
   const store = createHighlightStore();
   const view = render(
-    <MemoryRouter>
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ProviderManifestsProvider manifests={[]}>
         <HighlightContext.Provider value={store}>
           {createElement(ResultsList, {
@@ -72,7 +72,7 @@ describe('ResultsList', () => {
     const { rerender, store } = renderList({ selectedKey: PLACES[1].key });
     renders.clear();
     rerender(
-      <MemoryRouter>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <ProviderManifestsProvider manifests={[]}>
           <HighlightContext.Provider value={store}>
             <ResultsList

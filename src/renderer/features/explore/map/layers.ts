@@ -2,15 +2,18 @@
  * The map's own source and layers, built from the design tokens. Pure: no mapbox-gl at run
  * time (only its types), so tests can check every id, filter and colour.
  *
- * - `clusters` + `cluster-count`: white circles with an ink outline and count, larger as they
- *   hold more places.
- * - `location-dot`: one white dot with an ink ring per place; ink and larger while hovered or
- *   selected. Dots never collide, so every place stays visible.
+ * - `clusters` + `cluster-count`: ink circles with a white ring and a bold white count, larger
+ *   as they hold more places.
+ * - `location-halo`: a soft ink halo behind a hovered or selected pin.
+ * - `location-dot`: one filled ink pin with a white ring per place; larger, with a thicker
+ *   ring, while hovered or selected. Pins never collide, so every place stays visible.
  * - `location-pill`: the name on a white pill from zoom 8; ink with white text while hovered
- *   or selected. Pills that would overlap are hidden (the dot stays).
+ *   or selected; hidden while the place's preview is open (the preview has the name). Pills
+ *   that would overlap are hidden (the pin stays).
  *
- * Every pair is ink on white or white on ink (17.79:1, `fg` on `surface` and `fg-inverse` on
- * `surface-inverse` in CONTRAST_PAIRS).
+ * Ink and white are the only colours, so pins and clusters are the strongest marks on the
+ * recoloured base map. Every pair is ink on white or white on ink (17.79:1, `fg` on `surface`
+ * and `fg-inverse` on `surface-inverse` in CONTRAST_PAIRS).
  */
 
 import type {
@@ -27,6 +30,7 @@ export const PILL_IMAGE_ID = 'ws-pill';
 export const LAYER_IDS = {
   clusters: 'clusters',
   clusterCount: 'cluster-count',
+  halo: 'location-halo',
   dot: 'location-dot',
   pill: 'location-pill',
 } as const;
@@ -41,6 +45,8 @@ export const FIT_MAX_ZOOM = 11;
 
 /** `text-font` for every label the app adds: fonts the outdoors style already loads. */
 export const MAP_FONT = ['DIN Pro Medium', 'Arial Unicode MS Regular'];
+/** Cluster counts (the style loads it for state names). */
+export const MAP_FONT_BOLD = ['DIN Pro Bold', 'Arial Unicode MS Bold'];
 
 export const SOURCE_SPEC: GeoJSONSourceSpecification = {
   type: 'geojson',
@@ -58,6 +64,13 @@ export const ACTIVE: ExpressionSpecification = [
   ['boolean', ['feature-state', 'selected'], false],
 ];
 
+/** True while the place's preview is open (feature state). */
+export const PREVIEWED: ExpressionSpecification = [
+  'boolean',
+  ['feature-state', 'previewed'],
+  false,
+];
+
 const CLUSTERED: ExpressionSpecification = ['has', 'point_count'];
 const UNCLUSTERED: ExpressionSpecification = ['!', ['has', 'point_count']];
 
@@ -71,10 +84,10 @@ export function buildLayers(tokens: MapTokens): MapLayer[] {
     source: SOURCE_ID,
     filter: CLUSTERED,
     paint: {
-      'circle-color': tokens.white,
-      'circle-stroke-color': tokens.ink,
-      'circle-stroke-width': 1.5,
-      'circle-radius': ['step', ['get', 'point_count'], 14, 10, 18, 50, 22],
+      'circle-color': tokens.ink,
+      'circle-stroke-color': tokens.white,
+      'circle-stroke-width': 2,
+      'circle-radius': ['step', ['get', 'point_count'], 15, 10, 19, 50, 23],
     },
   };
 
@@ -85,12 +98,24 @@ export function buildLayers(tokens: MapTokens): MapLayer[] {
     filter: CLUSTERED,
     layout: {
       'text-field': ['get', 'point_count_abbreviated'],
-      'text-font': MAP_FONT,
+      'text-font': MAP_FONT_BOLD,
       'text-size': 12,
       'text-allow-overlap': true,
       'text-ignore-placement': true,
     },
-    paint: { 'text-color': tokens.ink },
+    paint: { 'text-color': tokens.white },
+  };
+
+  const halo: CircleLayerSpecification = {
+    id: LAYER_IDS.halo,
+    type: 'circle',
+    source: SOURCE_ID,
+    filter: UNCLUSTERED,
+    paint: {
+      'circle-color': tokens.ink,
+      'circle-opacity': 0.16,
+      'circle-radius': ['case', ACTIVE, 16, 0],
+    },
   };
 
   const dot: CircleLayerSpecification = {
@@ -99,10 +124,10 @@ export function buildLayers(tokens: MapTokens): MapLayer[] {
     source: SOURCE_ID,
     filter: UNCLUSTERED,
     paint: {
-      'circle-color': ['case', ACTIVE, tokens.ink, tokens.white],
-      'circle-stroke-color': ['case', ACTIVE, tokens.white, tokens.ink],
-      'circle-stroke-width': 2,
-      'circle-radius': ['case', ACTIVE, 8, 5],
+      'circle-color': tokens.ink,
+      'circle-stroke-color': tokens.white,
+      'circle-stroke-width': ['case', ACTIVE, 3, 2],
+      'circle-radius': ['case', ACTIVE, 9, 6],
     },
   };
 
@@ -117,7 +142,7 @@ export function buildLayers(tokens: MapTokens): MapLayer[] {
       'text-font': MAP_FONT,
       'text-size': 12,
       'text-anchor': 'bottom',
-      'text-offset': [0, -1.1],
+      'text-offset': [0, -1.3],
       'text-max-width': 30,
       'icon-image': PILL_IMAGE_ID,
       'icon-text-fit': 'both',
@@ -129,10 +154,12 @@ export function buildLayers(tokens: MapTokens): MapLayer[] {
       'icon-halo-color': tokens.ink,
       'icon-halo-width': 1,
       'text-color': ['case', ACTIVE, tokens.white, tokens.ink],
+      'icon-opacity': ['case', PREVIEWED, 0, 1],
+      'text-opacity': ['case', PREVIEWED, 0, 1],
     },
   };
 
-  return [clusters, clusterCount, dot, pill];
+  return [clusters, clusterCount, halo, dot, pill];
 }
 
 /** The layers a pointer can hover or click. */

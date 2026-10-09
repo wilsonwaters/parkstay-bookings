@@ -14,13 +14,27 @@ export interface LocationPhotoProps {
 }
 
 /**
+ * The photo URL to load: only `https:`. Main already drops other schemes from provider data;
+ * this is the renderer's own check, so a stray `http:`, `file:` or `data:` URL never loads.
+ */
+export function photoUrl(urls: readonly string[]): string | undefined {
+  const first = urls[0];
+  if (!first) return undefined;
+  try {
+    return new URL(first).protocol === 'https:' ? first : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * A location's first photo, hot-linked from the provider (brief O8): lazy, decoded off the
- * main thread, sent with no referrer. A skeleton shows while it loads; a missing or broken
- * photo shows the PhotoPlaceholder, named "No photo available for {name}". The parent sets
- * the size; the photo fills it.
+ * main thread, sent with no referrer, and only over https. A skeleton shows while it loads; a
+ * missing or broken photo shows the PhotoPlaceholder, named "No photo available for {name}".
+ * The parent sets the size; the photo fills it.
  */
 export function LocationPhoto({ location, className }: LocationPhotoProps) {
-  const src = location.imageUrls[0];
+  const src = photoUrl(location.imageUrls);
   const [state, setState] = useState<'loading' | 'loaded' | 'failed'>(src ? 'loading' : 'failed');
   const imageRef = useRef<HTMLImageElement>(null);
 
@@ -144,8 +158,10 @@ export const LocationCard = memo(function LocationCard({
       className={cx(
         'group -m-2 flex rounded-xl p-2 text-fg transition-[background-color,box-shadow] duration-fast ease-standard',
         row ? 'flex-row gap-4' : 'flex-col gap-3',
+        // Hovered (here or on its pin) or selected: lifted onto a white surface. Selected adds a
+        // thin brand outline, the design system's selected colour (not the focus ring's 2 px).
         highlighted || selected ? 'bg-surface shadow-pop' : 'hover:bg-surface hover:shadow-card',
-        selected && 'ring-2 ring-fg'
+        selected && 'ring-1 ring-brand'
       )}
     >
       <LocationPhoto
@@ -157,7 +173,7 @@ export const LocationCard = memo(function LocationCard({
           {location.name}
         </p>
         <div id={detailsId} className="flex flex-col gap-1.5">
-          {area && <p className="truncate text-sm text-fg-secondary">{area}</p>}
+          {area && <p className="line-clamp-2 text-sm text-fg-secondary">{area}</p>}
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-secondary">
             <ProviderBadge providerId={location.providerId} variant="compact" size="sm" />
             <span>{kindLabel(location.kind)}</span>
