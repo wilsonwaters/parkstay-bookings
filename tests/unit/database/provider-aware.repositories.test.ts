@@ -109,6 +109,24 @@ describe('provider-aware repositories', () => {
       expect(updated.providerId).toBe('parkstay');
     });
 
+    it('clears the max price with 0 on update, storing NULL as create does', () => {
+      const watches = new WatchRepository(db);
+      const created = watches.create(userId, createMockWatchInput({ maxPrice: 40 }));
+      expect(created.maxPrice).toBe(40);
+
+      expect(watches.update(created.id, { maxPrice: 25 }).maxPrice).toBe(25);
+      const cleared = watches.update(created.id, { maxPrice: 0 });
+
+      expect(cleared.maxPrice).toBeUndefined();
+      const row = db.prepare('SELECT max_price FROM watches WHERE id = ?').get(created.id) as {
+        max_price: number | null;
+      };
+      expect(row.max_price).toBeNull();
+      expect(
+        watches.create(userId, createMockWatchInput({ maxPrice: 0 })).maxPrice
+      ).toBeUndefined();
+    });
+
     it('stores a watch of another provider with no ParkStay fields', () => {
       const watches = new WatchRepository(db);
       const created = watches.create(userId, {

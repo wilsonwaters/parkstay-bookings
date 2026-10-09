@@ -122,7 +122,8 @@ export class WatchRepository extends BaseRepository<Watch> {
     if (updates.allowPartialMatch !== undefined) {
       push('allow_partial_match', updates.allowPartialMatch ? 1 : 0);
     }
-    if (updates.maxPrice !== undefined) push('max_price', updates.maxPrice);
+    // 0 is "no max price" (the renderer clears one with it), stored as NULL as on create.
+    if (updates.maxPrice !== undefined) push('max_price', updates.maxPrice || null);
     if (updates.notes !== undefined) push('notes', updates.notes);
 
     if (fields.length > 0) {
