@@ -158,34 +158,53 @@ describe('ParkStay holds', () => {
     ]);
   });
 
-  describe('bookedReference (the /success/ page proves this hold was paid)', () => {
+  describe('bookedReference (the /success/ page indicates this hold was paid)', () => {
     // sha256('2072968'), as create_booking stores `checkouthash` (api.py:3375)
     const HASH = createHash('sha256').update('2072968').digest('hex');
-    const booked = (url: string, reference = '2072968') =>
-      parkstay.provider.holds.bookedReference!({ reference }, url);
+    // What success.html shows (`Your booking PB{{ booking.id }} is completed`)
+    const SUCCESS_TEXT = 'Your booking PB2072968 is completed';
+    const booked = (url: string, text = SUCCESS_TEXT, reference = '2072968') => {
+      const hasText = jest.fn(async (needle: string) => text.includes(needle));
+      const answer = parkstay.provider.holds.bookedReference!({ reference }, { url, hasText });
+      return { answer, hasText };
+    };
 
-    it('is PB + the reference for /success/ with the hold’s checkouthash', () => {
-      expect(booked(`https://parkstay.dbca.wa.gov.au/success/?checkouthash=${HASH}`)).toBe(
-        'PB2072968'
+    it('is PB + the reference for /success/ with the hold’s checkouthash showing its booking number', async () => {
+      const { answer, hasText } = booked(
+        `https://parkstay.dbca.wa.gov.au/success/?checkouthash=${HASH}`
       );
-      expect(booked(`https://parkstay.dbca.wa.gov.au/success?checkouthash=${HASH}&x=1`)).toBe(
-        'PB2072968'
-      );
-      expect(
-        booked(`https://parkstay.dbca.wa.gov.au/success/?checkouthash=${HASH.toUpperCase()}`)
-      ).toBe('PB2072968');
+      await expect(answer).resolves.toBe('PB2072968');
+      expect(hasText).toHaveBeenCalledWith('PB2072968');
+      await expect(
+        booked(`https://parkstay.dbca.wa.gov.au/success?checkouthash=${HASH}&x=1`).answer
+      ).resolves.toBe('PB2072968');
+      await expect(
+        booked(`https://parkstay.dbca.wa.gov.au/success/?checkouthash=${HASH.toUpperCase()}`).answer
+      ).resolves.toBe('PB2072968');
     });
 
-    it('is null for another hold’s hash, no hash, another page or another origin', () => {
-      expect(booked(`https://parkstay.dbca.wa.gov.au/success/?checkouthash=${HASH}`, '1')).toBe(
-        null
-      );
-      expect(booked('https://parkstay.dbca.wa.gov.au/success/')).toBe(null);
-      expect(booked(`https://parkstay.dbca.wa.gov.au/booking/?checkouthash=${HASH}`)).toBe(null);
-      expect(booked(`https://parkstay.dbca.wa.gov.au/successful/?checkouthash=${HASH}`)).toBe(null);
-      expect(booked(`https://evil.example/success/?checkouthash=${HASH}`)).toBe(null);
-      expect(booked(`https://ledger.dbca.wa.gov.au/success/?checkouthash=${HASH}`)).toBe(null);
-      expect(booked('not a url')).toBe(null);
+    it('is null for success-error.html (200, right URL) and for the previous booking’s page', async () => {
+      const url = `https://parkstay.dbca.wa.gov.au/success/?checkouthash=${HASH}`;
+      // success-error.html: the session's hash differs (views.py:886-893)
+      await expect(booked(url, 'Your booking session has expired.').answer).resolves.toBe(null);
+      // The ps_last_booking fallback shows an earlier booking (views.py:903-912)
+      await expect(booked(url, 'Your booking PB2072001 is completed').answer).resolves.toBe(null);
+    });
+
+    it('is null for another hold’s hash, no hash, another page or another origin, without reading the page', async () => {
+      const cases = [
+        booked(`https://parkstay.dbca.wa.gov.au/success/?checkouthash=${HASH}`, SUCCESS_TEXT, '1'),
+        booked('https://parkstay.dbca.wa.gov.au/success/'),
+        booked(`https://parkstay.dbca.wa.gov.au/booking/?checkouthash=${HASH}`),
+        booked(`https://parkstay.dbca.wa.gov.au/successful/?checkouthash=${HASH}`),
+        booked(`https://evil.example/success/?checkouthash=${HASH}`),
+        booked(`https://ledger.dbca.wa.gov.au/success/?checkouthash=${HASH}`),
+        booked('not a url'),
+      ];
+      for (const { answer, hasText } of cases) {
+        await expect(answer).resolves.toBe(null);
+        expect(hasText).not.toHaveBeenCalled();
+      }
     });
   });
 });

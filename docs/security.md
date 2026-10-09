@@ -140,9 +140,20 @@ stored".
 
 The v1.x ParkStay password is not migrated. ParkStay never used it (sign-in is now the
 in-app window), so database migration v9 drops its `users` columns before
-`migrateLegacySecrets` runs, and then rewrites the database file (VACUUM, then a WAL
-truncate) so the old ciphertext is not left in free pages. Only the email is kept, as the
-ParkStay account's hint. The v1.x data folder, kept as the backup, still holds it.
+`migrateLegacySecrets` runs. Only the email is kept, as the ParkStay account's hint. The old
+ciphertext is not left in the WA Stay database file:
+
+- the migrations run with SQLite's `secure_delete` on, so the rows and pages the `users`
+  rebuilds (v8, v9) free are overwritten with zeros;
+- v9 also records a `vacuum-freed-pages` task in the `maintenance` table, in its own
+  transaction. After the migration the file is rewritten (VACUUM) and the WAL truncated,
+  and only then is the task removed. If VACUUM fails (a full disk, for example), the task
+  stays and every later start tries again while the file has free pages.
+
+**The old encrypted password still exists outside that file.** The v1.x data folder
+(`%APPDATA%\parkstay-bookings`, or the installer's `%APPDATA%\WA Stay\legacy-snapshot`), kept
+as the backup described below, holds the v1.x database with the encrypted ParkStay
+password until the user deletes that folder.
 
 #### The legacy data folder is the backup of the pre-vault secrets
 

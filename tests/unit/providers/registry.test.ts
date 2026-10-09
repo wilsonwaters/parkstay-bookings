@@ -294,6 +294,15 @@ describe('ProviderRegistry.register', () => {
         (p) => ((p.holds as { paymentOrigins?: string[] }).paymentOrigins = ['https://*.au']),
         /holds\.paymentOrigins must be https origins or https:\/\/\*\.<domain> patterns/,
       ],
+      [
+        'access waiting room origins',
+        {},
+        (p) =>
+          ((p.access as { waitingRoomOrigins?: string[] }).waitingRoomOrigins = [
+            'http://queue.fake.example',
+          ]),
+        /access\.waitingRoomOrigins must be https origins or https:\/\/\*\.<domain> patterns/,
+      ],
       ['snipes', {}, (p) => delete p.release, /snipes needs availability, holds and release/],
       [
         'release modes supported',

@@ -1,7 +1,8 @@
 /**
  * ProviderAccountService on a real database (`provider_accounts`), a registry of
  * FakeProviders and in-memory windows and sessions:
- * - `list` (no network), `status` (single flight, 60 s cache, sticky definite answers,
+ * - `list` (no network), `status` (single flight, 60 s cache, 5 s for an unknown answer,
+ *   sticky definite answers,
  *   `account:updated` only for visible changes, 15 s limit), `ensureForHolds`;
  * - sign-in: completion confirmed by a check, the 3 s poll only on the provider's own site,
  *   a second call joining the first, closing early, pasted links;
@@ -21,6 +22,7 @@ import { ProviderRegistry } from '@main/providers/registry';
 import {
   ProviderAuthRequiredError,
   ProviderCapabilityError,
+  toApiError,
   UnknownProviderError,
 } from '@main/providers/sdk';
 import { PARKSTAY_SIGN_IN_COMPLETE } from '@main/providers/parkstay/auth';
@@ -50,6 +52,7 @@ describe('ProviderAccountService', () => {
   let sessions: { clear: jest.Mock; flush: jest.Mock } & ProviderSessionStore;
   let events: { emit: jest.Mock };
   let busy: boolean;
+  let busyAsked: Date[];
   let service: ProviderAccountService;
 
   const probes = (fake: FakeProvider = parkstay) =>
@@ -68,7 +71,10 @@ describe('ProviderAccountService', () => {
       windows,
       sessions,
       events,
-      isBusy: () => busy,
+      isBusy: (_providerId, now) => {
+        busyAsked.push(now);
+        return busy;
+      },
       logger: createMemoryLogger(),
       timings,
     });
@@ -104,6 +110,7 @@ describe('ProviderAccountService', () => {
     };
     events = { emit: jest.fn() };
     busy = false;
+    busyAsked = [];
     build();
   });
 
@@ -179,6 +186,25 @@ describe('ProviderAccountService', () => {
       expect(probes()).toBe(2);
       await service.status('parkstay', { force: true });
       expect(probes()).toBe(3);
+    });
+
+    it('an unknown answer (queue, 5xx, no network) is reused for 5 s only', async () => {
+      let now = new Date('2026-10-04T00:00:00Z');
+      build({}, () => now);
+      parkstay.setAccount('unknown');
+      await service.status('parkstay');
+      now = new Date('2026-10-04T00:00:04Z');
+      await service.status('parkstay');
+      expect(probes()).toBe(1);
+
+      // The queue let it through: the next look asks again, and its answer keeps for 60 s
+      parkstay.setAccount('signed-in');
+      now = new Date('2026-10-04T00:00:06Z');
+      await expect(service.status('parkstay')).resolves.toMatchObject({ status: 'signed-in' });
+      expect(probes()).toBe(2);
+      now = new Date('2026-10-04T00:00:50Z');
+      await service.status('parkstay');
+      expect(probes()).toBe(2);
     });
 
     it('an unknown answer keeps the last definite status, writes nothing and emits nothing', async () => {
@@ -280,14 +306,41 @@ describe('ProviderAccountService', () => {
 
       expect(windows.requests).toEqual([
         {
+          // The short name, as every window title uses
           providerId: 'parkstay',
-          providerName: 'ParkStay WA',
+          providerName: 'ParkStay',
           kind: 'sign-in',
           url: SIGN_IN_URL,
           allowedOrigins: [SITE, B2C, 'https://queue.dbca.wa.gov.au'],
           openBlockedExternally: true,
+          // From the provider's access gate: back to the sign-in page after its waiting room
+          waitingRoomOrigins: ['https://queue.parkstay.example'],
         },
       ]);
+    });
+
+    it('a first page that is blocked or fails rejects signIn with that PROVIDER_ERROR; a new signIn opens again', async () => {
+      const pending = service.signIn('parkstay');
+      windows.last.failFirstPage(
+        "ParkStay's page sent the window to https://evil.example, which it does not allow"
+      );
+
+      const error = await pending.catch((e: unknown) => e);
+      expect(toApiError(error)).toEqual({
+        code: 'PROVIDER_ERROR',
+        message: "ParkStay's page sent the window to https://evil.example, which it does not allow",
+      });
+      expect(probes()).toBe(0);
+
+      void service.signIn('parkstay');
+      expect(windows.windows).toHaveLength(2);
+    });
+
+    it('a pasted link whose window fails leaves no unhandled rejection', async () => {
+      service.openSignInLink('parkstay', `${B2C}/link?token=abc`);
+      windows.last.failFirstPage("ParkStay's page could not be loaded (ERR_CONNECTION_REFUSED)");
+      await settle();
+      expect(windows.last.closed).toBe(true);
     });
 
     it('/login-success/ resolves signIn as signed-in once a check confirms it, and closes the window', async () => {
@@ -408,8 +461,12 @@ describe('ProviderAccountService', () => {
 
   describe('sign-out', () => {
     it('is ACCOUNT_BUSY while a snipe or hold needs the session, and clears nothing', async () => {
+      const now = new Date('2026-10-04T00:00:00Z');
+      build({}, () => now);
       busy = true;
       await expect(service.signOut('parkstay')).rejects.toMatchObject({ code: 'ACCOUNT_BUSY' });
+      // Asked at the service's own clock
+      expect(busyAsked).toEqual([now]);
       expect(sessions.clear).not.toHaveBeenCalled();
       expect(repo.get('parkstay')).toBeNull();
     });

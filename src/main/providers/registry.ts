@@ -199,6 +199,13 @@ export const CONSISTENCY_RULES: readonly ConsistencyRule[] = [
         : undefined,
   },
   {
+    rule: 'access waiting room origins',
+    violation: (p) =>
+      p.access?.waitingRoomOrigins && !p.access.waitingRoomOrigins.every(isHttpsOriginPattern)
+        ? 'access.waitingRoomOrigins must be https origins or https://*.<domain> patterns'
+        : undefined,
+  },
+  {
     rule: 'snipes',
     violation: (p) =>
       p.manifest.capabilities.snipes &&

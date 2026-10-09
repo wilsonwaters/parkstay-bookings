@@ -17,7 +17,42 @@ export class FakeWebContents extends EventEmitter {
   static nextId = 1000;
   readonly id = FakeWebContents.nextId++;
   url = '';
+  /** The text the page shows, for find-in-page. */
+  pageText = '';
   windowOpenHandler?: (details: { url: string }) => { action: string };
+  private findRequests = 0;
+  readonly stopFindInPage = jest.fn();
+
+  /** Chromium's find-in-page: answers `found-in-page` (final) on the next turn. */
+  findInPage(text: string, options: { matchCase?: boolean } = {}): number {
+    const requestId = ++this.findRequests;
+    const haystack = options.matchCase ? this.pageText : this.pageText.toLowerCase();
+    const needle = options.matchCase ? text : text.toLowerCase();
+    const matches = needle ? haystack.split(needle).length - 1 : 0;
+    setImmediate(() =>
+      this.emit(
+        'found-in-page',
+        {},
+        { requestId, matches, activeMatchOrdinal: 1, finalUpdate: true }
+      )
+    );
+    return requestId;
+  }
+
+  /** A page that commits (`did-navigate`) and finishes loading (`did-finish-load`). */
+  showPage(
+    url: string,
+    { text = '', status = 200 }: { text?: string; status?: number } = {}
+  ): void {
+    this.pageText = text;
+    this.navigate(url, status);
+    this.emit('did-finish-load', {});
+  }
+
+  /** A load that failed (`did-fail-load`), as Electron 28 emits it. */
+  failLoad(errorCode: number, errorDescription: string, url = this.url, isMainFrame = true): void {
+    this.emit('did-fail-load', {}, errorCode, errorDescription, url, isMainFrame);
+  }
 
   setWindowOpenHandler(handler: (details: { url: string }) => { action: string }): void {
     this.windowOpenHandler = handler;
@@ -64,7 +99,10 @@ export class FakeBrowserWindow extends EventEmitter {
     return Promise.resolve();
   });
   readonly setMenu = jest.fn();
-  readonly show = jest.fn();
+  visible = false;
+  readonly show = jest.fn(() => {
+    this.visible = true;
+  });
   readonly focus = jest.fn();
   readonly restore = jest.fn();
   readonly setTitle = jest.fn((title: string) => {
@@ -87,6 +125,10 @@ export class FakeBrowserWindow extends EventEmitter {
 
   isMinimized(): boolean {
     return false;
+  }
+
+  isVisible(): boolean {
+    return this.visible;
   }
 
   private finish(): void {

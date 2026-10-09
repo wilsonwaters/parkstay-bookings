@@ -239,12 +239,12 @@ export function createContainer({
     sessions: providerWindows,
     events: rendererEvents,
     // Signing out would lose a queue place, a hold being placed, or a hold awaiting payment.
-    isBusy: (providerId) =>
+    isBusy: (providerId, now) =>
       repositories.snipes.countByStatus(providerId, [
         SnipeStatus.QUEUEING,
         SnipeStatus.SNIPING,
         SnipeStatus.HELD,
-      ]) > 0 || repositories.watches.countUnexpiredHolds(providerId, new Date()) > 0,
+      ]) > 0 || repositories.watches.countUnexpiredHolds(providerId, now) > 0,
     logger,
   });
 

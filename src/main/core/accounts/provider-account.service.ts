@@ -11,6 +11,8 @@
  *
  * **`status(id)`** is single-flight per provider (concurrent callers share one request) with
  * a 60 s result cache (`force` skips the cache, never the single flight), and a 15 s limit.
+ * An answer that was not definite (the provider's queue, a 5xx, no network) is reused for
+ * 5 s only, so the next look asks again soon.
  * A definite answer upserts the row: status, the profile's email and name, `last_checked_at`,
  * and `last_signed_in_at` on the move to signed in. `account:updated` is emitted only when
  * something the person can see changed (status, email, name, last sign-in).
@@ -24,7 +26,11 @@
  *   checks again. On the identity provider's or queue's pages nothing can have changed yet, so
  *   it does not ask.
  * When the person closes the window, one more check (from the cache when fresh) makes sure a
- * sign-in that finished between two polls is not missed.
+ * sign-in that finished between two polls is not missed. When the window's first page is
+ * blocked or cannot be loaded, the window closes itself and `signIn` rejects with that
+ * `ProviderError` (`PROVIDER_ERROR`). The window is told the provider's waiting-room origins
+ * (`access.waitingRoomOrigins`), so a queue that sends the person to the provider's home page
+ * brings them back to the sign-in page.
  *
  * **`signOut(id)`** refuses with `ACCOUNT_BUSY` while the provider's session holds something
  * a sign-out would lose (a queue place, a hold in progress or held), otherwise clears the
@@ -66,8 +72,10 @@ import type {
 } from './ports';
 
 export interface AccountTimings {
-  /** How long a check's answer is reused. */
+  /** How long a check's definite answer is reused. */
   cacheMs: number;
+  /** How long an answer that was not definite (`unknown`) is reused. */
+  unknownCacheMs: number;
   /** The most a check may take. */
   probeTimeoutMs: number;
   /** How often an open sign-in window is checked, while it shows the provider's own site. */
@@ -80,6 +88,7 @@ export interface AccountTimings {
 
 export const DEFAULT_ACCOUNT_TIMINGS: Readonly<AccountTimings> = Object.freeze({
   cacheMs: 60_000,
+  unknownCacheMs: 5_000,
   probeTimeoutMs: 15_000,
   pollMs: 3_000,
   staleMs: 6 * 60 * 60_000,
@@ -93,10 +102,10 @@ export interface ProviderAccountServiceDeps {
   sessions: ProviderSessionStore;
   events: EventSink;
   /**
-   * True while the provider's session holds something a sign-out would lose: a queue place,
-   * a hold being placed, or a hold waiting for payment.
+   * True while the provider's session holds something a sign-out would lose at `now` (the
+   * service's clock): a queue place, a hold being placed, or a hold waiting for payment.
    */
-  isBusy(providerId: ProviderId): boolean;
+  isBusy(providerId: ProviderId, now: Date): boolean;
   logger: ProviderLogger;
   clock?: () => Date;
   timings?: Partial<AccountTimings>;
@@ -112,6 +121,7 @@ interface SignInSession {
   readonly window: ProviderWindowHandle;
   readonly promise: Promise<ProviderAccount>;
   resolve(account: ProviderAccount): void;
+  reject(error: Error): void;
   settled: boolean;
   pollTimer?: ReturnType<typeof setTimeout>;
 }
@@ -124,13 +134,16 @@ export class ProviderAccountService implements AccountGate {
   private readonly windows: ProviderWindowOpener;
   private readonly sessions: ProviderSessionStore;
   private readonly events: EventSink;
-  private readonly isBusy: (providerId: ProviderId) => boolean;
+  private readonly isBusy: (providerId: ProviderId, now: Date) => boolean;
   private readonly log: ProviderLogger;
   private readonly clock: () => Date;
   private readonly timings: AccountTimings;
 
   private readonly probes = new Map<ProviderId, Probe>();
-  private readonly cache = new Map<ProviderId, { at: number; account: ProviderAccount }>();
+  private readonly cache = new Map<
+    ProviderId,
+    { at: number; ttlMs: number; account: ProviderAccount }
+  >();
   /** Bumped by sign-out: a check that started before it records nothing. */
   private readonly epochs = new Map<ProviderId, number>();
   private readonly signIns = new Map<ProviderId, SignInSession>();
@@ -169,7 +182,7 @@ export class ProviderAccountService implements AccountGate {
     if (inFlight) return inFlight.promise;
     if (!options.force) {
       const cached = this.cache.get(providerId);
-      if (cached && this.clock().getTime() - cached.at < this.timings.cacheMs) {
+      if (cached && this.clock().getTime() - cached.at < cached.ttlMs) {
         return Promise.resolve(cached.account);
       }
     }
@@ -222,7 +235,7 @@ export class ProviderAccountService implements AccountGate {
   async signOut(providerId: ProviderId): Promise<ProviderAccount> {
     const provider = this.accountProvider(providerId);
     const { manifest } = provider;
-    if (this.isBusy(providerId)) {
+    if (this.isBusy(providerId, this.clock())) {
       throw new AppError(
         'ACCOUNT_BUSY',
         `A snipe or hold on ${manifest.shortName} is in progress. Signing out now would lose it; try again once it has finished.`
@@ -385,7 +398,8 @@ export class ProviderAccountService implements AccountGate {
 
     if (this.disposed || epoch !== this.epochOf(providerId)) return this.accountOf(manifest);
     const account = this.record(manifest, result);
-    this.cache.set(providerId, { at: this.clock().getTime(), account });
+    const ttlMs = result.state === 'unknown' ? this.timings.unknownCacheMs : this.timings.cacheMs;
+    this.cache.set(providerId, { at: this.clock().getTime(), ttlMs, account });
     return account;
   }
 
@@ -457,19 +471,29 @@ export class ProviderAccountService implements AccountGate {
     const { manifest } = provider;
     const window = this.windows.open({
       providerId: manifest.id,
-      providerName: manifest.name,
+      providerName: manifest.shortName,
       kind: 'sign-in',
       url,
       allowedOrigins: auth.allowedOrigins,
       openBlockedExternally: true,
+      ...(provider.access?.waitingRoomOrigins
+        ? { waitingRoomOrigins: provider.access.waitingRoomOrigins }
+        : {}),
     });
     let resolve!: (account: ProviderAccount) => void;
-    const promise = new Promise<ProviderAccount>((done) => (resolve = done));
+    let reject!: (error: Error) => void;
+    const promise = new Promise<ProviderAccount>((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
+    // A pasted link's sign-in has no caller waiting on it
+    promise.catch(() => undefined);
     const session: SignInSession = {
       providerId: manifest.id,
       window,
       promise,
       resolve,
+      reject,
       settled: false,
     };
     this.signIns.set(manifest.id, session);
@@ -481,8 +505,9 @@ export class ProviderAccountService implements AccountGate {
         void this.confirmSignIn(session, provider);
       }
     });
-    window.onClosed(() => {
-      void this.finishOnClose(session, provider);
+    window.onClosed((failure) => {
+      if (failure) this.fail(session, failure);
+      else void this.finishOnClose(session, provider);
     });
     this.schedulePoll(session, provider, new URL(auth.signInUrl).origin);
     return session;
@@ -547,11 +572,24 @@ export class ProviderAccountService implements AccountGate {
   }
 
   private settle(session: SignInSession, account: ProviderAccount): void {
-    if (session.settled) return;
+    if (!this.end(session)) return;
+    session.resolve(account);
+  }
+
+  /** The sign-in window closed itself: its first page was blocked or failed to load. */
+  private fail(session: SignInSession, failure: Error): void {
+    if (!this.end(session)) return;
+    this.log.warn(`Account ${session.providerId}: the sign-in window could not open its page`);
+    session.reject(failure);
+  }
+
+  /** Marks the session settled (once); false when it already was. */
+  private end(session: SignInSession): boolean {
+    if (session.settled) return false;
     session.settled = true;
     if (session.pollTimer) clearTimeout(session.pollTimer);
     if (this.signIns.get(session.providerId) === session) this.signIns.delete(session.providerId);
-    session.resolve(account);
+    return true;
   }
 
   private async flush(providerId: ProviderId): Promise<void> {

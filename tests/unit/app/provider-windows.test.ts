@@ -3,7 +3,10 @@
  * the sandboxed window on the provider partition with no script of ours, the top-level
  * origin allow-list (navigations, main-frame redirects, new windows), refused permissions,
  * certificates, client certificates and HTTP credentials, the title, closing with the main
- * window, clearing and flushing the partition, and the shared partition and user agent.
+ * window, clearing and flushing the partition, and the shared partition and user agent; that
+ * a window always shows (ready to paint, or after `SHOW_AFTER_MS`), closes itself with a
+ * `PROVIDER_ERROR` when its first page is blocked or fails, goes back to its page after the
+ * provider's waiting room, and reads page text with find-in-page.
  * `npm run test:electron` runs the real windows.
  */
 
@@ -15,6 +18,7 @@ import type { ProviderWindowRequest } from '@main/core/accounts/ports';
 import { ElectronSessionHttpClient } from '@main/providers/sdk/http-electron';
 import { CHROME_USER_AGENT, chromeUserAgent } from '@main/providers/sdk';
 import { PARKSTAY_SIGN_IN_ORIGINS, PARKSTAY_SIGN_IN_URL } from '@main/providers/parkstay/auth';
+import { toApiError } from '@main/providers/sdk/errors';
 import { logger } from '@main/utils/logger';
 import type { FakeBrowserWindow } from '@tests/utils/electron-mocks';
 import { stripComments } from '@tests/utils/strip-comments';
@@ -43,7 +47,7 @@ const partitionSession = (id = 'parkstay'): FakeSession =>
 
 const SIGN_IN: ProviderWindowRequest = {
   providerId: 'parkstay',
-  providerName: 'ParkStay WA',
+  providerName: 'ParkStay',
   kind: 'sign-in',
   url: PARKSTAY_SIGN_IN_URL,
   allowedOrigins: PARKSTAY_SIGN_IN_ORIGINS,
@@ -52,7 +56,7 @@ const SIGN_IN: ProviderWindowRequest = {
 
 const PAYMENT: ProviderWindowRequest = {
   providerId: 'parkstay',
-  providerName: 'ParkStay WA',
+  providerName: 'ParkStay',
   kind: 'payment',
   url: 'https://parkstay.dbca.wa.gov.au/booking/',
   allowedOrigins: [...PARKSTAY_SIGN_IN_ORIGINS, 'https://*.dbca.wa.gov.au'],
@@ -111,7 +115,7 @@ describe('ProviderWindows', () => {
       parent: main,
       width: 520,
       height: 760,
-      title: 'ParkStay WA — Sign in',
+      title: 'ParkStay — Sign in',
       show: false,
     });
     expect(window.setMenu).toHaveBeenCalledWith(null);
@@ -269,7 +273,7 @@ describe('ProviderWindows', () => {
     expect(titleChange.preventDefault).toHaveBeenCalled();
 
     window.webContents.navigate('https://dbcab2c.b2clogin.com/x?y=1');
-    expect(window.title).toBe('ParkStay WA — Sign in · dbcab2c.b2clogin.com');
+    expect(window.title).toBe('ParkStay — Sign in · dbcab2c.b2clogin.com');
     expect(seen).toHaveBeenCalledWith({
       url: 'https://dbcab2c.b2clogin.com/x?y=1',
       httpStatus: 200,
@@ -280,7 +284,7 @@ describe('ProviderWindows', () => {
   it('the payment window allows *.dbca.wa.gov.au, and only logs a blocked host', () => {
     windows.open(PAYMENT);
     const window = lastWindow();
-    expect(window.options.title).toBe('ParkStay WA — Payment');
+    expect(window.options.title).toBe('ParkStay — Payment');
 
     expect(window.webContents.willNavigate('https://ledger.dbca.wa.gov.au/pay')).toBe(false);
     expect(window.webContents.willNavigate('https://payments.bank.example/3ds')).toBe(true);
@@ -316,6 +320,171 @@ describe('ProviderWindows', () => {
     expect(signIn.isClosed()).toBe(true);
     expect(payment.isClosed()).toBe(true);
     expect(windows.find('parkstay', 'sign-in')).toBeUndefined();
+  });
+
+  describe('showing and the first page', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it('shows when the first page is ready to paint, or after 1.5 s at the latest (a hanging first response)', () => {
+      jest.useFakeTimers();
+      windows.open(SIGN_IN);
+      const hanging = lastWindow();
+      expect(hanging.options.show).toBe(false);
+      jest.advanceTimersByTime(1499);
+      expect(hanging.isVisible()).toBe(false);
+      jest.advanceTimersByTime(1);
+      expect(hanging.isVisible()).toBe(true);
+      expect(hanging.focus).toHaveBeenCalled();
+
+      windows.open(PAYMENT);
+      const quick = lastWindow();
+      quick.emit('ready-to-show');
+      expect(quick.isVisible()).toBe(true);
+      jest.advanceTimersByTime(2000);
+      expect(quick.show).toHaveBeenCalledTimes(1);
+    });
+
+    it('a first-page redirect off the allow-list closes the window: loaded rejects with PROVIDER_ERROR naming the origin only', async () => {
+      jest.useFakeTimers();
+      const handle = windows.open(SIGN_IN);
+      const window = lastWindow();
+      const closed = jest.fn();
+      handle.onClosed(closed);
+
+      expect(window.webContents.willRedirect('https://evil.example/login?token=SECRET')).toBe(true);
+
+      const error = await handle.loaded.catch((e: unknown) => e);
+      expect(toApiError(error)).toEqual({
+        code: 'PROVIDER_ERROR',
+        message: "ParkStay's page sent the window to https://evil.example, which it does not allow",
+      });
+      expect(String((error as Error).message)).not.toContain('SECRET');
+      expect(window.destroyed).toBe(true);
+      expect(handle.isClosed()).toBe(true);
+      expect(closed).toHaveBeenCalledWith(error);
+      // It never showed, and nothing went to the system browser
+      jest.advanceTimersByTime(5000);
+      expect(window.show).not.toHaveBeenCalled();
+      expect(electron.shell.openExternal).not.toHaveBeenCalled();
+    });
+
+    it('a first page that fails to load closes the window with the reason; aborted loads and sub-frames do not', async () => {
+      const handle = windows.open(PAYMENT);
+      const contents = lastWindow().webContents;
+
+      contents.failLoad(-3, 'ERR_ABORTED');
+      contents.failLoad(-105, 'ERR_NAME_NOT_RESOLVED', 'https://frame.example/', false);
+      expect(handle.isClosed()).toBe(false);
+
+      contents.failLoad(-105, 'ERR_NAME_NOT_RESOLVED');
+      await expect(handle.loaded).rejects.toMatchObject({
+        code: 'provider',
+        message: "ParkStay's page could not be loaded (ERR_NAME_NOT_RESOLVED)",
+      });
+      expect(handle.isClosed()).toBe(true);
+    });
+
+    it('after the first page, a failed load or a blocked redirect leaves the window open', async () => {
+      const handle = windows.open(SIGN_IN);
+      const contents = lastWindow().webContents;
+      contents.showPage('https://parkstay.dbca.wa.gov.au/ssologin');
+      await expect(handle.loaded).resolves.toBeUndefined();
+
+      expect(contents.willRedirect('https://evil.example/')).toBe(true);
+      contents.failLoad(-105, 'ERR_NAME_NOT_RESOLVED');
+      expect(handle.isClosed()).toBe(false);
+      // A sign-in window still hands a blocked page to the system browser
+      expect(electron.shell.openExternal).toHaveBeenCalledWith('https://evil.example/');
+    });
+  });
+
+  describe("the provider's waiting room", () => {
+    const QUEUE = 'https://queue.dbca.wa.gov.au';
+    const SITE = 'https://parkstay.dbca.wa.gov.au';
+    const loads = () => lastWindow().loadURL.mock.calls.map(([url]) => url);
+
+    it('coming back from it to the site on another page loads the target again, once', () => {
+      windows.open({ ...SIGN_IN, waitingRoomOrigins: [QUEUE] });
+      const contents = lastWindow().webContents;
+
+      // As seen live: /ssologin, the SSO gateway, the queue, then ParkStay's home page
+      contents.showPage('https://auth2.dbca.wa.gov.au/sso/auth_local');
+      contents.showPage(`${QUEUE}/site-queue/waiting-room/parkstayv2/`);
+      contents.showPage(`${SITE}/search-availability/information/`);
+      expect(loads()).toEqual([PARKSTAY_SIGN_IN_URL, PARKSTAY_SIGN_IN_URL]);
+
+      // Once only: a second bounce stays where it lands
+      contents.showPage(`${QUEUE}/site-queue/waiting-room/parkstayv2/`);
+      contents.showPage(`${SITE}/search-availability/information/`);
+      expect(loads()).toHaveLength(2);
+    });
+
+    it('no reload when the waiting room returns to the target, leaves the site, or is not declared', () => {
+      windows.open({ ...PAYMENT, waitingRoomOrigins: [QUEUE] });
+      let contents = lastWindow().webContents;
+      contents.showPage(`${QUEUE}/site-queue/waiting-room/parkstayv2/`);
+      contents.showPage(`${SITE}/booking/`);
+      contents.showPage(`${QUEUE}/site-queue/waiting-room/parkstayv2/`);
+      contents.showPage('https://auth2.dbca.wa.gov.au/sso/auth_local');
+      expect(loads()).toEqual([`${SITE}/booking/`]);
+      lastWindow().close();
+
+      windows.open(PAYMENT);
+      contents = lastWindow().webContents;
+      contents.showPage(`${QUEUE}/site-queue/waiting-room/parkstayv2/`);
+      contents.showPage(`${SITE}/search-availability/information/`);
+      expect(loads()).toEqual([`${SITE}/booking/`]);
+    });
+
+    it('a page loaded later (a pasted link) is the new target', () => {
+      const handle = windows.open({ ...SIGN_IN, waitingRoomOrigins: [QUEUE] });
+      const contents = lastWindow().webContents;
+      const link = `${SITE}/ssologin?next=/my-bookings/`;
+      handle.load(link);
+      contents.showPage(`${QUEUE}/site-queue/waiting-room/parkstayv2/`);
+      contents.showPage(`${SITE}/search-availability/information/`);
+      expect(loads()).toEqual([PARKSTAY_SIGN_IN_URL, link, link]);
+    });
+  });
+
+  it('onLoaded hears finished pages; hasText reads them with find-in-page (case-sensitive) and clears the selection', async () => {
+    const handle = windows.open(PAYMENT);
+    const contents = lastWindow().webContents;
+    const loaded = jest.fn();
+    handle.onLoaded(loaded);
+
+    contents.showPage('https://parkstay.dbca.wa.gov.au/success/?checkouthash=abc', {
+      text: 'Your booking PB2072968 is completed',
+    });
+    expect(loaded).toHaveBeenCalledWith({
+      url: 'https://parkstay.dbca.wa.gov.au/success/?checkouthash=abc',
+      httpStatus: 200,
+    });
+    await expect(handle.hasText('PB2072968')).resolves.toBe(true);
+    await expect(handle.hasText('pb2072968')).resolves.toBe(false);
+    await expect(handle.hasText('PB1')).resolves.toBe(false);
+    expect(contents.stopFindInPage).toHaveBeenCalledWith('clearSelection');
+
+    handle.close();
+    await expect(handle.hasText('PB2072968')).resolves.toBe(false);
+  });
+
+  it("hasText waits out Chromium's early 0-match answer for the real count (seen live)", async () => {
+    const handle = windows.open(PAYMENT);
+    const contents = lastWindow().webContents;
+    contents.showPage('https://parkstay.dbca.wa.gov.au/success/', { text: 'PB2072968' });
+    contents.findInPage = jest.fn(() => {
+      setImmediate(() =>
+        contents.emit('found-in-page', {}, { requestId: 7, matches: 0, finalUpdate: true })
+      );
+      setTimeout(
+        () => contents.emit('found-in-page', {}, { requestId: 7, matches: 1, finalUpdate: true }),
+        50
+      );
+      return 7;
+    }) as typeof contents.findInPage;
+
+    await expect(handle.hasText('PB2072968')).resolves.toBe(true);
   });
 
   it('clears and flushes the provider partition', async () => {

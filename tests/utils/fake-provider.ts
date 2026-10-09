@@ -43,6 +43,7 @@ import {
   type ExternalBooking,
   type HoldResult,
   type HoldSuccess,
+  type PaymentPage,
   type ProviderContext,
   type ProviderFactory,
   type ProviderLogger,
@@ -385,6 +386,7 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
     listeners.forEach((listener) => listener(accessStatus));
   };
   const access: AccessGate = {
+    waitingRoomOrigins: [`https://queue.${id}.example`],
     status: () => accessStatus,
     async ensure({ signal, maxWaitMs } = {}) {
       await enter('access', 'ensure', [{ maxWaitMs }], signal);
@@ -570,10 +572,12 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
           },
           paymentUrl: (hold: HoldSuccess) => `https://${id}.example/pay/${hold.reference}`,
           paymentOrigins: [`https://${id}.example`],
-          // Paid: the provider's page `/paid/<reference>` (any query), booked as `BK-<reference>`
-          bookedReference: (hold: { reference: string }, url: string) => {
+          // Paid: the provider's page `/paid/<reference>` (any query) showing `BK-<reference>`
+          bookedReference: async (hold: { reference: string }, page: PaymentPage) => {
             const paid = `https://${id}.example/paid/${hold.reference}`;
-            return url === paid || url.startsWith(`${paid}?`) ? `BK-${hold.reference}` : null;
+            const booked = `BK-${hold.reference}`;
+            const onPage = page.url === paid || page.url.startsWith(`${paid}?`);
+            return onPage && (await page.hasText(booked)) ? booked : null;
           },
         }
       : undefined,

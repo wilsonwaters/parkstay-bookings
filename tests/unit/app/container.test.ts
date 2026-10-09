@@ -415,15 +415,18 @@ describe('createContainer', () => {
     const [{ isBusy }] = jest.mocked(ProviderAccountService).mock.calls[0];
     const snipes = container.repositories.snipes;
     const snipe = snipes.create(userId, createMockSiteSnipeInput({ providerId: 'parkstay' }));
+    // The account service passes its own clock
+    const now = new Date();
+    const busy = (providerId: string, at: Date = now) => isBusy(providerId, at);
 
-    expect(isBusy('parkstay')).toBe(false);
+    expect(busy('parkstay')).toBe(false);
     for (const status of [SnipeStatus.QUEUEING, SnipeStatus.SNIPING, SnipeStatus.HELD]) {
       snipes.updateStatus(snipe.id, status);
-      expect([status, isBusy('parkstay'), isBusy('other')]).toEqual([status, true, false]);
+      expect([status, busy('parkstay'), busy('other')]).toEqual([status, true, false]);
     }
     for (const status of [SnipeStatus.ARMED, SnipeStatus.WAITING_RELEASE, SnipeStatus.BOOKED]) {
       snipes.updateStatus(snipe.id, status);
-      expect([status, isBusy('parkstay')]).toEqual([status, false]);
+      expect([status, busy('parkstay')]).toEqual([status, false]);
     }
 
     // A watch's hold (migration v9 columns) counts until it expires
@@ -437,10 +440,12 @@ describe('createContainer', () => {
           "UPDATE watches SET last_result = 'held', hold_reference = '41', hold_expires_at = ? WHERE id = ?"
         )
         .run(expiresAt.toISOString(), watch.id);
-    holdUntil(new Date(Date.now() + 10 * 60_000));
-    expect(isBusy('parkstay')).toBe(true);
-    holdUntil(new Date(Date.now() - 60_000));
-    expect(isBusy('parkstay')).toBe(false);
+    holdUntil(new Date(now.getTime() + 10 * 60_000));
+    expect(busy('parkstay')).toBe(true);
+    // At the clock it is given, not the wall clock
+    expect(busy('parkstay', new Date(now.getTime() + 11 * 60_000))).toBe(false);
+    holdUntil(new Date(now.getTime() - 60_000));
+    expect(busy('parkstay')).toBe(false);
   });
 
   it('a closed payment window checks the provider account once; transactions are real', () => {

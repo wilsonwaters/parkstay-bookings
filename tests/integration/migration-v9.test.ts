@@ -268,6 +268,105 @@ describe('migration v9: the dropped ciphertext is not left in the file', () => {
     closeDatabase(v8);
     expect(foundIn([file], ciphertext)).toEqual([]);
   });
+
+  /** `db` whose VACUUM fails as on a full disk; everything else runs. */
+  function vacuumFails(db: Database.Database): jest.SpyInstance {
+    const exec = db.exec.bind(db);
+    return jest.spyOn(db, 'exec').mockImplementation((sql: string) => {
+      if (sql.trim() === 'VACUUM') throw new Error('SQLITE_FULL: database or disk is full');
+      return exec(sql);
+    });
+  }
+
+  const tasks = (db: Database.Database) => db.prepare('SELECT task FROM maintenance').all();
+  const freePages = (db: Database.Database) =>
+    Number(db.pragma('freelist_count', { simple: true }));
+
+  /** `db` with the runner's `secure_delete = ON` ignored, as a runner without it would run. */
+  function withoutSecureDelete(db: Database.Database): void {
+    const pragma = db.pragma.bind(db);
+    jest
+      .spyOn(db, 'pragma')
+      .mockImplementation(((source: string, options?: Database.PragmaOptions) =>
+        /secure_delete\s*=\s*ON/i.test(source) ? [] : pragma(source, options)) as never);
+  }
+
+  it('VACUUM fails (a full disk): secure_delete zeroed what the migrations freed, so no byte is left (without it, all of it would be)', () => {
+    const control = fixtureFile();
+    const unprotected = new Database(control.file);
+    withoutSecureDelete(unprotected);
+    vacuumFails(unprotected);
+    runMigrations(unprotected);
+    unprotected.close();
+    expect(foundIn([control.file], control.ciphertext)).toHaveLength(3);
+    fs.rmSync(control.file);
+
+    const { file, ciphertext } = fixtureFile();
+    const db = new Database(file);
+    db.pragma('journal_mode = WAL');
+    vacuumFails(db);
+    runMigrations(db);
+
+    expect(version(db)).toBe(9);
+    // The runner put secure_delete back as it found it
+    expect(db.pragma('secure_delete', { simple: true })).toBe(0);
+    expect(foundIn([file, `${file}-wal`], ciphertext)).toEqual([]);
+    db.close();
+    expect(foundIn([file, `${file}-wal`], ciphertext)).toEqual([]);
+  });
+
+  it('free pages an older build left holding it: a failed VACUUM keeps the task, and the next start rewrites the file', () => {
+    const { file, ciphertext } = fixtureFile();
+    const old = new Database(file);
+    // As a build without secure_delete could leave it: copies of the ciphertext on free pages
+    old.exec(`
+      CREATE TABLE copied AS SELECT * FROM users;
+      CREATE TABLE padding AS
+        WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 500)
+        SELECT i, hex(randomblob(100)) AS b FROM n;
+      DROP TABLE copied;
+      DROP TABLE padding;
+    `);
+    expect(freePages(old)).toBeGreaterThan(2);
+    vacuumFails(old);
+    runMigrations(old);
+    expect(version(old)).toBe(9);
+    expect(tasks(old)).toEqual([{ task: 'vacuum-freed-pages' }]);
+    expect(freePages(old)).toBeGreaterThan(0);
+    old.close();
+    expect(foundIn([file], ciphertext).length).toBeGreaterThan(0);
+
+    const next = new Database(file);
+    const exec = jest.spyOn(next, 'exec');
+    runMigrations(next); // already at v9: no step runs, the owed scrub does
+    expect(exec).toHaveBeenCalledWith('VACUUM');
+    expect(freePages(next)).toBe(0);
+    expect(tasks(next)).toEqual([]);
+
+    // Done: later starts do not rewrite the file again
+    exec.mockClear();
+    runMigrations(next);
+    expect(exec).not.toHaveBeenCalledWith('VACUUM');
+    next.close();
+    expect(foundIn([file, `${file}-journal`], ciphertext)).toEqual([]);
+  });
+
+  it('with no free page left, the task is cleared without a VACUUM; a v9 database without the table owes nothing', () => {
+    const db = new Database(':memory:');
+    runMigrations(db);
+    db.prepare("INSERT INTO maintenance (task) VALUES ('vacuum-freed-pages')").run();
+    expect(freePages(db)).toBe(0);
+    const exec = jest.spyOn(db, 'exec');
+
+    runMigrations(db);
+    expect(exec).not.toHaveBeenCalledWith('VACUUM');
+    expect(tasks(db)).toEqual([]);
+
+    // A v9 database from before the table (development builds only)
+    db.exec('DROP TABLE maintenance');
+    expect(() => runMigrations(db)).not.toThrow();
+    db.close();
+  });
 });
 
 describe('migration v9 from a fresh v8 database', () => {

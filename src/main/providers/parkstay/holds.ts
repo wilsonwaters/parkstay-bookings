@@ -11,15 +11,26 @@
  *
  * Payment: `create_booking` also sets `session['checkouthash'] = sha256(str(pk))`
  * (`api.py:3375`), and the payment ledger returns to `/success/?checkouthash=<that hash>`
- * (`utils.py:1766`). `/success/` alone proves nothing: it also serves `success-error.html`,
- * or another booking's page. So a booking is recorded only for `/success/` on ParkStay with
- * the hold's own hash; its reference is ParkStay's `PB` + pk (`BOOKING_PREFIX`).
+ * (`utils.py:1766`). The URL alone does not indicate payment (`views.py:880-912`): when the
+ * session's hash differs, `/success/` answers 200 with `success-error.html` ("Your booking
+ * session has expired."); when the basket was not paid it falls back to the session's
+ * previous booking (`ps_last_booking`). Both templates extend `ps/base.html` without a title
+ * of their own, so the page title cannot tell them apart. The success page says
+ * "Your booking PB<pk> is completed" (`success.html`), so a booking is recorded only for
+ * `/success/` on ParkStay with the hold's own hash that shows the hold's own booking number
+ * (`PB` + pk, `BOOKING_PREFIX`), found with the browser's find-in-page.
  */
 
 import { createHash } from 'crypto';
 import type { ProviderContext } from '../sdk/context';
 import { throwIfAborted } from '../sdk/errors';
-import type { HoldRequest, HoldResult, HoldsModule, HoldSuccess } from '../sdk/provider';
+import type {
+  HoldRequest,
+  HoldResult,
+  HoldsModule,
+  HoldSuccess,
+  PaymentPage,
+} from '../sdk/provider';
 import type { CampgroundFacts } from './catalog';
 import { toParkStayDate, type ParkStayClient } from './client';
 import { BOOKING_PREFIX, HOLD_MINUTES, PARKSTAY_BASE_URL, PAYMENT_ORIGINS } from './constants';
@@ -142,15 +153,21 @@ export function createHolds({ ctx, client, facts, findFreeUnit }: HoldsDeps): Ho
     create,
     paymentUrl: () => `${PARKSTAY_BASE_URL}/booking/`,
     paymentOrigins: PAYMENT_ORIGINS,
-    bookedReference(hold, url) {
-      const page = successPage(url);
-      if (!page) return null;
-      if (page.checkouthash !== checkoutHash(hold.reference)) {
-        // Another booking's confirmation, or ParkStay's error page: not this hold's payment
-        ctx.logger.warn('Payment window: a /success/ page that is not for this hold; ignored');
+    async bookedReference(hold: { reference: string }, page: PaymentPage) {
+      const success = successPage(page.url);
+      if (!success) return null;
+      if (success.checkouthash !== checkoutHash(hold.reference)) {
+        // Another booking's confirmation: not this hold's payment
+        ctx.logger.warn('Payment window: a /success/ page for another booking; ignored');
         return null;
       }
-      return `${BOOKING_PREFIX}${hold.reference}`;
+      const reference = `${BOOKING_PREFIX}${hold.reference}`;
+      if (!(await page.hasText(reference))) {
+        // `success-error.html`, or the previous booking's page: no payment for this hold
+        ctx.logger.warn('Payment window: /success/ does not show this booking; not recorded');
+        return null;
+      }
+      return reference;
     },
   };
 }

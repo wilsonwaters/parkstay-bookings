@@ -33,7 +33,12 @@ import { AccessGateError, createAbortError, isAbortError, throwIfAborted } from 
 import type { CookieStore } from '../../sdk/http';
 import type { KeyValueStore } from '../../sdk/kv-store';
 import type { AccessGate, AccessGateEnsureOptions } from '../../sdk/provider';
-import { PARKSTAY_BASE_URL, QUEUE_COOKIE_DOMAIN, QUEUE_COOKIE_NAME } from '../constants';
+import {
+  PARKSTAY_BASE_URL,
+  QUEUE_API_BASE_URL,
+  QUEUE_COOKIE_DOMAIN,
+  QUEUE_COOKIE_NAME,
+} from '../constants';
 import type { QueueApiResponse } from '../types';
 import { generateSessionKey, type QueueApi } from './queue-api';
 
@@ -112,6 +117,8 @@ function parseInstant(value: string | null): number {
 }
 
 export class ParkStayAccessGate implements AccessGate {
+  /** The DBCA waiting room's pages (`/site-queue/waiting-room/…`). */
+  readonly waitingRoomOrigins: readonly string[] = [QUEUE_API_BASE_URL];
   private readonly timings: AccessGateTimings;
   private readonly listeners = new Set<(status: AccessStatus) => void>();
   private current: AccessStatus;

@@ -309,6 +309,8 @@ A repeat success on a BOOKED row does nothing. The window stays on ParkStay's co
   4. Still signed-in after about 2 h idle? This sizes Q1 against `SESSION_COOKIE_AGE = 3600`.
   5. Only with genuine intent: a real snipe hold → pay → BOOKED, plus a PB booking. Record any blocked payment host (PQ5).
   6. Sign out → signed-out, with watches and snipes intact.
+  7. Only with genuine intent: an anonymous hold → sign in inside the payment window → the basket is kept → BOOKED (§12.32 Q1).
+  8. Sign in, and pay, while the DBCA queue is active: the window passes the waiting room and comes back to the sign-in or payment page (review fix; `access.waitingRoomOrigins`).
 
 ## 9. Risks, open questions and deviations
 

@@ -9,7 +9,12 @@
  *   allowed origin; a permission request is denied; a self-signed https page never loads;
  * - the window and `ElectronSessionHttpClient` share one cookie jar, and clearing the
  *   partition empties it;
- * - navigations reach the handle with their HTTP status, and the title shows the host.
+ * - navigations reach the handle with their HTTP status, and the title shows the host;
+ * - a first page redirected off the allow-list closes the window (never shown) and rejects
+ *   `loaded`, naming the origin only; a hanging first response still shows the window;
+ * - after a waiting room (a 200 page that sends the person to the site's home page), the
+ *   window loads its page again, once;
+ * - `hasText` reads the page with find-in-page.
  * Output is TAP; the exit code is the number of failures (capped at 1).
  */
 
@@ -39,6 +44,8 @@ interface Servers {
   site: string;
   /** Another origin, not on the allow-list. */
   other: string;
+  /** The provider's waiting room: a page that sends the person on to the site's home page. */
+  queue: string;
   /** A self-signed https origin (when openssl is available). */
   selfSigned?: string;
   /** Cookies each request to `site` carried. */
@@ -88,8 +95,29 @@ function selfSignedCertificate(): { key: Buffer; cert: Buffer } | undefined {
 
 async function startServers(): Promise<Servers> {
   const cookies: string[] = [];
+  const hanging: http.ServerResponse[] = [];
+  let otherOrigin = '';
+  let queueOrigin = '';
+  let siteOrigin = '';
   const site = http.createServer((req, res) => {
     cookies.push(String(req.headers.cookie ?? ''));
+    if (req.url?.startsWith('/redirect-off')) {
+      res.writeHead(302, { location: `${otherOrigin}/landing?token=SECRET` });
+      return res.end();
+    }
+    if (req.url?.startsWith('/hang')) {
+      hanging.push(res); // never answered
+      return;
+    }
+    if (req.url?.startsWith('/target') && !/queue_passed=1/.test(String(req.headers.cookie))) {
+      // Not through the queue yet: off to the waiting room
+      res.writeHead(302, { location: `${queueOrigin}/waiting-room` });
+      return res.end();
+    }
+    if (req.url?.startsWith('/receipt')) {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      return res.end(PAGE('Receipt') + '<p>Your booking PB2072968 is completed</p>');
+    }
     if (req.url?.startsWith('/set-cookie')) {
       res.writeHead(200, { 'set-cookie': 'from_server=s1; Path=/', 'content-type': 'text/plain' });
       return res.end('ok');
@@ -105,8 +133,27 @@ async function startServers(): Promise<Servers> {
     res.writeHead(200, { 'content-type': 'text/html' });
     res.end(PAGE('Other'));
   });
-  const servers: Array<http.Server | https.Server> = [site, other];
-  const [sitePort, otherPort] = [await listen(site), await listen(other)];
+  // The waiting room lets the person through (a cookie for 127.0.0.1, any port) and, as the
+  // DBCA queue does, sends them to the site's home page, not back where they were going
+  const queue = http.createServer((_req, res) => {
+    res.writeHead(200, {
+      'content-type': 'text/html',
+      'set-cookie': 'queue_passed=1; Path=/',
+    });
+    res.end(
+      PAGE('Waiting room') +
+        `<script>setTimeout(() => { location.href = ${JSON.stringify(`${siteOrigin}/home`)}; }, 200)</script>`
+    );
+  });
+  const servers: Array<http.Server | https.Server> = [site, other, queue];
+  const [sitePort, otherPort, queuePort] = [
+    await listen(site),
+    await listen(other),
+    await listen(queue),
+  ];
+  siteOrigin = `http://127.0.0.1:${sitePort}`;
+  otherOrigin = `http://127.0.0.1:${otherPort}`;
+  queueOrigin = `http://127.0.0.1:${queuePort}`;
 
   let selfSigned: string | undefined;
   const certificate = selfSignedCertificate();
@@ -120,14 +167,17 @@ async function startServers(): Promise<Servers> {
   }
 
   return {
-    site: `http://127.0.0.1:${sitePort}`,
-    other: `http://127.0.0.1:${otherPort}`,
+    site: siteOrigin,
+    other: otherOrigin,
+    queue: queueOrigin,
     selfSigned,
     cookies,
-    close: () =>
-      Promise.all(
+    close: () => {
+      for (const res of hanging.splice(0)) res.destroy();
+      return Promise.all(
         servers.map((s) => new Promise<void>((resolve) => s.close(() => resolve())))
-      ).then(() => undefined),
+      ).then(() => undefined);
+    },
   };
 }
 
@@ -245,7 +295,7 @@ const CASES: Case[] = [
     },
   },
   {
-    name: 'a self-signed https page never loads (certificate errors are rejected)',
+    name: 'a self-signed https page never loads: the window closes itself (certificate errors are rejected)',
     async run({ servers, windows, request }) {
       if (!servers.selfSigned) {
         console.log('  # skipped: openssl is not available');
@@ -258,15 +308,17 @@ const CASES: Case[] = [
       });
       const committed: number[] = [];
       handle.onNavigate((n) => committed.push(n.httpStatus));
-      const failed = new Promise<number>((resolve) =>
-        newest().webContents.once('did-fail-load', (_event, code) => resolve(code))
+      // The first page failed: the window has nothing to show and says why
+      const error = await handle.loaded.then(
+        () => assert.fail('the self-signed page should not load'),
+        (e: unknown) => e as Error
       );
-      // Chromium shows its own error page at that URL: the page itself never loads
-      assert.equal(await failed, -202); // net::ERR_CERT_AUTHORITY_INVALID
-      await sleep(300);
+      assert.equal(
+        error.message,
+        "Test Provider's page could not be loaded (ERR_CERT_AUTHORITY_INVALID)"
+      );
+      assert.equal(handle.isClosed(), true);
       assert.deepEqual(committed, []);
-      const text = await newest().webContents.executeJavaScript('document.body?.innerText ?? ""');
-      assert.doesNotMatch(String(text), /Self-signed/);
     },
   },
   {
@@ -298,6 +350,94 @@ const CASES: Case[] = [
     },
   },
 ];
+
+CASES.push(
+  {
+    name: 'a first page redirected off the allow-list closes the window, never shown; loaded rejects naming the origin only',
+    async run({ servers, windows, request }) {
+      const handle = windows.open({ ...request, url: `${servers.site}/redirect-off` });
+      const window = newest();
+      let shown = false;
+      window.on('show', () => (shown = true));
+      const closedWith = new Promise<unknown>((resolve) => handle.onClosed(resolve));
+
+      const error = await handle.loaded.then(
+        () => assert.fail('the first page should not load'),
+        (e: unknown) => e as Error
+      );
+      assert.equal(
+        error.message,
+        `Test Provider's page sent the window to ${servers.other}, which it does not allow`
+      );
+      assert.doesNotMatch(error.message, /SECRET|landing/);
+      assert.equal(await closedWith, error);
+      assert.equal(window.isDestroyed(), true);
+      assert.equal(shown, false);
+      assert.deepEqual(
+        openedExternally.filter((url) => url.includes('landing')),
+        []
+      );
+    },
+  },
+  {
+    name: 'a hanging first response still shows the window (at 1.5 s at the latest)',
+    async run({ servers, windows, request }) {
+      const handle = windows.open({ ...request, url: `${servers.site}/hang` });
+      const window = newest();
+      assert.equal(window.isVisible(), false);
+      let settled = false;
+      handle.loaded.then(
+        () => (settled = true),
+        () => (settled = true)
+      );
+      await eventually(() => assert.equal(window.isVisible(), true), 3_000);
+      assert.equal(settled, false);
+      assert.equal(handle.isClosed(), false);
+    },
+  },
+  {
+    name: "after the waiting room sends it to the site's home page, the window loads its page again, once",
+    async run({ servers, windows, request }) {
+      await session.fromPartition(`persist:provider-${PROVIDER_ID}`).clearStorageData();
+      const handle = windows.open({
+        ...request,
+        url: `${servers.site}/target`,
+        allowedOrigins: [servers.site, servers.queue],
+        waitingRoomOrigins: [servers.queue],
+      });
+      const pages: string[] = [];
+      handle.onNavigate((n) => pages.push(n.url));
+
+      await eventually(() => assert.equal(handle.currentUrl(), `${servers.site}/target`), 8_000);
+      assert.deepEqual(pages, [
+        `${servers.queue}/waiting-room`,
+        `${servers.site}/home`,
+        `${servers.site}/target`,
+      ]);
+      const text = await newest().webContents.executeJavaScript('document.body.innerText');
+      assert.match(String(text), /Site \/target/);
+    },
+  },
+  {
+    name: 'hasText reads the page with find-in-page (case-sensitive), and the page stays unchanged',
+    async run({ servers, windows, request }) {
+      const handle = windows.open({ ...request, url: `${servers.site}/receipt` });
+      await handle.loaded;
+      await new Promise<void>((resolve) => {
+        const stop = handle.onLoaded(() => {
+          stop();
+          resolve();
+        });
+        // Already loaded? Then the next tick decides
+        setTimeout(resolve, 1_000);
+      });
+      assert.equal(await handle.hasText('PB2072968'), true);
+      assert.equal(await handle.hasText('pb2072968'), false);
+      assert.equal(await handle.hasText('PB2070000'), false);
+      assert.equal(handle.currentUrl(), `${servers.site}/receipt`);
+    },
+  }
+);
 
 const openedExternally: string[] = [];
 

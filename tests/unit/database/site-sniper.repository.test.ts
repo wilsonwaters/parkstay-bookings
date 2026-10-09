@@ -27,6 +27,29 @@ describe('SiteSniperRepository', () => {
     await dbHelper.teardown();
   });
 
+  describe('createPaused', () => {
+    it('saves the snipe inactive and DISABLED with the reason as its last error', () => {
+      const snipe = repo.createPaused(userId, createMockSiteSnipeInput(), 'Sign in to Fake first');
+      expect(snipe).toMatchObject({
+        isActive: false,
+        status: SnipeStatus.DISABLED,
+        lastResult: SnipeResult.PENDING,
+        lastError: 'Sign in to Fake first',
+      });
+      expect(repo.findActive()).toEqual([]);
+    });
+
+    it('is one transaction: a failure part-way leaves no snipe at all', () => {
+      jest.spyOn(repo, 'deactivate').mockImplementation(() => {
+        throw new Error('disk I/O error');
+      });
+      expect(() => repo.createPaused(userId, createMockSiteSnipeInput(), 'Sign in')).toThrow(
+        'disk I/O error'
+      );
+      expect(repo.findByUserId(userId)).toEqual([]);
+    });
+  });
+
   describe('create', () => {
     it('creates a snipe with defaults and armed status', () => {
       const snipe = repo.create(userId, createMockSiteSnipeInput());

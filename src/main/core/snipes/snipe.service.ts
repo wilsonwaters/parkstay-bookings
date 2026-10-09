@@ -158,12 +158,12 @@ export class SiteSniperService {
     const provider = this.providers.require(input.providerId, 'snipes');
     const prepared = await this.prepare(provider, input, input.releaseAt);
     const signIn = await this.signInNeeded(provider);
-    const snipe = this.repo.create(userId, { ...input, ...prepared });
     if (signIn) {
-      // Saved paused: arming it waits for the sign-in (activate checks again)
-      this.repo.deactivate(snipe.id);
-      this.repo.setResult(snipe.id, SnipeResult.PENDING, signIn);
-    } else if (input.releaseMode === SnipeReleaseMode.CANCELLATION) {
+      // Saved paused, in one transaction: arming it waits for the sign-in (activate checks)
+      return this.changed(this.repo.createPaused(userId, { ...input, ...prepared }, signIn).id);
+    }
+    const snipe = this.repo.create(userId, { ...input, ...prepared });
+    if (input.releaseMode === SnipeReleaseMode.CANCELLATION) {
       // No fixed release: due for a poll at once.
       const now = this.clock();
       this.repo.updateCheckTimestamps(snipe.id, now, now);

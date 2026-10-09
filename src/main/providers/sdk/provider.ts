@@ -87,6 +87,12 @@ export interface AccessGateEnsureOptions {
 
 /** A waiting room or virtual queue in front of the provider (ParkStay: the DBCA queue). */
 export interface AccessGate {
+  /**
+   * Top-level https origins of the waiting room's own pages (ParkStay:
+   * `https://queue.dbca.wa.gov.au`). A provider window that passes through one may land on
+   * the provider's home page; knowing them, it goes back to the page it was opened for.
+   */
+  readonly waitingRoomOrigins?: readonly string[];
   status(): AccessStatus;
   /** Joins or refreshes the queue and resolves once access is `active`. */
   ensure(options?: AccessGateEnsureOptions): Promise<AccessStatus>;
@@ -168,11 +174,23 @@ export interface HoldsModule {
   /** Top-level origins the payment window may visit. */
   readonly paymentOrigins?: readonly string[];
   /**
-   * The booking reference when `url`, a page the payment window showed, proves that this
-   * hold was paid for (ParkStay: its `/success/` page with the hold's `checkouthash`), else
-   * null. Without it, the app cannot tell when a payment completes.
+   * The booking reference to record when `page`, a page the payment window loaded, indicates
+   * that this hold was paid for, else null. ParkStay: its `/success/` page with the hold's
+   * `checkouthash`, showing the hold's booking number. Without it, the app cannot tell when a
+   * payment completes.
    */
-  bookedReference?(hold: { reference: string }, url: string): string | null;
+  bookedReference?(hold: { reference: string }, page: PaymentPage): Promise<string | null>;
+}
+
+/** A page the payment window loaded, as `HoldsModule.bookedReference` may read it. */
+export interface PaymentPage {
+  /** The page's URL, after redirects. */
+  readonly url: string;
+  /**
+   * Whether the page shows `text` (case-sensitive), as the browser's find-in-page sees it.
+   * Read-only: nothing runs in the page.
+   */
+  hasText(text: string): Promise<boolean>;
 }
 
 export interface ExternalBooking {

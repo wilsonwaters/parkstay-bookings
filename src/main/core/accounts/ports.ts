@@ -1,7 +1,7 @@
 /**
- * What `core/accounts` (and, later, the hold payment hand-off) needs from the Electron shell,
- * as plain interfaces: core never imports `electron`. `app/provider-windows.ts` implements
- * them on `BrowserWindow` and the provider's session partition.
+ * What `core/accounts` and the hold payment hand-off need from the Electron shell, as plain
+ * interfaces: core never imports `electron`. `app/provider-windows.ts` implements them on
+ * `BrowserWindow` and the provider's session partition.
  */
 
 import type { AccountStatus, ProviderId } from '@shared/types/provider.types';
@@ -10,7 +10,7 @@ export type ProviderWindowKind = 'sign-in' | 'payment';
 
 export interface ProviderWindowRequest {
   providerId: ProviderId;
-  /** The provider's display name, for the window title. */
+  /** The provider's short name (`manifest.shortName`), for the window title and messages. */
   providerName: string;
   kind: ProviderWindowKind;
   /** The first page. It must match `allowedOrigins`, or `open` throws. */
@@ -19,6 +19,13 @@ export interface ProviderWindowRequest {
   allowedOrigins: readonly string[];
   /** Sends a blocked http(s) navigation to the system browser instead of only logging it. */
   openBlockedExternally: boolean;
+  /**
+   * Origin patterns of the provider's waiting room (its queue). A waiting room sends the
+   * person on to the provider's site, but not always to the page the window was opened for:
+   * when the window comes back from one of these to the target's origin on another path, the
+   * target loads once more (once per target).
+   */
+  waitingRoomOrigins?: readonly string[];
 }
 
 /** A top-level page the window showed (after redirects). */
@@ -27,6 +34,12 @@ export interface ProviderWindowNavigation {
   /** The HTTP status of the page (0 when Chromium did not report one). */
   httpStatus: number;
 }
+
+/**
+ * Why a window closed itself: its first page was blocked (a redirect off the allow-list) or
+ * could not be loaded. The message names an origin at most, never a path or query.
+ */
+export type ProviderWindowFailure = Error;
 
 export interface ProviderWindowHandle {
   readonly providerId: ProviderId;
@@ -41,8 +54,24 @@ export interface ProviderWindowHandle {
   currentUrl(): string;
   /** Every top-level page the window commits. Returns the unsubscribe function. */
   onNavigate(listener: (navigation: ProviderWindowNavigation) => void): () => void;
-  /** Runs once, when the window has closed. */
-  onClosed(listener: () => void): void;
+  /** Every top-level page that finished loading. Returns the unsubscribe function. */
+  onLoaded(listener: (page: ProviderWindowNavigation) => void): () => void;
+  /**
+   * Runs once, when the window has closed; with the failure when it closed itself because
+   * its first page was blocked or could not be loaded.
+   */
+  onClosed(listener: (failure?: ProviderWindowFailure) => void): void;
+  /**
+   * Settles with the first page: resolves once it commits, rejects with the failure when it
+   * is blocked or cannot be loaded (the window then closes itself). Stays pending while the
+   * first response hangs (the window shows anyway) and after a close by the person.
+   */
+  readonly loaded: Promise<void>;
+  /**
+   * Whether the page the window shows now has `text` (case-sensitive), as the browser's own
+   * find-in-page sees it: read-only, no script runs in the page. False once closed.
+   */
+  hasText(text: string): Promise<boolean>;
   isClosed(): boolean;
 }
 

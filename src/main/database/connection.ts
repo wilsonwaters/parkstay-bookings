@@ -948,22 +948,60 @@ function v9AddAccountLastChecked(db: Database.Database): void {
   addColumns(db, 'provider_accounts', [['last_checked_at', 'DATETIME']]);
 }
 
+/** The `maintenance` task v9 asks for: rewrite the file so no freed page keeps old data. */
+const SCRUB_TASK = 'vacuum-freed-pages';
+
 /**
- * Rewrites the database file so no freed page keeps old content, then empties the WAL. Run
- * once, after v9: the dropped legacy password ciphertext (and the copies v8's rebuild of
- * `users` freed) must not survive in the file (§12.32). VACUUM keeps every rowid alias
- * (`INTEGER PRIMARY KEY`), so the FTS index on `locations` stays valid. A failure is logged,
- * not fatal: the migration itself has committed.
+ * maintenance: work a migration asks for that must run outside its transaction, kept until
+ * it has run (a failure, or a quit in between, leaves it for the next start). v9 asks for
+ * the freed-page scrub in the same transaction that drops the ciphertext.
  */
-function scrubFreedPages(db: Database.Database): void {
+function v9RequestScrub(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS maintenance (
+      task TEXT PRIMARY KEY,
+      requested_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  db.prepare('INSERT OR IGNORE INTO maintenance (task) VALUES (?)').run(SCRUB_TASK);
+}
+
+/** Whether the freed-page scrub is still owed (a v9 database from before the table: no). */
+function scrubOwed(db: Database.Database): boolean {
+  const table = db
+    .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'maintenance'")
+    .get();
+  return Boolean(table && db.prepare('SELECT 1 FROM maintenance WHERE task = ?').get(SCRUB_TASK));
+}
+
+/**
+ * While v9's scrub is owed: rewrites the database file (VACUUM) when it has free pages, so
+ * none keeps the dropped legacy password ciphertext (§12.32), then marks it done and empties
+ * the WAL. VACUUM keeps every rowid alias (`INTEGER PRIMARY KEY`), so the FTS index on
+ * `locations` stays valid. A failure (a full disk) is logged, not fatal: the task stays and
+ * the next start tries again. The migrations ran with `secure_delete` on, so freed pages are
+ * zeroed already; this is the second line.
+ */
+function scrubFreedPagesIfOwed(db: Database.Database): void {
   try {
-    db.exec('VACUUM');
-    if (String(db.pragma('journal_mode', { simple: true })).toLowerCase() === 'wal') {
-      db.pragma('wal_checkpoint(TRUNCATE)');
+    if (!scrubOwed(db)) return;
+    const freePages = Number(db.pragma('freelist_count', { simple: true }));
+    if (freePages > 0) {
+      db.exec('VACUUM');
+      logger.info(`Database file rewritten (VACUUM): ${freePages} free page(s) dropped`);
     }
-    logger.info('Migration 009: database file rewritten (VACUUM)');
+    db.prepare('DELETE FROM maintenance WHERE task = ?').run(SCRUB_TASK);
   } catch (error) {
-    logger.error('Migration 009: VACUUM failed; freed pages may keep old data', error);
+    logger.error('VACUUM failed; it is tried again at the next start', error);
+  } finally {
+    // Zeroed pages reach the main file, and the WAL keeps no old frame
+    try {
+      if (String(db.pragma('journal_mode', { simple: true })).toLowerCase() === 'wal') {
+        db.pragma('wal_checkpoint(TRUNCATE)');
+      }
+    } catch (error) {
+      logger.warn('WAL checkpoint after the freed-page scrub failed', error);
+    }
   }
 }
 
@@ -1008,6 +1046,8 @@ export function runMigrations(
     throw new DatabaseTooNewError(currentVersion, LATEST_SCHEMA_VERSION);
   }
   if (currentVersion >= targetVersion) {
+    // A scrub an earlier start could not finish (outside every transaction)
+    if (!database.inTransaction) scrubFreedPagesIfOwed(database);
     return;
   }
   /** Whether migration `version` still has to run in this call. */
@@ -1023,6 +1063,11 @@ export function runMigrations(
     );
   }
   database.pragma('foreign_keys = OFF');
+  // Deleted content and freed pages are overwritten with zeros while the steps run: the
+  // rebuilds of `users` (v8, v9) must not leave the legacy password ciphertext in free pages.
+  // Like foreign_keys, it is set outside the transactions and restored.
+  const secureDelete = Number(database.pragma('secure_delete', { simple: true }));
+  database.pragma('secure_delete = ON');
   try {
     if (database.pragma('foreign_keys', { simple: true }) !== 0) {
       throw new Error(
@@ -1410,22 +1455,25 @@ export function runMigrations(
     // - users: rebuilt without encrypted_password and the encryption_* columns (§12.32);
     // - watches: hold_reference, hold_expires_at, hold_unit_id, payment_url, last_error
     //   (§12.31), added in place;
-    // - provider_accounts: last_checked_at.
-    // After the step, the file is rewritten (VACUUM) so the dropped ciphertext is gone.
+    // - provider_accounts: last_checked_at;
+    // - maintenance: created, with the freed-page scrub requested in the same transaction.
+    // After the step, the file is rewritten (VACUUM) so no freed page keeps the ciphertext.
     if (pending(9)) {
-      applyMigration(database, 9, ['users', 'watches', 'provider_accounts'], () => {
+      applyMigration(database, 9, ['users', 'watches', 'provider_accounts', 'maintenance'], () => {
         logger.info('Running migration 009: Retire legacy credentials, watch holds');
         v9RebuildUsers(database);
         v9AddWatchHoldColumns(database);
         v9AddAccountLastChecked(database);
+        v9RequestScrub(database);
       });
     }
   } finally {
     database.pragma('foreign_keys = ON');
+    database.pragma(`secure_delete = ${secureDelete}`);
   }
 
   // Outside every transaction: VACUUM cannot run inside one.
-  if (pending(9)) scrubFreedPages(database);
+  scrubFreedPagesIfOwed(database);
 }
 
 /**

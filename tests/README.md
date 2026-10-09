@@ -17,7 +17,7 @@ npx jest --selectProjects main
 npx jest --selectProjects renderer
 
 # Run specific test file (only the project that owns it runs)
-npm test -- tests/unit/services/auth.test.ts
+npm test -- tests/unit/core/watch.service.test.ts
 
 # Run with coverage report
 npm run test:coverage
@@ -133,6 +133,7 @@ To run the Electron app again afterwards, rebuild for Electron with `npm run reb
 ```
 tests/
 ├── unit/                    # Unit tests (main project)
+│   ├── core/                # Provider-agnostic services (watches, snipes, accounts, holds)
 │   ├── database/
 │   └── services/
 ├── integration/             # Integration tests (main project)
@@ -160,49 +161,38 @@ Renderer component tests are co-located with the components (`src/renderer/**/*.
 ### Unit Tests (`tests/unit/`)
 Tests individual services in isolation with mocked dependencies.
 
-**Example:**
+**Example** (the core services run on a real in-memory database and a FakeProvider, through
+`tests/utils/core-harness.ts`):
 ```typescript
-describe('AuthService', () => {
-  let authService: AuthService;
-  let dbHelper: TestDatabaseHelper;
+describe('watch auto-hold', () => {
+  let h: CoreHarness;
 
-  beforeEach(async () => {
-    dbHelper = new TestDatabaseHelper('auth-test');
-    await dbHelper.setup();
-    authService = new AuthService(/* ... */);
+  beforeEach(() => {
+    h = createCoreHarness({ providers: [createFakeProvider()] });
   });
 
-  afterEach(async () => {
-    await dbHelper.teardown();
-  });
+  afterEach(() => h.close());
 
-  it('should encrypt passwords', async () => {
-    const user = await authService.storeCredentials(mockUserInput);
-    expect(user.encryptedPassword).not.toBe(mockUserInput.password);
+  it('persists the hold it placed', async () => {
+    const watch = await h.watches.create(h.userId, h.watchInput({ autoHold: true }));
+    await h.watches.execute(watch.id);
+    expect(h.watchRepo.findById(watch.id)?.hold).toMatchObject({ reference: 'FAKE-1' });
   });
 });
 ```
 
 ### Integration Tests (`tests/integration/`)
-Tests multiple components working together, including database operations.
+Tests multiple components working together, including database operations. IPC tests build
+the real container and call handlers through `tests/utils/ipc-harness.ts`, with `electron`
+mocked (`tests/utils/electron-mocks.ts`).
 
 **Example:**
 ```typescript
-describe('Authentication Flow', () => {
-  it('should handle complete user lifecycle', async () => {
-    // Register user
-    const user = await authService.storeCredentials(mockUserInput);
-
-    // Retrieve credentials
-    const credentials = await authService.getCredentials();
-    expect(credentials?.password).toBe(mockUserInput.password);
-
-    // Update password
-    await authService.updateCredentials(user.email, 'NewPassword123!');
-
-    // Delete user (cascade deletes bookings)
-    await authService.deleteCredentials();
-    expect(authService.hasStoredCredentials()).toBe(false);
+it('a lapsed hold cannot be paid for', async () => {
+  const snipe = heldSnipe('2072968', new Date(Date.now() - 60_000));
+  await expect(call('snipes:open-payment', { id: snipe.id })).resolves.toMatchObject({
+    success: false,
+    code: 'HOLD_EXPIRED',
   });
 });
 ```
@@ -471,7 +461,7 @@ describe('BookingService', () => {
 
 ### Run Single Test
 ```bash
-npm test -- tests/unit/services/auth.test.ts
+npm test -- tests/unit/core/watch.service.test.ts
 ```
 
 ### Run Tests Matching Pattern

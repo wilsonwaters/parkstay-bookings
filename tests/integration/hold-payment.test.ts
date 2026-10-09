@@ -4,14 +4,18 @@
  * provider windows on the mocked `electron` (`FakeBrowserWindow`). Holds are seeded rows
  * (never a live hold, §12.33); "pages" are `did-navigate` events on the fake window.
  *
- * - `snipes.openPayment` / `watches.openPayment` open ParkStay's `/booking/` in a payment
- *   window on the partition the provider's HTTP client uses (where the hold is);
+ * - `snipes.openPayment` / `watches.openPayment` pass ParkStay's queue first (60 s bound), then
+ *   open ParkStay's `/booking/` in a payment window on the partition the provider's HTTP
+ *   client uses (where the hold is), and answer once the first page shows; a first page sent
+ *   off the allow-list is `PROVIDER_ERROR`; after the DBCA waiting room the window goes back
+ *   to `/booking/`;
  * - preconditions: `NOT_FOUND`, `CAPABILITY`, `HOLD_EXPIRED` (lapsed, expired, not held);
  * - one payment window per provider: the same hold focuses it, another is `VALIDATION`;
- * - `/success/` with the hold's `checkouthash` marks the snipe BOOKED (`PB` + reference, also
- *   from EXPIRED) or the watch booked, records one confirmed ParkStay booking, and emits
- *   `snipe:updated`/`watch:updated` then `booking:updated`; a reload changes nothing; another
- *   hold's `/success/` or an error status is ignored;
+ * - `/success/` with the hold's `checkouthash`, showing "Your booking PB<ref> is completed",
+ *   marks the snipe BOOKED (`PB` + reference, also from EXPIRED) or the watch booked, records
+ *   one confirmed ParkStay booking, and emits `snipe:updated`/`watch:updated` then
+ *   `booking:updated`; a reload changes nothing; another hold's `/success/`, DBCA's
+ *   `success-error.html` at the right URL, or an error status is ignored;
  * - the window allows DBCA's hosts and ParkStay's sign-in origins, and keeps other hosts out
  *   (logged, not opened externally);
  * - closing it checks the ParkStay account once.
@@ -79,6 +83,28 @@ describe('hold payment over IPC', () => {
   const snipes = () => container.repositories.snipes;
   const watches = () => container.repositories.watches;
   const bookings = () => container.repositories.bookings.findByUserId(userId);
+  let gateEnsure: jest.SpyInstance;
+
+  /**
+   * Opens payment for a hold and, once its window exists, shows the first page as Chromium
+   * would (the page commits); resolves with the IPC answer.
+   */
+  async function pay(channel: string, id: number, firstPage = `${SITE}/booking/`) {
+    const before = windows().length;
+    const answer = call(channel, { id });
+    for (let turn = 0; turn < 100 && windows().length === before; turn++) await settle();
+    if (windows().length > before) lastWindow().webContents.showPage(firstPage);
+    return answer;
+  }
+
+  /** ParkStay's confirmation page for `reference`: its URL, and what `success.html` shows. */
+  async function confirmation(
+    reference: string,
+    text = `Your booking PB${reference} is completed`
+  ) {
+    lastWindow().webContents.showPage(successUrl(reference), { text });
+    for (let turn = 0; turn < 5; turn++) await settle();
+  }
 
   /** A ParkStay snipe holding site 136 until `expiresAt` (a seeded row: no live hold). */
   function heldSnipe(reference = SNIPE_HOLD, expiresAt = new Date(Date.now() + 20 * MINUTE)) {
@@ -126,6 +152,9 @@ describe('hold payment over IPC', () => {
     isSignedIn = jest
       .spyOn(container.providers.get('parkstay').auth!, 'isSignedIn')
       .mockResolvedValue({ state: 'signed-out' });
+    // The DBCA queue lets the payment through at once (no network in tests)
+    const gate = container.providers.get('parkstay').access!;
+    gateEnsure = jest.spyOn(gate, 'ensure').mockResolvedValue(gate.status());
   });
 
   afterEach(async () => {
@@ -136,7 +165,7 @@ describe('hold payment over IPC', () => {
   describe('snipes.openPayment', () => {
     it("opens ParkStay's /booking/ in a payment window on the HttpClient's partition", async () => {
       const snipe = heldSnipe();
-      await expect(call('snipes:open-payment', { id: snipe.id })).resolves.toEqual({
+      await expect(pay('snipes:open-payment', snipe.id)).resolves.toEqual({
         success: true,
         data: undefined,
       });
@@ -144,7 +173,8 @@ describe('hold payment over IPC', () => {
       expect(windows()).toHaveLength(1);
       const window = lastWindow();
       expect(window.loadURL).toHaveBeenCalledWith(`${SITE}/booking/`);
-      expect(window.title).toBe('ParkStay — Payment');
+      expect(window.options.title).toBe('ParkStay — Payment');
+      expect(window.title).toBe('ParkStay — Payment · parkstay.dbca.wa.gov.au');
       const http = container.providers.httpOf('parkstay') as ElectronSessionHttpClient;
       expect(window.options.webPreferences).toMatchObject({
         partition: http.partition,
@@ -155,6 +185,56 @@ describe('hold payment over IPC', () => {
       expect(http.partition).toBe('persist:provider-parkstay');
       // Opening changes nothing
       expect(snipes().findById(snipe.id)).toEqual(snipe);
+    });
+
+    it("passes ParkStay's queue first (at most 60 s), then opens the window with the DBCA waiting room", async () => {
+      const gate = container.providers.get('parkstay').access!;
+      let letThrough!: () => void;
+      gateEnsure.mockImplementation(
+        () => new Promise((resolve) => (letThrough = () => resolve(gate.status())))
+      );
+      const answer = call('snipes:open-payment', { id: heldSnipe().id });
+      for (let turn = 0; turn < 5; turn++) await settle();
+
+      expect(gateEnsure).toHaveBeenCalledWith(expect.objectContaining({ maxWaitMs: 60_000 }));
+      expect(windows()).toHaveLength(0);
+      letThrough();
+      for (let turn = 0; turn < 5 && windows().length === 0; turn++) await settle();
+      expect(windows()).toHaveLength(1);
+      lastWindow().webContents.showPage(`${SITE}/booking/`);
+      await expect(answer).resolves.toMatchObject({ success: true });
+    });
+
+    it('after the DBCA waiting room sends it to the home page, /booking/ loads again (once)', async () => {
+      await pay('snipes:open-payment', heldSnipe().id);
+      const page = lastWindow().webContents;
+
+      page.showPage('https://queue.dbca.wa.gov.au/site-queue/waiting-room/parkstayv2/');
+      page.showPage(`${SITE}/search-availability/information/`);
+      expect(lastWindow().loadURL.mock.calls.map(([url]) => url)).toEqual([
+        `${SITE}/booking/`,
+        `${SITE}/booking/`,
+      ]);
+    });
+
+    it('a first page sent off the allow-list: openPayment is PROVIDER_ERROR naming the origin only, the window is gone, the hold untouched', async () => {
+      const snipe = heldSnipe();
+      const answer = call('snipes:open-payment', { id: snipe.id });
+      for (let turn = 0; turn < 100 && windows().length === 0; turn++) await settle();
+
+      expect(lastWindow().webContents.willRedirect('https://evil.example/pay?ref=2072968')).toBe(
+        true
+      );
+      await expect(answer).resolves.toEqual({
+        success: false,
+        code: 'PROVIDER_ERROR',
+        error: "ParkStay's page sent the window to https://evil.example, which it does not allow",
+      });
+      expect(lastWindow().destroyed).toBe(true);
+      expect(snipes().findById(snipe.id)?.status).toBe(SnipeStatus.HELD);
+      // No account check for a window that never showed a page
+      expect(isSignedIn).not.toHaveBeenCalled();
+      await expect(pay('snipes:open-payment', snipe.id)).resolves.toMatchObject({ success: true });
     });
 
     it('a missing snipe is NOT_FOUND, a provider without holds CAPABILITY; no window opens', async () => {
@@ -194,11 +274,10 @@ describe('hold payment over IPC', () => {
 
     it('/success/ with the hold’s checkouthash marks it BOOKED (PB + reference), records one booking, and emits snipe:updated then booking:updated', async () => {
       const snipe = heldSnipe();
-      await call('snipes:open-payment', { id: snipe.id });
+      await pay('snipes:open-payment', snipe.id);
       renderer.sent.length = 0;
 
-      lastWindow().webContents.navigate(successUrl(SNIPE_HOLD));
-      await settle();
+      await confirmation(SNIPE_HOLD);
 
       expect(snipes().findById(snipe.id)).toMatchObject({
         status: SnipeStatus.BOOKED,
@@ -234,20 +313,18 @@ describe('hold payment over IPC', () => {
 
       // A reload of the confirmation page changes nothing
       renderer.sent.length = 0;
-      lastWindow().webContents.navigate(successUrl(SNIPE_HOLD));
-      await settle();
+      await confirmation(SNIPE_HOLD);
       expect(bookings()).toHaveLength(1);
       expect(sentNames()).toEqual([]);
     });
 
-    it('success after the hold timer expired the snipe still books it (the hash proves payment)', async () => {
+    it('success after the hold timer expired the snipe still books it (the confirmation page indicates payment)', async () => {
       const snipe = heldSnipe();
-      await call('snipes:open-payment', { id: snipe.id });
+      await pay('snipes:open-payment', snipe.id);
       container.siteSniperService.expireHold(snipe.id);
       expect(snipes().findById(snipe.id)?.status).toBe(SnipeStatus.EXPIRED);
 
-      lastWindow().webContents.navigate(successUrl(SNIPE_HOLD));
-      await settle();
+      await confirmation(SNIPE_HOLD);
 
       expect(snipes().findById(snipe.id)).toMatchObject({
         status: SnipeStatus.BOOKED,
@@ -256,16 +333,20 @@ describe('hold payment over IPC', () => {
       expect(bookings().map((b) => b.bookingReference)).toEqual(['PB2072968']);
     });
 
-    it("another hold's /success/, an error status or another page records nothing", async () => {
+    it("another hold's /success/, success-error.html, an earlier booking's page, an error status or another page records nothing", async () => {
       const snipe = heldSnipe();
-      await call('snipes:open-payment', { id: snipe.id });
+      await pay('snipes:open-payment', snipe.id);
       const page = lastWindow().webContents;
 
-      page.navigate(successUrl('1234567'));
-      page.navigate(successUrl(SNIPE_HOLD), 500);
-      page.navigate(`${SITE}/success/`);
-      page.navigate(`${SITE}/booking/?checkouthash=${sha256(SNIPE_HOLD)}`);
-      await settle();
+      page.showPage(successUrl('1234567'), { text: 'Your booking PB1234567 is completed' });
+      page.showPage(successUrl(SNIPE_HOLD), { status: 500, text: 'Your booking PB2072968' });
+      page.showPage(`${SITE}/success/`);
+      page.showPage(`${SITE}/booking/?checkouthash=${sha256(SNIPE_HOLD)}`);
+      // DBCA's success-error.html, 200 at the right URL: the session's hash differed
+      page.showPage(successUrl(SNIPE_HOLD), { text: 'Your booking session has expired.' });
+      // The ps_last_booking fallback: an earlier booking's confirmation at the right URL
+      page.showPage(successUrl(SNIPE_HOLD), { text: 'Your booking PB2070000 is completed' });
+      for (let turn = 0; turn < 10; turn++) await settle();
 
       expect(snipes().findById(snipe.id)?.status).toBe(SnipeStatus.HELD);
       expect(bookings()).toEqual([]);
@@ -275,7 +356,7 @@ describe('hold payment over IPC', () => {
       const snipe = heldSnipe();
       const other = heldSnipe('2072969');
       const watch = heldWatch();
-      await call('snipes:open-payment', { id: snipe.id });
+      await pay('snipes:open-payment', snipe.id);
       const window = lastWindow();
 
       await expect(call('snipes:open-payment', { id: snipe.id })).resolves.toMatchObject({
@@ -299,14 +380,14 @@ describe('hold payment over IPC', () => {
       window.close();
       await settle();
       expect(snipes().findById(snipe.id)?.status).toBe(SnipeStatus.HELD);
-      await expect(call('snipes:open-payment', { id: other.id })).resolves.toMatchObject({
+      await expect(pay('snipes:open-payment', other.id)).resolves.toMatchObject({
         success: true,
       });
       expect(windows()).toHaveLength(2);
     });
 
     it("allows DBCA's hosts and ParkStay's sign-in origins at the top level, and keeps any other host out without opening it", async () => {
-      await call('snipes:open-payment', { id: heldSnipe().id });
+      await pay('snipes:open-payment', heldSnipe().id);
       const page = lastWindow().webContents;
 
       expect(page.willNavigate('https://ledger.dbca.wa.gov.au/ledger/checkout')).toBe(false);
@@ -324,7 +405,7 @@ describe('hold payment over IPC', () => {
     });
 
     it('closing the payment window checks the ParkStay account once (the person may have signed in)', async () => {
-      await call('snipes:open-payment', { id: heldSnipe().id });
+      await pay('snipes:open-payment', heldSnipe().id);
       expect(isSignedIn).not.toHaveBeenCalled();
       isSignedIn.mockResolvedValue({ state: 'signed-in', email: 'a@b.au' });
 
@@ -341,7 +422,7 @@ describe('hold payment over IPC', () => {
   describe('watches.openPayment', () => {
     it('opens the same partitioned /booking/ window for a watch hold', async () => {
       const watch = heldWatch();
-      await expect(call('watches:open-payment', { id: watch.id })).resolves.toEqual({
+      await expect(pay('watches:open-payment', watch.id)).resolves.toEqual({
         success: true,
         data: undefined,
       });
@@ -370,11 +451,10 @@ describe('hold payment over IPC', () => {
 
     it('success turns the watch hold into a confirmed booking and emits watch:updated and booking:updated', async () => {
       const watch = heldWatch();
-      await call('watches:open-payment', { id: watch.id });
+      await pay('watches:open-payment', watch.id);
       renderer.sent.length = 0;
 
-      lastWindow().webContents.navigate(successUrl(WATCH_HOLD));
-      await settle();
+      await confirmation(WATCH_HOLD);
 
       const stored = watches().findById(watch.id)!;
       expect(stored).toMatchObject({ lastResult: WatchResult.BOOKED, isActive: false });
@@ -405,9 +485,8 @@ describe('hold payment over IPC', () => {
 
   it('bookings.list shows the paid booking with its manage link', async () => {
     const snipe = heldSnipe();
-    await call('snipes:open-payment', { id: snipe.id });
-    lastWindow().webContents.navigate(successUrl(SNIPE_HOLD));
-    await settle();
+    await pay('snipes:open-payment', snipe.id);
+    await confirmation(SNIPE_HOLD);
 
     const listed = await call<Booking[]>('bookings:list');
     expect(listed.data).toEqual([

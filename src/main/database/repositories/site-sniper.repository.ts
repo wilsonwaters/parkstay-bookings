@@ -242,6 +242,19 @@ export class SiteSniperRepository extends BaseRepository<SiteSnipe> {
   }
 
   /**
+   * Creates a snipe saved paused: inactive, DISABLED, with `reason` as its last error, all in
+   * one transaction (nothing ever sees it active).
+   */
+  createPaused(userId: number, input: SiteSnipeInput, reason: string): SiteSnipe {
+    return this.transaction(() => {
+      const snipe = this.create(userId, input);
+      this.deactivate(snipe.id);
+      this.setResult(snipe.id, SnipeResult.PENDING, reason);
+      return this.findById(snipe.id)!;
+    });
+  }
+
+  /**
    * Activate a snipe (arm it).
    */
   activate(id: number): void {

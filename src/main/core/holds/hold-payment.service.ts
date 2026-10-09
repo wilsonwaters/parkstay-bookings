@@ -4,7 +4,13 @@
  * `openForSnipe(id)` and `openForWatch(id)` open the provider's payment page in a payment
  * window on the provider's session partition, the one its HTTP client placed the hold with
  * (ParkStay keeps the hold in that session as `ps_booking`, so `/booking/` shows it). They
- * resolve once the window is open, not when payment ends.
+ * resolve once the payment page has started showing (or after `firstPageWaitMs` while it
+ * hangs), not when payment ends; a first page that is blocked or cannot be loaded closes the
+ * window and is their error (`PROVIDER_ERROR`).
+ * - **Queue first:** for a provider with an access gate, the gate is passed first (at most
+ *   `accessGateWaitMs`), so the queue's cookie is in the session before the payment page
+ *   loads. If it does not get through, the window opens anyway: it shows the waiting room,
+ *   and comes back to the payment page after it (`waitingRoomOrigins`).
  *
  * - **Preconditions:** the row exists (`NOT_FOUND`); its provider has holds (`CAPABILITY`);
  *   it holds a site that has not expired (`HOLD_EXPIRED`). The payment URL must be on the
@@ -13,12 +19,13 @@
  *   person may sign in while paying). One payment window per provider: a provider session
  *   holds one booking at a time. Asking again for the same hold focuses it; asking for another
  *   one focuses it and answers `VALIDATION`.
- * - **Paid:** a page the window shows that the provider's `holds.bookedReference` recognises
- *   as this hold's confirmation (ParkStay: `/success/` with the hold's own `checkouthash`)
- *   marks the snipe BOOKED (from HELD, or EXPIRED: the hash proves the payment even after the
- *   hold timer fired) or the watch booked, and records the confirmed booking, in one
- *   transaction. Then `snipe:updated` or `watch:updated`, `booking:updated`, and a
- *   notification. A repeat (the page reloaded) changes nothing.
+ * - **Paid:** a page the window loaded that the provider's `holds.bookedReference` takes as
+ *   this hold's confirmation (ParkStay: `/success/` with the hold's own `checkouthash`, showing
+ *   its booking number) indicates payment. It marks the snipe BOOKED (from HELD, or EXPIRED:
+ *   the hold timer may fire while the person pays) or the watch booked, and records the
+ *   confirmed booking, in one transaction. Then `snipe:updated` or `watch:updated`,
+ *   `booking:updated`, and a notification. A repeat (the page reloaded) changes nothing; a
+ *   write that failed is tried again on the next confirmation page.
  * - **Closed** before paying: nothing changes; payment can open again until the hold expires.
  *   Once a payment window closes, `onWindowClosed` lets the account service check the account
  *   once (the person may have signed in on the payment page).
@@ -31,7 +38,7 @@ import type { ProviderId } from '@shared/types/provider.types';
 import type { SiteSniperRepository, WatchRepository } from '../../database/repositories';
 import type { ProviderRegistry, ProviderWith } from '../../providers/registry';
 import type { ProviderLogger } from '../../providers/sdk/context';
-import { ProviderError } from '../../providers/sdk/errors';
+import { ProviderError, toApiError } from '../../providers/sdk/errors';
 import type { HoldSuccess } from '../../providers/sdk/provider';
 import { matchesOrigin } from '../../providers/sdk/url-patterns';
 import { AppError } from '../../utils/app-error';
@@ -66,13 +73,28 @@ export interface HoldPaymentDeps {
   onWindowClosed?(providerId: ProviderId): void;
   logger: ProviderLogger;
   clock?: () => Date;
+  timings?: Partial<HoldPaymentTimings>;
 }
+
+export interface HoldPaymentTimings {
+  /** The most the provider's queue may take before the window opens anyway. */
+  accessGateWaitMs: number;
+  /** How long opening waits for the first page before it resolves anyway. */
+  firstPageWaitMs: number;
+}
+
+export const DEFAULT_HOLD_PAYMENT_TIMINGS: Readonly<HoldPaymentTimings> = Object.freeze({
+  accessGateWaitMs: 60_000,
+  firstPageWaitMs: 30_000,
+});
 
 interface OpenPayment {
   readonly subject: PaymentSubject;
   readonly window: ProviderWindowHandle;
-  /** The confirmation was seen: later pages change nothing. */
+  /** The booking was recorded (or there was none to record): later pages change nothing. */
   done: boolean;
+  /** Page checks, one after another. */
+  checks: Promise<void>;
 }
 
 type HoldsProvider = ProviderWith<'holds'>;
@@ -83,13 +105,21 @@ export class HoldPaymentService {
   private readonly deps: HoldPaymentDeps;
   private readonly log: ProviderLogger;
   private readonly clock: () => Date;
+  private readonly timings: HoldPaymentTimings;
   private readonly payments = new Map<ProviderId, OpenPayment>();
+  /** Payment windows on their way (through the provider's queue). */
+  private readonly opening = new Map<
+    ProviderId,
+    { subject: PaymentSubject; promise: Promise<void> }
+  >();
+  private readonly controllers = new Set<AbortController>();
   private disposed = false;
 
   constructor(deps: HoldPaymentDeps) {
     this.deps = deps;
     this.log = deps.logger.child({ module: 'hold-payment' });
     this.clock = deps.clock ?? (() => new Date());
+    this.timings = { ...DEFAULT_HOLD_PAYMENT_TIMINGS, ...deps.timings };
   }
 
   /** Opens the payment window for a HELD snipe's hold (see the class comment). */
@@ -101,7 +131,7 @@ export class HoldPaymentService {
     if (snipe.status !== SnipeStatus.HELD || !holdReference || !this.unexpired(holdExpiresAt)) {
       throw this.expired();
     }
-    this.open(
+    await this.open(
       provider,
       { kind: 'snipe', id, providerId: snipe.providerId, reference: holdReference },
       {
@@ -122,7 +152,7 @@ export class HoldPaymentService {
     if (watch.lastResult !== WatchResult.HELD || !hold || !this.unexpired(hold.expiresAt)) {
       throw this.expired();
     }
-    this.open(
+    await this.open(
       provider,
       { kind: 'watch', id, providerId: watch.providerId, reference: hold.reference },
       {
@@ -137,6 +167,7 @@ export class HoldPaymentService {
   /** On quit, before the windows close: their events change nothing from here. */
   dispose(): void {
     this.disposed = true;
+    for (const controller of this.controllers) controller.abort();
     this.payments.clear();
   }
 
@@ -150,12 +181,19 @@ export class HoldPaymentService {
     return new AppError('HOLD_EXPIRED', 'This hold has expired, so it can no longer be paid for');
   }
 
-  private open(provider: HoldsProvider, subject: PaymentSubject, hold: HoldSuccess): void {
+  private open(provider: HoldsProvider, subject: PaymentSubject, hold: HoldSuccess): Promise<void> {
     const { providerId } = subject;
+    const same = (other: PaymentSubject): boolean =>
+      other.kind === subject.kind && other.id === subject.id;
     const existing = this.payments.get(providerId);
     if (existing && !existing.window.isClosed()) {
       existing.window.focus();
-      if (existing.subject.kind === subject.kind && existing.subject.id === subject.id) return;
+      if (same(existing.subject)) return Promise.resolve();
+      throw new AppError('VALIDATION', PAYMENT_WINDOW_BUSY_MESSAGE);
+    }
+    const underway = this.opening.get(providerId);
+    if (underway) {
+      if (same(underway.subject)) return underway.promise;
       throw new AppError('VALIDATION', PAYMENT_WINDOW_BUSY_MESSAGE);
     }
 
@@ -169,38 +207,109 @@ export class HoldPaymentService {
       });
     }
 
-    const window = this.deps.windows.open({
-      providerId,
-      providerName: manifest.shortName,
-      kind: 'payment',
-      url,
-      allowedOrigins,
-      openBlockedExternally: false,
-    });
-    const payment: OpenPayment = { subject, window, done: false };
-    this.payments.set(providerId, payment);
-    const stopListening = window.onNavigate((navigation) => this.onNavigate(payment, navigation));
-    window.onClosed(() => {
-      stopListening();
-      if (this.payments.get(providerId) === payment) this.payments.delete(providerId);
+    const promise = (async () => {
+      await this.passAccessGate(provider);
       if (this.disposed) return;
-      this.log.info(`Payment window for ${subject.kind} ${subject.id} closed`);
-      this.deps.onWindowClosed?.(providerId);
+      const window = this.deps.windows.open({
+        providerId,
+        providerName: manifest.shortName,
+        kind: 'payment',
+        url,
+        allowedOrigins,
+        openBlockedExternally: false,
+        ...(provider.access?.waitingRoomOrigins
+          ? { waitingRoomOrigins: provider.access.waitingRoomOrigins }
+          : {}),
+      });
+      const payment: OpenPayment = { subject, window, done: false, checks: Promise.resolve() };
+      this.payments.set(providerId, payment);
+      const stopListening = window.onLoaded((page) => this.onLoaded(payment, page));
+      window.onClosed((failure) => {
+        stopListening();
+        if (this.payments.get(providerId) === payment) this.payments.delete(providerId);
+        if (this.disposed || failure) return;
+        this.log.info(`Payment window for ${subject.kind} ${subject.id} closed`);
+        this.deps.onWindowClosed?.(providerId);
+      });
+      this.log.info(`Payment window opened for ${subject.kind} ${subject.id} (${providerId})`);
+      await this.firstPage(window);
+    })().finally(() => {
+      if (this.opening.get(providerId)?.promise === promise) this.opening.delete(providerId);
     });
-    this.log.info(`Payment window opened for ${subject.kind} ${subject.id} (${providerId})`);
+    this.opening.set(providerId, { subject, promise });
+    return promise;
   }
 
-  private onNavigate(payment: OpenPayment, { url, httpStatus }: ProviderWindowNavigation): void {
+  /**
+   * The provider's queue, when it has one, so its cookie is in the session before the payment
+   * page loads. Not getting through is not an error: the window shows the waiting room.
+   */
+  private async passAccessGate(provider: HoldsProvider): Promise<void> {
+    const gate = provider.manifest.capabilities.accessGate === true ? provider.access : undefined;
+    if (!gate) return;
+    const controller = new AbortController();
+    this.controllers.add(controller);
+    const limit = setTimeout(() => controller.abort(), this.timings.accessGateWaitMs + 1_000);
+    limit.unref?.();
+    try {
+      await gate.ensure({ signal: controller.signal, maxWaitMs: this.timings.accessGateWaitMs });
+    } catch (error) {
+      if (this.disposed) return;
+      this.log.warn(
+        `${provider.manifest.shortName}'s queue did not let the payment through first (${toApiError(error).code}); opening the payment page anyway`
+      );
+    } finally {
+      clearTimeout(limit);
+      this.controllers.delete(controller);
+    }
+  }
+
+  /**
+   * Resolves once the window's first page commits, the person closes it, or `firstPageWaitMs`
+   * passed (the window shows anyway); rejects when the first page was blocked or failed.
+   */
+  private firstPage(window: ProviderWindowHandle): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, this.timings.firstPageWaitMs);
+      timer.unref?.();
+      const settle = (error?: Error): void => {
+        clearTimeout(timer);
+        if (error) reject(error);
+        else resolve();
+      };
+      window.loaded.then(() => settle(), settle);
+      window.onClosed((failure) => settle(failure));
+    });
+  }
+
+  private onLoaded(payment: OpenPayment, page: ProviderWindowNavigation): void {
     if (this.disposed || payment.done) return;
-    if (httpStatus < 200 || httpStatus >= 300) return;
-    const { subject } = payment;
+    if (page.httpStatus < 200 || page.httpStatus >= 300) return;
+    payment.checks = payment.checks.then(() => this.check(payment, page.url));
+  }
+
+  /** Whether the page indicates this hold was paid for; if so, records the booking. */
+  private async check(payment: OpenPayment, url: string): Promise<void> {
+    if (this.disposed || payment.done) return;
+    const { subject, window } = payment;
     const holds = this.deps.providers.tryGet(subject.providerId)?.holds;
-    const reference = holds?.bookedReference?.({ reference: subject.reference }, url) ?? null;
-    if (!reference) return;
-    payment.done = true;
+    if (!holds?.bookedReference) return;
+    let reference: string | null;
+    try {
+      reference = await holds.bookedReference(
+        { reference: subject.reference },
+        { url, hasText: (text) => window.hasText(text) }
+      );
+    } catch (error) {
+      this.log.warn(`Payment window: could not read the page (${String(error)})`);
+      return;
+    }
+    if (!reference || this.disposed || payment.done) return;
     try {
       if (subject.kind === 'snipe') this.bookSnipe(subject, reference);
       else this.bookWatch(subject, reference);
+      // Only once written: a confirmation page loaded again tries a failed write again
+      payment.done = true;
     } catch (error) {
       // The person paid: say so loudly; the provider's own bookings page still has it
       this.log.error(
