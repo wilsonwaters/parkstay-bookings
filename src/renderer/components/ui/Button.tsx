@@ -8,10 +8,13 @@ import {
 import { LoaderCircle } from 'lucide-react';
 import { cx } from './cx';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'floating' | 'inverse';
 /** `danger-solid` is only for the confirm button of a destructive ConfirmDialog. */
 type InternalVariant = ButtonVariant | 'danger-solid';
 export type ButtonSize = 'sm' | 'md' | 'lg';
+/** `rounded`: the default corners. `pill`: fully round ends, for controls that sit in a pill
+ * (the search pill's Search button) or float over the map. */
+export type ButtonShape = 'rounded' | 'pill';
 
 // Hover styles skip disabled and loading (aria-disabled) buttons.
 const VARIANT: Record<InternalVariant, string> = {
@@ -29,6 +32,17 @@ const VARIANT: Record<InternalVariant, string> = {
   // darker and cooler than the coral primary so the two never read as the same button.
   'danger-solid':
     'bg-danger-fg text-fg-inverse [&:not(:disabled):not([aria-disabled=true])]:hover:bg-danger-fg/90',
+  // Floating over a photo or the map: a white surface lifted by the pill shadow, no outline.
+  floating:
+    'bg-surface text-fg shadow-pill [&:not(:disabled):not([aria-disabled=true])]:hover:bg-surface-subtle',
+  // Floating over content in ink, such as the "Show map" / "Show list" switch.
+  inverse:
+    'bg-surface-inverse text-fg-inverse shadow-pill [&:not(:disabled):not([aria-disabled=true])]:hover:bg-surface-inverse/90',
+};
+
+const SHAPE: Record<ButtonShape, string> = {
+  rounded: 'rounded-md',
+  pill: 'rounded-full',
 };
 
 const SIZE: Record<ButtonSize, string> = {
@@ -49,6 +63,8 @@ const ICON: Record<ButtonSize, number> = { sm: 16, md: 18, lg: 20 };
 interface CommonProps {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  /** `pill` for fully round ends. */
+  shape?: ButtonShape;
   leadingIcon?: ReactNode;
   trailingIcon?: ReactNode;
   fullWidth?: boolean;
@@ -77,18 +93,21 @@ export type ButtonProps = ButtonAsButtonProps | ButtonAsLinkProps;
 export function buttonClassName({
   variant = 'primary',
   size = 'md',
+  shape = 'rounded',
   fullWidth,
   iconOnly,
   className,
 }: {
   variant?: InternalVariant;
   size?: ButtonSize;
+  shape?: ButtonShape;
   fullWidth?: boolean;
   iconOnly?: boolean;
   className?: string;
 }): string {
   return cx(
-    'inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap rounded-md font-semibold',
+    'inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap font-semibold',
+    SHAPE[shape],
     'transition-colors duration-fast ease-standard',
     'disabled:cursor-not-allowed disabled:opacity-50 aria-busy:cursor-progress',
     VARIANT[variant],
@@ -106,6 +125,7 @@ const ButtonImpl = forwardRef<HTMLButtonElement | HTMLAnchorElement, InternalPro
       as,
       variant,
       size = 'md',
+      shape,
       leadingIcon,
       trailingIcon,
       fullWidth,
@@ -114,7 +134,7 @@ const ButtonImpl = forwardRef<HTMLButtonElement | HTMLAnchorElement, InternalPro
       children,
       ...rest
     } = props;
-    const classes = buttonClassName({ variant, size, fullWidth, className });
+    const classes = buttonClassName({ variant, size, shape, fullWidth, className });
 
     if (as === 'a') {
       return (
@@ -174,7 +194,9 @@ export const ButtonBase = ButtonImpl as (
 
 /**
  * The one button. `primary` is the coral call to action (one per view), `secondary` an ink
- * outline, `ghost` for quiet actions and `danger` a crimson outline. `as="a"` renders a link.
+ * outline, `ghost` for quiet actions and `danger` a crimson outline. `floating` (white) and
+ * `inverse` (ink) carry the pill shadow, for controls over a photo or the map. `shape="pill"`
+ * rounds the ends. `as="a"` renders a link.
  */
 export const Button = ButtonImpl as (
   props: ButtonProps & { ref?: ForwardedRef<HTMLButtonElement | HTMLAnchorElement> }

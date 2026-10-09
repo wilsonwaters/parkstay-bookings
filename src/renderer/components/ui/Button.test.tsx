@@ -5,13 +5,28 @@ import { Plus } from 'lucide-react';
 import { Button } from './Button';
 
 describe('Button', () => {
-  it.each(['primary', 'secondary', 'ghost', 'danger'] as const)(
+  it.each(['primary', 'secondary', 'ghost', 'danger', 'floating', 'inverse'] as const)(
     'renders the %s variant as a button named by its label',
     (variant) => {
       render(<Button variant={variant}>Create watch</Button>);
       expect(screen.getByRole('button', { name: 'Create watch' })).toBeEnabled();
     }
   );
+
+  it('renders a pill-shaped button, and a pill-shaped link, named by the label', () => {
+    render(
+      <>
+        <Button shape="pill" variant="inverse" size="lg">
+          Show map
+        </Button>
+        <Button as="a" href="#/places" shape="pill" variant="floating">
+          View details
+        </Button>
+      </>
+    );
+    expect(screen.getByRole('button', { name: 'Show map' })).toBeEnabled();
+    expect(screen.getByRole('link', { name: 'View details' })).toHaveAttribute('href', '#/places');
+  });
 
   it('defaults to type="button" so it never submits a form by accident', async () => {
     const onSubmit = jest.fn((e) => e.preventDefault());

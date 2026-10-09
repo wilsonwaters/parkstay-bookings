@@ -1,5 +1,5 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
-import { buttonClassName, type ButtonSize, type ButtonVariant } from './Button';
+import { buttonClassName, type ButtonShape, type ButtonSize, type ButtonVariant } from './Button';
 import { Tooltip } from './Tooltip';
 
 export interface IconButtonProps
@@ -11,11 +11,13 @@ export interface IconButtonProps
   variant?: ButtonVariant;
   /** 32, 40 or 48 px square. */
   size?: ButtonSize;
+  /** `pill` makes it a circle. */
+  shape?: ButtonShape;
 }
 
 /** A button that shows only an icon. It always has a name, and a tooltip with the same text. */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  { label, icon, variant = 'ghost', size = 'md', className, type = 'button', ...rest },
+  { label, icon, variant = 'ghost', size = 'md', shape, className, type = 'button', ...rest },
   ref
 ) {
   return (
@@ -24,7 +26,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
         ref={ref}
         type={type}
         aria-label={label}
-        className={buttonClassName({ variant, size, iconOnly: true, className })}
+        className={buttonClassName({ variant, size, shape, iconOnly: true, className })}
         {...rest}
       >
         {icon}

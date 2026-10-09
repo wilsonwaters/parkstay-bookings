@@ -54,7 +54,7 @@ export function FilterRow({ params, facets, showKinds, onChange, onClearAll }: F
         onPressedChange={(online) => onChange({ online })}
       />
       {hasActiveFilters(params) && (
-        <Button variant="ghost" size="sm" className="rounded-full" onClick={onClearAll}>
+        <Button variant="ghost" size="sm" shape="pill" onClick={onClearAll}>
           Clear all
         </Button>
       )}

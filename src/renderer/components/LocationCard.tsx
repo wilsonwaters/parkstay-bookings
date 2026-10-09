@@ -64,7 +64,7 @@ export function LocationPhoto({ location, className }: LocationPhotoProps) {
           )}
         />
       )}
-      {state === 'loading' && <Skeleton className="absolute inset-0 !rounded-none" />}
+      {state === 'loading' && <Skeleton shape="fill" className="absolute inset-0" />}
       {state === 'failed' && (
         <PhotoPlaceholder
           aria-label={`No photo available for ${location.name}`}

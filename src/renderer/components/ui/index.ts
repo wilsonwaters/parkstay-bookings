@@ -14,8 +14,15 @@ export { PhotoPlaceholder, type PhotoPlaceholderProps } from './PhotoPlaceholder
 export { KIND_ICONS, kindIcon, type LocationKindName } from './kindIcons';
 
 // Actions
-export { Button, type ButtonProps, type ButtonSize, type ButtonVariant } from './Button';
+export {
+  Button,
+  type ButtonProps,
+  type ButtonShape,
+  type ButtonSize,
+  type ButtonVariant,
+} from './Button';
 export { IconButton, type IconButtonProps } from './IconButton';
+export { Chip, type ChipProps } from './Chip';
 
 // Form
 export { Field, type FieldProps } from './Field';

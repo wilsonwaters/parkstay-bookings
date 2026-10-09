@@ -283,10 +283,11 @@ export default function MapView({
         </div>
         {!follow && areaChanged && controller && (
           <Button
-            variant="secondary"
+            variant="floating"
+            shape="pill"
             size="sm"
             leadingIcon={<Search size={16} aria-hidden="true" />}
-            className="pointer-events-auto !rounded-full shadow-pill"
+            className="pointer-events-auto"
             onClick={() => {
               setAreaChanged(false);
               onSearchArea(controller.getView().bbox);
@@ -336,9 +337,10 @@ export default function MapView({
               label="Close preview"
               icon={<X size={16} />}
               size="sm"
-              variant="secondary"
+              variant="floating"
+              shape="pill"
               onClick={closePreview}
-              className="absolute right-2 top-2 !rounded-full !border-0 shadow-pill"
+              className="absolute right-2 top-2"
             />
             <div className="flex flex-col gap-1 p-3">
               <p className="text-base font-semibold text-fg">{preview.name}</p>

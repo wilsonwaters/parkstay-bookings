@@ -588,23 +588,22 @@ export default function ExplorePage() {
         </div>
 
         {mapMode && !wide && (
-          <button
-            type="button"
+          <Button
+            variant="inverse"
+            shape="pill"
+            size="lg"
             onClick={toggleView}
-            className="fixed bottom-6 left-1/2 z-header inline-flex h-12 -translate-x-1/2 items-center gap-2 rounded-full bg-surface-inverse px-5 text-sm font-semibold text-fg-inverse shadow-pill transition-colors duration-fast ease-standard hover:bg-surface-inverse/90"
-          >
-            {params.view === 'map' ? (
-              <>
+            leadingIcon={
+              params.view === 'map' ? (
                 <List size={18} aria-hidden="true" />
-                Show list
-              </>
-            ) : (
-              <>
+              ) : (
                 <MapIcon size={18} aria-hidden="true" />
-                Show map
-              </>
-            )}
-          </button>
+              )
+            }
+            className="fixed bottom-6 left-1/2 z-header -translate-x-1/2"
+          >
+            {params.view === 'map' ? 'Show list' : 'Show map'}
+          </Button>
         )}
       </div>
     </HighlightContext.Provider>

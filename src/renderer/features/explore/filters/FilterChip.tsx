@@ -1,34 +1,8 @@
-import { forwardRef, useId, type ButtonHTMLAttributes, type ReactNode } from 'react';
-import { Check, ChevronDown } from 'lucide-react';
+import { useId, type ReactNode } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { placesLabel } from '../../../components/locationFormat';
-import { Button, Checkbox, Popover } from '../../../components/ui';
-import { cx } from '../../../components/ui/cx';
+import { Button, Checkbox, Chip, Popover } from '../../../components/ui';
 import type { FacetOption } from './facets';
-
-const CHIP_CLASS =
-  'inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-4 text-sm font-medium transition-colors duration-fast ease-standard';
-const CHIP_IDLE = 'border-border-strong bg-surface text-fg hover:border-fg';
-const CHIP_ACTIVE = 'border-brand bg-brand-subtle text-brand-strong';
-
-interface ChipButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  active: boolean;
-}
-
-const ChipButton = forwardRef<HTMLButtonElement, ChipButtonProps>(function ChipButton(
-  { active, className, children, type = 'button', ...rest },
-  ref
-) {
-  return (
-    <button
-      ref={ref}
-      type={type}
-      className={cx(CHIP_CLASS, active ? CHIP_ACTIVE : CHIP_IDLE, className)}
-      {...rest}
-    >
-      {children}
-    </button>
-  );
-});
 
 export interface FilterChipProps {
   /** "Region". With one chosen the chip reads "Region · 1" and is named "Region, 1 selected". */
@@ -54,16 +28,17 @@ export function FilterChip({ label, options, selected, onChange, hint }: FilterC
   return (
     <Popover
       label={label}
-      className="w-72 !p-0"
+      padding="none"
+      className="w-72"
       trigger={
-        <ChipButton
-          active={count > 0}
+        <Chip
+          selected={count > 0}
           aria-label={count > 0 ? `${label}, ${count} selected` : undefined}
+          trailingIcon={<ChevronDown size={16} aria-hidden="true" className="-mr-1" />}
         >
           {label}
           {count > 0 && <span className="tabular-nums">· {count}</span>}
-          <ChevronDown size={16} aria-hidden="true" className="-mr-1" />
-        </ChipButton>
+        </Chip>
       }
     >
       {({ close }) => (
@@ -118,9 +93,8 @@ export interface ToggleChipProps {
 /** An on/off chip (`aria-pressed`), such as "Book online". */
 export function ToggleChip({ label, pressed, onPressedChange }: ToggleChipProps) {
   return (
-    <ChipButton active={pressed} aria-pressed={pressed} onClick={() => onPressedChange(!pressed)}>
-      {pressed && <Check size={16} aria-hidden="true" className="-ml-1" />}
+    <Chip pressed={pressed} onClick={() => onPressedChange(!pressed)}>
       {label}
-    </ChipButton>
+    </Chip>
   );
 }

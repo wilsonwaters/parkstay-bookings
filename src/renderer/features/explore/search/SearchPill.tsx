@@ -156,8 +156,9 @@ export function SearchPill({
         label="Search"
         variant="primary"
         size="lg"
+        shape="pill"
         icon={<Search size={20} />}
-        className="ml-1 !rounded-full"
+        className="ml-1"
       />
     </form>
   );

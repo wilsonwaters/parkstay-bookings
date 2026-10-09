@@ -35,6 +35,8 @@ export interface PopoverProps {
   align?: Align;
   /** Focused on open. Default: whatever inside took focus, else the first focusable element. */
   initialFocusRef?: RefObject<HTMLElement>;
+  /** `md` (default) pads the panel; `none` leaves it to content with its own sections. */
+  padding?: 'md' | 'none';
   className?: string;
 }
 
@@ -58,6 +60,7 @@ export function Popover({
   side = 'bottom',
   align = 'start',
   initialFocusRef,
+  padding = 'md',
   className,
 }: PopoverProps) {
   const [inner, setInner] = useState(defaultOpen);
@@ -141,7 +144,8 @@ export function Popover({
             style={style}
             onKeyDown={onPanelKeyDown}
             className={cx(
-              'z-overlay max-w-[calc(100vw-1rem)] animate-scale-in rounded-lg border border-border bg-surface p-4 text-fg shadow-pop focus:outline-none',
+              'z-overlay max-w-[calc(100vw-1rem)] animate-scale-in rounded-lg border border-border bg-surface text-fg shadow-pop focus:outline-none',
+              padding === 'md' && 'p-4',
               className
             )}
           >
