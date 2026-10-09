@@ -9,8 +9,11 @@
  * - No other attribute survives, so `style`, `class` and `on*` handlers are gone.
  * - Relative `href` and `src` are made absolute against `baseUrl`. Only https URLs are
  *   kept: a link to anything else loses its `href`, and an image without an https `src` is
- *   dropped.
- * - Every link gets `rel="noopener noreferrer"`.
+ *   dropped. An image without alt text gets `alt=""` (decoration).
+ * - Every link gets `rel="noopener noreferrer"`, and a link with an `href` gets
+ *   `target="_blank"`: the app window turns a new window into the system browser
+ *   (`setWindowOpenHandler`), while a plain navigation away from the app is blocked, so this
+ *   is what makes a description's links open at all.
  */
 
 import sanitizeHtml from 'sanitize-html';
@@ -59,18 +62,27 @@ function withUrl(
 export function sanitizeProviderHtml(html: string, baseUrl: string): string {
   return sanitizeHtml(html, {
     allowedTags: ALLOWED_TAGS,
-    allowedAttributes: { a: ['href', 'rel'], img: ['src', 'alt'] },
+    allowedAttributes: { a: ['href', 'target', 'rel'], img: ['src', 'alt'] },
     // Dropped together with their content.
     nonTextTags: ['style', 'script', 'textarea', 'option', 'noscript', 'iframe'],
     allowedSchemes: ['https'],
     allowedSchemesAppliedToAttributes: ['href', 'src'],
     allowProtocolRelative: false,
     transformTags: {
-      a: (tagName, attribs) => ({
+      a: (tagName, attribs) => {
+        const link = withUrl(attribs, 'href', baseUrl);
+        // The provider's own target (`_top`, a frame name) never survives.
+        delete link.target;
+        // Only an https href survives the scheme filter below.
+        if (link.href?.startsWith('https://')) link.target = '_blank';
+        return { tagName, attribs: { ...link, rel: 'noopener noreferrer' } };
+      },
+      // A description's image without alt text is decoration (its text says what matters):
+      // `alt=""`, never an unnamed image.
+      img: (tagName, attribs) => ({
         tagName,
-        attribs: { ...withUrl(attribs, 'href', baseUrl), rel: 'noopener noreferrer' },
+        attribs: { ...withUrl(attribs, 'src', baseUrl), alt: attribs.alt ?? '' },
       }),
-      img: (tagName, attribs) => ({ tagName, attribs: withUrl(attribs, 'src', baseUrl) }),
     },
     // An image whose source is not https would render as a broken box.
     exclusiveFilter: (frame) =>

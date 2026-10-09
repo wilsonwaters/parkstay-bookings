@@ -598,7 +598,7 @@ describe('detail', () => {
     const detail = await s.catalog.get('fake:1');
 
     expect(detail.descriptionHtml).toBe(
-      '<p>Calm <a rel="noopener noreferrer">water</a></p><img src="https://fake.example/img/a.jpg" />'
+      '<p>Calm <a rel="noopener noreferrer">water</a></p><img src="https://fake.example/img/a.jpg" alt="" />'
     );
     expect(s.locations.getDetail('fake', '1')?.detail.descriptionHtml).toBe(detail.descriptionHtml);
   });

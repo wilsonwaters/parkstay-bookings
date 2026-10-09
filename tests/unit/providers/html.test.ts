@@ -16,7 +16,7 @@ describe('sanitizeProviderHtml', () => {
 
     expect(clean).not.toMatch(/<style|style=|class=/);
     expect(clean).toContain(
-      '<img src="https://parkstay.dbca.wa.gov.au/media/parkstay/campground_images/25f050a7-6c3.jpg" />'
+      '<img src="https://parkstay.dbca.wa.gov.au/media/parkstay/campground_images/25f050a7-6c3.jpg" alt="" />'
     );
     expect(clean).toContain('<h4><strong>This campground is in the Gascoyne Region</strong></h4>');
     // The CSS rules inside <style> are gone too, not left as text.
@@ -28,7 +28,7 @@ describe('sanitizeProviderHtml', () => {
       '<p onclick="steal()">Hi<script>alert(1)</script></p><iframe src="https://x.example"></iframe><img src="/a.jpg" onerror="x()">',
       BASE
     );
-    expect(clean).toBe('<p>Hi</p><img src="https://parkstay.dbca.wa.gov.au/a.jpg" />');
+    expect(clean).toBe('<p>Hi</p><img src="https://parkstay.dbca.wa.gov.au/a.jpg" alt="" />');
   });
 
   it('keeps only the allowed tags, keeping the text of the others', () => {
@@ -41,16 +41,24 @@ describe('sanitizeProviderHtml', () => {
 
   it('makes links absolute, keeps only https ones, and adds rel="noopener noreferrer"', () => {
     const clean = sanitizeProviderHtml(
-      '<a href="/park" target="_blank">park</a> <a href="javascript:alert(1)">js</a> <a href="http://insecure.example/">http</a>',
+      '<a href="/park" target="_top">park</a> <a href="javascript:alert(1)" target="_blank">js</a> <a href="http://insecure.example/">http</a>',
       BASE
     );
     expect(clean).toBe(
-      '<a href="https://parkstay.dbca.wa.gov.au/park" rel="noopener noreferrer">park</a> ' +
+      '<a href="https://parkstay.dbca.wa.gov.au/park" target="_blank" rel="noopener noreferrer">park</a> ' +
         '<a rel="noopener noreferrer">js</a> <a rel="noopener noreferrer">http</a>'
     );
   });
 
-  it('drops images whose source is not https, and keeps alt text', () => {
+  it('opens every link with an href in a new window, which the app sends to the browser', () => {
+    expect(
+      sanitizeProviderHtml('<p>See <a href="https://exploreparks.example/x">this</a></p>', BASE)
+    ).toBe(
+      '<p>See <a href="https://exploreparks.example/x" target="_blank" rel="noopener noreferrer">this</a></p>'
+    );
+  });
+
+  it('drops images whose source is not https, keeps alt text, and marks the rest decorative', () => {
     expect(
       sanitizeProviderHtml(
         '<img src="http://x.example/a.jpg"><img src="data:image/png;base64,AA">',
