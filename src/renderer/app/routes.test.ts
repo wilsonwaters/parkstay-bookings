@@ -70,6 +70,9 @@ describe('ROUTES', () => {
     expect(ROUTES.bookingDetail(3)).toBe('/bookings/3');
     expect(ROUTES.settings()).toBe('/settings');
     expect(ROUTES.settings('notifications')).toBe('/settings/notifications');
+    expect(ROUTES.settings('accounts', { provider: 'parkstay' })).toBe(
+      '/settings/accounts?provider=parkstay'
+    );
     expect(ROUTES.design()).toBe('/__design');
   });
 

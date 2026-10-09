@@ -15,8 +15,23 @@ import path from 'path';
 import { stripComments } from '../../utils/strip-comments';
 
 const RENDERER = path.resolve(__dirname, '../../../src/renderer');
-const SCAN_DIRS = ['components/ui', 'components/brand', 'app', 'features', 'api'];
-const SCAN_FILE_PREFIXES = ['components/LocationCard'];
+const SCAN_DIRS = [
+  'components/ui',
+  'components/brand',
+  'components/providers',
+  'components/stay',
+  'app',
+  'features',
+  'api',
+  'hooks',
+];
+const SCAN_FILE_PREFIXES = [
+  'components/LocationCard',
+  'components/LocationCombobox',
+  'components/StepFlow',
+  'components/locationFormat',
+  'components/timeFormat',
+];
 const SOURCE = /\.(ts|tsx)$/;
 const IGNORE_MARKER = 'token-guard-ignore';
 
@@ -30,13 +45,9 @@ const LEGACY_FILES = [
   'features/settings/legacy/Settings.tsx',
   'features/snipes/legacy/CreateSiteSnipe.tsx',
   'features/snipes/legacy/index.tsx',
-  'features/watches/legacy/CreateWatch.tsx',
-  'features/watches/legacy/EditWatch.tsx',
-  'features/watches/legacy/WatchDetail.tsx',
-  'features/watches/legacy/index.tsx',
 ];
 /** The length LEGACY_FILES had when D3 wrote it. Lower it as entries go; never raise it. */
-const LEGACY_FILES_MAX = 9;
+const LEGACY_FILES_MAX = 5;
 
 /** Every Tailwind utility that takes a colour. */
 const COLOUR_UTILITY =

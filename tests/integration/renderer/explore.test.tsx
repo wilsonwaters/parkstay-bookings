@@ -1,7 +1,7 @@
 /**
  * The Explore journey through the whole renderer: the shell opens on Explore, a search, a
- * region filter, then a card to its detail page, a check of its dates, the hand-off to a
- * watch, and back to Explore as it was left. And Explore with 5,000 places.
+ * region filter, then a card to its detail page, a check of its dates, the hand-off to the
+ * new watch flow (filled in), and back to Explore as it was left. And Explore with 5,000 places.
  */
 import { act, configure, screen, waitFor, within } from '@testing-library/react';
 import { PARKSTAY_LOCATIONS } from '../../fixtures/catalog/parkstay-locations';
@@ -95,15 +95,26 @@ describe('Explore journey', () => {
     ).toBeInTheDocument();
     expect(mock?.api.catalog.checkLocation).toHaveBeenCalledTimes(1);
 
-    // Hand off to a watch: the legacy form opens filled in.
+    // Hand off to a watch: the new watch flow opens on Your stay, with the place, dates and
+    // guests from the place page (U1).
     await user.click(within(card).getByRole('link', { name: 'Watch for availability' }));
     expect(currentRoute()).toBe(
       '/watches/new?provider=parkstay&location=20&arrival=2099-01-10&departure=2099-01-12&adults=2'
     );
-    expect(await screen.findByText('Bungarra')).toBeInTheDocument();
-    expect(screen.getByLabelText(/Check-in Date/)).toHaveValue('2099-01-10');
-    expect(screen.getByLabelText(/Check-out Date/)).toHaveValue('2099-01-12');
-    expect(screen.getByLabelText(/Number of Guests/)).toHaveValue(2);
+    expect(await screen.findByRole('heading', { level: 1, name: 'New watch' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { level: 2, name: 'Step 3 of 5: Your stay' })
+    ).toBeInTheDocument();
+    const steps = screen.getByRole('navigation', { name: 'New watch steps' });
+    expect(within(steps).getByRole('button', { name: 'Provider, done' })).toBeInTheDocument();
+    expect(within(steps).getByRole('button', { name: 'Location, done' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Dates Sat 10 Jan – Mon 12 Jan' })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Guests 2 adults/ })).toBeInTheDocument();
+    expect(screen.queryByText("Some of the link couldn't be used")).toBeNull();
+    await user.click(within(steps).getByRole('button', { name: 'Location, done' }));
+    expect(await screen.findByRole('combobox', { name: 'Location' })).toHaveValue('Bungarra');
 
     // Back to the place, then back to Explore as it was left.
     act(() => window.history.back());

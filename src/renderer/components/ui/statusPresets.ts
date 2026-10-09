@@ -2,6 +2,7 @@ import {
   Ban,
   BellRing,
   CalendarClock,
+  CalendarX,
   CircleAlert,
   CircleCheck,
   CirclePause,
@@ -27,6 +28,8 @@ export const statusPresets = {
   watch: {
     active: { tone: 'brand', icon: BellRing, label: 'Watching', live: true },
     paused: { tone: 'neutral', icon: CirclePause, label: 'Paused' },
+    /** The stay has started or passed: nothing left to watch. */
+    ended: { tone: 'neutral', icon: CalendarX, label: 'Ended' },
   },
   /** The outcome of a watch's last check. */
   watchResult: {
@@ -69,7 +72,7 @@ export const statusPresets = {
     [BookingStatus.CANCELLED]: { tone: 'neutral', icon: CircleX, label: 'Cancelled' },
   },
 } satisfies {
-  watch: Record<'active' | 'paused', StatusPreset>;
+  watch: Record<'active' | 'paused' | 'ended', StatusPreset>;
   watchResult: Record<WatchResult, StatusPreset>;
   snipe: Record<SnipeStatus, StatusPreset>;
   snipeResult: Record<SnipeResult, StatusPreset>;

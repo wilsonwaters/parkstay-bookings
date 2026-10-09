@@ -23,7 +23,6 @@ describe('renderer layout after the shell rebuild', () => {
 
   it('keeps the legacy pages under features/<domain>/legacy/', () => {
     for (const file of [
-      'features/watches/legacy/index.tsx',
       'features/snipes/legacy/index.tsx',
       'features/bookings/legacy/BookingsList.tsx',
       'features/settings/legacy/Settings.tsx',

@@ -99,6 +99,22 @@ describe('NightGrid', () => {
     ).toEqual(['$30Available, $30', 'Booked']);
   });
 
+  it('can start with "Fully available only" off, listing partly available sites at once', () => {
+    const { units } = availabilityFor(STAY, { fully: 0, partly: 2 });
+    render(
+      <NightGrid
+        units={units}
+        arrival={STAY.arrival}
+        departure={STAY.departure}
+        unitNoun={SITE}
+        source="ParkStay"
+        fullyAvailableOnly={false}
+      />
+    );
+    expect(screen.getByRole('switch', { name: 'Fully available only' })).not.toBeChecked();
+    expect(rowNames()).toHaveLength(10);
+  });
+
   it('shows the first 10 rows, then all of them', async () => {
     const user = userEvent.setup();
     renderGrid({ fully: 14 });

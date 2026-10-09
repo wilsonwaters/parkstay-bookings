@@ -63,6 +63,11 @@ export interface NightGridProps {
   summaryRef?: Ref<HTMLParagraphElement>;
   /** Shown above the summary, e.g. a release notice. */
   children?: ReactNode;
+  /**
+   * Whether "Fully available only" starts on (default). Turn it off when the nights that are
+   * free matter even without a whole stay, such as a result that found only some nights.
+   */
+  fullyAvailableOnly?: boolean;
 }
 
 function NightCell({ state, label, short }: { state: NightState; label: string; short?: string }) {
@@ -105,11 +110,12 @@ export function NightGrid({
   caption,
   summaryRef,
   children,
+  fullyAvailableOnly = true,
 }: NightGridProps) {
   const captionId = useId();
   const regionRef = useRef<HTMLDivElement>(null);
   const [overflows, setOverflows] = useState(false);
-  const [fullyOnly, setFullyOnly] = useState(true);
+  const [fullyOnly, setFullyOnly] = useState(fullyAvailableOnly);
   const [showAll, setShowAll] = useState(false);
   const nights = useMemo(() => stayNights(arrival, departure), [arrival, departure]);
   const summary = useMemo(() => summariseAvailability(units, nights), [units, nights]);

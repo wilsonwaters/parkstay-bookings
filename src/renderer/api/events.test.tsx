@@ -74,3 +74,51 @@ describe('useInvalidateOn', () => {
     expect(state()?.isInvalidated).toBe(true);
   });
 });
+
+describe('useInvalidateOn with coalesceMs', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('turns a burst of events into one invalidation at the end of the window', () => {
+    jest.useFakeTimers();
+    const mock = install();
+    const client = createQueryClient();
+    const spy = jest.spyOn(client, 'invalidateQueries');
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    renderHook(() => useInvalidateOn('watch:updated', ['watches'], { coalesceMs: 500 }), {
+      wrapper,
+    });
+
+    for (let i = 0; i < 5; i += 1) {
+      mock.emit('watch:updated', {} as never);
+      jest.advanceTimersByTime(50);
+    }
+    expect(spy).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(300);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['watches'] });
+
+    mock.emit('watch:updated', {} as never);
+    jest.advanceTimersByTime(500);
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops a pending invalidation on unmount', () => {
+    jest.useFakeTimers();
+    const mock = install();
+    const client = createQueryClient();
+    const spy = jest.spyOn(client, 'invalidateQueries');
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { unmount } = renderHook(
+      () => useInvalidateOn('watch:updated', ['watches'], { coalesceMs: 500 }),
+      { wrapper }
+    );
+    mock.emit('watch:updated', {} as never);
+    unmount();
+    jest.advanceTimersByTime(1000);
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
