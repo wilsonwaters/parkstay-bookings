@@ -144,6 +144,11 @@ export interface ContainerOptions {
    * `FixtureHttpClient` instead of its session partition.
    */
   readonly fixtureMode?: FixtureModeOptions;
+  /**
+   * Brings the main window forward (restored, shown, focused) for a click on a desktop
+   * notification; false when there is no window or the app is quitting.
+   */
+  readonly showMainWindow?: () => boolean;
 }
 
 export function createContainer({
@@ -153,6 +158,7 @@ export function createContainer({
   safeStorage,
   isReady,
   fixtureMode,
+  showMainWindow,
 }: ContainerOptions): AppContainer {
   // Lazy: no safeStorage call and no key file until the first secret is read or written
   const vault = new SecretVault({
@@ -257,7 +263,7 @@ export function createContainer({
     repositories.notifications,
     notifierDispatcher,
     rendererEvents,
-    { providerName }
+    { providerName, showMainWindow }
   );
   // Core services resolve every provider through the registry and its capabilities.
   const nightGuard = new NightGuard(repositories.snipes, repositories.watches);

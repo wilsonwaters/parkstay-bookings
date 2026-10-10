@@ -2,8 +2,9 @@ import { Suspense, useRef, type MouseEvent } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { API_UNAVAILABLE_MESSAGE, isApiAvailable } from '../api';
 import { Logo } from '../components/brand/Logo';
-import NotificationBell from '../components/NotificationBell';
 import { Notice, Spinner } from '../components/ui';
+import { NotificationBell } from '../features/notifications/NotificationBell';
+import { useAppNavigate } from '../features/notifications/useAppNavigate';
 import { AccountMenu } from './AccountMenu';
 import { RouteErrorBoundary } from './ErrorBoundary';
 import { ROUTES } from './routes';
@@ -19,10 +20,12 @@ import { useRouteFocus } from './useRouteFocus';
 export function AppShell() {
   const mainRef = useRef<HTMLElement>(null);
   const { pathname } = useLocation();
-  // Outside the app (a plain browser on the Vite dev server) there is no main process. The
-  // legacy pieces that call `window.api` themselves are left out, and a Notice says why.
+  // Outside the app (a plain browser on the Vite dev server) there is no main process: the
+  // bell is left out (it has nothing to count), and a Notice says why.
   const apiAvailable = isApiAvailable();
   useRouteFocus(mainRef);
+  // A click on a desktop notification opens its page (main sends `app:navigate`).
+  useAppNavigate();
 
   // A plain `#main` link would change the HashRouter route, so move focus by hand.
   const skipToContent = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -76,7 +79,7 @@ export function AppShell() {
         </RouteErrorBoundary>
       </main>
 
-      <Tray showLegacySlots={apiAvailable} />
+      <Tray />
     </div>
   );
 }

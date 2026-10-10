@@ -16,6 +16,8 @@ export const queryKeys = {
   providers: {
     all: providers,
     list: () => [...providers, 'list'] as const,
+    /** A provider's access gate (queue) status. */
+    access: (providerId: string) => [...providers, 'access', providerId] as const,
   },
   catalog: {
     all: catalog,

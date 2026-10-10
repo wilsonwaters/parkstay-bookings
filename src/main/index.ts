@@ -29,7 +29,7 @@ import { getBrandIconPath } from './app/paths';
 import { isProviderWindow } from './app/provider-windows';
 import { installQuitHold } from './app/quit-hold';
 import { createAppUrlMatcher, resolveRendererEntry } from './app/renderer-entry';
-import { HIDDEN_ARG } from './app/single-instance';
+import { bringToFront, HIDDEN_ARG } from './app/single-instance';
 import { registerIpcHandlers } from './ipc';
 import { createSenderGuard } from './ipc/sender-guard';
 import {
@@ -75,6 +75,16 @@ function isHiddenLaunch(): boolean {
     if (loginSettings.wasOpenedAsHidden) return true;
   }
   return false;
+}
+
+/**
+ * Restores, shows and focuses the main window for a click on a desktop notification. While the
+ * app is quitting (`container` is cleared) or with no window, it does nothing and says so.
+ */
+function showMainWindow(): boolean {
+  if (!container || !mainWindow || mainWindow.isDestroyed()) return false;
+  bringToFront(mainWindow);
+  return true;
 }
 
 /**
@@ -145,6 +155,7 @@ async function start(): Promise<void> {
     safeStorage,
     isReady: () => app.isReady(),
     fixtureMode,
+    showMainWindow,
   });
   container = ready;
   ready.profile.ensureLocalProfile();

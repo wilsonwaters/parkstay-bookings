@@ -3,12 +3,13 @@ import { CircleUser, Info, Settings } from 'lucide-react';
 import { useHref } from 'react-router-dom';
 import { APP_NAME } from '@shared/constants';
 import { IconButton, Menu, MenuItem } from '../components/ui';
-import AboutDialog from '../components/AboutDialog';
+import { AboutDialog } from '../features/settings/about/AboutDialog';
 import { ROUTES } from './routes';
 
 /**
  * "Account and settings": Settings and About. There is no sign-in or Logout here: WA Stay has
- * no app login (brief D2), and provider accounts arrive with V6/U4.
+ * no app login (brief D2), and provider accounts arrive with V6/U4. Closing About returns focus
+ * to the menu button.
  */
 export function AccountMenu() {
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -23,7 +24,7 @@ export function AccountMenu() {
           About {APP_NAME}
         </MenuItem>
       </Menu>
-      <AboutDialog isOpen={aboutOpen} onClose={() => setAboutOpen(false)} />
+      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
     </>
   );
 }

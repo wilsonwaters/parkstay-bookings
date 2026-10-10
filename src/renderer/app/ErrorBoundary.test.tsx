@@ -14,9 +14,9 @@ jest.mock('../features/bookings/legacy/BookingsList', () => ({
   },
 }));
 
-jest.mock('../components/NotificationBell', () => ({
+jest.mock('../features/notifications/NotificationBell', () => ({
   __esModule: true,
-  default: function NotificationBell() {
+  NotificationBell: function NotificationBell() {
     if (failures.header) throw new Error('Bell exploded');
     return <button type="button">Notifications</button>;
   },

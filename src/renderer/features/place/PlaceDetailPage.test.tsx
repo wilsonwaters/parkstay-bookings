@@ -368,7 +368,7 @@ describe('Place detail page', () => {
       await user.click(checkButton());
       expect(checkButton()).toHaveAttribute('aria-busy', 'true');
       expect(screen.queryByRole('status', { name: 'Still checking ParkStay' })).toBeNull();
-      // Async, so the tray's own 10 s poll (QueueStatus) settles inside act too.
+      // Async, so any tray update the timers cause settles inside act too.
       await act(async () => {
         jest.advanceTimersByTime(SLOW_CHECK_MS);
       });

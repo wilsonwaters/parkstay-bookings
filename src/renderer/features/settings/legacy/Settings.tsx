@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { EmailSettingsCard } from '../../../components/settings';
-import AboutDialog from '../../../components/AboutDialog';
+import { AboutDialog } from '../about/AboutDialog';
 import { APP_NAME } from '@shared/constants';
 import type { ProviderAccount } from '@shared/types/provider.types';
 
@@ -476,7 +476,7 @@ const Settings: React.FC = () => {
         </div>
       </div>
 
-      <AboutDialog isOpen={showAbout} onClose={() => setShowAbout(false)} />
+      <AboutDialog open={showAbout} onClose={() => setShowAbout(false)} />
     </div>
   );
 };

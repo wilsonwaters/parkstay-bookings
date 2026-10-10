@@ -40,7 +40,15 @@ The accessible names in [Stable names](#stable-names) are a contract with the El
   - The current item has `aria-current="page"`, ink text at weight 600 and the D1 `underline` brushstroke in ocean, which is `aria-hidden`. The stroke sits in the label's own box at full width, so it is as wide as the label (not the Soon pill) at any zoom. Other items are `fg-secondary` at weight 500. A hidden bold copy of each label reserves its width, so the nav does not shift between pages.
   - Explore is current on `/` and on `/places/*`. Watches is current on `/watches` and everything under it, and the same for Site Sniper and Bookings. On Settings, nothing in the nav is current.
   - Site Sniper and Bookings carry a sun `Badge` reading "Soon", which is `aria-hidden`. Their name comes whole from `VisuallyHidden` text ("Site Sniper, coming soon"), with the visible label hidden from assistive technology, so the name has no stray separator in any engine. Below 900 px wide (a narrow window or 200% zoom) the pills collapse and only the hidden text remains.
-- **Right:** the `NotificationBell`, then the account menu. The bell's trigger is an `IconButton` with the lucide `Bell`, named "Notifications", or "Notifications, 3 unread" when there are unread notifications; the count also shows in a decorative `accent` badge (9+ at most). Its dropdown list is still legacy (U5 rebuilds it). The account menu is an `IconButton` with `CircleUser`, named "Account and settings". Its items are "Settings" (a link to `/settings`) and "About WA Stay", which opens a `Dialog` named "About WA Stay". Focus returns to the menu button when the dialog closes. There is no Logout and no sign-in (§12.21–22); provider accounts arrive with V6 and U4.
+- **Right:** the `NotificationBell` (`features/notifications/`), then the account menu. The account menu is an `IconButton` with `CircleUser`, named "Account and settings". Its items are "Settings" (a link to `/settings`) and "About WA Stay", which opens `AboutDialog` (`features/settings/about/`), a `Dialog` named "About WA Stay" around `AboutPanel`, headed by the B1 lockup (the text wordmark if the artwork fails to load). Focus returns to the menu button when the dialog closes. There is no Logout and no sign-in (§12.21–22); provider accounts arrive with V6 and U4.
+
+### Notifications (U5)
+
+- **Bell.** An `IconButton` with the lucide `Bell`, named "Notifications", or "Notifications, 23 unread" from main's `notifications.unreadCount()` (every unread one, not only the loaded page); the count also shows in a decorative `accent` badge, "99+" at most. `notification:created` marks the count and the list stale, so the badge follows without a remount, and the new notification is announced in the polite live region ("New ParkStay notification: Sites available at Osprey Bay").
+- **List.** The bell opens a `Popover` named "Notifications" (`aria-expanded`, `aria-controls` on the bell); focus moves to its "Notifications" heading, and Escape or a click outside closes it and gives focus back to the bell. It loads the newest 20 (`notifications.list(20)`) when it opens: a skeleton while loading, an inline error with Retry, "You're all caught up" when empty. The header has "Mark all as read" (while any are unread) and "Clear all", which asks in a `ConfirmDialog` ("Clear all notifications?").
+- **Item.** A `ProviderBadge` (or the WA Stay mark, named "WA Stay", for app-wide notifications; "Unknown provider" for one no longer registered), a lucide type icon, the title, the message, "5 min ago" and the word "Unread". Its icon buttons are named "Mark as read: {title}" and "Delete notification: {title}"; both act at once and roll back with an error toast if main refuses. The title is a link when the notification has an in-app page: clicking anywhere on the item marks it read, opens the page and closes the list.
+- **Deep links** (`features/notifications/deepLink.ts`). A notification's `actionUrl` is followed only when it is one of `/watches/:id`, `/site-sniper/:id`, `/bookings/:id` or `/settings/:section` (`shared/utils/app-links.ts`, the one allow-list main uses too); otherwise the link comes from its `relatedType`/`relatedId` through `ROUTES`; otherwise there is none. An external address is never followed.
+- **Desktop notifications** (main). The OS title is `${shortName} · ${title}` ("ParkStay · Sites available at Osprey Bay"); the stored title has no prefix. A click restores and focuses the window, then main sends `app:navigate { path }` with the notification's allow-listed page, and `useAppNavigate` (in `AppShell`) follows it after checking the same allow-list. A click while the app is quitting is ignored.
 - The header never wraps. Down to the 960 × 640 minimum window (`minWidth`/`minHeight` on the `BrowserWindow`) there is no horizontal scrolling.
 - Zoomed in, the viewport can be narrower than 960 CSS px. Below 900 px the Soon pills collapse; below 640 px the lockup gives way to the square mark and the gutters tighten. If the nav still does not fit (about 200% zoom), the nav strip scrolls sideways on its own, with its scrollbar hidden (Tab scrolls a focused link into view), and the page itself never scrolls sideways.
 
@@ -82,15 +90,15 @@ Legacy pages render inside `LegacyPageFrame` until the provider-ux stream rebuil
 
 ## Tray
 
-One column, `fixed bottom-4 right-4`, 380 px wide at most, with an 8 px gap, portalled outside `#root`. The column stretches its cards (`items-stretch`) and the toast region fills it, so the stacked cards share one width; the minimized queue pill keeps its own width at the right. Top to bottom, in DOM and visual order:
+One column, `fixed bottom-4 right-4`, 380 px wide at most, with an 8 px gap, portalled outside `#root`. The column stretches its cards (`items-stretch`) and the toast region fills it, so the stacked cards share one width and never overlap. Top to bottom, in DOM and visual order:
 
 1. `ToastViewport` (the "Notifications" region)
-2. `UpdateNotification` (legacy; U5 restyles it)
-3. `QueueStatus` (legacy; U5 restyles it)
+2. `UpdateCard` (`features/notifications/`), a region named by its title, from `updater:*` events (each through `events.on` and its own unsubscribe): "Update available" with Download and Later; "Downloading WA Stay 2.1.0" with a `progressbar` ("Update download", `aria-valuenow`); "Update ready" with Restart now and Later; "WA Stay couldn't update" with the message and Dismiss. Its close button is "Dismiss update" (not while downloading). Later or Dismiss sets that news aside: the card comes back only for something new (available → downloaded, or a newer version).
+3. `AccessStatusChips`: one `AccessStatusChip` per provider with `capabilities.accessGate` whose gate is not idle, a region named "{shortName} queue": "ParkStay queue · position 123 · about 4 min", "ParkStay · access granted · 12 min left" (a `Countdown`), "ParkStay queue session expired", or "ParkStay queue status unavailable". Each expands ("ParkStay queue details") to say more. It reads `providers.accessStatus(id)` once and then `provider:access-status` events; nothing polls. A change of state is announced in the polite live region at once, a new queue position at most once a minute.
 
 - The column never takes clicks itself (`pointer-events-none`); only the cards in it do.
-- Each card sits in a slot with no box of its own (`display: contents`), so a card that renders nothing (`QueueStatus` while idle) leaves no gap.
-- **Layers.** The tray is at `z-tray` (40), under the modal scrim (`z-overlay`, 50). Being portalled, it is never made `inert` by a modal. While a modal is open (the overlay stack marks `#root` inert), the tray rises to `z-toast` (60) so toasts stay readable and clickable above the scrim, and the update and queue slots are made `inert` and invisible, keeping their space so toasts do not move. Everything returns when the modal closes.
+- Each card sits in a slot with no box of its own (`display: contents`), so a card that renders nothing (the chips while every gate is idle) leaves no gap.
+- **Layers.** The tray is at `z-tray` (40), under the modal scrim (`z-overlay`, 50). Being portalled, it is never made `inert` by a modal. While a modal is open (the overlay stack marks `#root` inert), the tray rises to `z-toast` (60) so toasts stay readable and clickable above the scrim, and the update and access slots are made `inert` and invisible, keeping their space so toasts do not move. Everything returns when the modal closes.
 - **Explore (E1):** the tray covers the bottom-right corner of the map, so the Mapbox logo and attribution sit bottom-left, where it never covers them (Mapbox terms).
 
 ## Errors
@@ -105,8 +113,10 @@ One column, `fixed bottom-4 right-4`, 380 px wide at most, with an 8 px gap, por
 - `client.ts`: `unwrap(call)` resolves an `APIResponse` to its `data` or rejects with `ApiError { message, code?, issues? }`. Pass a function of the API, `unwrap((api) => api.app.getInfo())`, so that a missing `window.api` also becomes an `ApiError` (`API_UNAVAILABLE`).
 - `queryKeys.ts`: the only place query keys are built, with `providers`, `catalog`, `notifications`, `app` and `updater` namespaces. Invalidate a namespace with its `all` prefix.
 - `events.ts`: `useApiEvent(name, cb)` subscribes for as long as the component is mounted and always calls the latest `cb`. `useInvalidateOn(event, queryKey)` marks a query stale when the event arrives.
-- `providers.ts`: `useProviders()`, `useProvider(id)` and `useProvidersWith(capability)`. Until V1 (#19) adds the shared `ProviderManifest` and `window.api.providers`, they use a local structural type marked `TODO(V1)` and resolve to an empty list when the preload has no `providers` namespace.
+- `providers.ts`: `useProviders()`, `useProvider(id)` and `useProvidersWith(capability)`. Until V1 (#19) adds the shared `ProviderManifest` and `window.api.providers`, they use a local structural type marked `TODO(V1)` and resolve to an empty list when the preload has no `providers` namespace. `useAccessStatus(id)`: a provider's access gate, fetched once and then set from `provider:access-status` (an answer older than the last event is dropped).
 - `app.ts`: `useAppInfo()` and `useOpenLogsFolder()` for About.
+- `notifications.ts`: `useNotifications()` (the newest 20), `useUnreadNotificationCount()`, `useNotificationUpdates()` (both stale on `notification:created`), and the actions: `useMarkNotificationRead()`, `useMarkAllNotificationsRead()` and `useDeleteNotification()` change the cache at once and roll back if main refuses; `useClearNotifications()` waits for main.
+- `updater.ts`: `useDownloadUpdate()` and `useInstallUpdate()`.
 - `catalog.ts`: `useCatalogSearch(query)` (`catalog.search` with `limit: 5000`, previous results kept while the next load, 5 minutes fresh), `useCatalogAll()` (the unfiltered catalogue, for filter options and suggestions; the same cache entry as an empty search), `useCatalogStatus()`, `useCatalogRefresh()`, and `useCatalogUpdates()`, which reloads them on `catalog:updated`. The map area is never sent: Explore filters by area in the renderer.
   - `useLocationDetail(key)`: `catalog.get` (10 minutes fresh; main caches it 6 hours), showing the place's summary from a cached search (`isPlaceholderData`) while it loads. `useLocationDetailUpdates(key)` reloads only that detail when its provider's catalogue syncs.
   - `useLocationCheck(key, stay)`: `catalog.checkLocation`, asked only once a stay is given (the person pressed Check), one cache entry per stay, 1 minute fresh as in main, and never retried by itself.
@@ -115,7 +125,7 @@ One column, `fixed bottom-4 right-4`, 380 px wide at most, with an 8 px gap, por
 
 ### Outside the app
 
-With no `window.api` (the renderer opened in a plain browser with `npm run dev:renderer`), the shell still renders. A warning `Notice` at the top of `<main>` says the background service isn't available, and the legacy bell, update card and queue status are left out because they call `window.api` themselves.
+With no `window.api` (the renderer opened in a plain browser with `npm run dev:renderer`), the shell still renders. A warning `Notice` at the top of `<main>` says the background service isn't available, and the bell is left out (it has nothing to count). The tray's update card and access chips render nothing: no events arrive and no provider is listed.
 
 ### Provider manifests
 
@@ -133,6 +143,10 @@ With no `window.api` (the renderer opened in a plain browser with `npm run dev:r
 | Account menu button | button | Account and settings |
 | Account menu items | menuitem | Settings · About WA Stay |
 | About | dialog | About WA Stay |
+| Notification list | dialog, heading level 2, buttons | Notifications · Mark all as read · Clear all · Mark as read: {title} · Delete notification: {title} |
+| Clear all | alertdialog | Clear all notifications? |
+| Update card | region, progressbar, button | Update available · Downloading WA Stay {version} · Update ready · WA Stay couldn't update · Update download · Dismiss update |
+| Access chip | region, button | {shortName} queue · {shortName} queue details |
 | Toasts | region | Notifications |
 | 404 | heading level 1, button | Page not found · Back to Explore |
 | Route error | heading level 1, buttons | This page hit a problem · Try again · Back to Explore |

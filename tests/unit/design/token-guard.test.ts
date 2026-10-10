@@ -26,6 +26,8 @@ const SCAN_DIRS = [
   'hooks',
 ];
 const SCAN_FILE_PREFIXES = [
+  'components/Countdown',
+  'components/countdown',
   'components/LocationCard',
   'components/LocationCombobox',
   'components/StepFlow',

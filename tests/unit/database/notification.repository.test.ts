@@ -63,4 +63,18 @@ describe('NotificationRepository validation', () => {
     });
     expect(repo.findByUserId(userId).map((n) => n.id)).toEqual([40]);
   });
+
+  // Meaningful on a host outside UTC: run the main project with TZ=Australia/Perth
+  // (tests/README.md). Jest cannot change the zone in-process.
+  it('reads created_at (SQLite CURRENT_TIMESTAMP, UTC) as UTC, whatever the host time zone', () => {
+    const before = Date.now();
+    const created = repo.create({ userId, type: NotificationType.INFO, title: 't', message: 'm' });
+    const raw = db.prepare('SELECT created_at FROM notifications WHERE id = ?').get(created.id) as {
+      created_at: string;
+    };
+    expect(raw.created_at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    expect(created.createdAt.getTime()).toBe(Date.parse(`${raw.created_at.replace(' ', 'T')}Z`));
+    // Just now, not eight hours ago.
+    expect(Math.abs(created.createdAt.getTime() - before)).toBeLessThan(5_000);
+  });
 });

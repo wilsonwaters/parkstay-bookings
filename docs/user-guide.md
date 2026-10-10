@@ -444,7 +444,7 @@ Stay informed with the application's notification system.
 ### Queue System
 
 When accessing ParkStay during busy periods, the DBCA website may place you in a queue. The app handles this automatically:
-- Queue position is tracked and displayed via the QueueStatus component
+- While WA Stay waits in the queue, a chip at the bottom right shows your place and the expected wait ("ParkStay queue · position 123 · about 4 min"), then "access granted" with the time left
 - Queue sessions are persisted in the database, so your position is maintained even if the app restarts
 - No manual intervention is needed — the app waits in the queue and proceeds automatically
 

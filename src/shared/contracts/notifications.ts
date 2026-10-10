@@ -23,6 +23,20 @@ export const notifications = {
     args: {} as [id: number],
     response: undefined as void,
   },
+  /** Marks every notification read. */
+  markAllRead: {
+    channel: C.markAllRead,
+    request: z.void(),
+    args: {} as [],
+    response: undefined as void,
+  },
+  /** How many notifications are unread: all of them, not only those `list` returned. */
+  unreadCount: {
+    channel: C.unreadCount,
+    request: z.void(),
+    args: {} as [],
+    response: {} as number,
+  },
   delete: {
     channel: C.delete,
     request: idPayload,

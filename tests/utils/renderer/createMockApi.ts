@@ -41,14 +41,14 @@ export const APP_INFO: AppInfo = {
   logsPath: 'C:\\Users\\test\\AppData\\Roaming\\WA Stay\\logs',
 };
 
-/** ParkStay's queue gate while no snipe uses it: QueueStatus shows nothing. */
+/** ParkStay's queue gate while no snipe uses it: no access chip shows. */
 export const IDLE_ACCESS: AccessStatus = {
   providerId: 'parkstay',
   state: 'idle',
   updatedAt: '2026-10-02T10:00:00.000Z',
 };
 
-/** An active DBCA queue session (`providers.accessStatus('parkstay')`), so QueueStatus shows its card. */
+/** An active DBCA queue session (`providers.accessStatus('parkstay')`), so its access chip shows. */
 export function activeAccess(): AccessStatus {
   return {
     providerId: 'parkstay',
@@ -82,7 +82,7 @@ function defaultStubs(): ApiStubs {
       openLogsFolder: resolve(ok(true)),
       getAutoLaunch: resolve(ok(false)),
     },
-    notifications: { list: resolve(ok([])) },
+    notifications: { list: resolve(ok([])), unreadCount: resolve(ok(0)) },
     // The legacy pages' first reads, so any route can be rendered.
     watches: { list: resolve(ok([])) },
     snipes: { list: resolve(ok([])) },

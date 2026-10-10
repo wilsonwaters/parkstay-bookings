@@ -375,11 +375,9 @@ export class HoldPaymentService {
     this.log.info(`Watch ${subject.id} booked (${subject.providerId})`);
     this.deps.events.emit('watch:updated', watch);
     this.deps.bookings.announce(booking);
-    this.deps.notifications
-      .notifyBookingConfirmed(watch.userId, watch.providerId, booking.id, booking.bookingReference)
-      .catch((error: unknown) => {
-        this.log.error(`Watch ${subject.id}: booked but not notified`, error);
-      });
+    this.deps.notifications.notifyBookingConfirmed(booking).catch((error: unknown) => {
+      this.log.error(`Watch ${subject.id}: booked but not notified`, error);
+    });
   }
 
   /**

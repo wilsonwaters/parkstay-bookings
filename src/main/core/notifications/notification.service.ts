@@ -3,10 +3,12 @@ import {
   NotificationInput,
   Watch,
   SiteSnipe,
+  type Booking,
   type WatchHold,
   type WatchMatch,
 } from '@shared/types';
 import { NotificationType, RelatedType } from '@shared/types/common.types';
+import { isAppLinkPath } from '@shared/utils/app-links';
 import { isCalendarDate, nightsBetween } from '@shared/utils/calendar-date';
 import { NotificationRepository } from '../../database/repositories';
 import { NotificationDispatcher } from './notification-dispatcher';
@@ -39,7 +41,44 @@ export interface NotificationServiceOptions {
   providerName?: ProviderNameResolver;
   /** For the minutes a hold has left. */
   clock?: () => Date;
+  /**
+   * Restores, shows and focuses the main window when a desktop notification is clicked.
+   * Returns false when there is no window or the app is quitting: the click is then ignored.
+   */
+  showMainWindow?: () => boolean;
 }
+
+/** The in-app page of a watch, snipe or booking. */
+export function relatedPath(type: RelatedType, id: number): string {
+  switch (type) {
+    case RelatedType.WATCH:
+      return `/watches/${id}`;
+    case RelatedType.SNIPE:
+      return `/site-sniper/${id}`;
+    case RelatedType.BOOKING:
+      return `/bookings/${id}`;
+  }
+}
+
+/**
+ * Where a clicked notification opens: its `actionUrl` when that is an allowed in-app path
+ * (`isAppLinkPath`), otherwise the page of its watch, snipe or booking, otherwise nowhere.
+ */
+export function notificationPath(
+  notification: Pick<Notification, 'actionUrl' | 'relatedType' | 'relatedId'>
+): string | null {
+  if (isAppLinkPath(notification.actionUrl)) return notification.actionUrl;
+  const { relatedType, relatedId } = notification;
+  if (!relatedType || relatedId === undefined) return null;
+  const path = relatedPath(relatedType, relatedId);
+  return isAppLinkPath(path) ? path : null;
+}
+
+/**
+ * Desktop notifications kept alive until they are clicked or closed: one that is garbage
+ * collected first never reports its click (Windows). Only the newest are kept.
+ */
+const MAX_LIVE_DESKTOP_NOTIFICATIONS = 20;
 
 /**
  * The title of the OS (desktop) notification: `ParkStay · Site held` when the notification
@@ -64,6 +103,8 @@ export class NotificationService {
   private events: EventSink | null = null;
   private readonly providerName: ProviderNameResolver;
   private readonly clock: () => Date;
+  private readonly showMainWindow: () => boolean;
+  private readonly liveDesktop = new Set<ElectronNotification>();
   private soundEnabled: boolean = true;
   private desktopEnabled: boolean = true;
 
@@ -79,6 +120,7 @@ export class NotificationService {
     this.events = events || null;
     this.providerName = options.providerName ?? (() => undefined);
     this.clock = options.clock ?? (() => new Date());
+    this.showMainWindow = options.showMainWindow ?? (() => false);
   }
 
   /**
@@ -138,11 +180,11 @@ export class NotificationService {
         userId: watch.userId,
         providerId: watch.providerId,
         type: NotificationType.WATCH_FOUND,
-        title: 'Availability Found!',
+        title: `Sites available at ${watch.location.name}`,
         message,
         relatedId: watch.id,
         relatedType: RelatedType.WATCH,
-        actionUrl: `/watches/${watch.id}`,
+        actionUrl: relatedPath(RelatedType.WATCH, watch.id),
       },
       { locationName: watch.location.name }
     );
@@ -167,11 +209,11 @@ export class NotificationService {
         userId: watch.userId,
         providerId: watch.providerId,
         type: NotificationType.WATCH_FOUND,
-        title: 'Partial Availability Found!',
+        title: `Some nights available at ${watch.location.name}`,
         message,
         relatedId: watch.id,
         relatedType: RelatedType.WATCH,
-        actionUrl: `/watches/${watch.id}`,
+        actionUrl: relatedPath(RelatedType.WATCH, watch.id),
       },
       { locationName: watch.location.name }
     );
@@ -194,11 +236,11 @@ export class NotificationService {
         userId: watch.userId,
         providerId: watch.providerId,
         type: NotificationType.SNIPE_HELD,
-        title: 'Site Held — Complete Payment!',
+        title: `Site held at ${watch.location.name}`,
         message,
         relatedId: watch.id,
         relatedType: RelatedType.WATCH,
-        actionUrl: `/watches/${watch.id}`,
+        actionUrl: relatedPath(RelatedType.WATCH, watch.id),
       },
       { locationName: watch.location.name }
     );
@@ -223,11 +265,11 @@ export class NotificationService {
         userId: snipe.userId,
         providerId: snipe.providerId,
         type: NotificationType.SNIPE_HELD,
-        title: 'Site Held — Complete Payment!',
+        title: `Site held at ${where}`,
         message,
         relatedId: snipe.id,
         relatedType: RelatedType.SNIPE,
-        actionUrl: `/site-sniper/${snipe.id}`,
+        actionUrl: relatedPath(RelatedType.SNIPE, snipe.id),
       },
       { locationName: snipe.location.name || undefined }
     );
@@ -248,11 +290,11 @@ export class NotificationService {
         userId: snipe.userId,
         providerId: snipe.providerId,
         type: NotificationType.SNIPE_BOOKED,
-        title: 'Snipe Booked!',
+        title: `Booked at ${where}`,
         message,
         relatedId: snipe.id,
         relatedType: RelatedType.SNIPE,
-        actionUrl: `/site-sniper/${snipe.id}`,
+        actionUrl: relatedPath(RelatedType.SNIPE, snipe.id),
       },
       { locationName: snipe.location.name || undefined }
     );
@@ -262,21 +304,22 @@ export class NotificationService {
    * Notify booking confirmation
    */
   async notifyBookingConfirmed(
-    userId: number,
-    providerId: string,
-    bookingId: number,
-    bookingReference: string
+    booking: Pick<Booking, 'id' | 'userId' | 'providerId' | 'bookingReference' | 'location'>
   ): Promise<void> {
-    await this.notify({
-      userId,
-      providerId,
-      type: NotificationType.BOOKING_CONFIRMED,
-      title: 'Booking Confirmed',
-      message: `Your booking ${bookingReference} has been confirmed.`,
-      relatedId: bookingId,
-      relatedType: RelatedType.BOOKING,
-      actionUrl: `/bookings/${bookingId}`,
-    });
+    const where = booking.location.name || booking.location.externalId;
+    await this.notify(
+      {
+        userId: booking.userId,
+        providerId: booking.providerId,
+        type: NotificationType.BOOKING_CONFIRMED,
+        title: where ? `Booking confirmed at ${where}` : 'Booking confirmed',
+        message: `Your booking ${booking.bookingReference} has been confirmed.`,
+        relatedId: booking.id,
+        relatedType: RelatedType.BOOKING,
+        actionUrl: relatedPath(RelatedType.BOOKING, booking.id),
+      },
+      { locationName: booking.location.name || undefined }
+    );
   }
 
   /**
@@ -316,7 +359,8 @@ export class NotificationService {
   }
 
   /**
-   * Show desktop notification
+   * Show desktop notification. A click brings the main window forward and opens the
+   * notification's page.
    */
   private async showDesktopNotification(notification: Notification): Promise<void> {
     try {
@@ -327,18 +371,41 @@ export class NotificationService {
         icon: getBrandIconPath(),
       });
 
+      this.keepAlive(desktopNotification);
       desktopNotification.on('click', () => {
-        // Handle notification click - navigate to relevant page
-        if (notification.actionUrl) {
-          // This would trigger navigation in the renderer process
-          this.sendNavigationEvent(notification.actionUrl);
-        }
+        this.liveDesktop.delete(desktopNotification);
+        this.openFromDesktop(notification);
       });
+      desktopNotification.on('close', () => this.liveDesktop.delete(desktopNotification));
 
       desktopNotification.show();
     } catch (error) {
       log.error('Failed to show desktop notification:', error);
     }
+  }
+
+  private keepAlive(desktopNotification: ElectronNotification): void {
+    this.liveDesktop.add(desktopNotification);
+    if (this.liveDesktop.size > MAX_LIVE_DESKTOP_NOTIFICATIONS) {
+      const [oldest] = this.liveDesktop;
+      this.liveDesktop.delete(oldest);
+    }
+  }
+
+  /**
+   * A desktop notification was clicked: restore and focus the window, then ask the renderer
+   * to open the notification's page. Ignored while the app is quitting (no window to show).
+   */
+  private openFromDesktop(notification: Notification): void {
+    if (!this.showMainWindow()) {
+      log.info('Ignored a desktop notification click: no window to show');
+      return;
+    }
+    if (notification.actionUrl && !isAppLinkPath(notification.actionUrl)) {
+      log.warn(`Notification ${notification.id} links outside the allowed in-app pages; ignored`);
+    }
+    const path = notificationPath(notification);
+    if (path) this.events?.emit('app:navigate', { path });
   }
 
   /**
@@ -348,13 +415,6 @@ export class NotificationService {
     // Sound playback would be implemented here
     // Could use a library like node-wav-player or play system sounds
     log.info('Playing notification sound');
-  }
-
-  /**
-   * Send navigation event to renderer
-   */
-  private sendNavigationEvent(url: string): void {
-    log.info(`Navigating to: ${url}`);
   }
 
   /**

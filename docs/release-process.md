@@ -154,8 +154,8 @@ The app uses `electron-updater` with GitHub Releases as the update provider.
 Behaviour:
 
 - Checks for updates 15 seconds after app launch
-- Downloads are **not** automatic — user is prompted via the `UpdateNotification` toast
-- User clicks "Download" then "Restart Now" when ready
+- Downloads are **not** automatic — user is prompted by the update card in the bottom-right tray (`UpdateCard`)
+- User clicks "Download" then "Restart now" when ready
 - Updates install on next app restart if `autoInstallOnAppQuit` applies
 
 Configuration is in [electron-builder.json](../electron-builder.json) under the `publish` key.

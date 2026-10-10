@@ -148,7 +148,7 @@ jest.mock('@main/app/main-window', () => {
       mockState.windowIcon = options.icon;
       const window = Object.assign(new Emitter(), {
         isDestroyed: () => false,
-        isMinimized: () => false,
+        isMinimized: jest.fn(() => false),
         restore: jest.fn(),
         show: jest.fn(),
         focus: jest.fn(),
@@ -325,6 +325,28 @@ describe('main process startup', () => {
     // Disposed: the hold quits again
     await new Promise((resolve) => setImmediate(resolve));
     expect(app.quit).toHaveBeenCalledTimes(1);
+  });
+
+  it('a desktop notification click restores and focuses the window, and is ignored once the quit has started', async () => {
+    await launch();
+    const { showMainWindow } = mockState.containerOptions as { showMainWindow: () => boolean };
+    const [window] = mockWindows as unknown as Array<{
+      isMinimized: jest.Mock;
+      restore: jest.Mock;
+      show: jest.Mock;
+      focus: jest.Mock;
+    }>;
+    window.isMinimized.mockReturnValue(true);
+
+    expect(showMainWindow()).toBe(true);
+    expect(window.restore).toHaveBeenCalledTimes(1);
+    expect(window.show).toHaveBeenCalledTimes(1);
+    expect(window.focus).toHaveBeenCalledTimes(1);
+
+    app.emit('before-quit', { preventDefault: jest.fn() });
+    expect(showMainWindow()).toBe(false);
+    expect(window.show).toHaveBeenCalledTimes(1);
+    expect(window.focus).toHaveBeenCalledTimes(1);
   });
 
   it('a failed start is handed to the crash policy (error box, exit 1) and never marked ready', async () => {
