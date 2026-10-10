@@ -1,6 +1,6 @@
 import { screen, within } from '@testing-library/react';
 import { FAKE_MANIFEST, PARKSTAY_MANIFEST, ok } from '@tests/utils/renderer/createMockApi';
-import { catalogGet, makeLocation } from '@tests/fixtures/renderer/watches';
+import { catalogGet, makeLocation, makeLocationDetail } from '@tests/fixtures/renderer/watches';
 import { renderWithApp } from '@tests/utils/renderer/renderWithApp';
 
 function api(items = [makeLocation()], syncing = false) {
@@ -89,4 +89,24 @@ describe('NewWatchPage prefill (§12.10)', () => {
     await user.click(screen.getByRole('checkbox', { name: 'All Powered (4)' }));
     expect(screen.getByText(/4 sites chosen/)).toBeInTheDocument();
   });
+
+  it('shows the chosen place’s photo from its detail, on Location and in the review', async () => {
+    const mock = api();
+    mock.catalog.get = catalogGet(makeLocationDetail({ imageUrls: [PHOTO] }));
+    const { user } = renderWithApp({
+      route: '/watches/new?provider=parkstay&location=20&arrival=2099-12-12&departure=2099-12-14',
+      api: mock,
+    });
+    await screen.findByRole('heading', { level: 2, name: 'Step 3 of 5: Your stay' });
+    await user.click(within(stepList()).getByRole('button', { name: 'Location, done' }));
+    expect(await screen.findByRole('img', { name: 'Osprey Bay' })).toHaveAttribute('src', PHOTO);
+    for (const next of ['Your stay', 'Alerts', 'Review']) {
+      await user.click(screen.getByRole('button', { name: 'Continue' }));
+      await screen.findByRole('heading', { level: 2, name: new RegExp(`${next}$`) });
+    }
+    const where = await screen.findByRole('region', { name: 'Where' });
+    expect(within(where).getByRole('img', { name: 'Osprey Bay' })).toHaveAttribute('src', PHOTO);
+  });
 });
+
+const PHOTO = 'https://example.org/osprey.jpg';

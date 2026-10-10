@@ -23,6 +23,7 @@ import {
   withWatchFilters,
   type WatchFilters as Filters,
 } from './list/listFilters';
+import { useCatalogPlaces } from './shared/WatchPhoto';
 import { providerToday, watchStateOf } from './shared/watchState';
 
 const watchesLabel = (n: number) => `${n} ${n === 1 ? 'watch' : 'watches'}`;
@@ -38,9 +39,10 @@ export function WatchesPage() {
 
   const manifests = useMemo(() => providers.data ?? [], [providers.data]);
   const canWatch = !providers.isSuccess || manifests.some((m) => m.capabilities.watches);
-  const providerOptions = providers.isError
-    ? undefined
-    : providerFilterOptions(manifests, watches.data ?? []);
+  // Only once the providers are known: before that every watch would read as an unknown one.
+  const providerOptions = providers.isSuccess
+    ? providerFilterOptions(manifests, watches.data ?? [])
+    : undefined;
   const parsed = parseWatchFilters(search);
   const filters: Filters = {
     ...parsed,
@@ -56,6 +58,8 @@ export function WatchesPage() {
     return { watch, manifest, today, state: watchStateOf(watch, today, now) };
   });
   const visible = sortWatches(rows.filter((r) => passesFilters(r.watch, r.state, filters)));
+  // The photos: one search of main's local catalogue for every card, asked once there are cards.
+  const places = useCatalogPlaces(rows.length > 0);
 
   // A filter change says how many watches it shows.
   const filterKey = `${filters.provider ?? ''}|${filters.status}`;
@@ -122,7 +126,7 @@ export function WatchesPage() {
             <VisuallyHidden>Loading watches</VisuallyHidden>
           </p>
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-40 w-full rounded-lg" />
+            <Skeleton key={i} className="h-32 w-full rounded-lg" />
           ))}
         </div>
       )}
@@ -173,7 +177,7 @@ export function WatchesPage() {
               }
             />
           ) : (
-            <ul aria-label="Watches" className="flex flex-col gap-4">
+            <ul aria-label="Watches" className="flex flex-col gap-3">
               {visible.map((row) => (
                 <li key={row.watch.id}>
                   <WatchCard
@@ -182,6 +186,8 @@ export function WatchesPage() {
                     manifest={row.manifest}
                     now={now}
                     today={row.today}
+                    place={places.byKey.get(row.watch.locationKey)}
+                    placeLoading={places.loading}
                   />
                 </li>
               ))}

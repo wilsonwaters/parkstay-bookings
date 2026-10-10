@@ -1,11 +1,20 @@
 import type { ReactNode } from 'react';
+import type { UnitSummary } from '../../../../shared/types/catalog.types';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
 import type { Watch } from '../../../../shared/types/watch.types';
+import { formatPrice } from '../../../components/nightGrid';
 import { partyLabel, stayNightsLabel, stayDatesLabel } from '../../../components/stay/stayFormat';
 import { relativeTime, timeInZone } from '../../../components/timeFormat';
 import { StatusPill } from '../../../components/ui';
 import { intervalLabel } from '../form/watchFormSchema';
-import { autoHoldLabel, statusPillFor, unitNounFor, type WatchState } from '../shared/watchState';
+import type { UnitNoun } from '../../../components/nightGrid';
+import {
+  autoHoldLabel,
+  statusPillFor,
+  unitNameOf,
+  unitNounFor,
+  type WatchState,
+} from '../shared/watchState';
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -33,10 +42,23 @@ export interface WatchSummaryProps {
   manifest: ProviderManifest | undefined;
   today: string;
   now: Date;
+  /** The place's units (its catalogue detail), for the chosen units' names. */
+  units?: readonly UnitSummary[];
+}
+
+/** The chosen units by name: the place's, else the last check's, else "Site 12". */
+function chosenUnits(watch: Watch, units: readonly UnitSummary[] | undefined, noun: UnitNoun) {
+  return watch.unitIds
+    .map(
+      (id) =>
+        units?.find((u) => u.unitId === id || u.unitName === id)?.unitName ??
+        unitNameOf(watch, id, noun)
+    )
+    .join(', ');
 }
 
 /** The watch's stay, preferences and status, side by side (no cards inside cards). */
-export function WatchSummary({ watch, state, manifest, today, now }: WatchSummaryProps) {
+export function WatchSummary({ watch, state, manifest, today, now, units }: WatchSummaryProps) {
   const { stay } = watch;
   const noun = unitNounFor(manifest);
   const zone = manifest?.timezone ?? 'Australia/Perth';
@@ -61,12 +83,12 @@ export function WatchSummary({ watch, state, manifest, today, now }: WatchSummar
       </Group>
       <Group title="Preferences">
         <Item label={`Preferred ${noun.many}`}>
-          {watch.unitIds.length ? watch.unitIds.join(', ') : `Any ${noun.one}`}
+          {watch.unitIds.length ? chosenUnits(watch, units, noun) : `Any ${noun.one}`}
         </Item>
         <Item label="Max price per night">
-          {watch.maxPrice ? `$${watch.maxPrice}` : 'No limit'}
+          {watch.maxPrice ? formatPrice(watch.maxPrice, manifest?.currency) : 'No limit'}
         </Item>
-        <Item label="Checks">{intervalLabel(watch.checkIntervalMinutes)}</Item>
+        <Item label="Checks">{intervalLabel(watch.checkIntervalMinutes, manifest)}</Item>
         <Item label="Alerts">
           {watch.allowPartialMatch
             ? 'Also when only some nights are free'
@@ -100,7 +122,9 @@ export function WatchSummary({ watch, state, manifest, today, now }: WatchSummar
         {watch.isActive && watch.nextCheckAt && (state === 'active' || state === 'held') && (
           <Item label="Next check">{timeInZone(new Date(watch.nextCheckAt), zone, now)}</Item>
         )}
-        <Item label="Found">{watch.foundCount === 1 ? 'Once' : `${watch.foundCount} times`}</Item>
+        {watch.foundCount > 0 && (
+          <Item label="Found">{watch.foundCount === 1 ? 'Once' : `${watch.foundCount} times`}</Item>
+        )}
       </Group>
     </div>
   );

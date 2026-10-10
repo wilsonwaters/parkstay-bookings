@@ -161,7 +161,9 @@ export function WatchFlow({ manifests, initialValues, initialStep, notices = [] 
           {step !== 'provider' && !manifest && (
             <Notice tone="warning">Choose a provider first.</Notice>
           )}
-          {step === 'location' && manifest && <LocationStep manifest={manifest} />}
+          {step === 'location' && manifest && (
+            <LocationStep manifest={manifest} place={detail.data} placeLoading={detail.isLoading} />
+          )}
           {step === 'stay' && manifest && (
             <StayStep manifest={manifest} today={today} units={units} noun={noun} />
           )}
@@ -171,6 +173,8 @@ export function WatchFlow({ manifests, initialValues, initialStep, notices = [] 
               manifest={manifest}
               today={today}
               noun={noun}
+              place={detail.data}
+              placeLoading={detail.isLoading}
               onChangeStep={setStep}
               submitError={submitError}
             />

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
-import { Minus, Plus } from 'lucide-react';
+import { CircleAlert, Minus, Plus } from 'lucide-react';
 import { IconButton } from './IconButton';
 import { cx } from './cx';
 import { devWarn } from './dev';
@@ -13,6 +13,11 @@ export interface StepperProps {
   max?: number;
   step?: number;
   hint?: ReactNode;
+  /**
+   * A validation message (from main, for a provider's number field). It is shown under the
+   * label, read with the group, and marks the group invalid; the group can then take focus.
+   */
+  error?: ReactNode;
   className?: string;
 }
 
@@ -31,11 +36,13 @@ export function Stepper({
   max = Number.POSITIVE_INFINITY,
   step = 1,
   hint,
+  error,
   className,
 }: StepperProps) {
   const id = useId();
   const labelId = `${id}-label`;
   const hintId = hint ? `${id}-hint` : undefined;
+  const errorId = error ? `${id}-error` : undefined;
   const decrease = useRef<HTMLButtonElement>(null);
   const increase = useRef<HTMLButtonElement>(null);
   const shown = clamp(value, min, max);
@@ -60,7 +67,9 @@ export function Stepper({
     <div
       role="group"
       aria-labelledby={labelId}
-      aria-describedby={hintId}
+      aria-describedby={cx(hintId, errorId) || undefined}
+      aria-invalid={error ? true : undefined}
+      tabIndex={error ? -1 : undefined}
       className={cx('flex items-center justify-between gap-6', className)}
     >
       <div className="flex flex-col">
@@ -70,6 +79,15 @@ export function Stepper({
         {hint && (
           <span id={hintId} className="text-sm text-fg-muted">
             {hint}
+          </span>
+        )}
+        {error && (
+          <span
+            id={errorId}
+            className="mt-1 flex items-start gap-1.5 text-sm font-medium text-danger"
+          >
+            <CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+            <span>{error}</span>
           </span>
         )}
       </div>

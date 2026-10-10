@@ -1,3 +1,4 @@
+import { CircleAlert } from 'lucide-react';
 import type { StayFieldDescriptor } from '../../../shared/types/provider.types';
 import { Checkbox, Field, Select, Stepper, TextField } from '../ui';
 import type { StayFieldValue, StayFieldValues } from './stayFields';
@@ -54,6 +55,7 @@ export function ProviderStayFields({
                 key={field.key}
                 label={field.label}
                 hint={hint}
+                error={error}
                 value={typeof value === 'number' ? value : (field.min ?? 0)}
                 min={field.min}
                 max={field.max}
@@ -62,14 +64,26 @@ export function ProviderStayFields({
             );
           case 'boolean':
             return (
-              <Checkbox
-                key={field.key}
-                name={`stayParams.${field.key}`}
-                label={field.label}
-                description={hint}
-                checked={value === true}
-                onChange={(event) => onChange(field.key, event.target.checked)}
-              />
+              <div key={field.key} className="flex flex-col gap-1.5">
+                <Checkbox
+                  name={`stayParams.${field.key}`}
+                  label={field.label}
+                  description={hint}
+                  checked={value === true}
+                  onChange={(event) => onChange(field.key, event.target.checked)}
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? `stay-field-${field.key}-error` : undefined}
+                />
+                {error && (
+                  <p
+                    id={`stay-field-${field.key}-error`}
+                    className="flex items-start gap-1.5 text-sm font-medium text-danger"
+                  >
+                    <CircleAlert size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+                    <span>{error}</span>
+                  </p>
+                )}
+              </div>
             );
           default:
             return (

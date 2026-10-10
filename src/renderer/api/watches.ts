@@ -80,29 +80,25 @@ export function useDeleteWatch() {
   });
 }
 
-/** Resumes (`activate`) or pauses (`deactivate`) a watch. */
+/**
+ * Resumes (`activate`) or pauses (`deactivate`) a watch. Main sends `watch:updated` after the
+ * change, and `useWatchUpdates` refreshes the lists from that: no second refetch here.
+ */
 export function useSetWatchActive() {
-  const invalidate = useInvalidateWatches();
   return useMutation({
     mutationFn: ({ id, active }: { id: number; active: boolean }) =>
       unwrap((api) => (active ? api.watches.activate(id) : api.watches.deactivate(id))),
-    // Not awaited: the result is shown at once, while the lists refresh behind it.
-    onSettled: () => {
-      void invalidate();
-    },
   });
 }
 
-/** Checks a watch now. Resolves with what the check found. */
+/**
+ * Checks a watch now. Resolves with what the check found; the watch itself refreshes from the
+ * `watch:updated` main sends after the check (one refetch, not two).
+ */
 export function useRunWatchNow() {
-  const invalidate = useInvalidateWatches();
   return useMutation({
     mutationFn: (id: number): Promise<WatchExecutionResult> =>
       unwrap((api) => api.watches.runNow(id)),
-    // Not awaited: the result is shown at once, while the lists refresh behind it.
-    onSettled: () => {
-      void invalidate();
-    },
   });
 }
 

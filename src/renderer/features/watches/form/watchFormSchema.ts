@@ -8,6 +8,7 @@ import {
   DEFAULT_WATCH_INTERVAL,
   WATCH_INTERVAL_OPTIONS,
 } from '../../../../shared/contracts/watches';
+import { MIN_WATCH_INTERVAL_MINUTES } from '../../../../shared/constants/app-constants';
 import {
   LOCATION_KINDS,
   providerLimits,
@@ -70,10 +71,23 @@ export function watchStayFields(manifest: ProviderManifest | undefined): {
   return { watch, hold };
 }
 
-/** The check intervals this provider allows, from the contract's list. */
-export function intervalOptions(manifest: ProviderManifest | undefined): number[] {
+/**
+ * The check intervals this provider allows, from the contract's list. An existing watch's own
+ * interval (`keep`) stays on offer even when the list no longer has it (v1 watches carry 5
+ * minutes), so editing anything else never changes or blocks it.
+ */
+export function intervalOptions(manifest: ProviderManifest | undefined, keep?: number): number[] {
   const min = manifest ? providerLimits(manifest).minWatchIntervalMinutes : 0;
-  return WATCH_INTERVAL_OPTIONS.filter((minutes) => minutes >= min);
+  const options: number[] = WATCH_INTERVAL_OPTIONS.filter((minutes) => minutes >= min);
+  return keep !== undefined && !options.includes(keep)
+    ? [...options, keep].sort((a, b) => a - b)
+    : options;
+}
+
+/** How often a watch really runs: never below 15 minutes, nor below the provider's limit. */
+export function effectiveInterval(minutes: number, manifest: ProviderManifest | undefined): number {
+  const providerMin = manifest ? providerLimits(manifest).minWatchIntervalMinutes : 0;
+  return Math.max(minutes, MIN_WATCH_INTERVAL_MINUTES, providerMin);
 }
 
 export function defaultInterval(manifest: ProviderManifest | undefined): number {
@@ -81,12 +95,20 @@ export function defaultInterval(manifest: ProviderManifest | undefined): number 
   return options.includes(DEFAULT_WATCH_INTERVAL) ? DEFAULT_WATCH_INTERVAL : options[0];
 }
 
-/** "Every 15 minutes", "Every hour", "Every 4 hours", "Once a day". */
-export function intervalLabel(minutes: number): string {
+function every(minutes: number): string {
   if (minutes === 1440) return 'Once a day';
   if (minutes === 60) return 'Every hour';
   if (minutes % 60 === 0) return `Every ${minutes / 60} hours`;
   return `Every ${minutes} minutes`;
+}
+
+/**
+ * "Every 15 minutes", "Every hour", "Every 4 hours", "Once a day". An interval shorter than the
+ * checks really run says so: "Every 5 minutes (checks run every 15)".
+ */
+export function intervalLabel(minutes: number, manifest?: ProviderManifest): string {
+  const runs = effectiveInterval(minutes, manifest);
+  return runs > minutes ? `${every(minutes)} (checks run every ${runs})` : every(minutes);
 }
 
 export interface WatchFormContext {
@@ -95,12 +117,14 @@ export interface WatchFormContext {
   today: string;
   /** Edit: the stored arrival, which may already have passed, is accepted unchanged. */
   keepArrival?: string;
+  /** Edit: the stored check interval, which the list may no longer offer, is accepted unchanged. */
+  keepInterval?: number;
 }
 
 /** The form's rules for one provider. */
-export function watchFormSchema({ manifest, today, keepArrival }: WatchFormContext) {
+export function watchFormSchema({ manifest, today, keepArrival, keepInterval }: WatchFormContext) {
   const fields = watchStayFields(manifest);
-  const intervals = intervalOptions(manifest);
+  const intervals = intervalOptions(manifest, keepInterval);
   return shape.superRefine((v, ctx) => {
     const issue = (path: (string | number)[], message: string) =>
       ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });

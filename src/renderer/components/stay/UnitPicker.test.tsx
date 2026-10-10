@@ -32,6 +32,22 @@ async function open() {
 }
 
 describe('UnitPicker', () => {
+  it('takes its heading and what choosing none means from the caller', () => {
+    render(
+      <UnitPicker
+        units={UNITS}
+        value={[]}
+        onChange={jest.fn()}
+        noun={{ one: 'site', many: 'sites' }}
+        label="Sites to try"
+        hint="None ticked tries every site."
+      />
+    );
+    expect(screen.getByText('Sites to try')).toBeInTheDocument();
+    expect(screen.getByText('Any site. None ticked tries every site.')).toBeInTheDocument();
+    expect(screen.queryByText(/told about/)).not.toBeInTheDocument();
+  });
+
   it('starts with any site and groups the sites by type', async () => {
     render(<Picker />);
     expect(screen.getByText(/Any site\./)).toBeInTheDocument();

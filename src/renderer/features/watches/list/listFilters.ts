@@ -48,12 +48,15 @@ export function withWatchFilters(search: URLSearchParams, filters: WatchFilters)
   return next;
 }
 
-/** Whether a watch passes the filters. Ended watches show only under "All". */
+/**
+ * Whether a watch passes the filters. Active and Paused are a running watch's two states; a
+ * watch that has ended, holds a unit, let its hold expire or was booked is neither (it is
+ * stopped, not paused), so it shows only under "All".
+ */
 export function passesFilters(watch: Watch, state: WatchState, filters: WatchFilters): boolean {
   if (filters.provider && watch.providerId !== filters.provider) return false;
   if (filters.status === 'all') return true;
-  if (state === 'ended') return false;
-  return filters.status === 'active' ? watch.isActive : !watch.isActive;
+  return filters.status === 'active' ? state === 'active' : state === 'paused';
 }
 
 /**

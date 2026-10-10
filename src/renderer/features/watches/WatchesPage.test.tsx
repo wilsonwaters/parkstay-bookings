@@ -7,7 +7,7 @@ import {
   fail,
   ok,
 } from '@tests/utils/renderer/createMockApi';
-import { makeWatch } from '@tests/fixtures/renderer/watches';
+import { makeLocation, makeWatch } from '@tests/fixtures/renderer/watches';
 import { currentRoute } from '@tests/utils/renderer/renderWithApp';
 import { politeAnnouncement, renderWithProviders } from '@tests/utils/renderer/renderWithProviders';
 import { WatchesPage } from './WatchesPage';
@@ -85,6 +85,84 @@ describe('WatchesPage', () => {
     setup('/watches', [OSPREY], [PARKSTAY_MANIFEST]);
     const provider = await screen.findByRole('radiogroup', { name: 'Provider' });
     expect(within(provider).getAllByRole('radio')).toHaveLength(2);
+  });
+
+  it('waits for the providers before offering a provider filter: no "Unknown provider" flash', async () => {
+    let resolve: (value: unknown) => void = () => undefined;
+    const pending = new Promise((r) => (resolve = r));
+    renderWithProviders(<WatchesPage />, {
+      route: '/watches',
+      api: {
+        providers: { list: jest.fn().mockReturnValue(pending) },
+        watches: { list: jest.fn().mockResolvedValue(ok([OSPREY, LUCKY])) },
+      },
+    });
+    await waitFor(() => expect(cards()).toHaveLength(2));
+    expect(screen.queryByRole('radiogroup', { name: 'Provider' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Unknown provider/)).not.toBeInTheDocument();
+    resolve(ok([PARKSTAY_MANIFEST, FAKE_MANIFEST]));
+    const provider = await screen.findByRole('radiogroup', { name: 'Provider' });
+    expect(within(provider).getByRole('radio', { name: /ParkStay/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Unknown provider/)).not.toBeInTheDocument();
+  });
+
+  it('shows each place’s photo from one catalogue search, named by the place', async () => {
+    const search = jest.fn().mockResolvedValue(
+      ok({
+        items: [makeLocation({ imageUrls: ['https://example.org/osprey.jpg'] })],
+        total: 1,
+      })
+    );
+    renderWithProviders(<WatchesPage />, {
+      route: '/watches',
+      api: {
+        providers: { list: jest.fn().mockResolvedValue(ok([PARKSTAY_MANIFEST, FAKE_MANIFEST])) },
+        watches: {
+          list: jest
+            .fn()
+            .mockResolvedValue(ok([OSPREY, LUCKY, makeWatch({ id: 3, name: 'Again' })])),
+        },
+        catalog: { search },
+      },
+    });
+    const osprey = await screen.findByRole('article', { name: 'Osprey Bay summer' });
+    const photo = await within(osprey).findByRole('img', { name: 'Osprey Bay' });
+    expect(photo).toHaveAttribute('src', 'https://example.org/osprey.jpg');
+    // A place the catalogue doesn't have (Fake Stay's here) shows the placeholder.
+    const lucky = screen.getByRole('article', { name: 'Lucky Bay long weekend' });
+    expect(
+      within(lucky).getByRole('img', { name: 'No photo available for Lucky Bay' })
+    ).toBeInTheDocument();
+    // Three cards, one request: main's local catalogue, never one per watch.
+    expect(search).toHaveBeenCalledTimes(1);
+  });
+
+  it('picks up the photos when a first catalogue sync finishes after the list opened', async () => {
+    const search = jest.fn().mockResolvedValue(ok({ items: [], total: 0 }));
+    const { mock } = renderWithProviders(<WatchesPage />, {
+      route: '/watches',
+      api: {
+        providers: { list: jest.fn().mockResolvedValue(ok([PARKSTAY_MANIFEST])) },
+        watches: { list: jest.fn().mockResolvedValue(ok([OSPREY])) },
+        catalog: { search },
+      },
+    });
+    const card = await screen.findByRole('article', { name: 'Osprey Bay summer' });
+    expect(
+      await within(card).findByRole('img', { name: 'No photo available for Osprey Bay' })
+    ).toBeInTheDocument();
+    search.mockResolvedValue(
+      ok({ items: [makeLocation({ imageUrls: ['https://example.org/osprey.jpg'] })], total: 1 })
+    );
+    mock.emit('catalog:updated', {
+      providerId: 'parkstay',
+      count: 1,
+      syncedAt: '2099-01-01T00:00:00Z',
+    });
+    expect(await within(card).findByRole('img', { name: 'Osprey Bay' })).toHaveAttribute(
+      'src',
+      'https://example.org/osprey.jpg'
+    );
   });
 
   it('no watches: Create your first watch', async () => {

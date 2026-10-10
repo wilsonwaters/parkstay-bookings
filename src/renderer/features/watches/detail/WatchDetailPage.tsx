@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { LoaderCircle } from 'lucide-react';
-import { toApiError, useProviders, useWatch, useWatchUpdates } from '../../../api';
+import {
+  toApiError,
+  useLocationDetail,
+  useProviders,
+  useWatch,
+  useWatchUpdates,
+} from '../../../api';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
 import type { Watch } from '../../../../shared/types/watch.types';
 import { ROUTES } from '../../../app/routes';
@@ -17,6 +23,7 @@ import { useNow } from '../../../hooks/useNow';
 import { DeleteWatchDialog } from '../shared/DeleteWatchDialog';
 import { useWatchActions } from '../shared/useWatchActions';
 import { WatchActionsBar } from '../shared/WatchActionsBar';
+import { WatchPhoto } from '../shared/WatchPhoto';
 import { providerToday, watchStateOf } from '../shared/watchState';
 import { HoldNotice } from './HoldNotice';
 import { WatchAvailability } from './WatchAvailability';
@@ -40,12 +47,23 @@ function WatchDetailView({ watch, manifest, updating }: ViewProps) {
   const actions = useWatchActions(watch, manifest);
   const [confirming, setConfirming] = useState(false);
   const { location } = watch;
+  // The place from the catalogue (main's 6-hour detail cache; the list's search at once): its
+  // photo for the header, and its unit names for the preferences.
+  const place = useLocationDetail(watch.locationKey);
 
   return (
     <div className={PAGE}>
       <PageHeader
         title={watch.name}
         back={BACK}
+        media={
+          <WatchPhoto
+            name={location.name}
+            place={place.data}
+            loading={place.isLoading}
+            className="aspect-[16/9] w-full rounded-lg sm:aspect-[4/3] sm:w-44"
+          />
+        }
         description={
           <span className="flex flex-wrap items-center gap-2">
             <ProviderBadge providerId={watch.providerId} size="sm" />
@@ -79,11 +97,18 @@ function WatchDetailView({ watch, manifest, updating }: ViewProps) {
       />
       <HoldNotice watch={watch} state={state} manifest={manifest} actions={actions} />
       {watch.lastError && (
-        <Notice tone="warning" title="Last check failed">
+        <Notice tone="danger" title="Last check failed">
           {watch.lastError}
         </Notice>
       )}
-      <WatchSummary watch={watch} state={state} manifest={manifest} today={today} now={now} />
+      <WatchSummary
+        watch={watch}
+        state={state}
+        manifest={manifest}
+        today={today}
+        now={now}
+        units={place.data?.units}
+      />
       <WatchAvailability watch={watch} manifest={manifest} now={now} />
       {watch.notes && (
         <section aria-labelledby="notes-heading" className="flex flex-col gap-2">

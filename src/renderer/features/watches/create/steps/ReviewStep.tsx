@@ -1,6 +1,10 @@
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { useFormContext } from 'react-hook-form';
-import type { ProviderManifest } from '../../../../../shared/types/provider.types';
+import type {
+  ProviderManifest,
+  StayFieldDescriptor as StayField,
+} from '../../../../../shared/types/provider.types';
+import { formatPrice } from '../../../../components/nightGrid';
 import {
   stayNightsLabel,
   partyLabel,
@@ -21,6 +25,7 @@ import {
   watchStayFields,
   type WatchFormValues,
 } from '../../form/watchFormSchema';
+import { WatchPhoto, type WatchPlace } from '../../shared/WatchPhoto';
 
 export type FlowStepId = 'provider' | 'location' | 'stay' | 'alerts' | 'review';
 
@@ -28,105 +33,154 @@ export interface ReviewStepProps {
   manifest: ProviderManifest;
   today: string;
   noun: UnitNoun;
+  /** The chosen place as the catalogue has it, for its photo. */
+  place?: WatchPlace;
+  placeLoading?: boolean;
   onChangeStep: (step: FlowStepId) => void;
   /** Why the last attempt to create the watch failed. */
   submitError?: string;
 }
 
-function Row({
-  label,
-  children,
+/** One group of the review, with the one "Change" that goes back to where it was chosen. */
+function Section({
+  title,
+  changeLabel,
   onChange,
+  children,
 }: {
-  label: string;
-  children: ReactNode;
+  title: string;
+  /** The Change button's accessible name, e.g. "Change dates". */
+  changeLabel: string;
   onChange: () => void;
+  children: ReactNode;
 }) {
+  const headingId = useId();
   return (
-    <div className="border-b border-border py-3 last:border-0">
-      <dt className="text-sm text-fg-secondary">{label}</dt>
-      <dd className="flex items-start justify-between gap-4 text-base text-fg">
-        <span className="min-w-0">{children}</span>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onChange}
-          aria-label={`Change ${label.toLowerCase()}`}
-          className="shrink-0"
-        >
+    <section
+      aria-labelledby={headingId}
+      className="flex flex-col gap-2 border-b border-border py-4 first:pt-0 last:border-0"
+    >
+      <div className="flex items-center justify-between gap-4">
+        <h3 id={headingId} className="text-base font-semibold text-fg">
+          {title}
+        </h3>
+        <Button variant="ghost" size="sm" onClick={onChange} aria-label={changeLabel}>
           Change
         </Button>
-      </dd>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Items({ children }: { children: ReactNode }) {
+  return <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2">{children}</dl>;
+}
+
+function Item({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-sm text-fg-secondary">{label}</dt>
+      <dd className="text-base text-fg">{children}</dd>
     </div>
   );
 }
 
-/** Step 5: everything chosen, each with a way back to change it, then the name and notes. */
-export function ReviewStep({ manifest, today, noun, onChangeStep, submitError }: ReviewStepProps) {
+/** A provider stay field's value as the person chose it ("Tent", "Yes", "Not given"). */
+function fieldValue(field: StayField, value: unknown): string {
+  const option = field.options?.find((o) => o.value === value)?.label;
+  if (option) return option;
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return value === undefined || value === '' ? 'Not given' : String(value);
+}
+
+/**
+ * Step 5: what was chosen, grouped as Where, When, Who and Alerts, each with one way back to
+ * change it; then the name and notes.
+ */
+export function ReviewStep({
+  manifest,
+  today,
+  noun,
+  place,
+  placeLoading,
+  onChangeStep,
+  submitError,
+}: ReviewStepProps) {
   const { register, getValues, formState } = useFormContext<WatchFormValues>();
   const v = getValues();
   const fields = watchStayFields(manifest);
-  const shownFields = v.autoHold ? [...fields.watch, ...fields.hold] : fields.watch;
   const price = parsePrice(v.maxPrice);
-  const alerts = [
-    v.allowPartialMatch
-      ? 'Also when only some nights are free'
-      : 'Only when the whole stay is free',
-    v.notifyOnly ? 'stops after the first alert' : 'keeps checking after alerts',
-  ].join(', ');
+  const fieldItems = (list: readonly StayField[]) =>
+    list.map((field) => (
+      <Item key={field.key} label={field.label}>
+        {fieldValue(field, v.stayParams[field.key])}
+      </Item>
+    ));
 
   return (
     <>
-      <dl className="flex flex-col">
-        <Row label="Provider" onChange={() => onChangeStep('provider')}>
-          <span className="flex items-center gap-2">
-            <ProviderBadge providerId={manifest.id} info={manifest} size="sm" />
-          </span>
-        </Row>
-        <Row label="Location" onChange={() => onChangeStep('location')}>
-          {[v.location?.name, v.location?.areaName].filter(Boolean).join(' · ')}
-        </Row>
-        <Row label="Dates" onChange={() => onChangeStep('stay')}>
-          {v.arrival && v.departure
-            ? `${stayDatesLabel(v.arrival, v.departure, today)} · ${stayNightsLabel(v.arrival, v.departure)}`
-            : 'Not chosen'}
-        </Row>
-        <Row label="Guests" onChange={() => onChangeStep('stay')}>
-          {partyLabel(v)}
-        </Row>
-        {shownFields.map((field) => {
-          const value = v.stayParams[field.key];
-          const shown =
-            field.options?.find((o) => o.value === value)?.label ??
-            (typeof value === 'boolean' ? (value ? 'Yes' : 'No') : value || 'Not given');
-          return (
-            <Row
-              key={field.key}
-              label={field.label}
-              onChange={() => onChangeStep(fields.watch.includes(field) ? 'stay' : 'alerts')}
-            >
-              {String(shown)}
-            </Row>
-          );
-        })}
-        <Row label={`Preferred ${noun.many}`} onChange={() => onChangeStep('stay')}>
-          {v.unitIds.length ? `${v.unitIds.length} chosen` : `Any ${noun.one}`}
-        </Row>
-        <Row label="Max price per night" onChange={() => onChangeStep('stay')}>
-          {price !== undefined ? `$${price}` : 'No limit'}
-        </Row>
-        <Row label="Checks" onChange={() => onChangeStep('alerts')}>
-          {intervalLabel(v.checkIntervalMinutes)}
-        </Row>
-        <Row label="Alerts" onChange={() => onChangeStep('alerts')}>
-          {alerts}
-        </Row>
-        {manifest.capabilities.holds && (
-          <Row label="Automatic hold" onChange={() => onChangeStep('alerts')}>
-            {v.autoHold ? `Hold a ${noun.one} when found` : 'Off'}
-          </Row>
-        )}
-      </dl>
+      <div className="flex flex-col">
+        <Section
+          title="Where"
+          changeLabel="Change location"
+          onChange={() => onChangeStep('location')}
+        >
+          <div className="flex items-center gap-4">
+            <WatchPhoto
+              name={v.location?.name ?? 'The place'}
+              place={place}
+              loading={placeLoading}
+              className="aspect-[4/3] w-28 rounded-md"
+            />
+            <div className="flex min-w-0 flex-col gap-1">
+              <p className="text-base font-semibold text-fg">{v.location?.name}</p>
+              {v.location?.areaName && (
+                <p className="text-sm text-fg-secondary">{v.location.areaName}</p>
+              )}
+              <ProviderBadge providerId={manifest.id} info={manifest} size="sm" className="w-fit" />
+            </div>
+          </div>
+        </Section>
+        <Section title="When" changeLabel="Change dates" onChange={() => onChangeStep('stay')}>
+          <Items>
+            <Item label="Dates">
+              {v.arrival && v.departure
+                ? `${stayDatesLabel(v.arrival, v.departure, today)} · ${stayNightsLabel(v.arrival, v.departure)}`
+                : 'Not chosen'}
+            </Item>
+          </Items>
+        </Section>
+        <Section title="Who" changeLabel="Change guests" onChange={() => onChangeStep('stay')}>
+          <Items>
+            <Item label="Guests">{partyLabel(v)}</Item>
+            {fieldItems(fields.watch)}
+            <Item label={`Preferred ${noun.many}`}>
+              {v.unitIds.length ? `${v.unitIds.length} chosen` : `Any ${noun.one}`}
+            </Item>
+            <Item label="Max price per night">
+              {price !== undefined ? formatPrice(price, manifest.currency) : 'No limit'}
+            </Item>
+          </Items>
+        </Section>
+        <Section title="Alerts" changeLabel="Change alerts" onChange={() => onChangeStep('alerts')}>
+          <Items>
+            <Item label="Checks">{intervalLabel(v.checkIntervalMinutes, manifest)}</Item>
+            <Item label="Alert me">
+              {v.allowPartialMatch
+                ? 'Also when only some nights are free'
+                : 'Only when the whole stay is free'}
+              , {v.notifyOnly ? 'stops after the first alert' : 'keeps checking after alerts'}
+            </Item>
+            {manifest.capabilities.holds && (
+              <Item label="Automatic hold">
+                {v.autoHold ? `Hold a ${noun.one} when found` : 'Off'}
+              </Item>
+            )}
+            {v.autoHold && fieldItems(fields.hold)}
+          </Items>
+        </Section>
+      </div>
       <Field
         label="Name"
         hint="Shown in your list and alerts."

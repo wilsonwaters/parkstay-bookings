@@ -14,6 +14,11 @@ export interface PageHeaderProps {
    * `/__design` gallery, where the page already has its `h1`.
    */
   headingLevel?: 1 | 2 | 3;
+  /**
+   * A picture that leads the title, such as a place's photo: beside it from `sm`, above it on
+   * narrow screens. The picture sets its own size.
+   */
+  media?: ReactNode;
   className?: string;
 }
 
@@ -24,9 +29,16 @@ export function PageHeader({
   actions,
   back,
   headingLevel = 1,
+  media,
   className,
 }: PageHeaderProps) {
   const Heading = `h${headingLevel}` as const;
+  const titleBlock = (
+    <div className="min-w-0 max-w-2xl">
+      <Heading className="text-2xl font-semibold text-fg">{title}</Heading>
+      {description && <p className="mt-1 text-base text-fg-secondary">{description}</p>}
+    </div>
+  );
   return (
     <header className={cx('flex flex-col gap-3', className)}>
       {back && (
@@ -39,10 +51,14 @@ export function PageHeader({
         </a>
       )}
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 max-w-2xl">
-          <Heading className="text-2xl font-semibold text-fg">{title}</Heading>
-          {description && <p className="mt-1 text-base text-fg-secondary">{description}</p>}
-        </div>
+        {media ? (
+          <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:items-center">
+            {media}
+            {titleBlock}
+          </div>
+        ) : (
+          titleBlock
+        )}
         {actions && <div className="flex shrink-0 flex-wrap items-center gap-3">{actions}</div>}
       </div>
     </header>

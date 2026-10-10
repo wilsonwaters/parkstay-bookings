@@ -2,7 +2,12 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { WatchResult } from '../../../../shared/types/common.types';
 import type { Watch } from '../../../../shared/types/watch.types';
 import { PARKSTAY_MANIFEST, fail, ok } from '@tests/utils/renderer/createMockApi';
-import { makeUnit, makeWatch } from '@tests/fixtures/renderer/watches';
+import {
+  catalogGet,
+  makeLocationDetail,
+  makeUnit,
+  makeWatch,
+} from '@tests/fixtures/renderer/watches';
 import { currentRoute, renderWithApp } from '@tests/utils/renderer/renderWithApp';
 
 const NIGHTS = ['2099-12-11', '2099-12-12'];
@@ -97,10 +102,44 @@ describe('WatchDetailPage', () => {
         lastError: 'ParkStay did not answer in time',
       }),
     });
+    // The danger tone: a failed check is an error, not a caution.
     const notice = (await screen.findByText('ParkStay did not answer in time')).closest(
-      '[role="status"]'
+      '[role="alert"]'
     ) as HTMLElement;
     expect(within(notice).getByText('Last check failed')).toBeInTheDocument();
+  });
+
+  it('leads with the place’s photo, names chosen units, prices in the currency, and hides Found 0', async () => {
+    const detail = makeLocationDetail({ imageUrls: ['https://example.org/osprey.jpg'] });
+    renderWithApp({
+      route: '/watches/7',
+      api: {
+        ...api({ ...WATCH, foundCount: 0, unitIds: ['3', '5'], maxPrice: 42.5 }),
+        catalog: { get: catalogGet(detail) },
+      },
+    });
+    const header = (await screen.findByRole('heading', { level: 1 })).closest('header');
+    const photo = await within(header as HTMLElement).findByRole('img', { name: 'Osprey Bay' });
+    expect(photo).toHaveAttribute('src', 'https://example.org/osprey.jpg');
+    const preferences = screen.getByRole('region', { name: 'Preferences' });
+    expect(await within(preferences).findByText('Site 3, Site 5')).toBeInTheDocument();
+    expect(within(preferences).getByText('$42.50')).toBeInTheDocument();
+    const status = screen.getByRole('region', { name: 'Status' });
+    expect(within(status).queryByText('Found')).not.toBeInTheDocument();
+    expect(within(status).queryByText(/0 times/)).not.toBeInTheDocument();
+  });
+
+  it('falls back to the placeholder when the catalogue has no such place', async () => {
+    renderWithApp({
+      route: '/watches/7',
+      api: {
+        ...api(),
+        catalog: { get: catalogGet(makeLocationDetail({ key: 'parkstay:other' })) },
+      },
+    });
+    expect(
+      await screen.findByRole('img', { name: 'No photo available for Osprey Bay' })
+    ).toBeInTheDocument();
   });
 
   it('offers Pay now as the page’s main action while a hold is live', async () => {

@@ -71,6 +71,21 @@ describe('watchFormSchema', () => {
     });
   });
 
+  it('accepts an edited watch’s stored interval the list no longer has, and only that one', () => {
+    const legacy = valid({ checkIntervalMinutes: 5 });
+    expect(issues(legacy)).toHaveProperty('checkIntervalMinutes');
+    const result = watchFormSchema({
+      manifest: PARKSTAY_MANIFEST,
+      today: TODAY,
+      keepInterval: 5,
+    }).safeParse(legacy);
+    expect(result.success).toBe(true);
+    expect(intervalOptions(PARKSTAY_MANIFEST, 5)).toEqual([5, 15, 30, 60, 240, 720, 1440]);
+    expect(intervalOptions(PARKSTAY_MANIFEST, 60)).toEqual([15, 30, 60, 240, 720, 1440]);
+    expect(intervalLabel(5, PARKSTAY_MANIFEST)).toBe('Every 5 minutes (checks run every 15)');
+    expect(intervalLabel(15, PARKSTAY_MANIFEST)).toBe('Every 15 minutes');
+  });
+
   it('wants a name and a contract interval', () => {
     expect(issues(valid({ name: '  ', checkIntervalMinutes: 5 }))).toEqual({
       name: 'Give the watch a name',

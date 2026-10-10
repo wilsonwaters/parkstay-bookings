@@ -8,10 +8,12 @@ import { intervalLabel, intervalOptions, type WatchFormValues } from './watchFor
 export interface WatchAlertFieldsProps {
   manifest: ProviderManifest | undefined;
   noun: UnitNoun;
+  /** Edit: the watch's stored interval, kept on offer even if the list no longer has it. */
+  keepInterval?: number;
 }
 
 /** How often to check and what to do when something is found: the Alerts step, and Edit. */
-export function WatchAlertFields({ manifest, noun }: WatchAlertFieldsProps) {
+export function WatchAlertFields({ manifest, noun, keepInterval }: WatchAlertFieldsProps) {
   const { register, formState } = useFormContext<WatchFormValues>();
   return (
     <>
@@ -21,9 +23,9 @@ export function WatchAlertFields({ manifest, noun }: WatchAlertFieldsProps) {
         error={formState.errors.checkIntervalMinutes?.message}
       >
         <Select {...register('checkIntervalMinutes', { valueAsNumber: true })}>
-          {intervalOptions(manifest).map((minutes) => (
+          {intervalOptions(manifest, keepInterval).map((minutes) => (
             <option key={minutes} value={minutes}>
-              {intervalLabel(minutes)}
+              {intervalLabel(minutes, manifest)}
             </option>
           ))}
         </Select>

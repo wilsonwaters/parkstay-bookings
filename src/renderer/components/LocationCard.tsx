@@ -10,7 +10,13 @@ import { Badge, PhotoPlaceholder, ProviderBadge, Skeleton, VisuallyHidden } from
 import { cx } from './ui/cx';
 
 export interface LocationPhotoProps {
-  location: Pick<LocationSummary, 'name' | 'kind' | 'imageUrls'>;
+  /** `kind` picks the placeholder's icon; a record that keeps no kind gets a map pin. */
+  location: Pick<LocationSummary, 'name' | 'imageUrls'> & Partial<Pick<LocationSummary, 'kind'>>;
+  /**
+   * The photo's text alternative. Default `''` (decorative), for a photo beside the place's
+   * own name; pass the name where the photo stands for the place, as a watch's does.
+   */
+  alt?: string;
   className?: string;
 }
 
@@ -34,7 +40,7 @@ export function photoUrl(urls: readonly string[]): string | undefined {
  * missing or broken photo shows the PhotoPlaceholder, named "No photo available for {name}".
  * The parent sets the size; the photo fills it.
  */
-export function LocationPhoto({ location, className }: LocationPhotoProps) {
+export function LocationPhoto({ location, alt = '', className }: LocationPhotoProps) {
   const src = photoUrl(location.imageUrls);
   const [state, setState] = useState<'loading' | 'loaded' | 'failed'>(src ? 'loading' : 'failed');
   const imageRef = useRef<HTMLImageElement>(null);
@@ -52,7 +58,7 @@ export function LocationPhoto({ location, className }: LocationPhotoProps) {
         <img
           ref={imageRef}
           src={src}
-          alt=""
+          alt={alt}
           loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"

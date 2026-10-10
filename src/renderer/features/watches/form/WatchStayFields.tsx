@@ -80,6 +80,7 @@ export function WatchStayFields({
           value={unitIds}
           onChange={(ids) => set('unitIds', ids)}
           noun={noun}
+          hint={`Leave all unticked to be told about any ${noun.one}.`}
         />
       )}
       <Field

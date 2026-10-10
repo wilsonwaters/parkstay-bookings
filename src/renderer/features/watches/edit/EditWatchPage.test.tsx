@@ -97,6 +97,34 @@ describe('EditWatchPage', () => {
     expect(mock.watches.update).not.toHaveBeenCalled();
   });
 
+  it('rename a legacy 5-minute watch saves without changing the interval', async () => {
+    const mock = api({ ...LEGACY, checkIntervalMinutes: 5 });
+    const { user } = renderWithApp({ route: '/watches/5/edit', api: mock });
+    const name = await screen.findByRole('textbox', { name: 'Name' });
+    const interval = screen.getByRole('combobox', { name: /Check every/ });
+    expect(interval).toHaveValue('5');
+    expect(within(interval).getByRole('option', { selected: true })).toHaveTextContent(
+      'Every 5 minutes (checks run every 15)'
+    );
+    await user.clear(name);
+    await user.type(name, 'Renamed');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(mock.watches.update).toHaveBeenCalledTimes(1));
+    expect(mock.watches.update).toHaveBeenCalledWith(5, { name: 'Renamed' });
+    expect(screen.queryByText('Choose how often to check')).toBeNull();
+    await waitFor(() => expect(currentRoute()).toBe('/watches/5'));
+  });
+
+  it('lets a legacy 5-minute watch move to an interval from the list', async () => {
+    const mock = api({ ...LEGACY, checkIntervalMinutes: 5 });
+    const { user } = renderWithApp({ route: '/watches/5/edit', api: mock });
+    await user.selectOptions(await screen.findByRole('combobox', { name: /Check every/ }), '15');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() =>
+      expect(mock.watches.update).toHaveBeenCalledWith(5, { checkIntervalMinutes: 15 })
+    );
+  });
+
   it('focuses the first invalid field when the form cannot be saved', async () => {
     const mock = api();
     const { user } = renderWithApp({ route: '/watches/5/edit', api: mock });

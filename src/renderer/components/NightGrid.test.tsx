@@ -115,6 +115,29 @@ describe('NightGrid', () => {
     expect(rowNames()).toHaveLength(10);
   });
 
+  it('follows a new "fullyAvailableOnly", such as a later result', () => {
+    const { units } = availabilityFor(STAY, { fully: 1, partly: 2 });
+    const grid = (fullyAvailableOnly: boolean) => (
+      <NightGrid
+        units={units}
+        arrival={STAY.arrival}
+        departure={STAY.departure}
+        unitNoun={SITE}
+        source="ParkStay"
+        fullyAvailableOnly={fullyAvailableOnly}
+      />
+    );
+    const { rerender } = render(grid(false));
+    const toggle = () => screen.getByRole('switch', { name: 'Fully available only' });
+    expect(toggle()).not.toBeChecked();
+    expect(rowNames()).toHaveLength(10);
+    rerender(grid(true));
+    expect(toggle()).toBeChecked();
+    expect(rowNames()).toHaveLength(1);
+    rerender(grid(false));
+    expect(toggle()).not.toBeChecked();
+  });
+
   it('shows the first 10 rows, then all of them', async () => {
     const user = userEvent.setup();
     renderGrid({ fully: 14 });

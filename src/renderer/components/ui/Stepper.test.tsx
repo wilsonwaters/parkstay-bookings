@@ -27,6 +27,30 @@ describe('Stepper', () => {
     expect(output).toHaveTextContent('1');
   });
 
+  it('shows an error, read with the group, which is marked invalid and can take focus', () => {
+    render(
+      <Stepper
+        label="Vehicles"
+        hint="Including trailers"
+        value={1}
+        onChange={jest.fn()}
+        error="At most 5"
+      />
+    );
+    const group = screen.getByRole('group', { name: 'Vehicles' });
+    expect(group).toHaveAttribute('aria-invalid', 'true');
+    expect(group).toHaveAccessibleDescription('Including trailers At most 5');
+    group.focus();
+    expect(group).toHaveFocus();
+  });
+
+  it('is not invalid or focusable without an error', () => {
+    render(<Vehicles />);
+    const group = screen.getByRole('group', { name: 'Vehicles' });
+    expect(group).not.toHaveAttribute('aria-invalid');
+    expect(group).not.toHaveAttribute('tabindex');
+  });
+
   it('respects min and max, disabling the button at each limit', async () => {
     const user = userEvent.setup();
     render(<Vehicles />);

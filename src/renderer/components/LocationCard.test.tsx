@@ -46,6 +46,24 @@ describe('LocationPhoto', () => {
   });
 });
 
+describe('LocationPhoto alt text', () => {
+  it('is decorative by default, beside the place name, and takes the name where it stands for it', () => {
+    const photo = { ...PLACE, imageUrls: ['https://example.org/bungarra.jpg'] };
+    const { container, rerender } = render(<LocationPhoto location={photo} />);
+    expect(container.querySelector('img')).toHaveAttribute('alt', '');
+    rerender(<LocationPhoto location={photo} alt="Bungarra" />);
+    expect(container.querySelector('img')).toHaveAttribute('alt', 'Bungarra');
+    expect(container.querySelector('img')).toHaveAttribute('referrerpolicy', 'no-referrer');
+  });
+
+  it('takes a record with no kind (a watch keeps none): the placeholder has a map pin', () => {
+    render(<LocationPhoto location={{ name: 'Old place', imageUrls: [] }} alt="Old place" />);
+    expect(
+      screen.getByRole('img', { name: 'No photo available for Old place' })
+    ).toBeInTheDocument();
+  });
+});
+
 describe('LocationCard', () => {
   it('is one link named by the place, with its area in full, and marked current when selected', () => {
     const area = { name: 'Bandilngan (Windjana Gorge) National Park', region: 'Kimberley' };

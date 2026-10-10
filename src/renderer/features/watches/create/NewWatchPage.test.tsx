@@ -182,6 +182,34 @@ describe('NewWatchPage', () => {
     expect(dates).toHaveAccessibleDescription('Arrival must be in the future');
   });
 
+  it('takes a VALIDATION on a number stay field back to it, focused and described', async () => {
+    const mock = api({
+      watches: {
+        list: jest.fn().mockResolvedValue(ok([])),
+        create: jest.fn().mockResolvedValue({
+          success: false,
+          code: 'VALIDATION',
+          error: 'Vehicles must be at most 5',
+          issues: ['stayParams.numVehicles'],
+        }),
+      },
+    });
+    const { user } = renderWithApp({ route: PREFILL, api: mock });
+    await screen.findByRole('heading', { level: 2, name: /Your stay$/ });
+    await user.click(button('Continue'));
+    await user.click(
+      await screen.findByRole('checkbox', { name: 'Hold a site automatically when found' })
+    );
+    await user.click(button('Continue'));
+    await user.click(await screen.findByRole('button', { name: 'Create watch' }));
+
+    const vehicles = await screen.findByRole('group', { name: 'Vehicles' });
+    await waitFor(() => expect(vehicles).toHaveFocus());
+    expect(vehicles).toHaveAttribute('aria-invalid', 'true');
+    expect(vehicles).toHaveAccessibleDescription('Vehicles must be at most 5');
+    expect(screen.getByRole('heading', { level: 2, name: /Alerts$/ })).toBeInTheDocument();
+  });
+
   it('shows why creating failed and keeps the review', async () => {
     const mock = api({
       watches: {

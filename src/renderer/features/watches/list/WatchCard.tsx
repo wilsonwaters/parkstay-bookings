@@ -11,6 +11,7 @@ import { resultSummary } from '../shared/resultSummary';
 import { useWatchActions } from '../shared/useWatchActions';
 import { WatchActionsBar } from '../shared/WatchActionsBar';
 import { statusPillFor, unitNameOf, unitNounFor, type WatchState } from '../shared/watchState';
+import { WatchPhoto, type WatchPlace } from '../shared/WatchPhoto';
 
 export interface WatchCardProps {
   watch: Watch;
@@ -18,6 +19,10 @@ export interface WatchCardProps {
   manifest: ProviderManifest | undefined;
   now: Date;
   today: string;
+  /** The catalogue's record of the place, for its photo; undefined when it has none. */
+  place?: WatchPlace;
+  /** The catalogue is still answering. */
+  placeLoading?: boolean;
 }
 
 /** The hold, expired hold or booking line under a card, in the provider's time zone. */
@@ -58,8 +63,19 @@ export function HoldLine({
   return null;
 }
 
-/** One watch in the list: whose it is, where and when, what it found, and its actions. */
-export function WatchCard({ watch, state, manifest, now, today }: WatchCardProps) {
+/**
+ * One watch in the list, photo first: the place's photo (left, 4:3; on top when narrow), then
+ * whose and where, the stay, what it found and its actions, in about 130 px.
+ */
+export function WatchCard({
+  watch,
+  state,
+  manifest,
+  now,
+  today,
+  place,
+  placeLoading,
+}: WatchCardProps) {
   const headingId = useId();
   const actions = useWatchActions(watch, manifest);
   const [confirming, setConfirming] = useState(false);
@@ -75,11 +91,21 @@ export function WatchCard({ watch, state, manifest, now, today }: WatchCardProps
   ].filter(Boolean);
 
   return (
-    <Card as="article" aria-labelledby={headingId} className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-col gap-1">
-          <ProviderBadge providerId={watch.providerId} size="sm" className="w-fit" />
-          <h2 id={headingId} className="min-w-0 text-lg font-semibold text-fg">
+    <Card
+      as="article"
+      aria-labelledby={headingId}
+      padding="none"
+      className="flex flex-col gap-3 p-3 sm:flex-row sm:gap-4"
+    >
+      <WatchPhoto
+        name={location.name}
+        place={place}
+        loading={placeLoading}
+        className="aspect-[16/9] w-full rounded-md sm:aspect-[4/3] sm:w-36 sm:self-start"
+      />
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex items-start justify-between gap-3">
+          <h2 id={headingId} className="min-w-0 text-base font-semibold text-fg">
             <Link
               to={ROUTES.watchDetail(watch.id)}
               className="block truncate rounded-sm hover:underline"
@@ -87,33 +113,39 @@ export function WatchCard({ watch, state, manifest, now, today }: WatchCardProps
               {watch.name}
             </Link>
           </h2>
-          <p className="truncate text-sm text-fg-secondary">
-            {[location.name, location.areaName].filter(Boolean).join(' · ')}
-          </p>
-          <p className="text-sm text-fg-secondary">
-            {stayDatesLabel(stay.arrival, stay.departure, today)} ·{' '}
-            {stayNightsLabel(stay.arrival, stay.departure)} · {partyLabel(stay)}
-          </p>
+          <StatusPill {...statusPillFor(state)} className="shrink-0" />
         </div>
-        <StatusPill {...statusPillFor(state)} className="shrink-0" />
-      </div>
-      <HoldLine watch={watch} state={state} manifest={manifest} />
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-        <p className="text-sm text-fg-secondary">
-          <span className="font-semibold text-fg">
-            {resultSummary(watch, unitNounFor(manifest))}
+        <p className="flex min-w-0 items-center gap-2 text-sm text-fg-secondary">
+          <ProviderBadge providerId={watch.providerId} size="sm" className="shrink-0" />
+          <span className="truncate">
+            {[location.name, location.areaName].filter(Boolean).join(' · ')}
           </span>
-          {facts.map((fact) => (
-            <span key={fact}> · {fact}</span>
-          ))}
         </p>
-        <WatchActionsBar
-          watch={watch}
-          state={state}
-          manifest={manifest}
-          actions={actions}
-          onDelete={() => setConfirming(true)}
-        />
+        <p className="text-sm text-fg-secondary">
+          {stayDatesLabel(stay.arrival, stay.departure, today)} ·{' '}
+          {stayNightsLabel(stay.arrival, stay.departure)} · {partyLabel(stay)}
+        </p>
+        <HoldLine watch={watch} state={state} manifest={manifest} />
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-1">
+          <p className="min-w-0 text-sm text-fg-secondary">
+            <span className="font-semibold text-fg">
+              {resultSummary(watch, unitNounFor(manifest))}
+            </span>
+            {facts.map((fact) => (
+              <span key={fact}> · {fact}</span>
+            ))}
+          </p>
+          {/* Right-aligned, also when it wraps under a long summary. */}
+          <div className="ml-auto">
+            <WatchActionsBar
+              watch={watch}
+              state={state}
+              manifest={manifest}
+              actions={actions}
+              onDelete={() => setConfirming(true)}
+            />
+          </div>
+        </div>
       </div>
       <DeleteWatchDialog
         watch={watch}

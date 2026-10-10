@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import type { UnitSummary } from '../../../shared/types/catalog.types';
 import type { UnitNoun } from '../nightGrid';
 import { Checkbox, Disclosure } from '../ui';
@@ -12,6 +12,10 @@ export interface UnitPickerProps {
   onChange: (unitIds: string[]) => void;
   /** What a unit is called here, e.g. site / sites. */
   noun: UnitNoun;
+  /** The heading. Default "Preferred {sites}". */
+  label?: string;
+  /** What choosing none means for the caller, after the summary ("Any site."). */
+  hint?: ReactNode;
 }
 
 const OTHER = 'Other';
@@ -26,9 +30,10 @@ export function choosesUnit(value: readonly string[], unit: UnitSummary): boolea
  * Optional unit preferences, grouped by unit type ("Powered site", "Tent only"…): a group of
  * several has an "All {type}" box and a box per unit. A location with one unit per type (unit
  * classes) lists its units without groups. Nothing chosen means any unit. Chosen units the
- * location no longer lists are kept until unticked. Shared by watches and snipes.
+ * location no longer lists are kept until unticked. Shared by watches and snipes: the caller
+ * says what choosing none means (`hint`).
  */
-export function UnitPicker({ units, value, onChange, noun }: UnitPickerProps) {
+export function UnitPicker({ units, value, onChange, noun, label, hint }: UnitPickerProps) {
   const groups = useMemo(() => {
     const byType = new Map<string, UnitSummary[]>();
     for (const unit of units) {
@@ -53,9 +58,9 @@ export function UnitPicker({ units, value, onChange, noun }: UnitPickerProps) {
 
   return (
     <div className="flex flex-col gap-1">
-      <p className="text-sm font-semibold text-fg">Preferred {noun.many}</p>
+      <p className="text-sm font-semibold text-fg">{label ?? `Preferred ${noun.many}`}</p>
       <p className="text-sm text-fg-muted">
-        {summary}. Leave all unticked to be told about any {noun.one}.
+        {summary}.{hint ? <> {hint}</> : null}
       </p>
       <Disclosure summary={`Choose ${noun.many}`}>
         <div className="flex flex-col gap-4">

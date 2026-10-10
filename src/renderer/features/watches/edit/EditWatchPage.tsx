@@ -57,8 +57,16 @@ function EditWatchForm({ watch, manifest }: { watch: Watch; manifest: ProviderMa
   const [{ values: initial, notes }] = useState(() => fromWatch(watch, manifest));
   const today = providerToday(manifest, new Date());
   const resolver = useMemo<Resolver<WatchFormValues>>(
-    () => zodResolver(watchFormSchema({ manifest, today, keepArrival: watch.stay.arrival })),
-    [manifest, today, watch.stay.arrival]
+    () =>
+      zodResolver(
+        watchFormSchema({
+          manifest,
+          today,
+          keepArrival: watch.stay.arrival,
+          keepInterval: watch.checkIntervalMinutes,
+        })
+      ),
+    [manifest, today, watch.stay.arrival, watch.checkIntervalMinutes]
   );
   const form = useForm<WatchFormValues>({ defaultValues: initial, resolver, mode: 'onTouched' });
   const { handleSubmit, register, watch: value, setValue, setError, formState } = form;
@@ -119,7 +127,11 @@ function EditWatchForm({ watch, manifest }: { watch: Watch; manifest: ProviderMa
           />
         </Section>
         <Section title="Alerts">
-          <WatchAlertFields manifest={manifest} noun={unitNounFor(manifest)} />
+          <WatchAlertFields
+            manifest={manifest}
+            noun={unitNounFor(manifest)}
+            keepInterval={watch.checkIntervalMinutes}
+          />
         </Section>
         <Section title="Name and notes">
           <Field label="Name" error={formState.errors.name?.message}>

@@ -5,12 +5,12 @@ import { PARKSTAY_MANIFEST, fail, ok } from '@tests/utils/renderer/createMockApi
 import { makeUnit, makeWatch } from '@tests/fixtures/renderer/watches';
 import { renderWithProviders } from '@tests/utils/renderer/renderWithProviders';
 import { providerToday, watchStateOf } from '../shared/watchState';
-import { WatchCard } from './WatchCard';
+import { WatchCard, type WatchCardProps } from './WatchCard';
 
 const NOW = new Date();
 const NIGHTS = ['2099-12-11', '2099-12-12'];
 
-function renderCard(watch: Watch, api = {}, known = true) {
+function renderCard(watch: Watch, api = {}, known = true, photo: Partial<WatchCardProps> = {}) {
   const manifest = known ? PARKSTAY_MANIFEST : undefined;
   const today = providerToday(manifest, NOW);
   return renderWithProviders(
@@ -20,6 +20,7 @@ function renderCard(watch: Watch, api = {}, known = true) {
       manifest={manifest}
       now={NOW}
       today={today}
+      {...photo}
     />,
     { route: '/watches', api }
   );
@@ -218,6 +219,16 @@ describe('WatchCard', () => {
     );
     expect(within(card()).getByText('Last check failed')).toBeInTheDocument();
     expect(within(card()).getByText(/Checked 2 h ago/)).toBeInTheDocument();
+  });
+
+  it('leads with the place’s photo, named by the place; a skeleton while the catalogue answers', () => {
+    const place = { kind: 'campground' as const, imageUrls: ['https://example.org/osprey.jpg'] };
+    const { unmount } = renderCard(makeWatch(), {}, true, { place });
+    const photo = within(card()).getByRole('img', { name: 'Osprey Bay' });
+    expect(photo).toHaveAttribute('src', 'https://example.org/osprey.jpg');
+    unmount();
+    renderCard(makeWatch(), {}, true, { placeLoading: true });
+    expect(within(card()).queryByRole('img', { name: /Osprey Bay/ })).toBeNull();
   });
 
   it('keeps a long name whole in the accessible name while it truncates visually', () => {

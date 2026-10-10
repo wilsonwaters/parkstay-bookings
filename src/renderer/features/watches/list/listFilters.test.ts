@@ -47,6 +47,15 @@ describe('watch list filters', () => {
     expect(passesFilters(paused, 'paused', { ...all, provider: 'parkstay' })).toBe(false);
   });
 
+  it('keeps held, expired-hold and booked watches out of Active and Paused, like ended ones', () => {
+    const stopped = makeWatch({ isActive: false });
+    for (const state of ['held', 'hold-expired', 'booked', 'ended'] as const) {
+      expect(passesFilters(stopped, state, { status: 'paused' })).toBe(false);
+      expect(passesFilters(stopped, state, { status: 'active' })).toBe(false);
+      expect(passesFilters(stopped, state, { status: 'all' })).toBe(true);
+    }
+  });
+
   it('offers All, the watch providers, and any other provider a watch belongs to', () => {
     const options = providerFilterOptions(
       [PARKSTAY_MANIFEST, BROWSE_ONLY_MANIFEST, FAKE_MANIFEST],

@@ -146,6 +146,13 @@ export function NightGrid({
   const regionRef = useRef<HTMLDivElement>(null);
   const [overflows, setOverflows] = useState(false);
   const [fullyOnly, setFullyOnly] = useState(fullyAvailableOnly);
+  // A new `fullyAvailableOnly` (a later result, say) resets the switch to it, during render
+  // so the grid never shows a frame with the old setting.
+  const [startedFullyOnly, setStartedFullyOnly] = useState(fullyAvailableOnly);
+  if (startedFullyOnly !== fullyAvailableOnly) {
+    setStartedFullyOnly(fullyAvailableOnly);
+    setFullyOnly(fullyAvailableOnly);
+  }
   const [showAll, setShowAll] = useState(false);
   const nights = useMemo(() => stayNights(arrival, departure), [arrival, departure]);
   const summary = useMemo(() => summariseAvailability(units, nights), [units, nights]);
