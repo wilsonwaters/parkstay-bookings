@@ -62,18 +62,6 @@ export enum RelatedType {
   SNIPE = 'snipe',
 }
 
-export enum JobType {
-  WATCH_POLL = 'watch_poll',
-  SNIPE = 'snipe',
-  CLEANUP = 'cleanup',
-}
-
-export enum JobStatus {
-  SUCCESS = 'success',
-  FAILURE = 'failure',
-  ERROR = 'error',
-}
-
 export enum SettingValueType {
   STRING = 'string',
   NUMBER = 'number',
@@ -108,26 +96,6 @@ export interface UserInput {
   firstName?: string;
   lastName?: string;
   phone?: string;
-}
-
-export interface JobLog {
-  id: number;
-  jobType: JobType;
-  jobId: number;
-  status: JobStatus;
-  message?: string;
-  errorDetails?: string;
-  durationMs?: number;
-  createdAt: Date;
-}
-
-export interface JobLogInput {
-  jobType: JobType;
-  jobId: number;
-  status: JobStatus;
-  message?: string;
-  errorDetails?: string;
-  durationMs?: number;
 }
 
 export interface Setting {

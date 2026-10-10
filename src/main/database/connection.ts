@@ -21,7 +21,7 @@ import * as path from 'path';
 import { logger } from '../utils/logger';
 
 /** Schema version this build creates and understands. */
-export const LATEST_SCHEMA_VERSION = 9;
+export const LATEST_SCHEMA_VERSION = 10;
 
 /** A migration step failed. Its transaction was rolled back, so the database is still at the previous version. */
 export class MigrationError extends Error {
@@ -176,7 +176,7 @@ const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type);
   CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
 
-  -- Job logs table
+  -- Job logs table (never written; migration 010 drops it)
   CREATE TABLE IF NOT EXISTS job_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       job_type TEXT NOT NULL CHECK(job_type IN ('watch_poll', 'stq_check', 'cleanup')),
@@ -1005,6 +1005,22 @@ function scrubFreedPagesIfOwed(db: Database.Database): void {
   }
 }
 
+// ---------------------------------------------------------------------------------------
+// Migration 010 helpers
+// ---------------------------------------------------------------------------------------
+
+/**
+ * job_logs: no version ever wrote it (its CHECK would even refuse a snipe job), so it is
+ * dropped with its four indexes and its sqlite_sequence row. No table references it. Rows
+ * it somehow holds go with it; the log says how many.
+ */
+function v10DropJobLogs(db: Database.Database): void {
+  if (!hasTable(db, 'job_logs')) return;
+  const { rows } = db.prepare('SELECT COUNT(*) AS rows FROM job_logs').get() as { rows: number };
+  db.exec('DROP TABLE job_logs');
+  logger.info(`Migration 010: dropped job_logs (${rows} row(s))`);
+}
+
 /**
  * Brings the database up to `targetVersion`, LATEST_SCHEMA_VERSION unless given. A lower
  * target stops after that version (tests use it to build a database of an older shape).
@@ -1465,6 +1481,15 @@ export function runMigrations(
         v9AddWatchHoldColumns(database);
         v9AddAccountLastChecked(database);
         v9RequestScrub(database);
+      });
+    }
+
+    // Migration 010 (P7): drop the never-written job_logs table (architecture-notes §12.26).
+    // It creates or rebuilds no table, so it has none to check.
+    if (pending(10)) {
+      applyMigration(database, 10, [], () => {
+        logger.info('Running migration 010: Drop job_logs');
+        v10DropJobLogs(database);
       });
     }
   } finally {

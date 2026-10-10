@@ -115,13 +115,14 @@ describe.each(FIXTURES)('migration v9 from the %s fixture', (fixture) => {
     runMigrations(db, 8);
     atV8 = snapshot(db);
     sequenceAtV8 = rows(db, 'sqlite_sequence');
-    runMigrations(db);
+    // Pinned to v9, so these keep testing exactly what v9 does (migration-v10.test.ts: v10)
+    runMigrations(db, 9);
   });
 
   afterEach(() => disposeFixture(db));
 
   it('users keeps the profile only: no encrypt* columns, the same id, email and names', () => {
-    expect(LATEST_SCHEMA_VERSION).toBe(9);
+    expect(LATEST_SCHEMA_VERSION).toBeGreaterThanOrEqual(9);
     expect(version(db)).toBe(9);
     expect(columns(db, 'users')).toEqual(PROFILE_COLUMNS);
     expect(columns(db, 'users').filter((c) => c.startsWith('encrypt'))).toEqual([]);
@@ -191,7 +192,7 @@ describe.each(FIXTURES)('migration v9 from the %s fixture', (fixture) => {
 
   it('changes nothing when run again', () => {
     const before = snapshot(db);
-    runMigrations(db);
+    runMigrations(db, 9);
     expect(version(db)).toBe(9);
     expect(snapshot(db)).toEqual(before);
   });
@@ -245,7 +246,7 @@ describe('migration v9: the dropped ciphertext is not left in the file', () => {
   it('opened as the app opens it (WAL), upgraded to v9 and closed: no byte of it is left', () => {
     const { file, ciphertext } = fixtureFile();
     const db = openDatabase(file);
-    expect(version(db)).toBe(9);
+    expect(version(db)).toBe(LATEST_SCHEMA_VERSION);
     // Before the app has even closed it: the WAL was emptied after the rewrite
     expect(foundIn([file, `${file}-wal`], ciphertext)).toEqual([]);
     closeDatabase(db);
@@ -296,7 +297,7 @@ describe('migration v9: the dropped ciphertext is not left in the file', () => {
     const unprotected = new Database(control.file);
     withoutSecureDelete(unprotected);
     vacuumFails(unprotected);
-    runMigrations(unprotected);
+    runMigrations(unprotected, 9);
     unprotected.close();
     expect(foundIn([control.file], control.ciphertext)).toHaveLength(3);
     fs.rmSync(control.file);
@@ -305,7 +306,7 @@ describe('migration v9: the dropped ciphertext is not left in the file', () => {
     const db = new Database(file);
     db.pragma('journal_mode = WAL');
     vacuumFails(db);
-    runMigrations(db);
+    runMigrations(db, 9);
 
     expect(version(db)).toBe(9);
     // The runner put secure_delete back as it found it
@@ -329,7 +330,7 @@ describe('migration v9: the dropped ciphertext is not left in the file', () => {
     `);
     expect(freePages(old)).toBeGreaterThan(2);
     vacuumFails(old);
-    runMigrations(old);
+    runMigrations(old, 9);
     expect(version(old)).toBe(9);
     expect(tasks(old)).toEqual([{ task: 'vacuum-freed-pages' }]);
     expect(freePages(old)).toBeGreaterThan(0);
@@ -338,14 +339,14 @@ describe('migration v9: the dropped ciphertext is not left in the file', () => {
 
     const next = new Database(file);
     const exec = jest.spyOn(next, 'exec');
-    runMigrations(next); // already at v9: no step runs, the owed scrub does
+    runMigrations(next, 9); // already at v9: no step runs, the owed scrub does
     expect(exec).toHaveBeenCalledWith('VACUUM');
     expect(freePages(next)).toBe(0);
     expect(tasks(next)).toEqual([]);
 
     // Done: later starts do not rewrite the file again
     exec.mockClear();
-    runMigrations(next);
+    runMigrations(next, 9);
     expect(exec).not.toHaveBeenCalledWith('VACUUM');
     next.close();
     expect(foundIn([file, `${file}-journal`], ciphertext)).toEqual([]);
@@ -377,7 +378,7 @@ describe('migration v9 from a fresh v8 database', () => {
       expect.objectContaining({ id: 1, email: null, encrypted_password: null }),
     ]);
 
-    runMigrations(db);
+    runMigrations(db, 9);
 
     expect(version(db)).toBe(9);
     expect(rows(db, 'users')).toEqual([
