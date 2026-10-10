@@ -829,7 +829,64 @@ npm run build
 
 ## Troubleshooting Development Issues
 
+### Running the App in Development
+
+Development takes two terminals:
+
+```bash
+# Terminal 1: TypeScript watch (main), the preload bundle and the Vite dev server on port 3000
+npm run dev
+
+# Terminal 2, once Vite prints "ready": Electron, loading http://localhost:3000
+npm start
+```
+
+Open the app in the Electron window, not in a browser. In a plain browser there is no main
+process: the page says so and nothing loads. In development the Electron window opens its
+DevTools; the main process logs to the terminal and to `<userData>/logs`
+(`%APPDATA%\WA Stay\logs` on Windows).
+
 ### Common Issues
+
+**Issue: Port 3000 is already in use**
+
+Vite then moves to another port (3001, ...), but `npm start` still loads
+`http://localhost:3000`, so the window shows another app or nothing. Stop whatever holds port
+3000 and run `npm run dev` again:
+```bash
+# Windows
+netstat -ano | findstr :3000
+taskkill /F /PID <PID>
+
+# macOS / Linux
+lsof -i :3000
+kill <PID>
+```
+Or point Electron at the port Vite printed:
+`npx cross-env ELECTRON_RENDERER_URL=http://localhost:3001 electron .`
+
+**Issue: The Electron window is blank**
+1. Vite is not running yet: wait for its "ready" line in terminal 1, then reload the window
+   (Ctrl+R) or run `npm start` again.
+2. A TypeScript error stopped the main-process build: fix the error shown in terminal 1.
+3. The preload bundle is missing (`dist/preload/index.js`): the window says so. `npm run dev`
+   builds it; `npm run build:preload` builds it once.
+4. Check the DevTools console and the main-process log for the error.
+
+**Issue: "better-sqlite3 is built for the wrong runtime, so the Jest suite cannot load it."**
+
+better-sqlite3 is a native module. `npm install` and `npm ci` build it for Electron (the
+postinstall `electron-builder install-app-deps`), while Jest runs on plain Node. The test
+scripts check this first (`scripts/check-native-abi.js`) and print this message instead of
+failing every database test.
+```bash
+# Build it for Node, then run the tests
+npm rebuild better-sqlite3
+# Or let the test scripts rebuild it for you
+AUTO_REBUILD_NATIVE=1 npm test
+# Back to the Electron build before running the app
+npm run rebuild
+```
 
 **Issue: "Cannot find module" error**
 ```bash
@@ -840,10 +897,10 @@ npm install
 
 **Issue: Native module won't build**
 ```bash
-# Solution: Rebuild native modules
+# Solution: Rebuild it for Electron (to run the app)
 npm run rebuild
-# Or manually
-npm rebuild better-sqlite3 --build-from-source
+# Or for Node (to run the tests)
+npm rebuild better-sqlite3
 ```
 
 **Issue: TypeScript errors in IDE but builds fine**

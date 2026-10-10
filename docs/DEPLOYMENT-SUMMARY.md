@@ -28,8 +28,8 @@ This document provides an overview of all deployment-related configuration and d
 - Ignores database files and logs
 - Comprehensive exclusions for development
 
-**`DEPLOYMENT-CHECKLIST.md`**
-- Complete pre-release checklist
+**`docs/release-process.md`**
+- Step-by-step release
 - Code quality verification
 - Build and signing verification
 - Testing requirements
@@ -171,7 +171,7 @@ This document provides an overview of all deployment-related configuration and d
 ### For Release Managers
 
 1. **Review Checklist:**
-   - Open `DEPLOYMENT-CHECKLIST.md`
+   - Open `docs/release-process.md`
    - Verify all items completed
 
 2. **Prepare Release:**
@@ -347,7 +347,7 @@ This document provides an overview of all deployment-related configuration and d
 5. **Review and customize** NSIS installer script
 
 ### Before First Release
-1. Complete all items in DEPLOYMENT-CHECKLIST.md
+1. Complete every step in docs/release-process.md
 2. Test installation on clean systems
 3. Verify auto-update mechanism
 4. Prepare release notes

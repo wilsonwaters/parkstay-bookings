@@ -20,7 +20,7 @@ WA ParkStay Bookings is an Electron + React + TypeScript desktop application tha
 | Database | SQLite via better-sqlite3 |
 | Scheduling | Chained `setTimeout` timers (`src/main/scheduler/`) |
 | HTTP Client | axios |
-| Email | nodemailer, googleapis (Gmail OAuth2) |
+| Email | nodemailer (SMTP) |
 | Validation | Zod |
 | Styling | Tailwind CSS |
 | Build | Vite 5, Electron Builder |
@@ -50,7 +50,7 @@ src/
 │   ├── core/       # Provider-agnostic domain services (catalog, watches, snipes, bookings, holds, notifications, accounts)
 │   ├── database/   # SQLite connection, migrations, repositories
 │   ├── providers/  # Provider SDK (sdk/), ProviderRegistry, built-in providers (parkstay/)
-│   ├── services/   # Other services (gmail, updater)
+│   ├── services/   # Other services (updater)
 │   ├── scheduler/  # Watch due-loop and per-snipe timer chains
 │   ├── ipc/        # handle.ts, sender guard, renderer events, handlers/ (one per namespace)
 │   └── utils/      # Logger
@@ -63,10 +63,9 @@ src/
     ├── contracts/  # IPC contract: channels, zod request schemas, response types, events
     ├── constants/  # App constants
     ├── types/      # TypeScript type definitions
-    └── schemas/    # Zod validation schemas
 ```
 
-**Composition root** (`src/main/app/container.ts`): `createContainer({ db })` builds every repository, service, notifier, dispatcher, scheduler, updater and Gmail service once, by constructor injection; nothing else in `src/main` calls `new` on them, and there are no singletons. `src/main/index.ts` opens the database, builds the container, runs `profile.ensureLocalProfile()`, registers the IPC handlers and starts the scheduler; `before-quit` calls `container.dispose()` (scheduler jobs aborted and awaited, providers and their queue gates, then the database).
+**Composition root** (`src/main/app/container.ts`): `createContainer({ db })` builds every repository, service, notifier, dispatcher, scheduler and updater once, by constructor injection; nothing else in `src/main` calls `new` on them, and there are no singletons. `src/main/index.ts` opens the database, builds the container, runs `profile.ensureLocalProfile()`, registers the IPC handlers and starts the scheduler; `before-quit` calls `container.dispose()` (scheduler jobs aborted and awaited, providers and their queue gates, then the database).
 
 **Local profile** (`src/main/app/profile.ts`): one `users` row is the local profile that owns every watch, snipe, booking and notification. Main resolves it (`requireUserId()`, or `NO_PROFILE`); the renderer never sends a `userId`. Since v9 the row is the profile only (email hint, names, phone). Nothing may delete it: a provider sign-out clears only that provider's session partition and `provider_accounts` row.
 
@@ -80,7 +79,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 
 `connection.ts` exports `openDatabase(filePath)` (enables foreign keys and WAL, then migrates), `closeDatabase(db)` and `runMigrations(db)`. It has no module singleton: repositories receive the `Database` through their constructor (`repositories/base.repository.ts`), and services receive their repositories.
 
-### Current migrations (version 9)
+### Current migrations (version 10)
 
 1. **v1** — Initial schema (users, bookings, watches, skip_the_queue_entries, notifications, job_logs, settings)
 2. **v2** — Add `last_availability` JSON column to watches
@@ -90,12 +89,13 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 6. **v6** — Add `site_snipes` table (Site Sniper) and widen `notifications` CHECK constraints (adds `snipe_held`/`snipe_booked` types and `snipe` related_type)
 7. **v7** — Integrity: rebuild `notifications` without CHECK constraints (types are validated in `NotificationRepository`), rebuild `notification_delivery_logs` with a real FK to `notifications` (repairs v6) and `provider_channel` → `notifier_channel`, rename `notification_providers` → `notifiers`, drop `skip_the_queue_entries`
 8. **v8** — Provider-aware data model (architecture-notes §5): rebuild `watches`, `site_snipes` and `bookings` with `provider_id`, generic location/stay/unit columns (`location_external_id`, `location_name`, `area_name`, `num_adults`…, `unit_ids` JSON, `stay_params` JSON for ParkStay's park id, gear type, vehicles and postcode) and calendar dates `YYYY-MM-DD`; bookings unique per `(provider_id, booking_reference)`; `site_snipes` drops the `release_mode` CHECK and renames `queue_enabled` → `access_gate_enabled`, `held_*` → `hold_*`; `notifications.provider_id`; `users` credential columns nullable plus the seeded local profile row (id 1); new `provider_accounts`, `provider_state` (the queue session moves there as `('parkstay', 'queue.session')`, `queue_session` dropped) and `locations` with the FTS5 index `locations_fts`
-9. **v9** — Retire the legacy ParkStay credentials (architecture-notes §12.32): rebuild `users` without `encrypted_password` and the `encryption_*` columns (the email moved to the ParkStay account in v8); add `hold_reference`, `hold_expires_at`, `hold_unit_id`, `payment_url` and `last_error` to `watches` (§12.31) and `last_checked_at` to `provider_accounts`; create `maintenance` with a `vacuum-freed-pages` task. The runner sets `secure_delete` on around all steps, then VACUUMs the file (and truncates the WAL) and clears the task, so the dropped ciphertext is not left in free pages; a failed VACUUM is retried at each start while the task stays and the file has free pages. P7's `job_logs` drop takes v10
+9. **v9** — Retire the legacy ParkStay credentials (architecture-notes §12.32): rebuild `users` without `encrypted_password` and the `encryption_*` columns (the email moved to the ParkStay account in v8); add `hold_reference`, `hold_expires_at`, `hold_unit_id`, `payment_url` and `last_error` to `watches` (§12.31) and `last_checked_at` to `provider_accounts`; create `maintenance` with a `vacuum-freed-pages` task. The runner sets `secure_delete` on around all steps, then VACUUMs the file (and truncates the WAL) and clears the task, so the dropped ciphertext is not left in free pages; a failed VACUUM is retried at each start while the task stays and the file has free pages
+10. **v10** — Drop the never-written `job_logs` table and its indexes (P7, architecture-notes §12.26); any rows it held are counted in the log
 
 ### Adding a new migration
 
 1. Open `src/main/database/connection.ts`
-2. Bump `LATEST_SCHEMA_VERSION` to the new version N (currently 9)
+2. Bump `LATEST_SCHEMA_VERSION` to the new version N (currently 10)
 3. Find the `runMigrations()` function
 4. Add a new `if (pending(N))` block at the bottom (`runMigrations(db, target)` stops at `target`; tests use it to build an older schema)
 5. Wrap its body in `applyMigration(db, N, [tables it creates or rebuilds], () => { ... })`. It runs the body, `PRAGMA foreign_key_check` and the `INSERT INTO migrations` in one transaction, and throws `MigrationError(N)` on failure. The listed tables must be completely free of foreign-key violations when the step commits, and the step may not introduce a violation in any other table; violations that were already there only log a warning (rule in `assertForeignKeys`). Do not insert the version yourself, and do not set `PRAGMA foreign_keys` inside the body (it is a no-op in a transaction; the runner turns it off around all steps)
@@ -117,9 +117,8 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 | ParkStay provider | `src/main/providers/parkstay/` | The ParkStay (DBCA) module: catalogue, availability (YYYY/MM/DD dates, per-night prices), DBCA queue access gate (`queue/`), release policy, `create_booking` holds, links, and sign-in (`auth.ts`: `/ssologin`, checked with `/api/profile`; the account is optional). Watches and snipes use it through the registry |
 | NotificationService | `src/main/core/notifications/notification.service.ts` | Desktop/in-app notifications (desktop title `{shortName} · {title}`) |
 | NotificationDispatcher | `src/main/core/notifications/notification-dispatcher.ts` | External notifiers (email) |
-| GmailOTPService | `src/main/services/gmail/GmailOTPService.ts` | Gmail OAuth2 OTP extraction |
 | AutoUpdaterService | `src/main/services/updater/auto-updater.service.ts` | Auto-updates via GitHub Releases |
-| JobScheduler | `src/main/scheduler/job-scheduler.ts` | Watch due-loop (`next_check_at`, 2 per provider) + per-snipe timer chains (generation token, abort); re-arms on resume; bounded `stop()` on quit |
+| JobScheduler | `src/main/scheduler/job-scheduler.ts` | Watch due-loop (`next_check_at`, 2 per provider) + per-snipe timer chains (generation token, abort) + the retention job (`retention-job.ts`: notifications and delivery logs older than the main-only `retention.*` settings, 30 days by default, deleted in batches 5 min after start and daily at 02:00 Perth); re-arms on resume; bounded `stop()` on quit |
 
 ## Notification System
 
@@ -131,7 +130,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 
 ## IPC Pattern
 
-- **Contract** in `src/shared/contracts/` is the single source of truth: one file per namespace (`bookings`, `watches`, `snipes`, `notifications`, `notifiers`, `gmail`, `settings`, `app`, `updater`, `providers`, `catalog`, `accounts`), and `index.ts` exports `contract` and `type WindowApi`. The DBCA queue state reaches the renderer only as `providers.accessStatus(id)` / `provider:access-status`. Each method declares a `channel` (`<namespace>:<kebab-method>`), a zod `request` schema (one object payload, or `z.void()`), the preload's positional `args` and the `response` type
+- **Contract** in `src/shared/contracts/` is the single source of truth: one file per namespace (`bookings`, `watches`, `snipes`, `notifications`, `notifiers`, `settings`, `app`, `updater`, `providers`, `catalog`, `accounts`), and `index.ts` exports `contract` and `type WindowApi`. The DBCA queue state reaches the renderer only as `providers.accessStatus(id)` / `provider:access-status`. Each method declares a `channel` (`<namespace>:<kebab-method>`), a zod `request` schema (one object payload, or `z.void()`), the preload's positional `args` and the `response` type
 - Channel and event names live in the zod-free `contracts/channels.ts`, the only contract module the preload loads at runtime. Event payloads are in `contracts/events.ts`
 - `src/main/ipc/handle.ts`: `handle(def, fn)` is the only caller of `ipcMain.handle`. It checks the sender (a trusted webContents, its top frame, on the app origin — `ipc/sender-guard.ts`, `app/renderer-entry.ts`), parses the payload with the method's schema, and returns `APIResponse`: `{ success: true, data }` or `{ success: false, code, error }` with `code` `VALIDATION` (plus `issues` paths), `FORBIDDEN`, `NO_PROFILE`, `NOT_FOUND`, `CONFLICT` (it already exists, e.g. a booking reference), `INTERNAL` or `NOT_IMPLEMENTED`, and for provider errors (`main/providers/sdk/errors.ts` `toApiError`) `CAPABILITY`, `UNKNOWN_PROVIDER`, `PROVIDER_ERROR`, `ACCESS_GATE` or `AUTH_REQUIRED`, `ACCOUNT_BUSY` (sign-out refused) and `HOLD_EXPIRED` (no hold left to pay for). Throw `AppError(code)` (`main/utils/app-error.ts`) for a specific code. Logs never include payload values
 - Handlers in `src/main/ipc/handlers/`, one file per namespace (`watches.handlers.ts`, …), each `registerXHandlers(handle, container)`; `registerIpcHandlers(container, { isTrustedSender })` in `ipc/index.ts` registers them all
@@ -153,7 +152,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 - **Config:** `jest.config.js` — coverage thresholds: branches 9%, functions 17%, lines 16%, statements 16%
 - **Test locations:** `tests/unit/`, `tests/integration/`, `tests/e2e/`, plus co-located `*.test.tsx` in `src/`
 - **Fixtures:** `tests/fixtures/` (users, bookings, watches, site-sniper, and `db/` schema dumps for migration tests)
-- **Helpers:** `tests/utils/` (database-helper, mock-api, test-helpers)
+- **Helpers:** `tests/utils/` (database-helper, test-helpers, core-harness, fake-provider, ipc-harness)
 
 ## Release Process
 
@@ -197,6 +196,5 @@ Do NOT commit code that fails any of these checks. CI enforces all four.
 
 - `docs/` — User guide, installation, development, release process
 - `docs/parkstay-api/` — ParkStay API endpoints, authentication flow
-- `docs/gmail-otp-setup.md` — Gmail OAuth2 integration for OTP
 - `docs/ADVANCED_FEATURES_GUIDE.md` — Watch, Site Sniper, notification deep-dive
 - `docs/SITE_SNIPER.md` — Site Sniper feature guide, release regimes, and compliance

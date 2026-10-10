@@ -38,7 +38,7 @@ Complete documentation for the WA ParkStay Bookings desktop application.
 
 ### Quick Links
 
-- **[Deployment Checklist](../DEPLOYMENT-CHECKLIST.md)** - Pre-release checklist
+- **[Release Process](./release-process.md)** - Step-by-step release, with the checks to run first
 - **[Resources Guide](../resources/README.md)** - App icons and assets
 
 ## Documentation Structure
@@ -89,7 +89,6 @@ docs/
 
 ### I want to create a release
 > Review [Release Process](./release-process.md)
-> Check [Deployment Checklist](../DEPLOYMENT-CHECKLIST.md)
 > Follow [Code Signing Guide](./code-signing-and-deployment.md)
 
 ## Key Documents

@@ -14,7 +14,7 @@ import {
 const BUILT = path.join(os.tmpdir(), 'built', 'index.html');
 
 describe('resolveRendererEntry', () => {
-  it('uses ELECTRON_RENDERER_URL when set (start-electron.js sets port 3005)', () => {
+  it('uses ELECTRON_RENDERER_URL when set (`npm start` sets it), on any port', () => {
     expect(
       resolveRendererEntry({ ELECTRON_RENDERER_URL: 'http://localhost:3005' }, BUILT, false)
     ).toEqual({ kind: 'dev-server', url: 'http://localhost:3005' });
