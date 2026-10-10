@@ -47,7 +47,7 @@ needs a connection, and ParkStay can be busy. If the DBCA queue is active, WA St
 shows its place in the queue at the bottom right. Places that ParkStay does not book online show
 "Info only".
 
-**"Too many requests".** ParkStay asked the app to slow down. Wait a minute before checking
+**"Too many checks in a short time".** ParkStay asked the app to slow down. Wait a minute before checking
 again; WA Stay never retries this straight away.
 
 ## Watches

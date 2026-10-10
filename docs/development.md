@@ -203,7 +203,7 @@ are anonymous and read-only, and nothing ever places a real hold, booking or pay
 
 ```bash
 npm run lint          # 0 errors
-npm run format:check  # npx prettier --write "src/**/*.{ts,tsx}" "tests/**/*.{ts,tsx}" fixes it
+npm run format:check  # npm run format fixes it
 npm run type-check
 npm test
 ```

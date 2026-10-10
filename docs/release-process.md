@@ -20,7 +20,7 @@ command (`.claude/commands/release.md`) follows this page.
 git checkout main && git pull origin main
 npm run lint && npm run format:check && npm run type-check && npm test && npm run test:tz
 
-npm version minor --no-git-tag-version   # or patch / major: package.json and the lockfile only
+npm version minor --no-git-tag-version   # or patch / major (major for 2.0.0): package.json and the lockfile only
 # CHANGELOG.md: rename [Unreleased] to [x.y.z] - YYYY-MM-DD (see step 3)
 git add package.json package-lock.json CHANGELOG.md
 git commit -m "chore: prepare release vx.y.z"
@@ -71,7 +71,7 @@ it misses. Older versions' entries never change.
 ### 4. Bump the version and tag
 
 ```bash
-npm version minor --no-git-tag-version   # patch, minor or major
+npm version major --no-git-tag-version   # major for 2.0.0 (from 1.2.0); patch or minor later
 git add package.json package-lock.json CHANGELOG.md
 git commit -m "chore: prepare release v2.0.0"
 git tag v2.0.0
@@ -79,8 +79,9 @@ git push origin main --tags
 ```
 
 Do not use `npm run version:patch|minor|major` for a release: they push the tag before the
-changelog commit. For a pre-release, `npm version prerelease --preid=beta` gives `2.1.0-beta.0`;
-a tag containing `alpha` or `beta` becomes a GitHub pre-release.
+changelog commit. For a pre-release, `npm version preminor --preid=beta` gives `2.1.0-beta.0`
+(from 2.0.0); a tag containing `alpha` or `beta` becomes a GitHub pre-release. The tag builds a
+**draft** release, which no installed copy sees until it is published.
 
 ### 5. Publish
 
@@ -97,7 +98,8 @@ a tag containing `alpha` or `beta` becomes a GitHub pre-release.
 
 ## The 2.0.0 release
 
-The first WA Stay release renames the app and the repository. Do these, in this order:
+The first WA Stay release renames the app and the repository. Do these, in this order (the
+[2.0 release checklist](release-checklist-2.0.md) has each step with the manual checks):
 
 - [ ] **Rename the repository to `wa-stay` before publishing 2.0.0** (GitHub → Settings →
   General → Repository name). Installed v1.x copies look for updates at the old name and
@@ -105,24 +107,31 @@ The first WA Stay release renames the app and the repository. Do these, in this 
   publishes to `wilsonwaters/wa-stay`.
 - [ ] **Never create a new repository called `parkstay-bookings`** under the same owner: it
   would replace the redirect, and every v1.x install would stop finding updates.
-- [ ] **Check the redirect** once renamed. This must end at a `wa-stay` URL:
+- [ ] **Check the redirect** once renamed. Both must end at a `wa-stay` URL (the second is the
+  feed v1.x's updater reads):
 
   ```bash
   curl -sIL https://github.com/wilsonwaters/parkstay-bookings/releases/latest | grep -i '^location'
+  curl -sIL https://github.com/wilsonwaters/parkstay-bookings/releases.atom | grep -i '^location'
   ```
 
+- [ ] Set the **repository description, topics and social preview** ([below](#repository-description-and-topics)).
 - [ ] **Add the Mapbox token** as a repository secret named `MAPBOX_ACCESS_TOKEN` (Settings →
   Secrets and variables → Actions). The build reads
   `${{ secrets.MAPBOX_ACCESS_TOKEN || vars.MAPBOX_ACCESS_TOKEN }}`; a public `pk.` token only.
   Without it the release builds, but Explore has no map.
-- [ ] Set the **repository description, topics and social preview** ([below](#repository-description-and-topics)).
-- [ ] Work through the [2.0 release checklist](release-checklist-2.0.md): the manual Windows
-  checks no CI can do.
-- [ ] Rename `## [Unreleased]` in CHANGELOG.md to `## [2.0.0] - <date>`, bump to `2.0.0`, tag
-  and push (steps 3 and 4).
+- [ ] Check that the `CI` workflow is green on the release commit (the tag's pipeline does not
+  run the e2e or packaged smoke checks).
+- [ ] Rename `## [Unreleased]` in CHANGELOG.md to `## [2.0.0] - <date>`, bump with
+  `npm version major` (1.2.0 → 2.0.0), tag `v2.0.0` and push (steps 3 and 4). This builds the
+  draft release.
+- [ ] Work through the [2.0 release checklist](release-checklist-2.0.md)'s Windows checks on
+  the draft's installer. If one fails, delete the draft and the tag, fix, and tag again.
+- [ ] **Publish** the draft (step 5).
 - [ ] **After publishing**, on a Windows machine with **v1.2.0 installed** and some watches,
   bookings and settings: let it update, and check that WA Stay starts with the welcome notice
-  and everything is there, and that `%APPDATA%\parkstay-bookings` is untouched.
+  and everything is there, and that `%APPDATA%\parkstay-bookings` is untouched. If the update
+  goes wrong, edit the release back to a draft at once.
 
 ## Repository description and topics
 

@@ -2,11 +2,11 @@
 
 The checks no CI or test suite can do for 2.0.0: a real Windows machine, a real GPU, a real
 ParkStay account and the GitHub settings. They are collected from the open questions and the
-review notes of the tasks that built 2.0. Run them on the `windows-artifacts` build of the
-release candidate (GitHub Actions → WA Stay Build and Release → the run → Artifacts), and note
-the results in the pull request.
+review notes of the tasks that built 2.0. Work down this page in order, and note the results in
+the pull request. The steps for publishing are in the [release process](release-process.md#the-200-release).
 
-The steps for publishing are in the [release process](release-process.md#the-200-release).
+The Windows checks run on the installer of the **draft** 2.0.0 release: pushing the `v2.0.0`
+tag builds it, and no installed copy sees a draft until you press Publish.
 
 ## Before you start
 
@@ -15,36 +15,49 @@ The steps for publishing are in the [release process](release-process.md#the-200
 - Your own ParkStay account, and a stay you genuinely intend to take for the hold test.
 - The Mapbox token at hand for the repository secret.
 
-## GitHub settings
+## Before the tag
 
-- [ ] **Add the `MAPBOX_ACCESS_TOKEN` repository secret** (Settings → Secrets and variables →
-  Actions), a public `pk.` token. Rebuild, and check that the release candidate's Explore shows
-  the map.
-- [ ] **Rename the repository to `wa-stay` before publishing 2.0.0**, and never create a new
-  `parkstay-bookings` repository (it would break the redirect v1.x installs update through).
+- [ ] **Rename the repository to `wa-stay`**, and never create a new `parkstay-bookings`
+  repository (it would break the redirect v1.x installs update through).
 - [ ] **Check the redirect:** `curl -sIL https://github.com/wilsonwaters/parkstay-bookings/releases/latest`
   and `curl -sIL https://github.com/wilsonwaters/parkstay-bookings/releases.atom` (the feed v1.x's
   updater reads) both end at a `wa-stay` URL.
 - [ ] **Set the description, topics and social preview** from
   [the release process](release-process.md#repository-description-and-topics).
+- [ ] **Add the `MAPBOX_ACCESS_TOKEN` repository secret** (Settings → Secrets and variables →
+  Actions), a public `pk.` token.
+- [ ] **Decide the LICENSE copyright holder.** `LICENSE` still names "WA ParkStay Bookings";
+  change it (for example to your own name) before the release if you want.
+- [ ] **The release commit is green in CI** (the `CI` workflow: format, lint, tests, `e2e` and
+  `packaged-smoke`): the tag's own pipeline runs only type-check, lint, format and the unit tests.
 - [ ] **Delete the merged `wip/*` backup branches** on GitHub (the git proxy could not):
   `wip/e1-explore`, `wip/e3-dates`, `wip/p7-cleanup`, `wip/u1-watches`, `wip/u2-snipes`,
   `wip/u3-bookings`, `wip/u4-settings`, `wip/u5-notifications`, `wip/v3-class-listed`,
   `wip/v4-core-scheduler`, `wip/v6-accounts-phase1`, and any later ones once merged.
-- [ ] **The release commit is green in CI** (the `CI` workflow: format, lint, tests, `e2e` and
-  `packaged-smoke`) before you push the tag: the tag's own pipeline runs only type-check, lint,
-  format and the unit tests.
 - [ ] Optional: make the `e2e` check required for `main` once it has run green a few times.
+
+## Build the candidate
+
+- [ ] **Bump to 2.0.0 and push the tag**: release process steps
+  [3 and 4](release-process.md#3-update-changelogmd) (`npm version major`, which takes 1.2.0 to
+  2.0.0). Wait for **WA Stay Build and Release** to finish, then download
+  `WA-Stay-Setup-2.0.0.exe` from the draft on the Releases page.
+- [ ] Explore in the installed candidate shows the map (the Mapbox secret reached the build).
+- If a check below fails: delete the draft release and the tag (`git push --delete origin v2.0.0`
+  and `git tag -d v2.0.0`), fix it on `main`, and tag again. Nothing was published, so no
+  installed copy saw it.
 
 ## Install and upgrade (Windows)
 
 - [ ] **Fresh install** on a machine that never had v1.x: SmartScreen → More info → Run anyway;
   installs to `%LOCALAPPDATA%\Programs\WA Stay`; desktop and Start-menu shortcuts are "WA Stay";
   the app opens on Explore with the map. No `migration.json` is written.
-- [ ] **Upgrade by auto-update** from v1.2.0 (once the repository is renamed and 2.0.0 is
-  published, or with the draft's files): v1.2.0 offers the update; after it, WA Stay starts with
-  "Your data has moved to WA Stay", and the watches, booking, notifications, settings and email
-  settings are there (send a test email: the password was carried over).
+- [ ] **Upgrade the way the updater does** over v1.2.0: quit v1.2.0 and run the draft's installer
+  as v1.2.0's updater would, `WA-Stay-Setup-2.0.0.exe --updated` (add `/S` for the silent install
+  that runs when the app quits with an update waiting). WA Stay starts with "Your data has moved
+  to WA Stay", and the watches, booking, notifications, settings and email settings are there
+  (send a test email: the password was carried over). The real auto-update is checked after
+  publishing.
 - [ ] **Upgrade by running the installer by hand** over v1.2.0, on a second machine or after
   reinstalling v1.2.0: same result. The program lands in
   `%LOCALAPPDATA%\Programs\WA ParkStay Bookings\WA Stay\` (an automatic update keeps
@@ -122,4 +135,5 @@ it or let it lapse; never hold more than one booking per night.
 ## After publishing
 
 - [ ] On a machine with v1.2.0 installed, let it update to the published 2.0.0 through the
-  redirect, and check the data as above.
+  redirect, and check the data as above. If the update goes wrong, edit the release back to a
+  draft at once: installed copies stop being offered it.

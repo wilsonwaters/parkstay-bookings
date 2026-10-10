@@ -111,8 +111,8 @@ countdown.
 
 ## Bookings (coming soon)
 
-Bookings keeps your trips from every provider in one place: **Upcoming**, **Past**,
-**Cancelled** and **All**, with search and a provider filter.
+Bookings keeps your trips from every provider in one place, in **Upcoming**, **Past** and
+**Cancelled** tabs, with search and a provider filter.
 
 - Bookings paid through WA Stay's payment window are added for you.
 - **Add booking** records one you made elsewhere: the provider, the place, check-in and

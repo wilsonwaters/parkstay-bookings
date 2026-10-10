@@ -33,7 +33,6 @@ Existing installs upgrade in place and keep their data (see Upgrade notes).
 - **Watches**, **Site Sniper** and **Bookings** are rebuilt provider-first, with a step-by-step create flow, photos and clearer status. Site Sniper and Bookings are marked "Soon" while they are finished (#35, #36, #37).
 - Watches check no more often than every 15 minutes (a provider can set a longer minimum); a watch saved with a shorter interval keeps it as an option and is run every 15 minutes (#22, #35).
 - ParkStay sign-in happens in the app, on ParkStay's own sign-in page (Settings → Connect ParkStay). Connect ParkStay once in Settings; the old saved password is no longer used. Signing in is optional: holds work without it, and you can sign in on the payment page.
-- A held site is paid for in the app: "Complete payment" opens ParkStay's payment page on the session that holds the site, and once ParkStay confirms the payment the snipe (or watch) shows as booked and the booking appears under Bookings.
 - Notifications, and the record of each notification email sent, are deleted automatically once they are 30 days old.
 - Notification providers are now called **notifiers** (the outbound channels, such as email), so "provider" always means an accommodation source (#14).
 - Email alerts name the provider in their subject (#27, #39).

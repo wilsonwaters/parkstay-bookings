@@ -239,7 +239,7 @@ Windows-only. Full details in `docs/release-process.md` (and the manual `docs/re
 npm run lint && npm run format:check && npm run type-check && npm run test && npm run test:tz
 
 # 2. Bump the version (package.json and the lockfile only)
-npm version minor --no-git-tag-version   # or patch / major
+npm version minor --no-git-tag-version   # or patch / major (major for 2.0.0)
 
 # 3. CHANGELOG.md: rename [Unreleased] to [x.y.z] - date (do not regenerate it), commit, tag, push
 git add package.json package-lock.json CHANGELOG.md
@@ -257,7 +257,7 @@ Key scripts: `npm run dist:win` (local test build), `npm run release:win` (build
 Before committing any changes, **always** run these checks and fix any failures:
 
 1. `npm run lint` — ESLint must pass with 0 errors (warnings are acceptable)
-2. `npm run format:check` — Prettier formatting must pass; run `npx prettier --write "src/**/*.{ts,tsx}" "tests/**/*.{ts,tsx}"` to fix
+2. `npm run format:check` — Prettier formatting must pass; run `npm run format` to fix
 3. `npm run type-check` — TypeScript must compile without errors
 4. `npm run test` — All unit/integration tests must pass
 
