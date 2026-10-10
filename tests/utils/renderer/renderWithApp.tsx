@@ -19,6 +19,8 @@ export interface RenderWithAppOptions {
   /** The in-app path to start on, with any query string: `/watches/create?location=1`. */
   route?: string;
   api?: ApiStubs | MockApi | null;
+  /** userEvent.setup options; under fake timers, `{ advanceTimers: jest.advanceTimersByTime }`. */
+  user?: Parameters<typeof userEvent.setup>[0];
 }
 
 function isMockApi(api: ApiStubs | MockApi): api is MockApi {
@@ -30,7 +32,11 @@ function installApi(api: Window['api'] | undefined) {
   if (api === undefined) delete (window as { api?: unknown }).api;
 }
 
-export function renderWithApp({ route = '/', api = {} }: RenderWithAppOptions = {}) {
+export function renderWithApp({
+  route = '/',
+  api = {},
+  user: userOptions,
+}: RenderWithAppOptions = {}) {
   const mock = api === null ? null : isMockApi(api) ? api : createMockApi(api);
   installApi(mock?.api);
   window.location.hash = `#${route}`;
@@ -40,7 +46,7 @@ export function renderWithApp({ route = '/', api = {} }: RenderWithAppOptions = 
   document.body.appendChild(root);
 
   const queryClient = createQueryClient();
-  const user = userEvent.setup();
+  const user = userEvent.setup(userOptions);
   const result = render(<App queryClient={queryClient} />, { container: root });
   return { ...result, user, queryClient, mock };
 }

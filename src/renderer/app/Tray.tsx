@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Portal, ToastViewport } from '../components/ui';
 import { AccessStatusChips } from '../features/notifications/AccessStatusChip';
 import { UpdateCard } from '../features/notifications/UpdateCard';
@@ -70,13 +70,8 @@ export function Tray({ setAside = false }: TrayProps) {
  * no gap in the column. Hidden slots are `inert` and invisible.
  */
 function TraySlot({ hidden, children }: { hidden: boolean; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    // React 18 has no `inert` prop.
-    ref.current?.toggleAttribute('inert', hidden);
-  }, [hidden]);
   return (
-    <div ref={ref} className={`contents ${hidden ? '*:invisible' : ''}`}>
+    <div inert={hidden} className={`contents ${hidden ? '*:invisible' : ''}`}>
       {children}
     </div>
   );

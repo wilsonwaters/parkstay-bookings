@@ -50,9 +50,9 @@ const LEGACY_FILES_MAX = 0;
 
 /** Every Tailwind utility that takes a colour. */
 const COLOUR_UTILITY =
-  'bg|text|border(?:-[xytrbl])?|ring(?:-offset)?|fill|stroke|from|via|to|outline|divide|placeholder|shadow|decoration|caret|accent';
+  'bg|text|text-shadow|border(?:-(?:[xytrblse]|bs|be))?|ring(?:-offset)?|inset-ring|inset-shadow|shadow|drop-shadow|fill|stroke|from|via|to|outline|divide|placeholder|decoration|caret|accent|mask(?:-(?:linear|radial|conic|[xytrbl]))?-(?:from|to)';
 const PALETTE_COLOUR =
-  'slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|primary';
+  'slate|gray|zinc|neutral|stone|mauve|olive|mist|taupe|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|primary';
 
 /** `bg-gray-500`, `accent-blue-600`, `text-primary-600`: Tailwind's palette, not our tokens. */
 const PALETTE_CLASS = new RegExp(
@@ -163,6 +163,28 @@ describe('token guard self-test', () => {
     ]);
   });
 
+  it("flags Tailwind 4's new palettes and colour utilities", () => {
+    expect(
+      matches(
+        'className="bg-mauve-500 inset-shadow-gray-500 text-shadow-sky-300 border-s-gray-200 mask-t-from-gray-500"'
+      )
+    ).toEqual([
+      'bg-mauve-500',
+      'inset-shadow-gray-500',
+      'text-shadow-sky-300',
+      'border-s-gray-200',
+      'mask-t-from-gray-500',
+    ]);
+  });
+
+  it("accepts Tailwind 4's sizes on those utilities", () => {
+    expect(
+      scanSource(
+        'className="inset-shadow-xs text-shadow-sm drop-shadow-md border-s-2 mask-t-from-50%"'
+      )
+    ).toEqual([]);
+  });
+
   it('flags hex literals and emoji, and reports the line', () => {
     const v = scanSource(
       "const a = 1;\nconst c = '#C4432A';\nconst d = { color: '#fff' };\nconst e = '\u{1F3D5}\uFE0F';"
@@ -220,6 +242,12 @@ describe('token guard self-test', () => {
         'divide-black',
         'accent-white',
       ]);
+    });
+
+    it("flags white and black on Tailwind 4's colour utilities", () => {
+      expect(
+        matches('className="inset-ring-white text-shadow-black drop-shadow-black/50"')
+      ).toEqual(['inset-ring-white', 'text-shadow-black', 'drop-shadow-black']);
     });
 
     it('flags raw accent-* palette colours (checkbox and radio accent-color)', () => {

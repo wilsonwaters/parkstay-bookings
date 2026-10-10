@@ -110,6 +110,21 @@ describe('IPC contract', () => {
     expect(Object.keys(contract.bookings)).toEqual(expect.not.arrayContaining(['sync', 'syncAll']));
   });
 
+  it('trims a pasted sign-in link and drops tabs and newlines in it (zod 4 z.url())', () => {
+    // Pinned so a change to this normalisation is deliberate: main checks the cleaned link.
+    const request = contract.accounts.openSignInLink.request;
+    const parsed = request.safeParse({
+      providerId: 'parkstay',
+      url: '  https://parkstay.dbca.wa.gov.au/sso\nlogin?next=%2F\t\n',
+    });
+    expect(parsed.success && parsed.data.url).toBe(
+      'https://parkstay.dbca.wa.gov.au/ssologin?next=%2F'
+    );
+    for (const url of [' http://parkstay.dbca.wa.gov.au/', 'parkstay.dbca.wa.gov.au', '']) {
+      expect(request.safeParse({ providerId: 'parkstay', url }).success).toBe(false);
+    }
+  });
+
   it('has no request schema with a key named userId', () => {
     const offenders: string[] = [];
     let keysSeen = 0;

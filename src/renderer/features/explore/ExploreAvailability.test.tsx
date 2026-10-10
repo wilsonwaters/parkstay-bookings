@@ -181,59 +181,66 @@ function watchHeading() {
 
 describe('Explore with dates: asking', () => {
   it('asks each bulk provider once, 400 ms after the dates settle; a run of guest steps asks once', async () => {
-    // A provider whose bulk answer reads every stay field, the party included.
-    const { stubs, availability } = api(undefined, [READS_PARTY, SINGLE]);
-    const calledAt: number[] = [];
-    availability.mockImplementation(async (stay, options) => {
-      calledAt.push(Date.now());
-      return answering()(stay, options);
-    });
-    const { user } = await renderExplore('/', stubs, '6 places');
-    expect(availability).not.toHaveBeenCalled();
+    // Fake timers: the debounce is measured on the clock the test drives, never on how fast a
+    // loaded machine dispatches the clicks.
+    jest.useFakeTimers();
+    try {
+      // A provider whose bulk answer reads every stay field, the party included.
+      const { stubs, availability } = api(undefined, [READS_PARTY, SINGLE]);
+      const { user } = renderWithApp({
+        route: '/',
+        api: stubs,
+        user: { advanceTimers: jest.advanceTimersByTime },
+      });
+      await within(await screen.findByRole('region', { name: 'Results' })).findByRole('heading', {
+        level: 2,
+        name: '6 places',
+      });
+      expect(availability).not.toHaveBeenCalled();
 
-    // Check in tomorrow, out 2 nights later (in Perth), from the keyboard. The stay is set when
-    // the departure reaches the URL: the debounce starts there, so time the call from it.
-    let chosenAt = Number.POSITIVE_INFINITY;
-    const pushState = window.history.pushState.bind(window.history);
-    const spy = jest.spyOn(window.history, 'pushState').mockImplementation((...args) => {
-      if (String(args[2]).includes('departure=')) chosenAt = Math.min(chosenAt, Date.now());
-      pushState(...args);
-    });
-    await user.click(screen.getByRole('button', { name: /^When/ }));
-    await user.keyboard('{ArrowRight}{Enter}{ArrowRight}{ArrowRight}');
-    await user.keyboard('{Enter}');
-    spy.mockRestore();
-    expect(chosenAt).toBeLessThan(Number.POSITIVE_INFINITY);
-    expect(availability).not.toHaveBeenCalled();
-    const arrival = addDays(todayIn('Australia/Perth'), 1);
-    const departure = addDays(arrival, 2);
-    await waitFor(() => expect(availability).toHaveBeenCalledTimes(1));
-    expect(calledAt[0] - chosenAt).toBeGreaterThanOrEqual(STAY_DEBOUNCE_MS - 10);
-    // One call for ParkStay only: the other provider cannot answer in bulk.
-    expect(availability).toHaveBeenCalledWith(
-      { arrival, departure, adults: 1, children: 0, infants: 0 },
-      { providerIds: ['parkstay'] }
-    );
-    const range = stayRangeLabel(arrival, departure);
-    expect(
-      await within(results()).findByRole('heading', { name: `6 places · 2 available for ${range}` })
-    ).toBeInTheDocument();
+      // Check in tomorrow, out 2 nights later (in Perth), from the keyboard. The stay is set
+      // when the departure reaches the URL: the debounce starts there.
+      await user.click(screen.getByRole('button', { name: /^When/ }));
+      await user.keyboard('{ArrowRight}{Enter}{ArrowRight}{ArrowRight}{Enter}');
+      expect(currentRoute()).toContain('departure=');
+      await act(() => jest.advanceTimersByTimeAsync(STAY_DEBOUNCE_MS - 1));
+      expect(availability).not.toHaveBeenCalled();
+      await act(() => jest.advanceTimersByTimeAsync(1));
+      await waitFor(() => expect(availability).toHaveBeenCalledTimes(1));
+      // One call for ParkStay only: the other provider cannot answer in bulk.
+      const arrival = addDays(todayIn('Australia/Perth'), 1);
+      const departure = addDays(arrival, 2);
+      expect(availability).toHaveBeenCalledWith(
+        { arrival, departure, adults: 1, children: 0, infants: 0 },
+        { providerIds: ['parkstay'] }
+      );
+      const range = stayRangeLabel(arrival, departure);
+      expect(
+        await within(results()).findByRole('heading', {
+          name: `6 places · 2 available for ${range}`,
+        })
+      ).toBeInTheDocument();
 
-    // Stepping the adults quickly: one call, for the last count.
-    await user.keyboard('{Escape}');
-    await user.click(screen.getByRole('button', { name: /^Who/ }));
-    for (let i = 0; i < 3; i += 1) {
-      await user.click(screen.getByRole('button', { name: 'Increase adults' }));
+      // Stepping the adults quickly: one call, for the last count.
+      await user.keyboard('{Escape}');
+      await user.click(screen.getByRole('button', { name: /^Who/ }));
+      for (let i = 0; i < 3; i += 1) {
+        await user.click(screen.getByRole('button', { name: 'Increase adults' }));
+      }
+      expect(currentRoute()).toContain('adults=4');
+      await act(() => jest.advanceTimersByTimeAsync(STAY_DEBOUNCE_MS - 1));
+      expect(availability).toHaveBeenCalledTimes(1);
+      await act(() => jest.advanceTimersByTimeAsync(1));
+      await waitFor(() => expect(availability).toHaveBeenCalledTimes(2));
+      expect(availability).toHaveBeenLastCalledWith(
+        expect.objectContaining({ arrival, departure, adults: 4 }),
+        { providerIds: ['parkstay'] }
+      );
+      await act(() => jest.advanceTimersByTimeAsync(STAY_DEBOUNCE_MS + 100));
+      expect(availability).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.useRealTimers();
     }
-    const adults = Number(/adults=(\d)/.exec(currentRoute())?.[1]);
-    expect(adults).toBeGreaterThanOrEqual(3);
-    await waitFor(() => expect(availability).toHaveBeenCalledTimes(2));
-    expect(availability).toHaveBeenLastCalledWith(
-      expect.objectContaining({ arrival, departure, adults }),
-      { providerIds: ['parkstay'] }
-    );
-    await pause(STAY_DEBOUNCE_MS + 100);
-    expect(availability).toHaveBeenCalledTimes(2);
   });
 
   it('asks ParkStay nothing when only the guests change: its bulk answer ignores the party', async () => {

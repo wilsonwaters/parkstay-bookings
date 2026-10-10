@@ -206,6 +206,19 @@ describe('ProviderManifestSchema', () => {
     expect(issuesAt(ProviderManifestSchema.safeParse(manifest))).toEqual([]);
   });
 
+  it('trims the website and drops tabs and newlines in it (zod 4 z.url()), still https only', () => {
+    // Pinned so a change to this normalisation is deliberate.
+    const parsed = ProviderManifestSchema.safeParse({
+      ...manifest,
+      website: ' https://parkstay.dbca.wa.\tgov.au/\n ',
+    });
+    expect(parsed.success && parsed.data.website).toBe('https://parkstay.dbca.wa.gov.au/');
+    expect(
+      ProviderManifestSchema.safeParse({ ...manifest, website: ' http://parkstay.dbca.wa.gov.au' })
+        .success
+    ).toBe(false);
+  });
+
   it('accepts the stay fields bulk availability depends on, provider params included', () => {
     const bulk = {
       ...manifest,
