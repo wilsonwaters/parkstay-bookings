@@ -4,8 +4,9 @@
  * The provider docs stay true to the code and readable from outside the project:
  * - provider-facing docs (`docs/providers/**`) carry no internal references (plan sections,
  *   stage or brief codes, issue numbers) that mean nothing to an outside author;
- * - the guide's core timeouts are the code's (`DEFAULT_CATALOG_TIMINGS`, the HTTP and page
- *   timeouts), and so are the search-mode limits the guides describe;
+ * - the guide's core timeouts are the code's (`DEFAULT_CATALOG_TIMINGS`, the sign-in check's
+ *   `DEFAULT_ACCOUNT_TIMINGS`, the HTTP and page timeouts), and so are the search-mode limits
+ *   the guides describe;
  * - the guide's quick start and the scaffold agree on the flags;
  * - the agents' checklist (CLAUDE.md, "Adding a provider") names the scaffold, the gate and the
  *   rules, and AGENTS.md and the `/add-provider` command point to it rather than copy it.
@@ -13,6 +14,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { DEFAULT_ACCOUNT_TIMINGS } from '@main/core/accounts/provider-account.service';
 import {
   AREA_SEARCH_MAX_PAGES,
   AREA_SEARCHES_KEPT,
@@ -26,9 +28,14 @@ import { docFiles, readDoc, ROOT } from './markdown';
 
 const GUIDE = 'docs/providers/adding-a-provider.md';
 
-/** Internal references: plan sections (§12.30), stages (V7), the brief (D5), issues (#24). */
+/**
+ * Internal references: plan sections (§12.30), stages (V7), the brief (D5), issues (#24), open
+ * questions (PQ1, UQ1, O8).
+ */
 const INTERNAL = [
   /§\s?\d/,
+  /\b[A-Z]?Q\d+\b/,
+  /\bO\d+\b/,
   /\bV\d+\b/,
   /\bbrief [A-Z]\d+\b/i,
   /architecture-notes/,
@@ -82,7 +89,7 @@ describe('provider-facing docs', () => {
 describe("the guide's core timeouts", () => {
   const timeouts = section(readDoc(GUIDE), '### Timeouts');
 
-  it('lists every catalogue timing it names with the value in the code', () => {
+  it('lists every catalogue and sign-in timing it names with the value in the code', () => {
     // In prose the value comes first, "6 hours (`detailTtlMs`)"; in the table the name does,
     // "`syncTimeoutMs` | 60 s |".
     const named = [...timeouts.matchAll(/(\d+) (s|minutes?|hours?)(?: \(|, )`(\w+Ms)`/g)];
@@ -103,9 +110,13 @@ describe("the guide's core timeouts", () => {
         'bulkTtlMs',
         'bulkErrorTtlMs',
         'checkTtlMs',
+        'probeTimeoutMs',
       ])
     );
-    const timings = DEFAULT_CATALOG_TIMINGS as unknown as Record<string, number>;
+    const timings: Record<string, number> = {
+      ...(DEFAULT_CATALOG_TIMINGS as unknown as Record<string, number>),
+      probeTimeoutMs: DEFAULT_ACCOUNT_TIMINGS.probeTimeoutMs,
+    };
     // `timeoutMs` is the SDK's per-request option, checked below.
     values.delete('timeoutMs');
     for (const [name, ms] of values) expect([name, ms]).toEqual([name, timings[name]]);

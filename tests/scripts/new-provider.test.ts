@@ -343,6 +343,52 @@ describe('scripts/new-provider.mjs: what it refuses', () => {
   });
 });
 
+describe('scripts/new-provider.mjs: registering, naming and undoing', () => {
+  let root: string;
+  const index = (): string => at(root, 'src/main/providers/index.ts');
+  const provider = (file: string): string =>
+    at(root, `src/main/providers/scaffold-check-other/${file}`);
+
+  beforeEach(() => {
+    root = tempProject(['src/main/providers/index.ts', 'src/main/providers/registry.ts']);
+  });
+
+  afterEach(() => removeProject(root));
+
+  it('registers into an empty built-in list', () => {
+    fs.writeFileSync(index(), fs.readFileSync(index(), 'utf8').replace(/= \[[^\]]*\];/, '= [];'));
+    const result = scaffold(root, 'scaffold-check-other');
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Registered in src/main/providers/index.ts');
+    expect(fs.readFileSync(index(), 'utf8')).toMatch(
+      /BUILT_IN_PROVIDERS: readonly ProviderFactory\[\] = \[\s*scaffoldCheckOtherFactory,?\s*\];/
+    );
+  });
+
+  it('writes one full stop after a name that ends in one', () => {
+    const result = scaffold(root, 'scaffold-check-other', '--name', 'Acme Parks Co.');
+    expect(result.status).toBe(0);
+    expect(fs.readFileSync(provider('manifest.ts'), 'utf8')).toContain(
+      "description: 'Places to stay from Acme Parks Co.',"
+    );
+  });
+
+  it('undoes a run that fails partway, folders included, so it can be run again', () => {
+    // A file where the fixtures folder goes: the provider and its test are written first.
+    fs.mkdirSync(at(root, 'tests/fixtures'), { recursive: true });
+    fs.writeFileSync(at(root, 'tests/fixtures/providers'), 'in the way');
+    const failed = scaffold(root, 'scaffold-check-other', '--no-register');
+    expect(failed.status).toBe(1);
+    expect(fs.existsSync(provider(''))).toBe(false);
+    expect(fs.existsSync(at(root, 'tests/integration'))).toBe(false);
+
+    fs.rmSync(at(root, 'tests/fixtures/providers'));
+    const again = scaffold(root, 'scaffold-check-other', '--no-register');
+    expect(again.status).toBe(0);
+    expect(fs.existsSync(provider('index.ts'))).toBe(true);
+  });
+});
+
 describe('scripts/new-provider.mjs: wiring', () => {
   it("checks ids with the registry's own rule", () => {
     const source = fs.readFileSync(SCRIPT, 'utf8');

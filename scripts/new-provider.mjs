@@ -138,6 +138,7 @@ function namesOf({ id, name }) {
     ID: id,
     NAME: name,
     NAME_JS: js(name),
+    DESCRIPTION_JS: js(`Places to stay from ${name.replace(/\.+$/, '')}.`),
     NAME_HTML: htmlText(name),
     SHORT_NAME_JS: js(shortName),
     PASCAL: pascal,
@@ -307,7 +308,8 @@ function register(root, tokens) {
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
-  const newList = list[0].replace(list[1], [...entries, factory].join(', '));
+  // Written whole: replacing inside the old line mis-edits an empty list ('' matches at once).
+  const newList = `export const BUILT_IN_PROVIDERS: readonly ProviderFactory[] = [${[...entries, factory].join(', ')}];`;
   const updated = `${text.slice(0, at)}\n${importLine}${text.slice(at)}`.replace(list[0], newList);
   fs.writeFileSync(file, updated);
   return true;
@@ -320,7 +322,10 @@ function format(root, files) {
   try {
     bin = path.join(path.dirname(require.resolve('prettier')), 'bin', 'prettier.cjs');
   } catch {
-    return 'Prettier is not installed (run npm ci), so the files are not formatted.';
+    return {
+      failed: false,
+      message: 'Prettier is not installed (run npm ci), so the files are not formatted.',
+    };
   }
   const config = fs.existsSync(path.join(root, '.prettierrc'))
     ? path.join(root, '.prettierrc')
@@ -330,7 +335,9 @@ function format(root, files) {
     [bin, '--write', '--log-level', 'warn', '--config', config, ...files],
     { cwd: root, encoding: 'utf8' }
   );
-  return result.status === 0 ? undefined : `Prettier failed:\n${result.stderr || result.stdout}`;
+  return result.status === 0
+    ? undefined
+    : { failed: true, message: `Prettier failed:\n${result.stderr || result.stdout}` };
 }
 
 function nextSteps(options, tokens, registered) {
@@ -377,15 +384,28 @@ function main() {
   refuseExisting(root, id, files);
 
   const written = [];
+  const madeDirs = [];
   try {
     for (const [file, text] of Object.entries(files)) {
       const target = path.join(root, file);
-      fs.mkdirSync(path.dirname(target), { recursive: true });
+      const made = fs.mkdirSync(path.dirname(target), { recursive: true });
+      // mkdirSync returns the first folder it made; everything from there down is new.
+      for (let dir = path.dirname(target); made && dir.startsWith(made); dir = path.dirname(dir)) {
+        madeDirs.push(dir);
+      }
       fs.writeFileSync(target, text.endsWith('\n') ? text : `${text}\n`, { flag: 'wx' });
       written.push(target);
     }
   } catch (error) {
+    // Undo it all, so a second try is not refused as "taken".
     for (const target of written) fs.rmSync(target, { force: true });
+    for (const dir of [...new Set(madeDirs)].sort((a, b) => b.length - a.length)) {
+      try {
+        fs.rmdirSync(dir); // only once empty: never anything this run did not write
+      } catch {
+        // not empty or already gone: leave it
+      }
+    }
     throw error;
   }
 
@@ -406,8 +426,15 @@ function main() {
   ${importLine}
 and add ${factory} to BUILT_IN_PROVIDERS.`);
   }
-  if (formatProblem) console.warn(formatProblem);
   console.log(nextSteps(options, tokens, registered));
+  if (formatProblem?.failed) {
+    console.error(`provider:new: ${formatProblem.message}
+The files above are written but not formatted; fix what Prettier reports (in ${INDEX} too if it
+is named) before running the gate.`);
+    process.exitCode = 1;
+  } else if (formatProblem) {
+    console.warn(formatProblem.message);
+  }
 }
 
 try {

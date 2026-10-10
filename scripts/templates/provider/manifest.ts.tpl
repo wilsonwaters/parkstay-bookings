@@ -17,7 +17,7 @@ export const {{CAMEL}}Manifest: ProviderManifest = {
   name: '{{NAME_JS}}',
   shortName: '{{SHORT_NAME_JS}}',
   // TODO: one line, shown in the provider step of the create flows.
-  description: 'Places to stay from {{NAME_JS}}.',
+  description: '{{DESCRIPTION_JS}}',
   // TODO: the provider's https home page. A `.invalid` address never resolves.
   website: 'https://{{ID}}.invalid',
 // @if api

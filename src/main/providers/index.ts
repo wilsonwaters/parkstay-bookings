@@ -1,5 +1,6 @@
 /**
- * The built-in providers. Adding a provider is one line here plus its folder.
+ * The built-in providers. Adding a provider is its folder plus an import and an entry in
+ * BUILT_IN_PROVIDERS here; `npm run provider:new` writes all three.
  */
 
 import { parkstayFactory } from './parkstay';

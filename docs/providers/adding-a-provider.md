@@ -1230,17 +1230,20 @@ after the access gate's; the registry also closes your browser.
 The core bounds every call it makes to a provider. These are fixed, the same for every
 provider: the manifest's `limits` set how often and how many, not how long. Keep each call well
 inside its bound; a call that runs over is aborted through its `signal`. The catalogue's bounds
-are `DEFAULT_CATALOG_TIMINGS` in `src/main/core/catalog/location-catalog.service.ts`.
+are `DEFAULT_CATALOG_TIMINGS` in `src/main/core/catalog/location-catalog.service.ts`, and the
+sign-in check's is `DEFAULT_ACCOUNT_TIMINGS` in `src/main/core/accounts/provider-account.service.ts`.
 
 | Call | Bound | What happens then |
 | --- | --- | --- |
 | A `full` catalogue sync (`listLocations`), `syncTimeoutMs` | 60 s | The sync fails; the cached locations are kept. |
 | A place's detail (`getLocation`), `detailTimeoutMs` | 20 s | The place page shows the cached detail if there is one, or an error. |
 | A place page's availability check (`check`), `availabilityTimeoutMs` | 20 s | The check fails with an error. |
+| Explore's availability for the chosen dates (bulk `availability.search`), `availabilityTimeoutMs` | 20 s | The search fails, and a timeout is not asked again for 60 s (`bulkErrorTtlMs`). |
 | One page of a `search` catalogue's area or text search, `searchTimeoutMs` | 20 s | That search fails (earlier pages are kept), and is not asked again for 60 s (`searchErrorTtlMs`). |
 | One `ctx.http` request | 30 s (`timeoutMs`) | `ProviderTimeoutError`. |
 | One `ctx.browser.withPage` call | 60 s (`timeoutMs`) | Playwright's `TimeoutError`. |
-| A watch check, a hold, a sign-in check | none from the core | Only your own request and page timeouts apply. |
+| A sign-in check (`isSignedIn`), `probeTimeoutMs` | 15 s | The account shows as unknown, never signed out. |
+| A watch check, a hold | none from the core | Only your own request and page timeouts apply. |
 
 Other timings from the same table: the first sync starts once the window has been open for
 5 s (`startDelayMs`), stale catalogues are looked at every 60 minutes (`recheckMs`), a detail is

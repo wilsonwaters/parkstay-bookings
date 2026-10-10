@@ -31,7 +31,7 @@ drops it, and only the email carries over as a sign-in hint ([security](../../se
    the one availability checks, holds and the payment window use.
 3. The flow goes through DBCA's SSO gateway (`auth2.dbca.wa.gov.au`) and Azure AD B2C
    (`dbcab2c.b2clogin.com`, sometimes `login.microsoftonline.com`). ParkStay emails a
-   one-time code, which the person types into the window (PQ1). If the email has a link
+   one-time code, which the person types into the window. If the email has a link
    instead, **Have a sign-in link?** under the account takes it: `accounts.openSignInLink`
    checks that it is on one of the sign-in origins and opens it in the window.
 4. It ends at `https://parkstay.dbca.wa.gov.au/login-success/` (`urls.py:107`). That page also
@@ -83,12 +83,12 @@ a hint. It touches nothing else: watches, snipes, bookings and the local profile
 refused with `ACCOUNT_BUSY` while a snipe is queueing, sniping or holding a site, or a watch's
 hold has not expired, because signing out would lose the queue place or the hold.
 
-## Open questions for the stakeholder
+## Still to check by hand
 
 On the [release checklist](../../release-checklist-2.0.md):
 
-- a real sign-in with the emailed code (PQ1), and whether it survives a restart (the
+- a real sign-in with the emailed code, and whether it survives a restart (the
   partition persists, but ParkStay's session lasts an hour);
-- a real signed-in `/api/profile` answer (PQ2);
+- a real signed-in `/api/profile` answer;
 - sign-in and payment while the DBCA queue is active;
-- the hosts the payment window needs at the top level (PQ5).
+- the hosts the payment window needs at the top level.
