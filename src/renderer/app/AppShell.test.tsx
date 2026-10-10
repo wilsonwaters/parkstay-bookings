@@ -196,6 +196,8 @@ describe('App shell', () => {
       expect(
         within(dialog).getByText('Find and book places to stay across Western Australia')
       ).toBeVisible();
+      // The runtime versions are folded away under "Technical details"
+      await user.click(within(dialog).getByRole('button', { name: 'Technical details' }));
       expect(within(dialog).getByText('28.3.3')).toBeVisible();
       expect(
         within(dialog).getByRole('link', { name: 'GitHub (opens in your browser)' })

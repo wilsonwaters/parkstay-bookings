@@ -80,7 +80,7 @@ function defaultStubs(): ApiStubs {
     app: {
       getInfo: resolve(ok(APP_INFO)),
       openLogsFolder: resolve(ok(true)),
-      getAutoLaunch: resolve(ok(false)),
+      getAutoLaunch: resolve(ok({ enabled: false, startMinimised: false, supported: true })),
     },
     notifications: { list: resolve(ok([])), unreadCount: resolve(ok(0)) },
     // The legacy pages' first reads, so any route can be rendered.

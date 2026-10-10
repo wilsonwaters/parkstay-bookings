@@ -6,7 +6,10 @@ import { PARKSTAY, politeAnnouncement } from '@tests/fixtures/renderer/settings'
 const REFUSED =
   'Starting at sign-in is only available in the installed app, not when running from source.';
 
-function setup(launch = { enabled: false, startMinimised: false }, setAutoLaunch?: jest.Mock) {
+function setup(
+  launch = { enabled: false, startMinimised: false, supported: true },
+  setAutoLaunch?: jest.Mock
+) {
   let stored = launch;
   const mock = createMockApi({
     providers: { list: jest.fn().mockResolvedValue(ok([PARKSTAY])) },
@@ -15,7 +18,7 @@ function setup(launch = { enabled: false, startMinimised: false }, setAutoLaunch
       setAutoLaunch:
         setAutoLaunch ??
         jest.fn((enabled: boolean, startMinimised?: boolean) => {
-          stored = { enabled, startMinimised: startMinimised ?? stored.startMinimised };
+          stored = { ...stored, enabled, startMinimised: startMinimised ?? stored.startMinimised };
           return Promise.resolve(ok(stored));
         }),
     },
@@ -28,7 +31,7 @@ const minimisedSwitch = () => screen.getByRole('switch', { name: 'Start minimise
 
 describe('Settings → App', () => {
   it('reflects app.getAutoLaunch', async () => {
-    setup({ enabled: true, startMinimised: true });
+    setup({ enabled: true, startMinimised: true, supported: true });
 
     expect(await launchSwitch()).toBeChecked();
     expect(minimisedSwitch()).toBeChecked();
@@ -81,5 +84,17 @@ describe('Settings → App', () => {
     expect(
       screen.getByText('Closing the WA Stay window quits it; watches stop until you open it again.')
     ).toBeInTheDocument();
+  });
+
+  it('where the OS cannot start apps at sign-in (Linux), both switches are unavailable and say so', async () => {
+    const { mock } = setup({ enabled: false, startMinimised: false, supported: false });
+    const launch = await launchSwitch();
+
+    expect(launch).toBeDisabled();
+    expect(launch).toHaveAccessibleDescription(
+      expect.stringContaining('Available on Windows and macOS only.')
+    );
+    expect(minimisedSwitch()).toBeDisabled();
+    expect(mock.api.app.setAutoLaunch).not.toHaveBeenCalled();
   });
 });

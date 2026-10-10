@@ -1,4 +1,4 @@
-import { CircleCheck, CircleDashed, TriangleAlert } from 'lucide-react';
+import { CircleCheck, CircleDashed, LogIn, LogOut, TriangleAlert } from 'lucide-react';
 import { useAccountCheck } from '../../../api';
 import type { ProviderAccount, ProviderManifest } from '../../../../shared/types/provider.types';
 import { Button, Disclosure, Notice, ProviderBadge } from '../../../components/ui';
@@ -40,6 +40,32 @@ const STATUS_CLASS = {
   warning: 'text-warning-fg',
 } as const;
 
+const WAITING_LABEL = 'Waiting for sign-in…';
+
+/**
+ * The action's label, or "Waiting for sign-in…" while the window is open. Both sit in one grid
+ * cell, so the button is always as wide as the longer one and the row never reflows; the hidden
+ * one is `invisible` and `aria-hidden`, so only the shown one is the button's name.
+ */
+function ButtonLabel({ label, waiting }: { label: string; waiting: boolean }) {
+  return (
+    <span className="grid justify-items-start">
+      <span
+        aria-hidden={waiting || undefined}
+        className={cx('col-start-1 row-start-1', waiting && 'invisible')}
+      >
+        {label}
+      </span>
+      <span
+        aria-hidden={!waiting || undefined}
+        className={cx('col-start-1 row-start-1', !waiting && 'invisible')}
+      >
+        {WAITING_LABEL}
+      </span>
+    </span>
+  );
+}
+
 /** One provider on Settings → Accounts (§12.9: shown even when there is only one). */
 export function AccountRow({
   manifest,
@@ -77,7 +103,7 @@ export function AccountRow({
           {text.status}
         </p>
         {text.meta && <p className="text-xs text-fg-muted">{text.meta}</p>}
-        <p className="max-w-prose text-sm text-fg-secondary">{accountPurpose(manifest)}</p>
+        <p className="max-w-prose text-sm text-fg-secondary">{accountPurpose(manifest, account)}</p>
         {warning && <p className="text-sm font-medium text-warning-fg">{warning}</p>}
         {outcome?.kind === 'incomplete' && (
           <p className="text-sm text-fg-muted">Sign-in wasn&apos;t completed.</p>
@@ -116,9 +142,17 @@ export function AccountRow({
             loading={pending}
             disabled={blocked}
             aria-describedby={statusId}
+            // The spinner takes this icon's place while waiting, so the width holds
+            leadingIcon={
+              text.action === 'sign-out' ? (
+                <LogOut size={18} aria-hidden="true" />
+              ) : (
+                <LogIn size={18} aria-hidden="true" />
+              )
+            }
             onClick={() => text.action && onAction(text.action)}
           >
-            {pending ? 'Waiting for sign-in…' : ACTION_LABELS[text.action]}
+            <ButtonLabel label={ACTION_LABELS[text.action]} waiting={pending} />
           </Button>
         </div>
       )}

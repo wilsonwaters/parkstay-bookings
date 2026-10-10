@@ -45,7 +45,9 @@ export function SettingsPage() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-8 lg:px-8">
       <PageHeader title="Settings" />
-      <div className="grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-12">
+      {/* Two columns from md: the smallest window (960 px, less its frame) always has them;
+          only zooming in stacks the sub-navigation above the section */}
+      <div className="grid gap-8 md:grid-cols-[13rem_minmax(0,1fr)] md:gap-10 lg:gap-12">
         <SettingsNav />
         {/* Not a landmark: "Notifications" would clash with the tray's toast region */}
         <div className="min-w-0 max-w-2xl">

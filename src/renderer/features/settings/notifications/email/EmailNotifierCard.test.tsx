@@ -125,7 +125,9 @@ describe('EmailNotifierCard with a stored password (hasPassword)', () => {
       })
     );
     expect(
-      await screen.findByText('Error: Saved password could not be decrypted; re-enter it')
+      await screen.findByText(
+        "The saved password couldn't be read on this computer. Enter it again."
+      )
     ).toBeInTheDocument();
     const settings = await openForm(user);
 

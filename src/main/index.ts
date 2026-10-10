@@ -25,7 +25,6 @@ import { createContainer, AppContainer } from './app/container';
 import { installCrashPolicy } from './app/crash-policy';
 import {
   currentLaunchTarget,
-  legacyStartMinimised,
   replaceLegacyLoginItems,
   startMinimisedSetting,
 } from './app/login-item';
@@ -171,16 +170,11 @@ async function start(): Promise<void> {
     notifications: ready.repositories.notifications,
     userId: ready.profile.requireUserId(),
     launchOnStartup: ready.repositories.settings.getValue<boolean>('launchOnStartup') === true,
-    // v1.x always started hidden: such a user keeps a quiet start ("Start minimised")
+    // v1.x always started hidden: such a user keeps a quiet start ("Start minimised"), set
+    // only where the entry is really replaced (Windows, installed)
     replaceLoginItems: (launchOnStartup) =>
       replaceLegacyLoginItems(
-        {
-          launchOnStartup,
-          startMinimised: legacyStartMinimised(
-            launchOnStartup,
-            startMinimisedSetting(ready.repositories.settings)
-          ),
-        },
+        { launchOnStartup, startMinimised: startMinimisedSetting(ready.repositories.settings) },
         { ...currentLaunchTarget(), log: logger }
       ),
     markerPath: paths.markerPath,

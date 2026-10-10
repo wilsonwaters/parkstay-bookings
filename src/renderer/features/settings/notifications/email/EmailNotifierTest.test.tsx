@@ -38,21 +38,43 @@ describe('EmailNotifierCard: test email and on/off', () => {
     ).toBeInTheDocument();
   });
 
-  it("a failed test shows the server's error, and the status becomes Error", async () => {
+  it('a failed test says what went wrong in plain words, and the status shows the error', async () => {
     const { user, fail } = setup();
     await screen.findByText('On');
-    fail('535 Username and Password not accepted');
+    fail('Invalid login: 535-5.7.8 Username and Password not accepted');
 
     await user.click(screen.getByRole('button', { name: 'Send test email' }));
 
     expect(
       await screen.findByText(
-        "The test email couldn't be sent: 535 Username and Password not accepted"
+        "The mail server didn't accept the account or password. The full error is in the log files (About, Open logs folder)."
       )
     ).toBeInTheDocument();
+    // The status line too, never the raw reply
     expect(
-      await screen.findByText('Error: 535 Username and Password not accepted')
+      await screen.findByText("The mail server didn't accept the account or password.")
     ).toBeInTheDocument();
+    expect(screen.queryByText(/535/)).toBeNull();
+  });
+
+  it('a server that refuses the connection reads "Couldn\'t reach the mail server at host:port"', async () => {
+    const { user, fail } = setup();
+    await screen.findByText('On');
+    fail('connect ECONNREFUSED 74.125.0.1:587');
+
+    await user.click(screen.getByRole('button', { name: 'Send test email' }));
+
+    expect(
+      await screen.findByText("Couldn't reach the mail server at smtp.gmail.com:587.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/ECONNREFUSED/)).toBeNull();
+  });
+
+  it('"Edit settings" and "Send test email" sit on one row', async () => {
+    setup();
+    const edit = await screen.findByRole('button', { name: 'Edit settings' });
+    const test = screen.getByRole('button', { name: 'Send test email' });
+    expect(edit.parentElement).toBe(test.parentElement);
   });
 
   it('the switch turns email off and on (enable/disable), announcing it', async () => {

@@ -29,6 +29,8 @@ export interface AppInfo {
 export interface LaunchAtLogin {
   enabled: boolean;
   startMinimised: boolean;
+  /** False where the OS cannot start WA Stay at sign-in (Linux): the switch is unavailable. */
+  supported: boolean;
 }
 
 /** The `app.setAutoLaunch` payload. An omitted `startMinimised` keeps the stored choice. */

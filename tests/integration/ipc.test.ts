@@ -287,12 +287,36 @@ describe('IPC through the container', () => {
       setLoginItemSettings: jest.Mock;
     };
 
+    const realPlatform = process.platform;
+    const runOn = (platform: NodeJS.Platform) =>
+      Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+
     beforeEach(() => {
       electronApp.setLoginItemSettings.mockClear();
+      // The installed app registers on Windows (and macOS); Linux has no login items
+      runOn('win32');
     });
 
     afterEach(() => {
       electronApp.isPackaged = false;
+      runOn(realPlatform);
+    });
+
+    it('Linux: unavailable, so turning it on is refused and nothing is stored or registered', async () => {
+      runOn('linux');
+      electronApp.isPackaged = true;
+
+      await expect(call('app:get-auto-launch')).resolves.toEqual({
+        success: true,
+        data: { enabled: false, startMinimised: false, supported: false },
+      });
+      await expect(call('app:set-auto-launch', { enabled: true })).resolves.toMatchObject({
+        success: false,
+        code: 'VALIDATION',
+        error: 'Starting at sign-in is available on Windows and macOS only.',
+      });
+      expect(electronApp.setLoginItemSettings).not.toHaveBeenCalled();
+      expect(container.repositories.settings.getValue('launchOnStartup')).toBeNull();
     });
 
     it('is refused when running from source, and nothing is stored or registered', async () => {
@@ -303,7 +327,7 @@ describe('IPC through the container', () => {
       expect(electronApp.setLoginItemSettings).not.toHaveBeenCalled();
       await expect(call('app:get-auto-launch')).resolves.toEqual({
         success: true,
-        data: { enabled: false, startMinimised: false },
+        data: { enabled: false, startMinimised: false, supported: true },
       });
     });
 
@@ -312,7 +336,7 @@ describe('IPC through the container', () => {
 
       await expect(call('app:set-auto-launch', { enabled: true })).resolves.toEqual({
         success: true,
-        data: { enabled: true, startMinimised: false },
+        data: { enabled: true, startMinimised: false, supported: true },
       });
       expect(electronApp.setLoginItemSettings).toHaveBeenLastCalledWith(
         expect.objectContaining({ openAtLogin: true, args: [] })
@@ -320,13 +344,16 @@ describe('IPC through the container', () => {
 
       await expect(
         call('app:set-auto-launch', { enabled: true, startMinimised: true })
-      ).resolves.toEqual({ success: true, data: { enabled: true, startMinimised: true } });
+      ).resolves.toEqual({
+        success: true,
+        data: { enabled: true, startMinimised: true, supported: true },
+      });
       expect(electronApp.setLoginItemSettings).toHaveBeenLastCalledWith(
         expect.objectContaining({ openAtLogin: true, args: ['--hidden'] })
       );
       await expect(call('app:get-auto-launch')).resolves.toEqual({
         success: true,
-        data: { enabled: true, startMinimised: true },
+        data: { enabled: true, startMinimised: true, supported: true },
       });
     });
 
@@ -336,21 +363,21 @@ describe('IPC through the container', () => {
 
       await expect(call('app:set-auto-launch', { enabled: false })).resolves.toEqual({
         success: true,
-        data: { enabled: false, startMinimised: true },
+        data: { enabled: false, startMinimised: true, supported: true },
       });
       expect(electronApp.setLoginItemSettings).toHaveBeenLastCalledWith(
         expect.objectContaining({ openAtLogin: false, args: [] })
       );
       await expect(call('app:set-auto-launch', { enabled: true })).resolves.toEqual({
         success: true,
-        data: { enabled: true, startMinimised: true },
+        data: { enabled: true, startMinimised: true, supported: true },
       });
     });
 
     it('turning it off is allowed when running from source', async () => {
       await expect(call('app:set-auto-launch', { enabled: false })).resolves.toEqual({
         success: true,
-        data: { enabled: false, startMinimised: false },
+        data: { enabled: false, startMinimised: false, supported: true },
       });
     });
   });

@@ -18,6 +18,7 @@ import {
 import { formatDay } from '../../format';
 import { EmailNotifierForm } from './EmailNotifierForm';
 import { SendTestButton } from './SendTestButton';
+import { friendlySmtpError } from './smtpErrors';
 
 function isSetUp(view: EmailNotifierView | null | undefined): view is EmailNotifierView {
   return Boolean(view) && view?.status !== NotifierStatus.NOT_CONFIGURED;
@@ -25,7 +26,8 @@ function isSetUp(view: EmailNotifierView | null | undefined): view is EmailNotif
 
 function statusText(view: EmailNotifierView | null | undefined): string {
   if (!isSetUp(view)) return 'Not set up';
-  if (view.status === NotifierStatus.ERROR) return `Error: ${view.lastError ?? 'unknown'}`;
+  // In plain words; the raw error (nodemailer's code, the server's reply) is in the logs
+  if (view.status === NotifierStatus.ERROR) return friendlySmtpError(view.lastError, view.config);
   return view.enabled ? 'On' : 'Off';
 }
 
@@ -93,6 +95,13 @@ export function EmailNotifierCard() {
     requestAnimationFrame(() => editButton.current?.focus());
   };
 
+  // Edit and test sit on one row
+  const editOrSetUp = (
+    <Button ref={editButton} variant="secondary" onClick={() => setEditing(true)}>
+      {setUp ? 'Edit settings' : 'Set up email'}
+    </Button>
+  );
+
   return (
     <Card padding="lg" className="flex flex-col gap-5">
       <Switch
@@ -115,15 +124,14 @@ export function EmailNotifierCard() {
       </div>
       {editing ? (
         <EmailNotifierForm notifier={setUp ? view : null} onClose={close} />
+      ) : !setUp ? (
+        <div>{editOrSetUp}</div>
       ) : (
-        <div className="flex flex-col gap-4">
-          <div>
-            <Button ref={editButton} variant="secondary" onClick={() => setEditing(true)}>
-              {setUp ? 'Edit settings' : 'Set up email'}
-            </Button>
-          </div>
-          {setUp && <SendTestButton recipient={view.config.toEmail || view.config.auth.user} />}
-        </div>
+        <SendTestButton
+          recipient={view.config.toEmail || view.config.auth.user}
+          server={view.config}
+          before={editOrSetUp}
+        />
       )}
     </Card>
   );

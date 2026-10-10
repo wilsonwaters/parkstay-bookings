@@ -15,6 +15,7 @@
  */
 import {
   LEGACY_LOGIN_ITEM_NAMES,
+  launchAtLoginSupported,
   legacyStartMinimised,
   replaceLegacyLoginItems,
   setLaunchAtLogin,
@@ -102,6 +103,28 @@ function v1RunKey(app: FakeRunKey, exe: string = LEGACY_EXE): void {
   app.values.set('electron.app.WA ParkStay Bookings', `${exe} --hidden`);
 }
 
+/** A stored "Start minimised" choice (null: none stored). */
+function store(
+  initial: boolean | null
+): StartMinimisedStore & { value: boolean | null; set: jest.Mock } {
+  const s = {
+    value: initial,
+    get: () => s.value,
+    set: jest.fn((value: boolean) => {
+      s.value = value;
+    }),
+  };
+  return s;
+}
+
+describe('launchAtLoginSupported', () => {
+  it('Windows and macOS only: Electron cannot register a login item on Linux', () => {
+    expect(launchAtLoginSupported('win32')).toBe(true);
+    expect(launchAtLoginSupported('darwin')).toBe(true);
+    expect(launchAtLoginSupported('linux')).toBe(false);
+  });
+});
+
 describe('setLaunchAtLogin', () => {
   it('Windows: the default name (the AppUserModelId) and the quoted executable, no --hidden', () => {
     const app = new FakeRunKey();
@@ -179,7 +202,10 @@ describe('replaceLegacyLoginItems (after the first-run migration)', () => {
     );
     const h = host(app);
 
-    const result = replaceLegacyLoginItems({ launchOnStartup: true, startMinimised: true }, h);
+    const result = replaceLegacyLoginItems(
+      { launchOnStartup: true, startMinimised: store(null) },
+      h
+    );
 
     expect(app.values).toEqual(
       new Map([
@@ -205,7 +231,7 @@ describe('replaceLegacyLoginItems (after the first-run migration)', () => {
     app.values.set('My renamed entry', `${LEGACY_EXE} --hidden`);
 
     const result = replaceLegacyLoginItems(
-      { launchOnStartup: true, startMinimised: true },
+      { launchOnStartup: true, startMinimised: store(null) },
       host(app, { execPath: EXE_NESTED })
     );
 
@@ -222,7 +248,7 @@ describe('replaceLegacyLoginItems (after the first-run migration)', () => {
     const portable = 'D:\\Apps\\WA Stay 2.0.0.exe';
 
     replaceLegacyLoginItems(
-      { launchOnStartup: true, startMinimised: true },
+      { launchOnStartup: true, startMinimised: store(null) },
       host(app, {
         execPath: 'C:\\Users\\Ann\\AppData\\Local\\Temp\\2abcd\\WA Stay.exe',
         env: { PORTABLE_EXECUTABLE_FILE: portable },
@@ -237,7 +263,7 @@ describe('replaceLegacyLoginItems (after the first-run migration)', () => {
     v1RunKey(app);
 
     expect(
-      replaceLegacyLoginItems({ launchOnStartup: false, startMinimised: false }, host(app))
+      replaceLegacyLoginItems({ launchOnStartup: false, startMinimised: store(null) }, host(app))
     ).toMatchObject({ registered: false });
 
     expect(app.values.size).toBe(0);
@@ -248,7 +274,7 @@ describe('replaceLegacyLoginItems (after the first-run migration)', () => {
     v1RunKey(app);
 
     expect(
-      replaceLegacyLoginItems({ launchOnStartup: true, startMinimised: true }, host(app))
+      replaceLegacyLoginItems({ launchOnStartup: true, startMinimised: store(null) }, host(app))
     ).toEqual({ removed: [], registered: false });
 
     expect(app.calls).toEqual([]);
@@ -262,7 +288,7 @@ describe('replaceLegacyLoginItems (after the first-run migration)', () => {
 
       expect(
         replaceLegacyLoginItems(
-          { launchOnStartup: true, startMinimised: true },
+          { launchOnStartup: true, startMinimised: store(null) },
           host(app, { platform })
         )
       ).toEqual({
@@ -275,17 +301,6 @@ describe('replaceLegacyLoginItems (after the first-run migration)', () => {
 });
 
 describe('legacyStartMinimised (a v1.x user keeps a quiet start)', () => {
-  function store(initial: boolean | null): StartMinimisedStore & { value: boolean | null } {
-    const s = {
-      value: initial,
-      get: () => s.value,
-      set: jest.fn((value: boolean) => {
-        s.value = value;
-      }),
-    };
-    return s;
-  }
-
   it('turns start minimised on for a v1.x user who had launch at login on', () => {
     const settings = store(null);
 
@@ -317,12 +332,40 @@ describe('legacyStartMinimised (a v1.x user keeps a quiet start)', () => {
     v1RunKey(app);
     const settings = store(null);
 
-    replaceLegacyLoginItems(
-      { launchOnStartup: true, startMinimised: legacyStartMinimised(true, settings) },
-      host(app)
-    );
+    replaceLegacyLoginItems({ launchOnStartup: true, startMinimised: settings }, host(app));
 
     expect(settings.value).toBe(true);
     expect(app.values).toEqual(new Map([[AUMID, `"${EXE_IN_PLACE}" --hidden`]]));
   });
+
+  it('a choice the person already stored is kept for the replaced entry', () => {
+    const app = new FakeRunKey();
+    v1RunKey(app);
+    const settings = store(false);
+
+    replaceLegacyLoginItems({ launchOnStartup: true, startMinimised: settings }, host(app));
+
+    expect(settings.set).not.toHaveBeenCalled();
+    expect(app.values).toEqual(new Map([[AUMID, `"${EXE_IN_PLACE}"`]]));
+  });
+
+  it.each([
+    ['macOS', { platform: 'darwin' as const }, true],
+    ['Linux', { platform: 'linux' as const }, true],
+    ['a dev build on Windows', {}, false],
+  ])(
+    '%s: nothing is replaced, so start minimised is not stored either',
+    (_case, overrides, packaged) => {
+      const app = new FakeRunKey(packaged);
+      const settings = store(null);
+
+      replaceLegacyLoginItems(
+        { launchOnStartup: true, startMinimised: settings },
+        host(app, overrides)
+      );
+
+      expect(settings.set).not.toHaveBeenCalled();
+      expect(settings.value).toBeNull();
+    }
+  );
 });

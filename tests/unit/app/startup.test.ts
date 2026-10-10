@@ -19,6 +19,8 @@ const mockState = {
   launchOnStartup: true as boolean | null,
   /** The stored `app.startMinimised` (null: none stored). */
   startMinimised: null as boolean | null,
+  /** The store index.ts hands `replaceLegacyLoginItems`. */
+  startMinimisedStore: null as null | { get(): boolean | null; set(value: boolean): void },
   finishOptions: null as null | Record<string, unknown>,
   openDatabaseError: null as Error | null,
   containerOptions: null as null | Record<string, unknown>,
@@ -142,13 +144,14 @@ jest.mock('@main/app/login-item', () => {
   const actual = jest.requireActual('@main/app/login-item');
   return {
     currentLaunchTarget: jest.fn(() => ({ platform: 'win32' })),
-    legacyStartMinimised: actual.legacyStartMinimised,
     startMinimisedSetting: actual.startMinimisedSetting,
     replaceLegacyLoginItems: jest.fn(
-      (choice: { launchOnStartup: boolean; startMinimised: boolean }) => {
-        mockOrder.push(
-          `replaceLegacyLoginItems ${choice.launchOnStartup} minimised ${choice.startMinimised}`
-        );
+      (choice: {
+        launchOnStartup: boolean;
+        startMinimised: { get(): boolean | null; set(value: boolean): void };
+      }) => {
+        mockOrder.push(`replaceLegacyLoginItems ${choice.launchOnStartup}`);
+        mockState.startMinimisedStore = choice.startMinimised;
         return { removed: [], registered: choice.launchOnStartup };
       }
     ),
@@ -206,6 +209,7 @@ beforeEach(() => {
   mockState.migrationOutcome = 'migrated';
   mockState.launchOnStartup = true;
   mockState.startMinimised = null;
+  mockState.startMinimisedStore = null;
   mockState.finishOptions = null;
   mockState.openDatabaseError = null;
   mockState.containerOptions = null;
@@ -300,26 +304,17 @@ describe('main process startup', () => {
     });
     mockOrder.length = 0;
     options.replaceLoginItems(true);
-    // v1.x always started hidden: the new entry starts minimised, and the setting says so
+    // Start minimised is decided inside the replacement (Windows, installed): startup stores
+    // nothing itself, and hands over the stored choice
+    expect(mockOrder).toEqual(['replaceLegacyLoginItems true']);
+    const store = mockState.startMinimisedStore;
+    expect(store?.get()).toBeNull();
+    store?.set(true);
     expect(mockOrder).toEqual([
+      'replaceLegacyLoginItems true',
       'settings.set app.startMinimised true',
-      'replaceLegacyLoginItems true minimised true',
     ]);
-
-    // Run again (the follow-up retried): nothing new is stored, the entry still matches
-    mockOrder.length = 0;
-    options.replaceLoginItems(true);
-    expect(mockOrder).toEqual(['replaceLegacyLoginItems true minimised true']);
-  });
-
-  it('a v1.x user without launch at login gets no start minimised setting', async () => {
-    mockState.launchOnStartup = false;
-    await launch();
-    const options = mockState.finishOptions as { replaceLoginItems: (on: boolean) => unknown };
-
-    mockOrder.length = 0;
-    options.replaceLoginItems(false);
-    expect(mockOrder).toEqual(['replaceLegacyLoginItems false minimised false']);
+    expect(store?.get()).toBe(true);
   });
 
   it.each<[boolean | null, boolean]>([

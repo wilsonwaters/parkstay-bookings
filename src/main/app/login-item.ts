@@ -84,6 +84,14 @@ export function launchExecutable(host: Pick<LaunchTarget, 'env' | 'execPath'>): 
   return host.env.PORTABLE_EXECUTABLE_FILE || host.execPath;
 }
 
+/**
+ * Whether the OS honours launch at login: Electron's `setLoginItemSettings` acts on Windows
+ * and macOS only, so elsewhere (Linux) the switch is unavailable rather than stored as on.
+ */
+export function launchAtLoginSupported(platform: NodeJS.Platform): boolean {
+  return platform === 'win32' || platform === 'darwin';
+}
+
 /** What a login launch does: start at all, and open minimised. */
 export interface LaunchAtLoginChoice {
   enabled: boolean;
@@ -187,12 +195,16 @@ export interface ReplaceLegacyLoginItemsResult {
 
 /**
  * After the first-run migration (Windows, packaged only): removes the v1.x Run values, then
- * registers the WA Stay entry if the migrated setting `launchOnStartup` is on, with
- * `--hidden` when `startMinimised` is. Elsewhere it does nothing: v1.x shipped only for
- * Windows, and a dev build never registers.
+ * registers the WA Stay entry if the migrated setting `launchOnStartup` is on. v1.x always
+ * started hidden, so that entry starts minimised (`legacyStartMinimised`, which stores the
+ * choice). Elsewhere it does nothing and stores nothing: v1.x shipped only for Windows, and a
+ * dev build never registers.
  */
 export function replaceLegacyLoginItems(
-  { launchOnStartup, startMinimised }: { launchOnStartup: boolean; startMinimised: boolean },
+  {
+    launchOnStartup,
+    startMinimised,
+  }: { launchOnStartup: boolean; startMinimised: StartMinimisedStore },
   host: LoginItemHost
 ): ReplaceLegacyLoginItemsResult {
   if (host.platform !== 'win32' || !host.app.isPackaged) return { removed: [], registered: false };
@@ -206,9 +218,10 @@ export function replaceLegacyLoginItems(
   );
 
   if (launchOnStartup) {
-    setLaunchAtLogin({ enabled: true, startMinimised }, host);
+    const minimised = legacyStartMinimised(true, startMinimised);
+    setLaunchAtLogin({ enabled: true, startMinimised: minimised }, host);
     host.log.info(
-      `legacy-install: launch at login registered for WA Stay${startMinimised ? ', minimised' : ''}`
+      `legacy-install: launch at login registered for WA Stay${minimised ? ', minimised' : ''}`
     );
   }
   return { removed, registered: launchOnStartup };

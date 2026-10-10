@@ -5,7 +5,8 @@ import { Button, Notice, Skeleton, Switch, useAnnounce } from '../../../componen
 
 /**
  * Settings → App: how WA Stay starts. Launch at login is an OS entry that only the installed
- * app can register; a refusal shows its reason under the switch, which goes back to off.
+ * app can register; a refusal shows its reason under the switch, which goes back to off. Where
+ * the OS cannot start apps at sign-in (Linux) both switches are unavailable, and say so.
  * "Start minimised" opens the window minimised to the taskbar on a login launch (there is no
  * tray: closing the window quits WA Stay).
  */
@@ -39,6 +40,8 @@ export function AppSection() {
   }
 
   const { enabled, startMinimised } = launch.data;
+  // Linux: the OS cannot start WA Stay at sign-in, so nothing can be switched on
+  const supported = launch.data.supported !== false;
   const save = (next: { enabled: boolean; startMinimised?: boolean }, said: string) => {
     setError(null);
     setLaunch.mutate(next, {
@@ -53,11 +56,15 @@ export function AppSection() {
         <div className="flex flex-col gap-2 pb-5">
           <Switch
             label="Start WA Stay when you sign in"
-            description="WA Stay checks your watches only while it is running. Starting it when you sign in to your computer keeps them going after a restart."
+            description={
+              supported
+                ? 'WA Stay checks your watches only while it is running. Starting it when you sign in to your computer keeps them going after a restart.'
+                : 'Available on Windows and macOS only. WA Stay checks your watches only while it is running.'
+            }
             aria-describedby={error ? 'launch-at-login-error' : undefined}
             aria-invalid={error ? true : undefined}
             checked={enabled}
-            disabled={setLaunch.isPending}
+            disabled={!supported || setLaunch.isPending}
             onChange={(event) => {
               const on = event.target.checked;
               save({ enabled: on }, `Start when you sign in ${on ? 'on' : 'off'}`);
@@ -83,7 +90,7 @@ export function AppSection() {
               : 'Requires starting WA Stay when you sign in.'
           }
           checked={startMinimised}
-          disabled={!enabled || setLaunch.isPending}
+          disabled={!supported || !enabled || setLaunch.isPending}
           onChange={(event) => {
             const on = event.target.checked;
             save({ enabled: true, startMinimised: on }, `Start minimised ${on ? 'on' : 'off'}`);

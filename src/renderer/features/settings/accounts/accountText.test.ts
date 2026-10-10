@@ -107,6 +107,24 @@ describe('accountPurpose ("Needed for")', () => {
   });
 });
 
+describe('accountPurpose when signed in', () => {
+  it('an optional account no longer asks to connect; it says what being signed in gives', () => {
+    expect(accountPurpose(PARKSTAY, account({ status: 'signed-in' }))).toBe(
+      "Optional. Checkout is quicker while you're signed in."
+    );
+    // Signed out, or not yet answered: the soft suggestion (§12.32)
+    for (const stored of [undefined, account(), account({ status: 'signed-out' })]) {
+      expect(accountPurpose(PARKSTAY, stored)).toMatch(
+        /^Optional\. Connect ParkStay before a release/
+      );
+    }
+    // A required account reads the same either way
+    expect(accountPurpose(FAKESTAY, account({ status: 'signed-in' }))).toBe(
+      accountPurpose(FAKESTAY, undefined)
+    );
+  });
+});
+
 describe('missingAccountWarning', () => {
   it('only for a provider that needs the account, while not signed in', () => {
     expect(missingAccountWarning(PARKSTAY, undefined)).toBeNull();

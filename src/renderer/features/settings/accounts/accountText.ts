@@ -63,18 +63,27 @@ export function accountRowText(
   return { status: 'Not connected', tone, action: 'connect', meta };
 }
 
-/** What the account is needed for, from the manifest's capabilities. */
-export function accountPurpose(manifest: ProviderManifest): string {
-  const { account, holds, bookingImport } = manifest.capabilities;
+/**
+ * What the account is needed for, from the manifest's capabilities. Signed in to an optional
+ * account, the suggestion to connect becomes what being signed in gives.
+ */
+export function accountPurpose(
+  manifest: ProviderManifest,
+  account?: Pick<ProviderAccount, 'status'>
+): string {
+  const { account: requirement, holds, bookingImport } = manifest.capabilities;
   const name = manifest.shortName;
+  const signedIn = account?.status === 'signed-in';
   let purpose: string;
-  switch (account) {
+  switch (requirement) {
     case 'none':
       return 'No account needed.';
     case 'optional':
-      purpose = holds
-        ? `Optional. Connect ${name} before a release so checkout is quicker. Holds work without it.`
-        : 'Optional.';
+      if (!holds) purpose = 'Optional.';
+      else if (signedIn) purpose = "Optional. Checkout is quicker while you're signed in.";
+      else {
+        purpose = `Optional. Connect ${name} before a release so checkout is quicker. Holds work without it.`;
+      }
       break;
     case 'required-for-holds':
       purpose = 'Needed for holds (Site Sniper and automatic holds).';

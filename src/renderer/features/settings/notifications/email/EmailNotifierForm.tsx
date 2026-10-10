@@ -9,6 +9,7 @@ import {
   canKeepPassword,
   emailFormDefaults,
   emailFormSchema,
+  serverOf,
   toConfigureInput,
   type EmailFormValues,
 } from './emailForm';
@@ -143,6 +144,7 @@ export function EmailNotifierForm({ notifier, onClose }: EmailNotifierFormProps)
           <SendTestButton
             save={formState.isDirty || mode === 'entry' ? saveForTest : undefined}
             recipient={values.toEmail.trim() || values.user.trim()}
+            server={serverOf(values)}
           />
         )}
       </form>

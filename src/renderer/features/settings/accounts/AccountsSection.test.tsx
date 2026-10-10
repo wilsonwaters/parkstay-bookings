@@ -24,11 +24,11 @@ describe('Settings → Accounts: rows and sign-in', () => {
     const parkstay = row('ParkStay WA');
     expect(within(parkstay).getByText('Signed in as ann@example.com')).toBeInTheDocument();
     expect(within(parkstay).getByText('last signed in Sat 3 Oct 2026')).toBeInTheDocument();
+    // Signed in: no suggestion to connect, only what it gives
     expect(
-      within(parkstay).getByText(
-        'Optional. Connect ParkStay before a release so checkout is quicker. Holds work without it.'
-      )
+      within(parkstay).getByText("Optional. Checkout is quicker while you're signed in.")
     ).toBeInTheDocument();
+    expect(within(parkstay).queryByText(/Connect ParkStay before a release/)).toBeNull();
     expect(within(parkstay).getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
 
     const fake = row('Fake Stay');
@@ -75,6 +75,9 @@ describe('Settings → Accounts: rows and sign-in', () => {
       name: 'Waiting for sign-in…',
     });
     expect(waiting).toHaveAttribute('aria-busy', 'true');
+    // "Connect" still holds its place (hidden), so the button keeps the wider label's width
+    expect(within(waiting).getByText('Connect')).toHaveAttribute('aria-hidden', 'true');
+    expect(within(waiting).getByText('Waiting for sign-in…')).not.toHaveAttribute('aria-hidden');
     // One sign-in at a time
     expect(within(row('Fake Stay')).getByRole('button', { name: 'Connect' })).toBeDisabled();
 

@@ -8,7 +8,8 @@ import fs from 'fs';
 import os from 'os';
 import { contract, SETTING_KEYS, type LaunchAtLogin } from '@shared/contracts';
 import type { AppContainer } from '../../app/container';
-import { setLaunchAtLogin } from '../../app/login-item';
+import { launchAtLoginSupported, setLaunchAtLogin } from '../../app/login-item';
+import { AppError } from '../../utils/app-error';
 import { readSetting } from '../../app/settings-values';
 import { logger } from '../../utils/logger';
 import type { Handle } from '../handle';
@@ -38,12 +39,21 @@ export function registerAppHandlers(handle: Handle, c: AppContainer): void {
     return true;
   });
 
+  // `setLoginItemSettings` acts on Windows and macOS only: elsewhere nothing is stored as on
+  const supported = () => launchAtLoginSupported(process.platform);
   const readLaunchAtLogin = (): LaunchAtLogin => ({
-    enabled: readSetting(settings, 'launchOnStartup'),
+    enabled: supported() && readSetting(settings, 'launchOnStartup'),
     startMinimised: readSetting(settings, 'app.startMinimised'),
+    supported: supported(),
   });
 
   handle(api.setAutoLaunch, ({ enabled, startMinimised: requested }) => {
+    if (enabled && !supported()) {
+      throw new AppError(
+        'VALIDATION',
+        'Starting at sign-in is available on Windows and macOS only.'
+      );
+    }
     // In dev mode, process.execPath points to node_modules/electron/dist/electron.exe,
     // which when launched at login has no app context and shows Electron's generic
     // welcome window. Refuse to register — auto-launch only makes sense for packaged builds.
@@ -68,7 +78,7 @@ export function registerAppHandlers(handle: Handle, c: AppContainer): void {
     logger.info(
       `Auto-launch ${enabled ? 'enabled' : 'disabled'}${enabled && startMinimised ? ', minimised' : ''}`
     );
-    return { enabled, startMinimised };
+    return { enabled, startMinimised, supported: supported() };
   });
 
   handle(api.getAutoLaunch, readLaunchAtLogin);

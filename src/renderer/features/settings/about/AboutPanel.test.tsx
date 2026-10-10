@@ -36,4 +36,16 @@ describe('AboutPanel', () => {
       'https://github.com/wilsonwaters/wa-stay'
     );
   });
+
+  it('keeps the runtime versions in a "Technical details" disclosure, closed at first', async () => {
+    const { user } = renderWithProviders(<AboutPanel />);
+    const details = await screen.findByRole('button', { name: 'Technical details' });
+
+    expect(details).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Electron')).not.toBeVisible();
+
+    await user.click(details);
+    expect(details).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Electron')).toBeVisible();
+  });
 });

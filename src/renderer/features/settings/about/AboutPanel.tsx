@@ -3,7 +3,7 @@ import { FolderOpen } from 'lucide-react';
 import { APP_DESCRIPTION, APP_ISSUES_URL, APP_REPO_URL } from '@shared/constants';
 import { useAppInfo, useOpenLogsFolder } from '../../../api';
 import { ExternalLink } from '../../../components/ExternalLink';
-import { Button, Notice, Spinner } from '../../../components/ui';
+import { Button, Disclosure, Notice, Spinner } from '../../../components/ui';
 import { cx } from '../../../components/ui/cx';
 
 export interface AboutPanelProps {
@@ -22,8 +22,8 @@ export interface AboutPanelProps {
 }
 
 /**
- * About WA Stay: the version, what the app is, the runtime details, where to get help and the
- * logs folder. The single source for About content (master plan, shared building blocks): the
+ * About WA Stay: the version, what the app is, the runtime details (in a "Technical details"
+ * disclosure, closed at first), where to get help and the logs folder. The single source for About content (master plan, shared building blocks): the
  * account menu's About dialog wraps it, and Settings → About renders it with its own `actions`
  * and `children`. It has no heading of its own, so it fits under either one.
  */
@@ -54,19 +54,22 @@ export function AboutPanel({ actions, children, align = 'center' }: AboutPanelPr
         </Notice>
       )}
       {info.data && (
-        <dl className="mt-4 space-y-1.5 rounded-lg bg-surface-subtle p-3 text-sm">
-          {[
-            ['Electron', info.data.electronVersion],
-            ['Chrome', info.data.chromeVersion],
-            ['Node.js', info.data.nodeVersion],
-            ['OS', `${info.data.os} (${info.data.arch})`],
-          ].map(([label, value]) => (
-            <div key={label} className="flex justify-between gap-4">
-              <dt className="text-fg-secondary">{label}</dt>
-              <dd className="text-right tabular-nums text-fg">{value}</dd>
-            </div>
-          ))}
-        </dl>
+        // Runtime versions are for bug reports, so they start folded away
+        <Disclosure summary="Technical details" className="mt-4">
+          <dl className="space-y-1.5 rounded-lg bg-surface-subtle p-3 text-sm">
+            {[
+              ['Electron', info.data.electronVersion],
+              ['Chrome', info.data.chromeVersion],
+              ['Node.js', info.data.nodeVersion],
+              ['OS', `${info.data.os} (${info.data.arch})`],
+            ].map(([label, value]) => (
+              <div key={label} className="flex justify-between gap-4">
+                <dt className="text-fg-secondary">{label}</dt>
+                <dd className="text-right tabular-nums text-fg">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </Disclosure>
       )}
 
       <div
