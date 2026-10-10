@@ -7,7 +7,8 @@ Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task spe
 
 ## Currently in flight
 - **P7** (#18) Dead code cleanup: implementing (M), lane P: constants, leftover types, migration v10 (drop `job_logs`), real retention job for notifications/delivery logs, remove the Gmail OTP back end and `electron-store`/`googleapis`, stale root docs, de-flake the ExploreMap timing test. Stays out of U2's files.
-- Next (multiple agents approved): P7 review; Q1 phase-2 review, Q2 (docs, CLAUDE.md incl. `RATE_LIMITED`, key components), system verification, final review, PR.
+- **Q1 phase 2** (#40): full independent review of the e2e suite (coverage vs success criteria, test-hook gating, 3 runs for flakes, CI) running on lane/v.
+- Next (multiple agents approved): P7 review; Q2 (docs, CLAUDE.md incl. `RATE_LIMITED`, key components), system verification, final review, PR.
 
 ## Notes
 - 2026-10-10 ~04:30 UTC: a third usage limit stopped U4 (final gate), U2 (gate), the U3 fix and the E3 fix; all resumed at 06:25 UTC from saved state (U4 `28f3e40` and U2 `cd243b0` backed up to `wip/*`).
