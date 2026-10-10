@@ -25,8 +25,9 @@ export const queryKeys = {
     detail: (key: string) => [...catalog, 'detail', key] as const,
     /** One location's availability for one stay (`catalog.checkLocation`). */
     check: (key: string, stay: unknown) => [...catalog, 'check', key, stay] as const,
-    availability: (stay: unknown, options?: unknown) =>
-      [...catalog, 'availability', stay, options ?? {}] as const,
+    /** One provider's bulk availability for one stay (`catalog.availability`), by stay key. */
+    availability: (stayKey: string, providerId: string) =>
+      [...catalog, 'availability', stayKey, providerId] as const,
     status: () => [...catalog, 'status'] as const,
   },
   notifications: {

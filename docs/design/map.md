@@ -64,10 +64,29 @@ The road layer ids above were checked against the style again on 2026-10-09 (148
 | `clusters` + `cluster-count` | Ink circle, white 2 px ring, white count (DIN Pro Bold 12, which the style already loads for state names). Radius 15, 19 from 10 places, 23 from 50. Clustered within 48 px up to zoom 10. |
 | `location-halo` | Behind a hovered or selected pin only: an ink circle at 16% opacity, radius 16. |
 | `location-dot` | Filled ink pin, white 2 px ring, radius 6. Hovered or selected (feature state): radius 9, white 3 px ring, with the halo. Pins never collide, so every place stays visible. |
-| `location-pill` | From zoom 8: the name, cut to 22 characters with "…", on a white SDF pill with an ink 1 px outline (`icon-text-fit: both`). Ink with white text while hovered or selected. Faded out (feature state `previewed`) while the place's preview is open. Overlapping pills hide; their pins stay. |
+| `location-pill` | From zoom 8: the name, cut to 22 characters with "…", on a white SDF pill with an ink 1 px outline (`icon-text-fit: both`). Ink with white text while hovered or selected. Faded out (feature state `previewed`) while the place's preview is open. Overlapping pills hide; their pins stay. With dates, the availability instead (below). |
 | DOM marker | One ink pill (Figtree, `shadow-pill`) for the hovered or selected place, above everything, even inside a cluster. Not shown for the place whose preview is open: the preview already names it. Decorative (`aria-hidden`): the card and the preview carry the name. |
 
-The app's layers use only ink and white (a test checks it). Ink on white and white on ink are 17.79:1 (`fg`/`surface`, `fg-inverse`/`surface-inverse` in the contrast table); an ink pin on sand land is 16.65:1 (`fg`/`canvas`), while the darkest marks on the base map, its place names, are ink-700.
+Without dates, the app's layers use only ink and white (a test checks it). Ink on white and white on ink are 17.79:1 (`fg`/`surface`, `fg-inverse`/`surface-inverse` in the contrast table); an ink pin on sand land is 16.65:1 (`fg`/`canvas`), while the darkest marks on the base map, its place names, are ink-700.
+
+### With dates (E3)
+
+Once dates are set in the search pill, every pill says how its place stands for the stay, at every zoom where the place is on its own (not only from zoom 8), instead of its name. The name stays in the preview and the DOM marker. The words carry the state; the colour repeats it.
+
+| State | Pill | Pill fill and text | Pin |
+| --- | --- | --- | --- |
+| A unit free every night | "8 available" | eucalypt-600, white (`fg-inverse`/`available`, 5.68:1) | filled eucalypt, white ring (`available`/`canvas`, 5.31:1) |
+| Full, or nothing open for the dates | "Full", "Not open" | sand-100, sand-600 (`fg-muted`/`surface-subtle`, 5.19:1) | filled sand-600, white ring (`fg-muted`/`canvas`, 5.60:1) |
+| Checked one place at a time, not bookable online, not shared, unknown or failed | "Check dates", "Info only", "–" | white, ink | hollow: white, ink ring |
+| Checking | "···" | white, ink, its fill pulsing | hollow: white, ink ring |
+
+- Every pill keeps its 1 px ink outline, and hovered or selected pills still turn ink with white text. Available pills are placed first where pills collide (`symbol-sort-key`), so a free place is never hidden behind a full one.
+- Clusters holding an available place turn eucalypt (the source's `clusterProperties.availableCount`), with the same white count.
+- While a provider is checking, the pills' fill opacity steps between 0.55 and 1 every 700 ms (`icon-opacity` with a 700 ms `icon-opacity-transition`), from one interval in `MapView` that stops when every provider has answered and when the map goes. Under reduced motion it does not pulse.
+- A small key sits under "Search as I move the map", only with dates: "Available" (a eucalypt dot), "Full or not open" (a muted dot), "Not checked" (a hollow dot), as the pins are drawn (a list named "Map key").
+- `cluster-count`'s white text is written as a feature-state expression (`['case', ACTIVE, white, white]`). Mapbox GL 3 redraws every symbol layer of a tile when another one's paint changes or transitions (the pulse, dates set or cleared), and while places have feature state it throws on a symbol layer that is not state dependent.
+- `setData` replaces the source's data once per change of places or availability, never per hover. Switching between names and availability restyles the pill, pin and cluster layers in place (`syncLayers`); feature state is kept.
+- Availability is one bulk call per provider for the whole catalogue (`catalog.availability`), asked 400 ms after the stay settles. Panning, zooming and "Search this area" ask nothing.
 
 The pill image is a signed distance field drawn in code (`pillImage()`): alpha 0.75 on the edge, falling 1/8 per pixel outwards at the image's pixel ratio, which is what Mapbox's SDF shader expects. That lets one image be recoloured and outlined per feature.
 

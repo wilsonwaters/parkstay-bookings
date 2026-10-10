@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode, type Ref } from 'react';
 import { CalendarRange, CircleAlert } from 'lucide-react';
 import { Button } from './Button';
 import { Popover } from './Popover';
@@ -32,6 +32,8 @@ export interface DateRangeFieldProps {
   /** Marks the field invalid; shown under it (in a `segment`, under the value) and read with it. */
   error?: ReactNode;
   className?: string;
+  /** The button that opens the calendar, e.g. to open it from elsewhere ("Try different dates"). */
+  triggerRef?: Ref<HTMLButtonElement>;
 }
 
 function display(value: DateRange, placeholder: string): string {
@@ -56,6 +58,7 @@ export function DateRangeField({
   hint,
   error,
   className,
+  triggerRef,
 }: DateRangeFieldProps) {
   const id = useId();
   const labelId = `${id}-label`;
@@ -72,6 +75,7 @@ export function DateRangeField({
   const trigger =
     appearance === 'segment' ? (
       <button
+        ref={triggerRef}
         type="button"
         aria-labelledby={`${labelId} ${valueId}`}
         aria-describedby={describedBy}
@@ -91,6 +95,7 @@ export function DateRangeField({
       </button>
     ) : (
       <button
+        ref={triggerRef}
         type="button"
         aria-labelledby={`${labelId} ${valueId}`}
         aria-describedby={describedBy}

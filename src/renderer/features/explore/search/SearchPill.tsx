@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type Ref } from 'react';
 import { Search } from 'lucide-react';
 import { todayIn } from '../../../../shared/utils/calendar-date';
 import {
@@ -29,6 +29,8 @@ export interface SearchPillProps {
   onSuggestion: (suggestion: Suggestion) => void;
   onDatesChange: (dates: DateRange) => void;
   onGuestsChange: (guests: Guests) => void;
+  /** When's button, to open the calendar from elsewhere ("Try different dates"). */
+  datesTriggerRef?: Ref<HTMLButtonElement>;
 }
 
 const Divider = () => <span aria-hidden="true" className="h-8 w-px shrink-0 bg-border" />;
@@ -47,6 +49,7 @@ export function SearchPill({
   onSuggestion,
   onDatesChange,
   onGuestsChange,
+  datesTriggerRef,
 }: SearchPillProps) {
   // What is typed; it follows `q` whenever `q` changes from elsewhere (Back, Clear filters).
   const [draft, setDraft] = useState(query);
@@ -142,6 +145,7 @@ export function SearchPill({
         onChange={onDatesChange}
         minDate={today}
         maxNights={MAX_NIGHTS}
+        triggerRef={datesTriggerRef}
       />
       <Divider />
       <GuestsField

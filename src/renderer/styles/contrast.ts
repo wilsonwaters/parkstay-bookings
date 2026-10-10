@@ -41,7 +41,12 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   pair('fg-secondary', 'surface-subtle', 'text', 'Secondary text on subtle fills, table headers'),
   pair('fg-muted', 'surface', 'text', 'Muted text: hints, timestamps, placeholders'),
   pair('fg-muted', 'canvas', 'text', 'Muted text on the page'),
-  pair('fg-muted', 'surface-subtle', 'text', 'Muted text on subtle fills, booked nights'),
+  pair(
+    'fg-muted',
+    'surface-subtle',
+    'text',
+    'Muted text on subtle fills, booked nights, full and not-open map pills'
+  ),
   pair('fg-inverse', 'surface-inverse', 'text', 'Tooltips, hovered and selected map pills'),
   pair('accent-fg', 'accent', 'text', 'Primary button label'),
   pair('accent-fg', 'accent-hover', 'text', 'Primary button label on hover'),
@@ -75,6 +80,7 @@ export const CONTRAST_PAIRS: readonly ContrastPair[] = [
   pair('brand', 'ocean-100', 'ui', 'Kind icon on the photo-placeholder dab'),
   pair('coral-400', 'surface', 'ui', 'Logo coral accent, a large graphic and never text'),
   pair('available', 'surface', 'ui', 'Available map pill against white map land'),
+  pair('available', 'canvas', 'ui', 'Available map pill and pin against sand map land'),
 ];
 
 const HEX = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;

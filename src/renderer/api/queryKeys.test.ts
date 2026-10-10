@@ -13,7 +13,10 @@ describe('queryKeys', () => {
       [queryKeys.catalog.all, queryKeys.catalog.search({ text: 'bay' })],
       [queryKeys.catalog.all, queryKeys.catalog.detail('parkstay:1')],
       [queryKeys.catalog.all, queryKeys.catalog.check('parkstay:1', { arrival: '2026-12-01' })],
-      [queryKeys.catalog.all, queryKeys.catalog.availability({ arrival: '2026-12-01' })],
+      [
+        queryKeys.catalog.all,
+        queryKeys.catalog.availability('2026-12-01_2026-12-03_2_0_0', 'parkstay'),
+      ],
       [queryKeys.catalog.all, queryKeys.catalog.status()],
       [queryKeys.notifications.all, queryKeys.notifications.list(20)],
       [queryKeys.notifications.all, queryKeys.notifications.unreadCount()],

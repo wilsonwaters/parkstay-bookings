@@ -1,9 +1,14 @@
 /**
  * The Explore journey through the whole renderer: the shell opens on Explore, a search, a
  * region filter, then a card to its detail page, a check of its dates, the hand-off to the
- * new watch flow (filled in), and back to Explore as it was left. And Explore with 5,000 places.
+ * new watch flow (filled in), and back to Explore as it was left. Dates on Explore,
+ * availability on the cards and "Available only" (E3). And Explore with 5,000 places.
  */
 import { act, configure, screen, waitFor, within } from '@testing-library/react';
+import { format, parseISO } from 'date-fns';
+import { stayRangeLabel } from '../../../src/renderer/components/nightGrid';
+import { addDays, todayIn } from '../../../src/shared/utils/calendar-date';
+import { bulkAvailabilityFor } from '../../fixtures/catalog/bulk-availability';
 import { PARKSTAY_LOCATIONS } from '../../fixtures/catalog/parkstay-locations';
 import { SYNTHETIC_LOCATIONS_5K } from '../../fixtures/catalog/synthetic-locations';
 import { catalogApi, placeApi } from '../../utils/renderer/catalog';
@@ -69,7 +74,7 @@ describe('Explore journey', () => {
     const stay = 'arrival=2099-01-10&departure=2099-01-12&adults=2';
     const { user, mock } = renderWithApp({ route: `/?${stay}`, api: placeApi() });
     const results = await screen.findByRole('region', { name: 'Results' });
-    await within(results).findByRole('heading', { name: '169 places' });
+    await within(results).findByRole('heading', { name: /^169 places · \d+ available/ });
 
     // A search and a region filter.
     await user.type(screen.getByRole('combobox', { name: 'Where' }), 'Cape{Enter}');
@@ -129,6 +134,60 @@ describe('Explore journey', () => {
         name: 'Bungarra',
       })
     ).toBeInTheDocument();
+  });
+
+  it('sets dates, shows availability, narrows to "Available only" and opens a place with the stay', async () => {
+    const { user, mock } = renderWithApp({ route: '/', api: placeApi() });
+    const results = await screen.findByRole('region', { name: 'Results' });
+    await within(results).findByRole('heading', { name: '169 places' });
+
+    // Dates from the search pill: tomorrow, for 2 nights (in Perth).
+    await user.click(screen.getByRole('button', { name: /^When/ }));
+    await user.keyboard('{ArrowRight}{Enter}{ArrowRight}{ArrowRight}{Enter}');
+    await user.keyboard('{Escape}');
+    const arrival = addDays(todayIn('Australia/Perth'), 1);
+    const departure = addDays(arrival, 2);
+    const stay = `arrival=${arrival}&departure=${departure}`;
+    expect(currentRoute()).toBe(`/?${stay}`);
+
+    // One bulk call for ParkStay, then every card says how it stands.
+    const available = bulkAvailabilityFor().filter((e) => e.availableUnits > 0);
+    const range = stayRangeLabel(arrival, departure);
+    expect(
+      await within(results).findByRole('heading', {
+        name: `169 places · ${available.length} available for ${range}`,
+      })
+    ).toBeInTheDocument();
+    expect(mock?.api.catalog.availability).toHaveBeenCalledTimes(1);
+    expect(mock?.api.catalog.availability).toHaveBeenCalledWith(
+      { arrival, departure, adults: 1, children: 0, infants: 0 },
+      { providerIds: ['parkstay'] }
+    );
+    const [first] = within(results).getAllByRole('link');
+    expect(first).toHaveAccessibleDescription(/\d+ of \d+ sites available/);
+
+    // Available only.
+    await user.click(screen.getByRole('button', { name: 'Available only' }));
+    expect(currentRoute()).toBe(`/?${stay}&avail=1`);
+    const cards = within(results).getAllByRole('link');
+    expect(cards).toHaveLength(40);
+    for (const card of cards) {
+      expect(card).toHaveAccessibleDescription(/\d+ of \d+ sites available/);
+    }
+
+    // Find Bungarra (3 of its 5 sites free) and open it: its page has the same stay.
+    await user.type(screen.getByRole('combobox', { name: 'Where' }), 'Bungarra{Enter}');
+    const bungarra = await within(results).findByRole('link', { name: 'Bungarra' });
+    expect(within(bungarra).getByText('3 of 5 sites available')).toBeInTheDocument();
+    await user.click(bungarra);
+    await screen.findByRole('heading', { level: 1, name: 'Bungarra' });
+    expect(currentRoute()).toBe(`/places/parkstay/20?${stay}`);
+    const card = screen.getByRole('region', { name: 'Check your dates' });
+    expect(within(card).getByRole('button', { name: /^Dates/ })).toHaveAccessibleName(
+      `Dates ${format(parseISO(arrival), 'EEE d MMM')} – ${format(parseISO(departure), 'EEE d MMM')}`
+    );
+    // Opening the place asked ParkStay nothing more.
+    expect(mock?.api.catalog.availability).toHaveBeenCalledTimes(1);
   });
 
   it('keeps only 40 cards on the page with 5,000 places, and still searches as you type', async () => {

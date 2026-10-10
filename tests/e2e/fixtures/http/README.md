@@ -14,6 +14,7 @@ http/
 └── parkstay/
     ├── manifest.json
     ├── campground_map.json      # the catalogue the app syncs 5 s after launch (V5), Explore's places (E1)
+    ├── campground_availabilty_view.json   # every campground's free sites for any stay, Explore's dates (E3)
     ├── campsite_availablity_view_20.json  # Bungarra's sites and description, for its detail page (E2) and a new watch's first check (U1)
     └── profile-signed-out.json  # /api/profile signed out (403), the account check at launch (V6)
 ```
@@ -69,6 +70,11 @@ test attaches that log as `unexpected-requests`, which lists exactly the routes 
   Explore journey (E1), 11 in all. They cover `campground_type` 0 (5), 1 (2), 2 (3) and 4 (1)
   across 8 regions (Pilbara, Kimberley, South Coast, Goldfields, Midwest, South West, Swan,
   Warren), each with its images and features, and at most 3 campsites.
+  `campground_availabilty_view.json` answers Explore's bulk availability (E3) for any dates, in
+  ParkStay's shape (`api.py`: `total_available` is a campground's site count, `total_bookable`
+  the sites free every night, both 0 past the 180-day horizon), sized to those 3 campsites:
+  Bungarra 2 free, Lucky Bay 3, Workmans Pool 1, Kurrajong full, Temple Gorge not open, and no
+  totals for the campgrounds not bookable online.
 - **ParkStay, E2 and U1**: `campsite_availablity_view_20.json` is the Jest fixture
   `tests/fixtures/parkstay/campsite_availablity_view_20.json` (the public per-campground view
   for Bungarra, campground 20), copied unchanged; it answers Bungarra's detail page and a new

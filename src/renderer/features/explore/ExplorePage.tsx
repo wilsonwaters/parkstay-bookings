@@ -10,7 +10,7 @@ import {
   type CSSProperties,
 } from 'react';
 import { useLocation } from 'react-router-dom';
-import { List, Map as MapIcon } from 'lucide-react';
+import { Hourglass, List, Map as MapIcon } from 'lucide-react';
 import type {
   BoundingBox,
   CatalogQuery,
@@ -19,32 +19,46 @@ import type {
 } from '../../../shared/types/catalog.types';
 import {
   normaliseCatalogQuery,
+  stayKey,
   toApiError,
+  useBulkAvailability,
   useCatalogAll,
   useCatalogRefresh,
   useCatalogSearch,
   useCatalogStatus,
   useCatalogUpdates,
+  useProviders,
   useProvidersWith,
 } from '../../api';
 import type { PlaceLinkState } from '../../app/routes';
 import type { StayParams } from '../../app/stayParams';
+import type { CardAvailability } from '../../components/LocationCard';
 import { hasMapLocation, placesLabel } from '../../components/locationFormat';
+import { stayRangeLabel } from '../../components/nightGrid';
 import { Button, Notice, Spinner, useAnnounce, type Guests } from '../../components/ui';
 import { cx } from '../../components/ui/cx';
 import { useMinWidth } from '../../components/ui/useMinWidth';
+import {
+  availabilityLabel,
+  deriveAvailability,
+  sortByAvailability,
+  type PlaceAvailability,
+} from './availability/deriveAvailability';
+import { exploreStay } from './availability/stay';
+import { useSlowLoads } from './availability/useSlowLoads';
 import { buildFacets, type ExploreFilters } from './filters/facets';
 import { FilterRow } from './filters/FilterRow';
 import { boundsOf, centreOf, PLACE_ZOOM, WA_BOUNDS, withinBbox } from './map/geo';
 import { detectMapSupport } from './map/mapSupport';
 import type { FitRequest, FlyRequest } from './map/MapView';
-import type { MapCamera, MapViewState } from './map/types';
+import type { MapCamera, MapViewState, PinAvailability } from './map/types';
 import { orderPlaces } from './results/order';
 import { ResultsList, type ResultsState } from './results/ResultsList';
 import { SearchPill } from './search/SearchPill';
 import { buildSuggestionIndex, type Suggestion } from './search/suggestions';
 import { hasActiveFilters, type ExploreParams, type KnownValues } from './state/exploreParams';
 import { createHighlightStore, HighlightContext } from './state/highlight';
+import { useDebouncedValue } from './state/useDebouncedValue';
 import { useExploreScrollMemory } from './state/scrollMemory';
 import { useExploreParams } from './state/useExploreParams';
 import { useOnline } from './state/useOnline';
@@ -60,6 +74,11 @@ const WA_BBOX: BoundingBox = [WA_BOUNDS[0][0], WA_BOUNDS[0][1], WA_BOUNDS[1][0],
 export const ANNOUNCE_DELAY_MS = 500;
 /** How often an empty catalogue's sync state is asked for. */
 const STATUS_POLL_MS = 3000;
+/** Availability is asked for once the dates and guests have stayed the same this long. */
+export const STAY_DEBOUNCE_MS = 400;
+/** A provider still checking availability after this long gets a notice (EQ7). */
+export const SLOW_AVAILABILITY_MS = 10_000;
+const ALL_PLACES: PlaceAvailability = { state: 'no-dates' };
 const HEADER_HEIGHT = 64;
 
 const unique = (values: Iterable<string | undefined>) =>
@@ -214,6 +233,112 @@ export default function ExplorePage() {
     () => (area ? results.filter((item) => withinBbox(item, area)) : results),
     [results, area]
   );
+
+  // ---- Availability for the dates (E3) ----------------------------------------------------
+  // One bulk call per provider for the whole catalogue, once the stay has settled; panning the
+  // map or changing filters asks nothing.
+  const manifestsQuery = useProviders();
+  const manifests = useMemo(
+    () => new Map((manifestsQuery.data ?? []).map((manifest) => [manifest.id, manifest])),
+    [manifestsQuery.data]
+  );
+  const bulkProviders = useMemo(
+    () =>
+      [...manifests.values()].filter(
+        (m) => m.capabilities.catalog && m.capabilities.bulkAvailability
+      ),
+    [manifests]
+  );
+  const stay = useMemo(
+    () =>
+      exploreStay({
+        arrival: params.arrival,
+        departure: params.departure,
+        adults: params.adults,
+        children: params.children,
+        infants: params.infants,
+      }),
+    [params.arrival, params.departure, params.adults, params.children, params.infants]
+  );
+  const currentStayKey = stay ? stayKey(stay) : null;
+  const settledStayKey = useDebouncedValue(currentStayKey, STAY_DEBOUNCE_MS);
+  const bulk = useBulkAvailability(stay, { settled: settledStayKey === currentStayKey, online });
+  const statuses = bulk.statusByProvider;
+  const checking = stay !== null && Object.values(statuses).includes('loading');
+  const answered = Object.values(statuses).includes('success');
+  const range = stay ? stayRangeLabel(stay.arrival, stay.departure) : null;
+
+  const availableOnlyUnavailable = !stay
+    ? 'Add dates to filter by availability'
+    : manifestsQuery.isSuccess && bulkProviders.length === 0
+      ? "Availability filtering isn't supported by these providers"
+      : undefined;
+  const availableOnly = params.avail && !availableOnlyUnavailable;
+
+  /** Each result's availability for the stay; null without one. */
+  const placeAvailability = useMemo(() => {
+    if (!stay) return null;
+    const out = new Map<string, PlaceAvailability>();
+    for (const item of results) {
+      out.set(
+        item.key,
+        deriveAvailability(item, {
+          staySet: true,
+          capabilities: manifests.get(item.providerId)?.capabilities,
+          status: statuses[item.providerId],
+          errorCode: bulk.errors[item.providerId]?.code,
+          entry: bulk.byKey.get(item.key),
+        })
+      );
+    }
+    return out;
+  }, [stay, results, manifests, statuses, bulk.errors, bulk.byKey]);
+
+  /** How each result's availability reads on its card and its map pill. */
+  const { cardAvailability, pinAvailability } = useMemo(() => {
+    if (!placeAvailability) return { cardAvailability: null, pinAvailability: null };
+    const cards = new Map<string, CardAvailability>();
+    const pins = new Map<string, PinAvailability>();
+    for (const item of results) {
+      const availability = placeAvailability.get(item.key) ?? ALL_PLACES;
+      const shortName = manifests.get(item.providerId)?.shortName ?? item.providerId;
+      const label = availabilityLabel(availability, item.kind, shortName);
+      if (!label) continue;
+      cards.set(
+        item.key,
+        label.tone ? { status: 'ready', text: label.card, tone: label.tone } : { status: 'loading' }
+      );
+      pins.set(item.key, { state: availability.state, pill: label.pill });
+    }
+    return { cardAvailability: cards, pinAvailability: pins };
+  }, [placeAvailability, results, manifests]);
+
+  const isAvailable = useCallback(
+    (item: LocationSummary) => placeAvailability?.get(item.key)?.state === 'available',
+    [placeAvailability]
+  );
+  // "Available only" applies after the filters and the map area.
+  const shownPlaces = useMemo(
+    () => (availableOnly ? visible.filter(isAvailable) : visible),
+    [availableOnly, visible, isAvailable]
+  );
+  const mapItems = useMemo(
+    () => (availableOnly ? results.filter(isAvailable) : results),
+    [availableOnly, results, isAvailable]
+  );
+  const availableCount = useMemo(
+    () => (placeAvailability ? visible.filter(isAvailable).length : 0),
+    [placeAvailability, visible, isAvailable]
+  );
+  const availabilityNote =
+    !stay || bulkProviders.length === 0
+      ? undefined
+      : checking
+        ? 'checking availability…'
+        : answered
+          ? `${availableCount} available for ${range}`
+          : undefined;
+
   const epochRef = useRef(epoch);
   epochRef.current = epoch;
   const lastCamera = useRef<MapCamera | null>(params.map);
@@ -227,16 +352,20 @@ export default function ExplorePage() {
   // the map area (or of the results the map shows), or by name without a map.
   const resultsBounds = useMemo(() => boundsOf(results), [results]);
   const [centreLng, centreLat] = mapMode ? centreOf(area ?? resultsBounds ?? WA_BBOX) : [];
-  const listed = useMemo(
-    () =>
-      params.q
-        ? visible
-        : orderPlaces(
-            visible,
-            centreLng === undefined || centreLat === undefined ? null : [centreLng, centreLat]
-          ),
-    [visible, params.q, centreLng, centreLat]
-  );
+  // With dates, once every provider has answered, available places come first (most free
+  // units first) and each group keeps this order. While one is still checking the order
+  // holds, so the list moves once rather than twice.
+  const listed = useMemo(() => {
+    const ordered = params.q
+      ? shownPlaces
+      : orderPlaces(
+          shownPlaces,
+          centreLng === undefined || centreLat === undefined ? null : [centreLng, centreLat]
+        );
+    return placeAvailability && !checking
+      ? sortByAvailability(ordered, (item) => placeAvailability.get(item.key) ?? ALL_PLACES)
+      : ordered;
+  }, [shownPlaces, params.q, centreLng, centreLat, placeAvailability, checking]);
 
   const requestId = useRef(0);
   const [fitRequest, setFitRequest] = useState<FitRequest | null>(null);
@@ -338,10 +467,16 @@ export default function ExplorePage() {
   };
 
   // ---- Actions ---------------------------------------------------------------------------
-  const clearFilters = () =>
-    updateSearch({ providers: [], kinds: [], regions: [], amenities: [], online: false });
-  const clearSearch = () =>
-    updateSearch({ q: '', providers: [], kinds: [], regions: [], amenities: [], online: false });
+  const NO_FILTERS = {
+    providers: [],
+    kinds: [],
+    regions: [],
+    amenities: [],
+    online: false,
+    avail: false,
+  } satisfies Partial<ExploreParams>;
+  const clearFilters = () => updateSearch(NO_FILTERS);
+  const clearSearch = () => updateSearch({ q: '', ...NO_FILTERS });
   const showAll = () => {
     setMovedFor(null);
     setApplied(null);
@@ -357,8 +492,14 @@ export default function ExplorePage() {
     if (epoch !== null) setApplied({ epoch, bbox });
   };
 
+  // Clearing the dates turns "Available only" off with them.
   const onDates = ({ arrival, departure }: { arrival?: string; departure?: string }) =>
-    update({ arrival: arrival ?? null, departure: departure ?? null });
+    update({
+      arrival: arrival ?? null,
+      departure: departure ?? null,
+      ...(arrival ? {} : { avail: false }),
+    });
+  const datesTriggerRef = useRef<HTMLButtonElement>(null);
   const onGuests = (guests: Guests) =>
     update({ adults: guests.adults, children: guests.children, infants: guests.infants });
   const guests: Guests | undefined =
@@ -384,7 +525,9 @@ export default function ExplorePage() {
     else state = { kind: 'syncing' };
   } else if (result.items.length === 0) state = { kind: 'no-matches' };
   else if (area && visible.length === 0) state = { kind: 'empty-area' };
-  else state = { kind: 'results' };
+  else if (availableOnly && shownPlaces.length === 0 && range) {
+    state = checking ? { kind: 'checking' } : { kind: 'none-available', range, checked: answered };
+  } else state = { kind: 'results' };
 
   const scrollMemory = useExploreScrollMemory(state.kind === 'results');
 
@@ -412,6 +555,37 @@ export default function ExplorePage() {
     }, ANNOUNCE_DELAY_MS);
     return () => clearTimeout(timer);
   }, [message, epoch, announce]);
+
+  // ---- Announce availability once it settles for a stay, and each provider that failed ----
+  const settledMessage =
+    stay && range && epoch !== null && bulkProviders.length > 0 && !checking && answered
+      ? `${availableCount} of ${visible.length} places have sites available for ${range}`
+      : null;
+  const announcedStay = useRef<string | null>(null);
+  useEffect(() => {
+    if (!settledMessage || !currentStayKey || announcedStay.current === currentStayKey) return;
+    announcedStay.current = currentStayKey;
+    announce(settledMessage);
+  }, [settledMessage, currentStayKey, announce]);
+
+  const announcedErrors = useRef(new WeakSet<object>());
+  useEffect(() => {
+    for (const manifest of bulkProviders) {
+      const error = bulk.errors[manifest.id];
+      if (!error || announcedErrors.current.has(error)) continue;
+      announcedErrors.current.add(error);
+      announce(`Couldn't check availability on ${manifest.shortName}`, 'assertive');
+    }
+  }, [bulk.errors, bulkProviders, announce]);
+
+  const slowLoads = useSlowLoads(
+    stay
+      ? bulkProviders
+          .filter((m) => statuses[m.id] === 'loading')
+          .map((m) => `${currentStayKey}|${m.id}`)
+      : [],
+    SLOW_AVAILABILITY_MS
+  );
 
   // ---- Below 1024 px: one pane at a time --------------------------------------------------
   const listPaneRef = useRef<HTMLDivElement>(null);
@@ -453,6 +627,48 @@ export default function ExplorePage() {
   } as CSSProperties;
 
   // ---- Notices -----------------------------------------------------------------------------
+  // One notice per provider that failed or is slow, never one per card.
+  const availabilityNotices = stay
+    ? bulkProviders.map((manifest) => {
+        const { id, shortName } = manifest;
+        if (statuses[id] === 'error') {
+          const queue = bulk.errors[id]?.code === 'ACCESS_GATE' && manifest.capabilities.accessGate;
+          return (
+            <Notice
+              key={id}
+              tone={queue ? 'warning' : 'danger'}
+              icon={queue ? Hourglass : undefined}
+              actions={
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  aria-label={`Retry ${shortName} availability`}
+                  onClick={() => bulk.refetch(id)}
+                >
+                  Retry
+                </Button>
+              }
+            >
+              Couldn&apos;t check availability on {shortName}.
+              {queue && ` ${shortName} has a waiting queue right now. Try again in a few minutes.`}
+            </Notice>
+          );
+        }
+        if (statuses[id] === 'loading' && slowLoads.has(`${currentStayKey}|${id}`)) {
+          return (
+            <Notice key={id} tone="info">
+              Still checking {shortName}…
+              {manifest.capabilities.accessGate && ' It may have a waiting queue right now.'}
+            </Notice>
+          );
+        }
+        return null;
+      })
+    : [];
+  const hasAvailabilityNotices =
+    Boolean(stay && !online && bulkProviders.length > 0) ||
+    availabilityNotices.some((notice) => notice !== null);
+
   const notices = (
     <>
       {!online && (
@@ -483,6 +699,10 @@ export default function ExplorePage() {
           )}
         </Notice>
       )}
+      {stay && !online && bulkProviders.length > 0 && (
+        <Notice tone="info">Availability needs an internet connection.</Notice>
+      )}
+      {availabilityNotices}
       {support.available && mapFailure && (
         <Notice
           tone="warning"
@@ -504,7 +724,12 @@ export default function ExplorePage() {
       )}
     </>
   );
-  const hasNotices = !online || Boolean(searchError && result) || !support.available || mapFailure;
+  const hasNotices =
+    !online ||
+    Boolean(searchError && result) ||
+    !support.available ||
+    mapFailure ||
+    hasAvailabilityNotices;
 
   return (
     <HighlightContext.Provider value={highlight}>
@@ -528,6 +753,7 @@ export default function ExplorePage() {
             onSuggestion={onSuggestion}
             onDatesChange={onDates}
             onGuestsChange={onGuests}
+            datesTriggerRef={datesTriggerRef}
           />
           <div className="mx-auto mt-4 w-full max-w-[860px]">
             <FilterRow
@@ -536,6 +762,8 @@ export default function ExplorePage() {
               showKinds={facets.kinds.length > 1}
               onChange={updateSearch}
               onClearAll={clearFilters}
+              availableOnlyUnavailable={availableOnlyUnavailable}
+              onAvailableOnlyChange={(avail) => update({ avail })}
             />
           </div>
         </div>
@@ -570,6 +798,11 @@ export default function ExplorePage() {
               linkState={detailState}
               initialShown={scrollMemory.initialShown}
               onShownChange={scrollMemory.setShown}
+              placeCount={visible.length}
+              availabilityNote={availabilityNote}
+              availability={cardAvailability}
+              onShowAllPlaces={() => update({ avail: false })}
+              onTryOtherDates={() => datesTriggerRef.current?.click()}
             />
           </div>
 
@@ -596,7 +829,7 @@ export default function ExplorePage() {
                 <MapView
                   key={mapAttempt}
                   token={support.token}
-                  items={results}
+                  items={mapItems}
                   lookup={(key) => catalogueByKey.get(key) ?? results.find((r) => r.key === key)}
                   initialCamera={params.map}
                   selectedKey={params.sel}
@@ -611,6 +844,8 @@ export default function ExplorePage() {
                   onFailed={setMapFailure}
                   detailStay={detailStay}
                   detailState={detailState}
+                  availability={pinAvailability}
+                  pulsing={checking}
                 />
               </Suspense>
             </section>

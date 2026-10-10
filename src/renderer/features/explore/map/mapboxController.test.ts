@@ -102,8 +102,33 @@ class FakeMap {
   getPaintProperty() {
     return undefined;
   }
-  setPaintProperty() {
+  /** Changes a property of an added layer as Mapbox would (undefined resets it). */
+  private setProperty(id: string, group: 'paint' | 'layout', name: string, value: unknown) {
+    const layer = this.layers.get(id) as Record<string, Record<string, unknown> | undefined>;
+    if (!layer || !('type' in layer)) return;
+    const properties = { ...layer[group] };
+    if (value === undefined) delete properties[name];
+    else properties[name] = value;
+    layer[group] = properties;
+  }
+  styleChanges = 0;
+  /** The layers each restyle touched, in order. */
+  restyled: string[] = [];
+  setPaintProperty(id: string, name: string, value: unknown) {
+    this.styleChanges += 1;
+    this.restyled.push(id);
+    this.setProperty(id, 'paint', name, value);
     return this;
+  }
+  setLayoutProperty(id: string, name: string, value: unknown) {
+    this.styleChanges += 1;
+    this.restyled.push(id);
+    this.setProperty(id, 'layout', name, value);
+    return this;
+  }
+  setLayerZoomRange(id: string, minzoom: number, maxzoom: number) {
+    const layer = this.layers.get(id) as Record<string, unknown> | undefined;
+    if (layer) Object.assign(layer, { minzoom, maxzoom });
   }
   setFeatureState({ id }: { id: string }, state: Record<string, boolean>) {
     this.featureState.set(id, { ...this.featureState.get(id), ...state });
@@ -204,8 +229,10 @@ const TOKENS: MapTokens = {
   ink700: 'token-ink-700',
   white: 'token-white',
   sand50: 'token-sand-50',
+  sand100: 'token-sand-100',
   sand200: 'token-sand-200',
   sand500: 'token-sand-500',
+  sand600: 'token-sand-600',
   ocean100: 'token-ocean-100',
   ocean200: 'token-ocean-200',
   eucalypt50: 'token-eucalypt-50',
@@ -327,6 +354,89 @@ describe('createMapboxController', () => {
     abort.abort();
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
     expect(FakeMap.last.remove).toHaveBeenCalled();
+  });
+
+  it('shows availability on the pills with dates, and names again without, keeping hover', async () => {
+    const { controller, map } = await loaded();
+    type Spec = {
+      minzoom?: number;
+      paint: Record<string, unknown>;
+      layout: Record<string, unknown>;
+    };
+    const layer = (id: string) => map.layers.get(id) as Spec;
+    const pill = () => layer(LAYER_IDS.pill);
+    const dot = () => layer(LAYER_IDS.dot);
+    const clusters = () => layer(LAYER_IDS.clusters);
+    const head = (value: unknown) => (Array.isArray(value) ? value[0] : value);
+    expect(pill().minzoom).toBe(8);
+    controller.setData([PLACE]);
+    controller.setHovered(PLACE.key);
+    map.restyled = []; // (the palette restyled the base map on load)
+
+    controller.setData(
+      [PLACE],
+      new Map([[PLACE.key, { state: 'available', pill: '8 available' }]])
+    );
+    const source = map.sources.get(SOURCE_ID)!;
+    expect(source.setData).toHaveBeenLastCalledWith({
+      type: 'FeatureCollection',
+      features: [
+        expect.objectContaining({
+          properties: expect.objectContaining({ avail: 'available', availLabel: '8 available' }),
+        }),
+      ],
+    });
+    expect(pill().layout['text-field']).toEqual(['get', 'availLabel']);
+    expect(pill().layout['symbol-sort-key']).toEqual([
+      'match',
+      ['get', 'avail'],
+      'available',
+      0,
+      1,
+    ]);
+    expect(pill().minzoom).toBe(0);
+    expect(head(dot().paint['circle-color'])).toBe('match');
+    expect(head(clusters().paint['circle-color'])).toBe('case');
+    expect(map.featureState.get(PLACE.key)).toEqual({ hover: true });
+    // Only what differs is restyled: the cluster counts and halos are left alone.
+    expect(new Set(map.restyled)).toEqual(
+      new Set([LAYER_IDS.clusters, LAYER_IDS.dot, LAYER_IDS.pill])
+    );
+
+    // New availability for the same dates only replaces the data.
+    const changes = map.styleChanges;
+    controller.setData([PLACE], new Map([[PLACE.key, { state: 'full', pill: 'Full' }]]));
+    expect(map.styleChanges).toBe(changes);
+
+    // Dates cleared: names from zoom 8 again, ink and white only.
+    controller.setData([PLACE], null);
+    expect(pill().layout['text-field']).toEqual(['get', 'label']);
+    expect(pill().layout).not.toHaveProperty('symbol-sort-key');
+    expect(pill().paint).not.toHaveProperty('icon-opacity-transition');
+    expect(pill().minzoom).toBe(8);
+    expect(dot().paint['circle-color']).toBe(TOKENS.ink);
+    expect(clusters().paint['circle-color']).toBe(TOKENS.ink);
+    expect(source.setData.mock.lastCall[0].features[0].properties).not.toHaveProperty('avail');
+  });
+
+  it('sets the pills fill opacity for the loading pulse, hidden still while previewed', async () => {
+    const { controller, map } = await loaded();
+    controller.setData([PLACE], new Map([[PLACE.key, { state: 'loading', pill: '···' }]]));
+    const pill = () => map.layers.get(LAYER_IDS.pill) as { paint: Record<string, unknown> };
+    controller.setPillOpacity(0.55);
+    expect(pill().paint['icon-opacity']).toEqual([
+      'case',
+      ['boolean', ['feature-state', 'previewed'], false],
+      0,
+      0.55,
+    ]);
+    controller.setPillOpacity(1);
+    expect(pill().paint['icon-opacity']).toEqual([
+      'case',
+      ['boolean', ['feature-state', 'previewed'], false],
+      0,
+      1,
+    ]);
   });
 
   it('sets the GeoJSON data, and marks the hovered and selected places', async () => {

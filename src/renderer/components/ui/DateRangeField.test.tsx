@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { createRef, useState } from 'react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { DateRange } from './calendar';
 import { DateRangeField } from './DateRangeField';
@@ -216,5 +216,15 @@ describe('DateRangeField', () => {
     expect(screen.getByText('Choose a check-out date')).toBeVisible();
     // The name stays label + value; the hint and error are the description.
     expect(trigger).toHaveAccessibleName('Dates Wed 2 Oct – add check-out');
+  });
+
+  it('hands its trigger to triggerRef, so the calendar can be opened from elsewhere', async () => {
+    const ref = createRef<HTMLButtonElement>();
+    render(
+      <DateRangeField appearance="segment" value={{}} onChange={jest.fn()} triggerRef={ref} />
+    );
+    expect(ref.current).toBe(screen.getByRole('button', { name: /^Dates/ }));
+    act(() => ref.current?.click());
+    expect(await screen.findByRole('dialog', { name: 'Choose dates' })).toBeInTheDocument();
   });
 });

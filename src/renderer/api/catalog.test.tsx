@@ -1,13 +1,17 @@
 import type { ReactNode } from 'react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { onlineManager, QueryClientProvider } from '@tanstack/react-query';
-import { createMockApi, fail, ok } from '@tests/utils/renderer/createMockApi';
+import { createMockApi, fail, ok, PARKSTAY_MANIFEST } from '@tests/utils/renderer/createMockApi';
 import { catalogApi, placeApi, syncingStatus } from '@tests/utils/renderer/catalog';
 import { createQueryClient } from '../app/queryClient';
 import { queryKeys } from './queryKeys';
 import {
+  BULK_AVAILABILITY_GC_TIME_MS,
+  BULK_AVAILABILITY_STALE_TIME_MS,
   CATALOG_STALE_TIME_MS,
   normaliseCatalogQuery,
+  stayKey,
+  useBulkAvailability,
   useCatalogAll,
   useCatalogRefresh,
   useCatalogSearch,
@@ -16,6 +20,12 @@ import {
   useLocationCheck,
   useLocationDetail,
 } from './catalog';
+
+/** Lets `ms` pass, with what it causes applied (inside act). */
+const pause = (ms: number) =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  });
 
 function wrapper(client = createQueryClient()) {
   return function QueryWrapper({ children }: { children: ReactNode }) {
@@ -104,8 +114,14 @@ describe('catalog hooks', () => {
   it('useCatalogStatus keeps asking while waiting, when given an interval', async () => {
     const mock = createMockApi(catalogApi({ status: syncingStatus() }));
     window.api = mock.api;
-    renderHook(() => useCatalogStatus({ refetchInterval: 20 }), { wrapper: wrapper() });
-    await waitFor(() => expect(mock.api.catalog.status).toHaveBeenCalledTimes(3));
+    const { unmount } = renderHook(() => useCatalogStatus({ refetchInterval: 20 }), {
+      wrapper: wrapper(),
+    });
+    // At least 3: the 20 ms interval may run again between two checks on a busy runner.
+    await waitFor(() =>
+      expect(jest.mocked(mock.api.catalog.status).mock.calls.length).toBeGreaterThanOrEqual(3)
+    );
+    unmount();
   });
 
   it('useCatalogRefresh re-syncs and then reloads the catalogue queries', async () => {
@@ -217,7 +233,203 @@ describe('place hooks', () => {
       onlineManager.setOnline(false);
       onlineManager.setOnline(true);
     });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await pause(20);
     expect(mock.api.catalog.checkLocation).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useBulkAvailability', () => {
+  const STAY_A = { arrival: '2099-11-06', departure: '2099-11-08', adults: 2 };
+  const STAY_B = { arrival: '2099-11-13', departure: '2099-11-15', adults: 2 };
+  /** A second catalogue provider with bulk availability, and one that checks one place only. */
+  const FAKE = {
+    ...PARKSTAY_MANIFEST,
+    id: 'fake',
+    name: 'Fake Stays',
+    shortName: 'Fake',
+    capabilities: { ...PARKSTAY_MANIFEST.capabilities, accessGate: false },
+  };
+  const SINGLE = {
+    ...PARKSTAY_MANIFEST,
+    id: 'single',
+    name: 'Single Stays',
+    shortName: 'Single',
+    capabilities: { ...PARKSTAY_MANIFEST.capabilities, bulkAvailability: false },
+  };
+  const PARKSTAY_ENTRY = { key: 'parkstay:20', availableUnits: 3, bookableUnits: 5 };
+  const FAKE_ENTRY = { key: 'fake:1', availableUnits: 0, bookableUnits: 4 };
+
+  /** `catalog.availability` as main answers, failing `failing` providers in `errors`. */
+  function availability(failing: Record<string, string> = {}) {
+    return jest.fn(async (_stay: unknown, options: { providerIds?: string[] } = {}) => {
+      const [id] = options.providerIds ?? [];
+      if (failing[id]) {
+        return ok({
+          entries: [],
+          errors: [{ providerId: id, code: failing[id], message: `${id}: failed` }],
+        });
+      }
+      const entries = [PARKSTAY_ENTRY, FAKE_ENTRY].filter((e) => e.key.startsWith(`${id}:`));
+      return ok({ entries, errors: [] });
+    });
+  }
+
+  function setup(stub = availability(), manifests = [PARKSTAY_MANIFEST, FAKE, SINGLE]) {
+    const mock = createMockApi(
+      catalogApi({
+        catalog: { availability: stub },
+        stubs: { providers: { list: jest.fn().mockResolvedValue(ok(manifests)) } },
+      })
+    );
+    window.api = mock.api;
+    return { mock, stub, client: createQueryClient() };
+  }
+
+  it('asks each catalogue provider with bulk availability on its own, and merges what they say', async () => {
+    const { stub, client } = setup();
+    const { result } = renderHook(() => useBulkAvailability(STAY_A), { wrapper: wrapper(client) });
+    await waitFor(() =>
+      expect(result.current.statusByProvider).toEqual({ parkstay: 'success', fake: 'success' })
+    );
+    expect(stub).toHaveBeenCalledTimes(2);
+    expect(stub).toHaveBeenCalledWith(STAY_A, { providerIds: ['parkstay'] });
+    expect(stub).toHaveBeenCalledWith(STAY_A, { providerIds: ['fake'] });
+    expect([...result.current.byKey.values()]).toEqual(
+      expect.arrayContaining([PARKSTAY_ENTRY, FAKE_ENTRY])
+    );
+    const query = client
+      .getQueryCache()
+      .find({ queryKey: queryKeys.catalog.availability(stayKey(STAY_A), 'parkstay') });
+    expect(query?.options).toMatchObject({
+      staleTime: BULK_AVAILABILITY_STALE_TIME_MS,
+      gcTime: BULK_AVAILABILITY_GC_TIME_MS,
+      retry: false,
+      refetchOnReconnect: false,
+    });
+    expect([BULK_AVAILABILITY_STALE_TIME_MS, BULK_AVAILABILITY_GC_TIME_MS]).toEqual([
+      120_000, 900_000,
+    ]);
+  });
+
+  it('keeps a failing provider apart, and Retry asks only it again', async () => {
+    const { stub, client } = setup(availability({ parkstay: 'access-gate' }));
+    const { result } = renderHook(() => useBulkAvailability(STAY_A), { wrapper: wrapper(client) });
+    await waitFor(() =>
+      expect(result.current.statusByProvider).toEqual({ parkstay: 'error', fake: 'success' })
+    );
+    expect(result.current.errors.parkstay).toMatchObject({ code: 'ACCESS_GATE' });
+    expect(result.current.byKey.get('fake:1')).toEqual(FAKE_ENTRY);
+    expect(stub).toHaveBeenCalledTimes(2);
+
+    stub.mockClear();
+    act(() => result.current.refetch('parkstay'));
+    await waitFor(() => expect(stub).toHaveBeenCalledTimes(1));
+    expect(stub).toHaveBeenCalledWith(STAY_A, { providerIds: ['parkstay'] });
+  });
+
+  it('reads a provider main says has no bulk availability (CAPABILITY) as unsupported, not failed', async () => {
+    const stub = jest.fn(async (_stay: unknown, options: { providerIds?: string[] } = {}) =>
+      options.providerIds?.[0] === 'fake'
+        ? fail('fake has no bulk availability', 'CAPABILITY')
+        : ok({ entries: [PARKSTAY_ENTRY], errors: [] })
+    );
+    const { client } = setup(stub);
+    const { result } = renderHook(() => useBulkAvailability(STAY_A), { wrapper: wrapper(client) });
+    await waitFor(() =>
+      expect(result.current.statusByProvider).toEqual({ parkstay: 'success', fake: 'unsupported' })
+    );
+    expect(result.current.errors).toEqual({});
+  });
+
+  it('asks nothing until the stay settles; a stay already cached shows at once', async () => {
+    const { stub, client } = setup();
+    const { result, rerender } = renderHook(
+      ({ stay, settled }) => useBulkAvailability(stay, { settled }),
+      { wrapper: wrapper(client), initialProps: { stay: STAY_A, settled: true } }
+    );
+    await waitFor(() => expect(result.current.statusByProvider.parkstay).toBe('success'));
+    stub.mockClear();
+
+    rerender({ stay: STAY_B, settled: false });
+    expect(result.current.statusByProvider).toEqual({ parkstay: 'loading', fake: 'loading' });
+    expect(result.current.byKey.size).toBe(0);
+    await pause(20);
+    expect(stub).not.toHaveBeenCalled();
+
+    // Back to A before B settled: A's answer, from the cache, without asking.
+    rerender({ stay: STAY_A, settled: false });
+    expect(result.current.statusByProvider).toEqual({ parkstay: 'success', fake: 'success' });
+    expect(result.current.byKey.get('parkstay:20')).toEqual(PARKSTAY_ENTRY);
+    rerender({ stay: STAY_A, settled: true });
+    await pause(20);
+    expect(stub).not.toHaveBeenCalled();
+  });
+
+  it('never shows an answer for another stay: a late answer for A is kept for A only', async () => {
+    let answerA: () => void = () => undefined;
+    const real = availability();
+    const stub = jest.fn((stay: typeof STAY_A, options: { providerIds?: string[] }) =>
+      stay.arrival === STAY_A.arrival
+        ? new Promise((resolve) => (answerA = () => resolve(real(stay, options))))
+        : real(stay, options)
+    );
+    const { client } = setup(stub, [PARKSTAY_MANIFEST]);
+    const { result, rerender } = renderHook(({ stay }) => useBulkAvailability(stay), {
+      wrapper: wrapper(client),
+      initialProps: { stay: STAY_A },
+    });
+    await waitFor(() => expect(result.current.statusByProvider).toEqual({ parkstay: 'loading' }));
+    await waitFor(() => expect(stub).toHaveBeenCalledTimes(1));
+
+    rerender({ stay: { ...STAY_B } });
+    await waitFor(() => expect(result.current.statusByProvider).toEqual({ parkstay: 'success' }));
+    const shownForB = result.current.byKey;
+    await act(async () => answerA());
+    expect(result.current.byKey).toBe(shownForB);
+    expect(
+      client.getQueryData(queryKeys.catalog.availability(stayKey(STAY_A), 'parkstay'))
+    ).toMatchObject({ entries: [PARKSTAY_ENTRY] });
+  });
+
+  it('asks nothing offline: providers with nothing cached are idle', async () => {
+    const { stub, client } = setup();
+    const { result } = renderHook(() => useBulkAvailability(STAY_A, { online: false }), {
+      wrapper: wrapper(client),
+    });
+    await waitFor(() =>
+      expect(result.current.statusByProvider).toEqual({ parkstay: 'idle', fake: 'idle' })
+    );
+    await pause(20);
+    expect(stub).not.toHaveBeenCalled();
+  });
+
+  it('asks nothing without a stay', async () => {
+    const { stub, client } = setup();
+    const { result } = renderHook(() => useBulkAvailability(null), { wrapper: wrapper(client) });
+    await pause(20);
+    expect(result.current.statusByProvider).toEqual({});
+    expect(stub).not.toHaveBeenCalled();
+  });
+
+  it('is not asked again when a catalogue syncs (catalog:updated) or is refreshed', async () => {
+    const { mock, stub, client } = setup();
+    const { result } = renderHook(
+      () => ({
+        search: useCatalogSearch({}),
+        availability: useBulkAvailability(STAY_A),
+        refresh: useCatalogRefresh(),
+        updates: useCatalogUpdates(),
+      }),
+      { wrapper: wrapper(client) }
+    );
+    await waitFor(() =>
+      expect(result.current.availability.statusByProvider.parkstay).toBe('success')
+    );
+    expect(stub).toHaveBeenCalledTimes(2);
+    mock.emit('catalog:updated', { providerId: 'parkstay', count: 169, syncedAt: '2026-10-04' });
+    await waitFor(() => expect(mock.api.catalog.search).toHaveBeenCalledTimes(2));
+    await act(() => result.current.refresh.mutateAsync('parkstay'));
+    await waitFor(() => expect(mock.api.catalog.search).toHaveBeenCalledTimes(3));
+    expect(stub).toHaveBeenCalledTimes(2);
   });
 });

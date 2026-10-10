@@ -75,7 +75,7 @@ describe('Explore (list-only)', () => {
       within(filters)
         .getAllByRole('button')
         .map((b) => b.textContent)
-    ).toEqual(['Provider', 'Type', 'Region', 'Facilities', 'Book online']);
+    ).toEqual(['Provider', 'Type', 'Region', 'Facilities', 'Book online', 'Available only']);
     expect(resultsHeading()).toHaveTextContent('169 places');
     // 40 cards first.
     expect(cards()).toHaveLength(40);
@@ -296,7 +296,11 @@ describe('Explore (list-only)', () => {
   });
 
   it('keeps dates and guests in the URL for the detail page', async () => {
-    const { user } = await renderExplore('/?arrival=2099-01-10&departure=2099-01-12&adults=2');
+    const { user } = await renderExplore(
+      '/?arrival=2099-01-10&departure=2099-01-12&adults=2',
+      catalogApi(),
+      /^169 places · \d+ available for 10–12 Jan$/
+    );
     await waitFor(() =>
       expect(currentRoute()).toBe('/?arrival=2099-01-10&departure=2099-01-12&adults=2')
     );
@@ -376,7 +380,12 @@ describe('Explore and the detail page', () => {
   });
 
   it("opens a place with Explore's dates and guests", async () => {
-    await renderExplore('/?arrival=2099-01-10&departure=2099-01-12&adults=2&children=1');
+    // (With dates the list puts available places first, so search for the place.)
+    await renderExplore(
+      '/?q=Bungarra&arrival=2099-01-10&departure=2099-01-12&adults=2&children=1',
+      catalogApi(),
+      '1 place · 1 available for 10–12 Jan'
+    );
     expect(screen.getAllByRole('link', { name: 'Bungarra' })[0]).toHaveAttribute(
       'href',
       '#/places/parkstay/20?arrival=2099-01-10&departure=2099-01-12&adults=2&children=1'

@@ -1,7 +1,7 @@
 import { useId, type ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { placesLabel } from '../../../components/locationFormat';
-import { Button, Checkbox, Chip, Popover } from '../../../components/ui';
+import { Button, Checkbox, Chip, Popover, Tooltip } from '../../../components/ui';
 import type { FacetOption } from './facets';
 
 export interface FilterChipProps {
@@ -88,10 +88,29 @@ export interface ToggleChipProps {
   label: string;
   pressed: boolean;
   onPressedChange: (pressed: boolean) => void;
+  /**
+   * Why it cannot be used right now ("Add dates to filter by availability"). It is then off,
+   * `aria-disabled` but still focusable, and says why in a tooltip that describes it.
+   */
+  unavailableReason?: string;
 }
 
 /** An on/off chip (`aria-pressed`), such as "Book online". */
-export function ToggleChip({ label, pressed, onPressedChange }: ToggleChipProps) {
+export function ToggleChip({
+  label,
+  pressed,
+  onPressedChange,
+  unavailableReason,
+}: ToggleChipProps) {
+  if (unavailableReason) {
+    return (
+      <Tooltip content={unavailableReason}>
+        <Chip pressed={false} aria-disabled>
+          {label}
+        </Chip>
+      </Tooltip>
+    );
+  }
   return (
     <Chip pressed={pressed} onClick={() => onPressedChange(!pressed)}>
       {label}

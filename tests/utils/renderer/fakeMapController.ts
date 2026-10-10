@@ -10,6 +10,11 @@
  */
 
 import { act } from '@testing-library/react';
+import {
+  toFeatureCollection,
+  type LocationFeatureCollection,
+  type LocationFeatureProperties,
+} from '../../../src/renderer/features/explore/map/geo';
 import type { BoundingBox, LocationSummary } from '../../../src/shared/types/catalog.types';
 import type {
   CreateMapController,
@@ -17,6 +22,7 @@ import type {
   MapController,
   MapControllerOptions,
   MapViewState,
+  PinAvailability,
 } from '../../../src/renderer/features/explore/map/types';
 
 export const WA_VIEW: MapViewState = {
@@ -32,6 +38,10 @@ export class FakeMapController implements MapController {
   readonly options: MapControllerOptions;
   data: LocationSummary[] = [];
   setDataCalls = 0;
+  /** The availability last given with the data (null: no dates). */
+  availability: ReadonlyMap<string, PinAvailability> | null = null;
+  /** Every pill opacity set, in order (the loading pulse). */
+  pillOpacities: number[] = [];
   hovered: string | null = null;
   selected: string | null = null;
   fits: { bbox: BoundingBox; maxZoom?: number; animate?: boolean }[] = [];
@@ -63,9 +73,27 @@ export class FakeMapController implements MapController {
     options.container.append(this.canvas, this.popupHost);
   }
 
-  setData(items: readonly LocationSummary[]) {
+  setData(
+    items: readonly LocationSummary[],
+    availability: ReadonlyMap<string, PinAvailability> | null = null
+  ) {
     this.data = [...items];
+    this.availability = availability;
     this.setDataCalls += 1;
+  }
+  setPillOpacity(opacity: number) {
+    this.pillOpacities.push(opacity);
+  }
+  /**
+   * The GeoJSON Mapbox would draw from the last data, as the real controller builds it, so
+   * tests read each pin's `avail` and `availLabel`.
+   */
+  features(): LocationFeatureCollection {
+    return toFeatureCollection(this.data, this.availability);
+  }
+  /** The properties of the pin of `key` as drawn, or undefined when it is not on the map. */
+  pin(key: string): LocationFeatureProperties | undefined {
+    return this.features().features.find((f) => f.properties.key === key)?.properties;
   }
   setHovered(key: string | null) {
     this.hovered = key;

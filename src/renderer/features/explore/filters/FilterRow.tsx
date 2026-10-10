@@ -12,13 +12,29 @@ export interface FilterRowProps {
   showKinds: boolean;
   onChange: (patch: Partial<ExploreParams>) => void;
   onClearAll: () => void;
+  /**
+   * "Available only" (E3): on while `params.avail` is, unless `availableOnlyUnavailable` says
+   * why it cannot be used (no dates, or no provider reports availability in bulk).
+   */
+  availableOnlyUnavailable?: string;
+  onAvailableOnlyChange: (on: boolean) => void;
 }
 
 /**
  * Explore's filters: Provider (always shown, §12.9), Type, Region, Facilities, a "Book online"
- * toggle, and "Clear all" while any is on. Options within a chip are OR-ed; chips are AND-ed.
+ * toggle, an "Available only" toggle for the dates chosen, and "Clear all" while any is on.
+ * Options within a chip are OR-ed; chips are AND-ed.
  */
-export function FilterRow({ params, facets, showKinds, onChange, onClearAll }: FilterRowProps) {
+export function FilterRow({
+  params,
+  facets,
+  showKinds,
+  onChange,
+  onClearAll,
+  availableOnlyUnavailable,
+  onAvailableOnlyChange,
+}: FilterRowProps) {
+  const availableOnly = params.avail && !availableOnlyUnavailable;
   return (
     <div role="group" aria-label="Filters" className="flex flex-wrap items-center gap-2">
       <FilterChip
@@ -53,7 +69,13 @@ export function FilterRow({ params, facets, showKinds, onChange, onClearAll }: F
         pressed={params.online}
         onPressedChange={(online) => onChange({ online })}
       />
-      {hasActiveFilters(params) && (
+      <ToggleChip
+        label="Available only"
+        pressed={availableOnly}
+        onPressedChange={onAvailableOnlyChange}
+        unavailableReason={availableOnlyUnavailable}
+      />
+      {(hasActiveFilters(params) || availableOnly) && (
         <Button variant="ghost" size="sm" shape="pill" onClick={onClearAll}>
           Clear all
         </Button>
