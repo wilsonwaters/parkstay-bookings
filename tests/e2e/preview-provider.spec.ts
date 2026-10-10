@@ -4,15 +4,18 @@
  *   npm run build:e2e
  *   npx cross-env PREVIEW_PROVIDER=acme-parks playwright test preview-provider
  *   # Linux without a display: xvfb-run -a npx cross-env PREVIEW_PROVIDER=acme-parks playwright test preview-provider
+ *   # Dates your recorded responses cover: add PREVIEW_ARRIVAL=2026-11-10 (two nights from then)
  *
  * It launches the built app as every journey does (network-free fixture mode, a temp profile)
  * with only that provider registered, and checks that:
  * - Explore lists its places;
- * - with dates (tomorrow in the provider's time zone, for two nights, set through Explore's
- *   address), Explore shows the provider's free counts without an error, when it has
- *   `bulkAvailability`;
+ * - with dates (two nights from `PREVIEW_ARRIVAL`, by default tomorrow in the provider's time
+ *   zone, set through Explore's address), Explore shows the provider's free counts without an
+ *   error, when it has `bulkAvailability`;
  * - the first place's page opens with those dates, and "Check availability" answers with the
- *   night grid, or "No … were listed for these dates", not an error;
+ *   night grid, or "No … were listed for these dates", not an error. If the provider's
+ *   responses say nothing about any night of the stay (every night reads Unknown), the test
+ *   passes with a warning annotation, logged too: set `PREVIEW_ARRIVAL` to dates they cover;
  * - Settings → Accounts shows it;
  * - fixture mode refused no request (a missing route, such as the signed-in check's), and the
  *   window logged no errors.
@@ -29,11 +32,13 @@
 import type { Page, TestInfo } from '@playwright/test';
 import { stayRangeLabel } from '../../src/renderer/components/nightGridModel';
 import type { ProviderManifest } from '../../src/shared/types/provider.types';
-import { addDays, todayIn } from '../../src/shared/utils/calendar-date';
+import { addDays, isCalendarDate, todayIn } from '../../src/shared/utils/calendar-date';
 import { expect, test, withoutGuardedRequests, withoutRemoteImages } from './support/wa-stay';
 import { chooseAccountMenuItem, currentRoute, pageHeading } from './support/shell';
 
 const PROVIDER = process.env.PREVIEW_PROVIDER?.trim() ?? '';
+/** The stay's first night, `YYYY-MM-DD`; by default tomorrow in the provider's time zone. */
+const ARRIVAL = process.env.PREVIEW_ARRIVAL?.trim() ?? '';
 
 /** How long a catalogue may take to show: the app syncs it 5 s after the window is up. */
 const CATALOGUE_TIMEOUT_MS = 30_000;
@@ -113,7 +118,13 @@ test.describe('preview a provider', () => {
     // Dates: tomorrow in the provider's time zone, for two nights, as a link to Explore sets them.
     const manifest = await manifestOf(window, PROVIDER);
     const { capabilities, shortName } = manifest;
-    const arrival = addDays(todayIn(manifest.timezone), 1);
+    const today = todayIn(manifest.timezone);
+    if (ARRIVAL && !(isCalendarDate(ARRIVAL) && ARRIVAL >= today)) {
+      throw new Error(
+        `PREVIEW_ARRIVAL must be a date (YYYY-MM-DD) from today (${today} in ${manifest.timezone}) on, not "${ARRIVAL}"`
+      );
+    }
+    const arrival = ARRIVAL || addDays(today, 1);
     const departure = addDays(arrival, 2);
     const range = stayRangeLabel(arrival, departure);
     const stay = `arrival=${arrival}&departure=${departure}`;
@@ -181,6 +192,17 @@ test.describe('preview a provider', () => {
         await expect(
           answered.getByRole('table', { name: `Availability by night, ${range}` })
         ).toBeVisible();
+        // An answer, but about none of the stay's nights: say so, without failing the preview
+        // (a generated provider's sample responses cover only their own dates).
+        const noKnownNight = `${shortName} didn't say which nights are free; check on ${shortName}`;
+        if (await answered.getByText(noKnownNight, { exact: true }).isVisible()) {
+          const warning =
+            `Every night of ${arrival} to ${departure} reads Unknown: ${PROVIDER}'s responses ` +
+            `in tests/e2e/fixtures/http/${PROVIDER}/ don't cover those dates. Set ` +
+            'PREVIEW_ARRIVAL=YYYY-MM-DD to dates they cover to see its nights.';
+          testInfo.annotations.push({ type: 'warning', description: warning });
+          console.warn(`Warning: ${warning}`);
+        }
       }
     } else {
       await expect(

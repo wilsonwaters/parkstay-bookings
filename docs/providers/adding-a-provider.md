@@ -107,9 +107,10 @@ policy, holds, payment and sign-in. See [the ParkStay provider](parkstay/README.
    ```
 
    On Linux without a display, put `xvfb-run -a` in front of the second command. It checks that
-   Explore lists the provider's places; with dates (tomorrow, for two nights), that Explore
-   shows its free counts (with `bulkAvailability`) and that a place's "Check availability"
-   answers; and that Settings → Accounts shows it, with a screenshot of each in the report
+   Explore lists the provider's places; with dates (two nights from tomorrow, or from
+   `PREVIEW_ARRIVAL=YYYY-MM-DD` for dates its responses cover), that Explore shows its free
+   counts (with `bulkAvailability`) and that a place's "Check availability" answers; and that
+   Settings → Accounts shows it, with a screenshot of each in the report
    (`npx playwright show-report`). A browser provider is previewed by hand instead
    ([browser providers](browser-providers.md#preview-in-the-app)).
 
@@ -1572,8 +1573,9 @@ app as the smoke tests do (fixture mode, a temp profile, no network) with only y
 registered, and checks that:
 
 - Explore lists its places;
-- with dates (tomorrow in the provider's time zone, for two nights, set through Explore's
-  address), Explore shows its free counts without an error, when it has `bulkAvailability`;
+- with dates (two nights from `PREVIEW_ARRIVAL`, by default tomorrow in the provider's time
+  zone, set through Explore's address), Explore shows its free counts without an error, when it
+  has `bulkAvailability`;
 - the first place's page opens with those dates, and "Check availability" answers with the
   night grid (every unit's nights) or "No sites were listed for these dates", not an error;
 - Settings → Accounts shows it;
@@ -1583,8 +1585,15 @@ registered, and checks that:
 ```bash
 npm run build:e2e
 npx cross-env PREVIEW_PROVIDER=acme-parks playwright test preview-provider
+npx cross-env PREVIEW_PROVIDER=acme-parks PREVIEW_ARRIVAL=2026-11-10 playwright test preview-provider   # dates of your choice
 npx playwright show-report        # Explore, Explore with dates, the place page, Accounts
 ```
+
+Recorded responses cover the dates they were recorded for. If they say nothing about any night
+of the stay, every night reads Unknown: the preview still passes, with a warning in the report
+and the output, and you set `PREVIEW_ARRIVAL` (a date, `YYYY-MM-DD`, from today on) to dates
+they cover. The scaffold's sample responses cover 9 to 12 November 2026, so a generated
+provider shows its nights with `PREVIEW_ARRIVAL=2026-11-10`.
 
 On Linux without a display, run the second command under `xvfb-run -a`. A step that fails
 quotes what the app logged about the provider, such as "Acme Parks is not set up yet: set
@@ -1619,7 +1628,8 @@ npx cross-env WA_STAY_E2E_FIXTURES_DIR=tests/e2e/fixtures/http WA_STAY_PROVIDERS
 ```
 
 On Linux without Edge or Chrome, give the app a Chromium build with `WA_STAY_BROWSER_PATH`. Set
-the address back before you run the tests. You may also let it read the live site by hand,
+the address back before you run the tests: `npm test` fails while a provider names a loopback
+address (`tests/unit/providers/no-loopback-addresses.test.ts`). You may also let it read the live site by hand,
 read-only and briefly, as a person browsing would. A generated browser provider fails before it
 starts a browser until you set its address, so registering it as generated is safe.
 

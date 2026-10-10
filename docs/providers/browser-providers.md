@@ -321,7 +321,7 @@ The preview spec (`PREVIEW_PROVIDER`, [adding a provider](adding-a-provider.md#1
    ```
 
    It answers exactly as the fake browser does (`serveFakeSite` in `tests/utils/fake-site.ts`), to this computer only, and prints each request the browser makes. Ctrl+C stops it. It serves the site's default export, or its `render…Site` function as the scaffold names it; `--export <name>` picks another.
-2. **Point the provider at it, for now.** Set `ACME_PARKS_SITE_URL` in `src/main/providers/acme-parks/index.ts` to `'http://127.0.0.1:8123'`. The browser module opens whatever address the provider gives `page.goto`, a plain `http:` loopback address included (only `ctx.http` insists on https), and Chromium treats loopback as a secure origin. The provider's links point at your copy too while it is set.
+2. **Point the provider at it, for now.** Set `ACME_PARKS_SITE_URL` in `src/main/providers/acme-parks/index.ts` to `'http://127.0.0.1:8123'`. The browser module checks no scheme: it opens whatever address the provider gives `page.goto`, a plain `http:` loopback address included. (`ctx.http` allows https, and plain `http:` only to a loopback host, `isAllowedRequestUrl` in `src/main/providers/sdk/http.ts`.) Chromium treats loopback as a secure origin. The provider's links point at your copy too while it is set.
 3. **A browser to drive.**
    - On Windows and macOS, and on Linux with Chrome or Edge installed, the app finds the installed browser and runs it with Chromium's sandbox on, as it does for a person: nothing to set.
    - On Linux without either, download Playwright's Chromium (`npx playwright install chromium`, from Playwright's own download site; it says where it put it) and give its `chrome` executable to the app as `WA_STAY_BROWSER_PATH` in the next step. Like every `WA_STAY_BROWSER_PATH` browser it runs without Chromium's sandbox ([the real-browser smoke test](#the-real-browser-smoke-test)), so point it only at your loopback copy.
@@ -333,7 +333,7 @@ The preview spec (`PREVIEW_PROVIDER`, [adding a provider](adding-a-provider.md#1
    ```
 
    On Linux without Chrome or Edge, add `WA_STAY_BROWSER_PATH=/path/to/chrome` after `cross-env`. Fixture mode keeps every request but the browser's off the network, and the browser visits only the address you set. Explore lists the site's places once the catalogue is read, 5 s after the window opens (a `search` catalogue is asked for the map's area: all of WA in a build without a map). A place's page, and its "Check availability" for Explore's dates, run in the real browser, the site's own scripts included. The site's terminal shows every page the browser asked for, and the app's log says `Browser launched`.
-5. **Set the address back** (to `''`, or the provider's real https address) before you run the tests or commit. The generated test fails while the address is not https, so a loopback address cannot ship by accident.
+5. **Set the address back** (to `''`, or the provider's real https address) before you run the tests or commit. `npm test` fails while any provider source under `src/main/providers/` names a loopback address (`tests/unit/providers/no-loopback-addresses.test.ts`, which names the file and line), and a generated provider's own test fails while its address is not https, so a loopback address cannot ship by accident.
 
 A browser provider with an account still checks its sign-in through `ctx.http`, so in fixture mode that request needs a route in `tests/e2e/fixtures/http/<id>/` ([the Electron smoke tests](adding-a-provider.md#the-electron-smoke-tests)).
 

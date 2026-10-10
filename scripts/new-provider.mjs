@@ -47,6 +47,12 @@ const ID_RULE = '2–32 lower-case letters, digits or hyphens, starting with a l
 const NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N} &'.,()-]{0,59}$/u;
 /** Dark colours that white text passes WCAG AA on (contrast at least 4.5:1). */
 const BRAND_COLOURS = ['#1F5A7A', '#7A3B1F', '#2E6B3A', '#5B3A7A', '#7A1F4B', '#6B5A1F'];
+/**
+ * An arrival the sample responses cover (`scripts/templates/provider/api-fixtures`, nights
+ * 9–12 Nov 2026), for the preview's `PREVIEW_ARRIVAL`; tests/scripts/new-provider.test.ts checks
+ * the generated e2e responses cover it.
+ */
+const SAMPLE_ARRIVAL = '2026-11-10';
 
 const USAGE = `Usage: npm run provider:new -- <id> [--api | --browser] [--search] [--name "<name>"] [--no-register]
 
@@ -354,15 +360,24 @@ function nextSteps(options, tokens, registered) {
   const preview =
     kind === 'api'
       ? `npm run build:e2e
-     npx cross-env PREVIEW_PROVIDER=${id} playwright test preview-provider   (Linux: xvfb-run -a npx ...)`
+     npx cross-env PREVIEW_PROVIDER=${id} playwright test preview-provider   (Linux: xvfb-run -a npx ...)
+     It checks availability for tomorrow, which the sample responses do not cover (it warns):
+     add PREVIEW_ARRIVAL=${SAMPLE_ARRIVAL} for dates they do, or your recorded responses' dates.`
       : `Fixture mode serves ctx.http only, so preview it by hand against its made-up site on
      loopback: node scripts/serve-provider-site.mjs ${id}, then set ${tokens.CONST}_SITE_URL to
      the address it prints, for the preview only ("Preview in the app" in
      docs/providers/browser-providers.md).`;
-  // The scaffold writes `account: 'none'`; a sign-in added later is checked through ctx.http.
-  const account = `If you add a sign-in (an account other than 'none'), give its signed-in check a
+  // The scaffold writes `account: 'none'`; a sign-in added later is checked through ctx.http,
+  // which fixture mode answers only from tests/e2e/fixtures/http/<id>/.
+  const account =
+    kind === 'api'
+      ? `If you add a sign-in (an account other than 'none'), give its signed-in check a
      signed-out answer in tests/e2e/fixtures/http/${id}/manifest.json, or the app's check is
-     refused and the preview fails.`;
+     refused and the preview fails.`
+      : `If you add a sign-in (an account other than 'none'), its signed-in check goes through
+     ctx.http, which fixture mode answers only from tests/e2e/fixtures/http/${id}/: add that
+     folder, with a manifest.json and a signed-out answer for the check, before you preview it
+     by hand, or the check is refused and logged.`;
   return `
 Next steps (CLAUDE.md, "Adding a provider", is the checklist):
   1. Read the provider's terms of use: no automated access means links only.

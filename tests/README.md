@@ -270,10 +270,12 @@ npx playwright show-report        # the HTML report of the last run
   Without `E2E_MAP` it is skipped.
 - **A provider preview (opt-in).** `preview-provider.spec.ts` launches the app with only the
   provider `PREVIEW_PROVIDER` names (`npx cross-env PREVIEW_PROVIDER=<id> playwright test
-  preview-provider`), checks that Explore lists its places; with dates (tomorrow in the
-  provider's time zone, for two nights, through Explore's address), that Explore shows its free
-  counts when it has bulk availability, and that the first place's "Check availability" answers
-  with the night grid or "No … were listed", not an error; and visits Settings → Accounts. It
+  preview-provider`), checks that Explore lists its places; with dates (two nights from
+  `PREVIEW_ARRIVAL=YYYY-MM-DD`, by default tomorrow in the provider's time zone, through
+  Explore's address), that Explore shows its free counts when it has bulk availability, and that
+  the first place's "Check availability" answers with the night grid or "No … were listed", not
+  an error (with a warning annotation, not a failure, when every night reads Unknown); and
+  visits Settings → Accounts. It
   fails on a request fixture mode refused (such as a signed-in check with no route) or a window
   error, and attaches a screenshot of each step; a failed step quotes what the app logged about
   the provider ([preview in the app](../docs/providers/adding-a-provider.md#12-preview-in-the-app)).

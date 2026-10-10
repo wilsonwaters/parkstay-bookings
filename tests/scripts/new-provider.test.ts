@@ -17,6 +17,7 @@ import os from 'os';
 import path from 'path';
 import ts from 'typescript';
 import { PROVIDER_ID_PATTERN } from '@shared/types/provider.types';
+import { addDays } from '@shared/utils/calendar-date';
 
 const ROOT = path.resolve(__dirname, '../..');
 const SCRIPT = path.join(ROOT, 'scripts/new-provider.mjs');
@@ -135,14 +136,28 @@ describe('scripts/new-provider.mjs: generated providers work as generated', () =
       expect(stdout).toContain('npm run test:e2e');
       expect(stdout).toMatch(/CLAUDE\.md, "Adding a provider"/);
       // A sign-in added later needs a route for its check; a browser provider is previewed by hand.
-      expect(stdout).toContain(
-        `signed-out answer in tests/e2e/fixtures/http/${variant.id}/manifest.json`
-      );
-      expect(stdout).toContain(
-        variant.kind === 'api'
-          ? `PREVIEW_PROVIDER=${variant.id}`
-          : `node scripts/serve-provider-site.mjs ${variant.id}`
-      );
+      if (variant.kind === 'api') {
+        expect(stdout).toContain(
+          `signed-out answer in tests/e2e/fixtures/http/${variant.id}/manifest.json, or the app's check is\n     refused and the preview fails`
+        );
+        expect(stdout).toContain(`PREVIEW_PROVIDER=${variant.id}`);
+        // The preview's example arrival is one the generated e2e responses cover, both nights.
+        const arrival = /PREVIEW_ARRIVAL=(\d{4}-\d{2}-\d{2})\b/.exec(stdout)?.[1];
+        expect(arrival).toBeDefined();
+        const sample = fs.readFileSync(
+          at(root, `tests/e2e/fixtures/http/${variant.id}/availability-1001.json`),
+          'utf8'
+        );
+        for (const night of [arrival!, addDays(arrival!, 1)]) {
+          expect([night, sample.includes(`"date": "${night}"`)]).toEqual([night, true]);
+        }
+      } else {
+        expect(stdout).toContain(
+          `its signed-in check goes through\n     ctx.http, which fixture mode answers only from tests/e2e/fixtures/http/${variant.id}/`
+        );
+        expect(stdout).not.toContain('the preview fails');
+        expect(stdout).toContain(`node scripts/serve-provider-site.mjs ${variant.id}`);
+      }
     }
     // ParkStay stays first, and registered.
     expect(index).toMatch(
