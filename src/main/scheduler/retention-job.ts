@@ -18,7 +18,8 @@
  *   between batches, so a large backlog never blocks the main process or holds the database
  *   for long.
  * - **Stop.** `stop()` clears the timer and aborts a run in flight between batches; the
- *   scheduler waits for that run before the database closes.
+ *   scheduler waits for that run before the database closes. A generation counter keeps a run
+ *   from before a `stop()` from re-arming after a later `start()`.
  * - **Errors** (a busy database): logged, and the next run tries again. Nothing is thrown into
  *   a timer.
  */
@@ -85,6 +86,8 @@ export class RetentionJob {
   private timer?: ReturnType<typeof setTimeout>;
   private nextRunAt?: Date;
   private running = false;
+  /** Bumped by `start()` and `stop()`: a run fired before a restart must not re-arm. */
+  private generation = 0;
   private inFlight?: { promise: Promise<RetentionResult>; controller: AbortController };
 
   constructor(deps: RetentionJobDeps) {
@@ -97,6 +100,7 @@ export class RetentionJob {
   start(): void {
     if (this.running) return;
     this.running = true;
+    this.generation++;
     this.arm(new Date(this.clock().getTime() + RETENTION_FIRST_RUN_DELAY_MS));
   }
 
@@ -120,6 +124,7 @@ export class RetentionJob {
   /** Clears the timer and aborts the run in flight; returns it, to be awaited. */
   stop(): Promise<unknown>[] {
     this.running = false;
+    this.generation++;
     if (this.timer !== undefined) clearTimeout(this.timer);
     this.timer = undefined;
     this.nextRunAt = undefined;
@@ -142,8 +147,12 @@ export class RetentionJob {
 
   private fire(): void {
     this.timer = undefined;
+    const generation = this.generation;
     void this.run().then(() => {
-      if (this.running) this.arm(nextDailyRetentionRun(this.clock()));
+      // Stopped, or stopped and started again (that start armed its own run): nothing to arm
+      if (this.running && generation === this.generation) {
+        this.arm(nextDailyRetentionRun(this.clock()));
+      }
     });
   }
 

@@ -227,6 +227,44 @@ describe('RetentionJob on a real database', () => {
   });
 });
 
+describe('RetentionJob restarted while a run is in flight', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('stop() then start() during a run: the old run never re-arms, the start-up run stands', async () => {
+    jest.useFakeTimers({ now: NOW });
+    // Always a full batch: a run ends only when it is stopped
+    const deleteCreatedBefore = jest.fn(() => RETENTION_BATCH_SIZE);
+    const retention = new RetentionJob({
+      notifications: { deleteCreatedBefore },
+      notifiers: { deleteDeliveryLogsCreatedBefore: jest.fn(() => 0) },
+      settings: { getValue: jest.fn(() => null) },
+    });
+    const runs = jest.spyOn(retention, 'run');
+    retention.start();
+    await jest.advanceTimersByTimeAsync(RETENTION_FIRST_RUN_DELAY_MS);
+    expect(runs).toHaveBeenCalledTimes(1);
+
+    // Restarted while the first run waits for its yield
+    const pending = retention.stop();
+    retention.start();
+    const restartedAt = Date.now();
+    // The aborted run settles
+    await jest.advanceTimersByTimeAsync(1);
+    await Promise.all(pending);
+
+    expect(retention.nextRun).toEqual(new Date(restartedAt + RETENTION_FIRST_RUN_DELAY_MS));
+    await jest.advanceTimersByTimeAsync(restartedAt + RETENTION_FIRST_RUN_DELAY_MS - Date.now());
+    expect(runs).toHaveBeenCalledTimes(2);
+
+    const last = retention.stop();
+    await jest.advanceTimersByTimeAsync(1);
+    await Promise.all(last);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
 describe('nextDailyRetentionRun', () => {
   it('is the next 02:00 in Perth (18:00 UTC), strictly after now', () => {
     expect(nextDailyRetentionRun(new Date('2026-10-10T02:00:00Z'))).toEqual(
