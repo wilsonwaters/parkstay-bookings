@@ -6,7 +6,7 @@
  * it to `routes.ts` first.)
  */
 import { lazy, Suspense } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router';
 import { Spinner } from '../components/ui';
 import ExplorePage from '../features/explore/ExplorePage';
 import PlaceDetailPage from '../features/place/PlaceDetailPage';

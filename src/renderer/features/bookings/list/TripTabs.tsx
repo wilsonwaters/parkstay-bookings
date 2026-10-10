@@ -26,7 +26,7 @@ export function TripTabs({ value, onChange, counts, children }: TripTabsProps) {
             <span aria-hidden="true">{tab.label}</span>
             <span
               aria-hidden="true"
-              className="min-w-[1.5rem] rounded-full bg-surface-subtle px-2 py-0.5 text-center text-xs font-semibold tabular-nums text-fg-secondary"
+              className="min-w-6 rounded-full bg-surface-subtle px-2 py-0.5 text-center text-xs font-semibold tabular-nums text-fg-secondary"
             >
               {counts[tab.value]}
             </span>

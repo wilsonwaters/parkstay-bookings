@@ -275,7 +275,7 @@ export function Combobox({
       }}
       className={
         appearance === 'segment'
-          ? 'w-full min-w-0 truncate border-0 bg-transparent p-0 text-sm text-fg focus-visible:outline-none disabled:cursor-not-allowed'
+          ? 'w-full min-w-0 truncate border-0 bg-transparent p-0 text-sm text-fg focus-visible:outline-hidden disabled:cursor-not-allowed'
           : cx(CONTROL_CLASS, 'h-10 pl-3 pr-10')
       }
     />
@@ -286,7 +286,7 @@ export function Combobox({
       {appearance === 'segment' ? (
         <div
           ref={anchorRef}
-          className="flex min-w-0 flex-col rounded-full px-6 py-2.5 transition-colors duration-fast ease-standard hover:bg-surface-subtle focus-within:bg-surface focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus"
+          className="flex min-w-0 flex-col rounded-full px-6 py-2.5 transition-colors duration-fast ease-standard hover:bg-surface-subtle focus-within:bg-surface focus-within:outline-solid focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus"
         >
           <label htmlFor={inputId} className="text-xs font-semibold text-fg">
             {label}

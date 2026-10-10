@@ -152,7 +152,7 @@ export function Gallery({ name, kind, imageUrls, className }: GalleryProps) {
       // As tall as the photo grid would be, so a place without photos stays calm.
       <div
         className={cx(
-          'aspect-[16/9] overflow-hidden rounded-2xl lg:aspect-[3/1]',
+          'aspect-video overflow-hidden rounded-2xl lg:aspect-3/1',
           GALLERY_SIZE,
           className
         )}
@@ -175,7 +175,7 @@ export function Gallery({ name, kind, imageUrls, className }: GalleryProps) {
         name={name}
         kind={kind}
         onFailed={markFailed}
-        className={cx('aspect-[16/9] rounded-2xl', GALLERY_SIZE, className)}
+        className={cx('aspect-video rounded-2xl', GALLERY_SIZE, className)}
       />
     );
   }
@@ -218,11 +218,11 @@ export function Gallery({ name, kind, imageUrls, className }: GalleryProps) {
 
   return (
     <div className={cx('relative', className)}>
-      <div className={cx('grid gap-2 lg:aspect-[3/1] lg:grid-cols-4 lg:grid-rows-2', GALLERY_SIZE)}>
+      <div className={cx('grid gap-2 lg:aspect-3/1 lg:grid-cols-4 lg:grid-rows-2', GALLERY_SIZE)}>
         {tile(
           hero,
           cx(
-            'aspect-[16/9] rounded-2xl lg:col-span-2 lg:row-span-2 lg:aspect-auto lg:rounded-r-none lg:rounded-l-2xl',
+            'aspect-video rounded-2xl lg:col-span-2 lg:row-span-2 lg:aspect-auto lg:rounded-r-none lg:rounded-l-2xl',
             GALLERY_SIZE
           )
         )}
@@ -267,7 +267,7 @@ export function Gallery({ name, kind, imageUrls, className }: GalleryProps) {
                 shape="pill"
                 onClick={() => step(-1)}
               />
-              <p className="min-w-[5rem] text-center text-sm font-semibold tabular-nums text-fg">
+              <p className="min-w-20 text-center text-sm font-semibold tabular-nums text-fg">
                 {index + 1} of {count}
               </p>
               <IconButton

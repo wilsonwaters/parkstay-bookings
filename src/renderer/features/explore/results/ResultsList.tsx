@@ -123,8 +123,8 @@ function CardSkeleton({ layout }: { layout: 'stack' | 'row' }) {
     <div className={cx('flex', layout === 'row' ? 'flex-row gap-4' : 'flex-col gap-3')}>
       <Skeleton
         className={cx(
-          'aspect-[4/3] rounded-lg',
-          layout === 'row' ? 'w-2/5 max-w-[15rem] shrink-0' : 'w-full'
+          'aspect-4/3 rounded-lg',
+          layout === 'row' ? 'w-2/5 max-w-60 shrink-0' : 'w-full'
         )}
       />
       <div className="flex flex-1 flex-col gap-2 py-1">
@@ -365,7 +365,7 @@ export function ResultsList({
           <Heading>{heading}</Heading>
           <ul role="list" className={cx('mt-6 grid gap-x-6 gap-y-8', grid)}>
             {items.slice(0, shown).map((item) => (
-              <li key={item.key} className="scroll-mt-[var(--explore-sticky,8rem)]">
+              <li key={item.key} className="scroll-mt-(--explore-sticky,8rem)">
                 <ResultCard
                   location={item}
                   selected={item.key === selectedKey}

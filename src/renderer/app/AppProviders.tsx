@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
-import { HashRouter } from 'react-router-dom';
+import { HashRouter } from 'react-router';
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
 import { LucideProvider } from 'lucide-react';
 import { toApiError, useProviders } from '../api';
@@ -49,7 +49,7 @@ export interface AppProvidersProps {
  */
 export function AppProviders({ children, queryClient = appQueryClient }: AppProvidersProps) {
   return (
-    <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <HashRouter>
       <QueryClientProvider client={queryClient}>
         <LucideProvider strokeWidth={1.75} size={20}>
           <ToastProvider>

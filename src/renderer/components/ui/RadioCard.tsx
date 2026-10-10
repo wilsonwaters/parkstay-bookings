@@ -108,7 +108,7 @@ export function RadioCard({ value, title, description, icon, trailing, disabled 
       <span
         className={cx(
           'flex items-start gap-3 rounded-lg border bg-surface p-4 transition-colors duration-fast ease-standard',
-          'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus',
+          'peer-focus-visible:outline-solid peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus',
           checked
             ? 'border-brand ring-1 ring-brand'
             : 'border-border-strong hover:border-fg-secondary',

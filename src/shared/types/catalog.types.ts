@@ -137,9 +137,9 @@ export interface CatalogUpdatedEvent {
 // Schemas
 // ---------------------------------------------------------------------------------------
 
-const finite = z.number().finite();
-const longitude = finite.min(-180).max(180);
-const latitude = finite.min(-90).max(90);
+// z.number() rejects Infinity and NaN.
+const longitude = z.number().min(-180).max(180);
+const latitude = z.number().min(-90).max(90);
 
 /**
  * `[west, south, east, north]`. West must not be east of east: WA never spans the

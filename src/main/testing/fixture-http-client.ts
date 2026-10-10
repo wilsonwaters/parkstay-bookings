@@ -38,16 +38,14 @@ import {
 import { CookieJar } from '../providers/sdk/http-node';
 import { appendUnexpectedRequest } from './request-log';
 
-const routeSchema = z
-  .object({
-    method: z.enum(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']),
-    path: z.string().startsWith('/'),
-    query: z.record(z.string()).optional(),
-    status: z.number().int().min(100).max(599).optional(),
-    file: z.string().min(1),
-    contentType: z.string().min(1).optional(),
-  })
-  .strict();
+const routeSchema = z.strictObject({
+  method: z.enum(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']),
+  path: z.string().startsWith('/'),
+  query: z.record(z.string(), z.string()).optional(),
+  status: z.number().int().min(100).max(599).optional(),
+  file: z.string().min(1),
+  contentType: z.string().min(1).optional(),
+});
 
 const manifestSchema = z.object({ routes: z.array(routeSchema) });
 

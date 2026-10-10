@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router';
 import { LoaderCircle } from 'lucide-react';
 import {
   toApiError,
@@ -75,7 +75,7 @@ function SnipeDetailView({ snipe, manifest, updating: fetching }: ViewProps) {
             name={location.name || snipe.name}
             place={place.data}
             loading={place.isLoading}
-            className="aspect-[16/9] w-full rounded-lg sm:aspect-[4/3] sm:w-44"
+            className="aspect-video w-full rounded-lg sm:aspect-4/3 sm:w-44"
           />
         }
         description={

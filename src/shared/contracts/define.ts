@@ -11,7 +11,7 @@ import { z } from 'zod';
 import type { APIResponse } from '../types/api.types';
 
 export interface MethodDef<
-  Req extends z.ZodTypeAny = z.ZodTypeAny,
+  Req extends z.ZodType = z.ZodType,
   Args extends unknown[] = any[], // eslint-disable-line @typescript-eslint/no-explicit-any
   Res = unknown,
 > {

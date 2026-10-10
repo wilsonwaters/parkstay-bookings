@@ -1,11 +1,11 @@
-import type { MutableRefObject, Ref, RefCallback } from 'react';
+import type { Ref, RefCallback, RefObject } from 'react';
 
 /** Combines several refs (callback or object) into one callback ref. */
 export function mergeRefs<T>(...refs: Array<Ref<T> | undefined>): RefCallback<T> {
   return (value) => {
     for (const ref of refs) {
       if (typeof ref === 'function') ref(value);
-      else if (ref) (ref as MutableRefObject<T | null>).current = value;
+      else if (ref) (ref as RefObject<T | null>).current = value;
     }
   };
 }

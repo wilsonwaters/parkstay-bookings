@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { CircleCheck, LogIn } from 'lucide-react';
 import { useAccountCheck, useAccountStatus, useSignIn } from '../../api/accounts';
 import type { ProviderManifest } from '../../../shared/types/provider.types';

@@ -16,7 +16,7 @@ WA Stay is an Electron + React + TypeScript desktop app (Windows first) for find
 | Component | Technology |
 | --- | --- |
 | Desktop Framework | Electron 44 (its own Node 24); development and CI on Node 24 (`.nvmrc`) |
-| UI Framework | React 18, React Router (HashRouter), React Query, react-hook-form |
+| UI Framework | React 19, React Router 7 (`react-router`, HashRouter), React Query, react-hook-form |
 | Language | TypeScript 5 |
 | Database | SQLite via better-sqlite3 (`<userData>/wa-stay.db`) |
 | Map | Mapbox GL JS 3 (token at build time; Explore is list-only without one) |
@@ -25,8 +25,8 @@ WA Stay is an Electron + React + TypeScript desktop app (Windows first) for find
 | Browser automation | playwright-core 1.64.0 (pinned, the same version as `@playwright/test`), driving the installed Edge or Chrome (lazy-loaded) |
 | HTML sanitising | sanitize-html (provider HTML, in main) |
 | Email | nodemailer (SMTP) |
-| Validation | Zod |
-| Styling | Tailwind CSS with design tokens, lucide-react icons, Figtree and Fraunces (`@fontsource-variable`) |
+| Validation | Zod 4 |
+| Styling | Tailwind CSS 4 (CSS-first config in `src/renderer/styles/index.css`, via `@tailwindcss/postcss`) with design tokens, lucide-react icons, Figtree and Fraunces (`@fontsource-variable`) |
 | Build | Vite 5 (renderer), tsc + tsc-alias (main), esbuild (preload), Electron Builder 26 (with Electron fuses) |
 | Testing | Jest 29 + Playwright (`_electron`) |
 | Logging | Winston |

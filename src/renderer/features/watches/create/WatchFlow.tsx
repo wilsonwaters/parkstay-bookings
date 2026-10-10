@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FormProvider, useForm, type Resolver } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toApiError, useCreateWatch, useLocationDetail } from '../../../api';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
@@ -67,7 +67,7 @@ export function WatchFlow({ manifests, initialValues, initialStep, notices = [] 
     resolver,
     mode: 'onTouched',
   });
-  const { watch, setValue, getValues, trigger, getFieldState, setError, formState } = form;
+  const { watch, setValue, getValues, trigger, getFieldState, setError } = form;
 
   const [providerId, location, arrival, departure, autoHold] = watch([
     'providerId',
@@ -83,11 +83,17 @@ export function WatchFlow({ manifests, initialValues, initialStep, notices = [] 
   const detail = useLocationDetail(location ? `${providerId}:${location.externalId}` : null);
   const units = detail.isPlaceholderData ? undefined : detail.data?.units;
 
-  // Suggest a name from the place and dates until the person writes their own.
-  const nameEdited = Boolean(formState.dirtyFields.name);
+  // Suggest a name from the place and dates until the person writes their own: any name but
+  // the last suggestion, or none. Not `dirtyFields.name`: react-hook-form counts any value that
+  // differs from its default as dirty, the suggestion included.
+  const name = watch('name');
+  const lastSuggestion = useRef('');
   useEffect(() => {
-    if (!nameEdited) setValue('name', suggestedName(location, arrival, departure, today));
-  }, [location, arrival, departure, today, nameEdited, setValue]);
+    if (name !== '' && name !== lastSuggestion.current) return;
+    const next = suggestedName(location, arrival, departure, today);
+    lastSuggestion.current = next;
+    if (next !== name) setValue('name', next);
+  }, [location, arrival, departure, today, name, setValue]);
 
   const changeProvider = (id: string) => {
     const next = manifestOf(id);

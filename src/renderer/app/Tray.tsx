@@ -49,7 +49,7 @@ export function Tray({ setAside = false }: TrayProps) {
         data-testid="tray"
         data-modal-open={modalOpen || undefined}
         data-set-aside={aside || undefined}
-        className={`pointer-events-none fixed bottom-4 right-4 flex w-[23.75rem] max-w-[calc(100vw-2rem)] flex-col items-stretch gap-2 ${
+        className={`pointer-events-none fixed bottom-4 right-4 flex w-95 max-w-[calc(100vw-2rem)] flex-col items-stretch gap-2 ${
           aside ? 'z-toast' : 'z-tray'
         }`}
       >
@@ -76,7 +76,7 @@ function TraySlot({ hidden, children }: { hidden: boolean; children: ReactNode }
     ref.current?.toggleAttribute('inert', hidden);
   }, [hidden]);
   return (
-    <div ref={ref} className={`contents ${hidden ? '[&>*]:invisible' : ''}`}>
+    <div ref={ref} className={`contents ${hidden ? '*:invisible' : ''}`}>
       {children}
     </div>
   );

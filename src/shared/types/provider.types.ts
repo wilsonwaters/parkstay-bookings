@@ -346,7 +346,10 @@ export const CalendarDateSchema = z
 
 const count = z.number().int().nonnegative();
 
-export const StayParamsSchema = z.record(z.union([z.string(), z.number(), z.boolean()]));
+export const StayParamsSchema = z.record(
+  z.string(),
+  z.union([z.string(), z.number(), z.boolean()])
+);
 
 export const StayQuerySchema = z
   .object({
@@ -361,7 +364,7 @@ export const StayQuerySchema = z
   })
   // Same-format calendar dates compare correctly as strings.
   .refine((stay) => stay.departure > stay.arrival, {
-    message: 'Departure must be after arrival',
+    error: 'Departure must be after arrival',
     path: ['departure'],
   });
 assertTypeEquals<z.input<typeof StayQuerySchema>, StayQuery>(true);
@@ -401,8 +404,8 @@ export const StayFieldDescriptorSchema = z
     help: z.string().optional(),
     type: z.enum(['select', 'number', 'text', 'boolean']),
     options: z.array(z.object({ value: z.string(), label: nonEmpty })).optional(),
-    min: z.number().finite().optional(),
-    max: z.number().finite().optional(),
+    min: z.number().optional(),
+    max: z.number().optional(),
     pattern: z.string().refine(isValidPattern, 'Not a valid regular expression').optional(),
     default: z.union([z.string(), z.number(), z.boolean()]).optional(),
     appliesTo: z.array(z.enum(['availability', 'watch', 'snipe', 'hold'])).min(1),
@@ -451,7 +454,7 @@ export const AccountFieldsSchema = z
   .array(AccountFieldDescriptorSchema)
   .min(1)
   .refine(
-    uniqueBy((f) => f.key),
+    uniqueBy((f: AccountFieldDescriptor) => f.key),
     'Account field keys must be unique'
   );
 
@@ -494,10 +497,7 @@ export const ProviderManifestSchema = z.object({
   name: nonEmpty,
   shortName: nonEmpty.max(24),
   description: nonEmpty,
-  website: z
-    .string()
-    .url()
-    .refine((url) => url.startsWith('https://'), 'The website must be https'),
+  website: z.url().refine((url) => url.startsWith('https://'), 'The website must be https'),
   integration: z.enum(['api', 'browser', 'hybrid']),
   brand: z.object({
     color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Brand colour is #RRGGBB'),
@@ -511,14 +511,14 @@ export const ProviderManifestSchema = z.object({
   stayFields: z
     .array(StayFieldDescriptorSchema)
     .refine(
-      uniqueBy((f) => f.key),
+      uniqueBy((f: StayFieldDescriptor) => f.key),
       'Stay field keys must be unique'
     )
     .optional(),
   releaseModes: z
     .array(ReleaseModeDescriptorSchema)
     .refine(
-      uniqueBy((m) => m.id),
+      uniqueBy((m: ReleaseModeDescriptor) => m.id),
       'Release mode ids must be unique'
     )
     .optional(),

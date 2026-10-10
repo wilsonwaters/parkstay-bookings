@@ -27,7 +27,8 @@ const C = CHANNELS.snipes;
  */
 // Annotated, not inferred: the inferred type is the union of the enum's members, which is
 // assignable to `SnipeReleaseMode` but not identical to it, so assertTypeEquals would fail.
-const releaseModeSchema: z.ZodType<SnipeReleaseMode> = z.nativeEnum(SnipeReleaseMode);
+// Both type arguments: zod 4's `ZodType<O>` alone has an `unknown` input type.
+const releaseModeSchema: z.ZodType<SnipeReleaseMode, SnipeReleaseMode> = z.enum(SnipeReleaseMode);
 
 export const snipeInputSchema = z.object({
   providerId: ProviderIdSchema,
@@ -53,7 +54,7 @@ export const snipeUpdateSchema = snipeInputSchema.omit({ providerId: true }).par
 assertTypeEquals<z.input<typeof snipeUpdateSchema>, SiteSnipeUpdate>(true);
 assertTypeEquals<z.output<typeof snipeUpdateSchema>, SiteSnipeUpdate>(true);
 
-const snipeStatusSchema: z.ZodType<SnipeStatus> = z.nativeEnum(SnipeStatus);
+const snipeStatusSchema: z.ZodType<SnipeStatus, SnipeStatus> = z.enum(SnipeStatus);
 
 /** `snipes.list`: every snipe of the local profile, or those of one provider or status. */
 export const snipeListFilterSchema = z.object({

@@ -27,7 +27,7 @@ export function CopyReference({ reference }: CopyReferenceProps) {
   const announce = useAnnounce();
   const textRef = useRef<HTMLSpanElement>(null);
   const [outcome, setOutcome] = useState<Outcome>('idle');
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
 
   const copy = async () => {

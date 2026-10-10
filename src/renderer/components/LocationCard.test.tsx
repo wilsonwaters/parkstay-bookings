@@ -1,5 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import type { LocationSummary } from '../../shared/types/catalog.types';
 import { LocationCard, LocationPhoto, photoUrl } from './LocationCard';
 
@@ -68,7 +68,7 @@ describe('LocationCard', () => {
   it('is one link named by the place, with its area in full, and marked current when selected', () => {
     const area = { name: 'Bandilngan (Windjana Gorge) National Park', region: 'Kimberley' };
     render(
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <LocationCard location={{ ...PLACE, area }} selected />
       </MemoryRouter>
     );

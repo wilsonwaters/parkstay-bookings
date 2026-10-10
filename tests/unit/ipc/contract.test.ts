@@ -33,28 +33,29 @@ const methods = (): Array<[string, string, MethodDef]> =>
 const kebab = (name: string): string => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 
 /** Every object key a schema accepts, at any depth. */
-function schemaKeys(schema: z.ZodTypeAny): string[] {
+function schemaKeys(schema: z.core.$ZodType): string[] {
   if (schema instanceof z.ZodObject) {
-    return Object.entries(schema.shape as Record<string, z.ZodTypeAny>).flatMap(([key, value]) => [
-      key,
-      ...schemaKeys(value),
-    ]);
+    return Object.entries(schema.shape as Record<string, z.core.$ZodType>).flatMap(
+      ([key, value]) => [key, ...schemaKeys(value)]
+    );
   }
-  if (schema instanceof z.ZodEffects) return schemaKeys(schema.innerType());
+  // zod 4 keeps a refinement on the schema itself; a transform or preprocess is a pipe.
+  if (schema instanceof z.ZodPipe) return [...schemaKeys(schema.in), ...schemaKeys(schema.out)];
   if (
     schema instanceof z.ZodOptional ||
     schema instanceof z.ZodNullable ||
     schema instanceof z.ZodDefault
   ) {
-    return schemaKeys(schema._def.innerType);
+    return schemaKeys(schema.unwrap());
   }
   if (schema instanceof z.ZodArray) return schemaKeys(schema.element);
-  if (schema instanceof z.ZodRecord) return schemaKeys(schema.valueSchema);
-  if (schema instanceof z.ZodUnion || schema instanceof z.ZodDiscriminatedUnion) {
-    return (schema.options as z.ZodTypeAny[]).flatMap(schemaKeys);
+  if (schema instanceof z.ZodRecord) return schemaKeys(schema.valueType);
+  // A discriminated union is a ZodUnion too.
+  if (schema instanceof z.ZodUnion) {
+    return (schema.options as z.core.$ZodType[]).flatMap(schemaKeys);
   }
   if (schema instanceof z.ZodIntersection) {
-    return [...schemaKeys(schema._def.left), ...schemaKeys(schema._def.right)];
+    return [...schemaKeys(schema.def.left), ...schemaKeys(schema.def.right)];
   }
   return [];
 }

@@ -152,7 +152,7 @@ npm start       # terminal 2: Electron on the dev server
 | `npm run docs:screenshots` | Retakes the screenshots in `docs/images/` |
 | `npm run lint`, `npm run format:check`, `npm run type-check` | The checks CI runs with `npm test` |
 
-Stack: Electron 44, React 18, TypeScript 5, Vite 5, Tailwind CSS, SQLite (better-sqlite3),
+Stack: Electron 44, React 19, TypeScript 5, Vite 5, Tailwind CSS 4, SQLite (better-sqlite3),
 React Query, Mapbox GL JS, playwright-core, Jest 29 and Playwright. Start with
 [development](docs/development.md) and the [architecture overview](docs/architecture/overview.md);
 [CLAUDE.md](CLAUDE.md) has the code conventions.

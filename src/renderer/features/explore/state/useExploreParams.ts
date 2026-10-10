@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import {
   parseExploreParams,
   replaceExploreParams,
@@ -75,7 +75,7 @@ export function useExploreParams(known: KnownValues = {}): UseExploreParams {
     [navigate, unrendered]
   );
 
-  const cameraTimer = useRef<ReturnType<typeof setTimeout>>();
+  const cameraTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const update = useCallback(
     (patch: ExploreParamsPatch, options: { replace?: boolean } = {}) => {

@@ -128,7 +128,7 @@ export function UpdateCard() {
           <p id={titleId} className="text-sm font-semibold text-fg">
             {title}
           </p>
-          {body && <p className="mt-0.5 break-words text-sm text-fg-secondary">{body}</p>}
+          {body && <p className="mt-0.5 wrap-break-word text-sm text-fg-secondary">{body}</p>}
           {view.state === 'downloading' && (
             <>
               <div

@@ -13,11 +13,11 @@ import type { Namespace } from './define';
 
 const C = CHANNELS.notifiers;
 
-const channelPayload = z.object({ channel: z.nativeEnum(NotifierChannel) });
+const channelPayload = z.object({ channel: z.enum(NotifierChannel) });
 
 /** SMTP settings (`SMTPConfig`), stored encrypted. */
 export const smtpConfigSchema = z.object({
-  preset: z.nativeEnum(SMTPPreset),
+  preset: z.enum(SMTPPreset),
   host: z.string().trim().min(1),
   port: z.number().int().min(1).max(65535),
   secure: z.boolean(),

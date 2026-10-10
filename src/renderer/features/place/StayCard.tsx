@@ -1,5 +1,5 @@
 import { useId, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { BellRing, CalendarClock } from 'lucide-react';
 import { ExternalLink } from '../../components/ExternalLink';
 import {

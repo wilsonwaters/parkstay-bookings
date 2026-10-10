@@ -106,7 +106,7 @@ export const StayInputSchema = z
   })
   // Same-format calendar dates compare correctly as strings.
   .refine((stay) => stay.departure > stay.arrival, {
-    message: 'Departure must be after arrival',
+    error: 'Departure must be after arrival',
     path: ['departure'],
   });
 assertTypeEquals<z.input<typeof StayInputSchema>, StayInput>(true);

@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { Ellipsis, Trash2 } from 'lucide-react';
 import type { Booking } from '../../../../shared/types/booking.types';
 import { BookingStatus } from '../../../../shared/types/common.types';
@@ -62,7 +62,7 @@ export function BookingCard({
         name={location.name}
         place={place}
         loading={placeLoading}
-        className="aspect-[16/9] w-full rounded-md sm:aspect-[4/3] sm:w-36 sm:self-start"
+        className="aspect-video w-full rounded-md sm:aspect-4/3 sm:w-36 sm:self-start"
       />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-start justify-between gap-3">

@@ -34,7 +34,7 @@ export interface PopoverProps {
   side?: Side;
   align?: Align;
   /** Focused on open. Default: whatever inside took focus, else the first focusable element. */
-  initialFocusRef?: RefObject<HTMLElement>;
+  initialFocusRef?: RefObject<HTMLElement | null>;
   /** `md` (default) pads the panel; `none` leaves it to content with its own sections. */
   padding?: 'md' | 'none';
   className?: string;
@@ -128,9 +128,10 @@ export function Popover({
     }
   };
 
-  const child = Children.only(trigger) as ReactElement<TriggerProps> & { ref?: Ref<HTMLElement> };
+  const child = Children.only(trigger) as ReactElement<TriggerProps>;
   const triggerElement = cloneElement(child, {
-    ref: mergeRefs(child.ref, triggerRef),
+    // React 19: a ref is a prop like any other.
+    ref: mergeRefs(child.props.ref, triggerRef),
     'aria-haspopup': 'dialog',
     'aria-expanded': open,
     'aria-controls': open ? id : undefined,
@@ -151,7 +152,7 @@ export function Popover({
             style={style}
             onKeyDown={onPanelKeyDown}
             className={cx(
-              'z-overlay max-w-[calc(100vw-1rem)] animate-scale-in rounded-lg border border-border bg-surface text-fg shadow-pop focus:outline-none',
+              'z-overlay max-w-[calc(100vw-1rem)] animate-scale-in rounded-lg border border-border bg-surface text-fg shadow-pop focus:outline-hidden',
               padding === 'md' && 'p-4',
               className
             )}

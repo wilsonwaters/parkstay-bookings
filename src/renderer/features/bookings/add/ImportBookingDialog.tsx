@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { toApiError, useAccountStatus, useImportBooking, useProvidersWith } from '../../../api';
 import type { Booking } from '../../../../shared/types/booking.types';
 import { ROUTES } from '../../../app/routes';

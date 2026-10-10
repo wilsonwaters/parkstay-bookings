@@ -1,5 +1,5 @@
 import { Suspense, useRef, useState, type MouseEvent } from 'react';
-import { Link, Outlet, useLocation } from 'react-router-dom';
+import { Link, Outlet, useLocation } from 'react-router';
 import { API_UNAVAILABLE_MESSAGE, isApiAvailable } from '../api';
 import { Logo } from '../components/brand/Logo';
 import { Notice, Spinner } from '../components/ui';
@@ -60,7 +60,7 @@ export function AppShell() {
         </div>
       </header>
 
-      <main id="main" ref={mainRef} tabIndex={-1} className="focus:outline-none">
+      <main id="main" ref={mainRef} tabIndex={-1} className="focus:outline-hidden">
         {!apiAvailable && (
           <div className="mx-auto w-full max-w-7xl px-6 pt-6 lg:px-8">
             <Notice tone="warning" title="Running outside the WA Stay app">

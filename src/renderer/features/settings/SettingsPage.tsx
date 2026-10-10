@@ -1,5 +1,5 @@
 import { useRef, type ComponentType } from 'react';
-import { Navigate, useLocation, useParams } from 'react-router-dom';
+import { Navigate, useLocation, useParams } from 'react-router';
 import { ROUTES } from '../../app/routes';
 import { PageHeader } from '../../components/ui';
 import { AccountsSection } from './accounts/AccountsSection';

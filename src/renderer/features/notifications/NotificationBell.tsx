@@ -68,7 +68,7 @@ export function NotificationBell({ onOpenChange }: NotificationBellProps = {}) {
                   <span
                     aria-hidden="true"
                     data-testid="notification-badge"
-                    className="pointer-events-none absolute right-0 top-0.5 flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-accent px-1 text-[0.6875rem] font-semibold leading-none tabular-nums text-accent-fg ring-2 ring-surface"
+                    className="pointer-events-none absolute right-0 top-0.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-accent px-1 text-[0.6875rem] font-semibold leading-none tabular-nums text-accent-fg ring-2 ring-surface"
                   >
                     {badge}
                   </span>

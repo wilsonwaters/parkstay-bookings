@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink } from 'react-router';
 import { ROUTES } from '../../app/routes';
 import { cx } from '../../components/ui/cx';
 import { SETTINGS_SECTIONS } from './sections';

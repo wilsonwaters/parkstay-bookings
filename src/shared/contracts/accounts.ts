@@ -29,10 +29,7 @@ export interface OpenSignInLinkRequest {
 const providerPayload = z.object({ providerId: ProviderIdSchema });
 const openSignInLinkRequest = z.object({
   providerId: ProviderIdSchema,
-  url: z
-    .string()
-    .url()
-    .refine((url) => url.startsWith('https://'), 'Sign-in links must be https'),
+  url: z.url().refine((url) => url.startsWith('https://'), 'Sign-in links must be https'),
 });
 assertTypeEquals<z.input<typeof providerPayload>, AccountRequest>(true);
 assertTypeEquals<z.output<typeof providerPayload>, AccountRequest>(true);

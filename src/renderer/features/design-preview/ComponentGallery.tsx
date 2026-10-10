@@ -517,7 +517,7 @@ function SkeletonSection() {
       <div className="grid gap-6 md:grid-cols-3">
         {[0, 1, 2].map((i) => (
           <div key={i} className="rounded-lg border border-border bg-surface p-4">
-            <Skeleton className="aspect-[4/3] w-full rounded-lg" />
+            <Skeleton className="aspect-4/3 w-full rounded-lg" />
             <Skeleton shape="text" className="mt-4 w-3/4" />
             <Skeleton shape="text" className="mt-2 w-1/2" />
             <div className="mt-4 flex items-center gap-2">
@@ -1299,7 +1299,7 @@ function GuestsSection() {
               options={PLACES}
               hint="A place, park or town"
               placeholder="Search places"
-              className="min-w-[12rem] flex-1"
+              className="min-w-48 flex-1"
             />
             <DateRangeField
               appearance="segment"
@@ -1319,7 +1319,7 @@ function GuestsSection() {
               value={where}
               onChange={setWhere}
               placeholder="Search places"
-              className="min-w-[12rem] flex-1"
+              className="min-w-48 flex-1"
             />
             <DateRangeField appearance="segment" value={range} onChange={setRange} />
             <GuestsField appearance="segment" value={guests} onChange={setGuests} />

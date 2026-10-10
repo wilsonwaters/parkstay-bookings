@@ -1,6 +1,6 @@
 import { Component, useState, type ErrorInfo, type ReactNode } from 'react';
 import { ArrowLeft, Copy, RotateCcw, TriangleAlert } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Button, EmptyState, Notice, PageHeader } from '../components/ui';
 import { ROUTES } from './routes';
 

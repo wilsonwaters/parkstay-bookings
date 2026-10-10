@@ -9,7 +9,7 @@ import {
   useState,
   type CSSProperties,
 } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import { Hourglass, List, Map as MapIcon } from 'lucide-react';
 import type {
   BoundingBox,
@@ -807,8 +807,8 @@ export default function ExplorePage() {
               aria-labelledby="explore-map-heading"
               className={cx(
                 'isolate bg-canvas',
-                'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:top-[var(--explore-sticky)]',
-                'lg:sticky lg:top-[var(--explore-sticky)] lg:h-[calc(100vh-var(--explore-sticky))]',
+                'max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:top-(--explore-sticky)',
+                'lg:sticky lg:top-(--explore-sticky) lg:h-[calc(100vh-var(--explore-sticky))]',
                 !wide && params.view !== 'map' && 'invisible'
               )}
             >

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { BellRing, Plus } from 'lucide-react';
 import { useProviders, useWatches, useWatchUpdates } from '../../api';
 import { ROUTES } from '../../app/routes';

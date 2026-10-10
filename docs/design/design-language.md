@@ -7,7 +7,7 @@ This document is the rulebook. Everything in it is encoded and checked:
 | Where | What |
 | --- | --- |
 | `src/renderer/styles/tokens.css` | The token values, as `--ws-*` CSS variables. **The single source of truth.** |
-| `tailwind.config.js` | Maps utility names (`bg-accent`, `text-fg-muted`, `rounded-lg`, `shadow-pop`, `z-tray`) onto those variables. It holds no values of its own. |
+| `src/renderer/styles/index.css` | The Tailwind 4 configuration, CSS-first: its `@theme` block maps utility names (`bg-accent`, `text-fg-muted`, `rounded-lg`, `shadow-pop`, `z-tray`) onto those variables. It holds no values of its own. |
 | `src/renderer/styles/contrast.ts` | `contrastRatio()` and `CONTRAST_PAIRS`, the colour pairs we promise to keep accessible. |
 | `tests/unit/design/contrast.test.ts` | Reads `tokens.css` and fails if any pair drops below its minimum, or a named token disappears. |
 | `tests/unit/design/token-guard.test.ts` | Fails on raw Tailwind colour classes (`bg-gray-500`, `text-primary-600`, `accent-blue-600`, `bg-white`, `text-black`), hex literals, numeric colour functions (`rgb(0 0 0)`, `hsl(…)`; `rgb(var(--ws-…))` is fine) and emoji in `components/ui`, `app`, `features` and `api` (legacy folders excluded). Typographic symbols such as © ® ™ ↔ → ★ are not emoji and pass. A line that genuinely needs one of these, such as `"Site #101"`, opts out with a `token-guard-ignore` comment on that line, giving the reason. |
@@ -119,9 +119,9 @@ Rules:
 - **Inputs use `border-strong`** (3.92:1). The hairline `border` (1.33:1) separates list items and cards, and is never the only visible edge of something you can click or type into. A `sand-300` step was deliberately left out: at 1.65:1 it looks like a border but fails as one.
 - **Alpha is for overlays**, such as `bg-accent/10` for a pressed state or `bg-surface-inverse/40` for a scrim. Never fade text with opacity; use `fg-secondary` or `fg-muted`.
 - **Focus is always `focus` at full strength.** The global `:focus-visible` outline and a bare `ring-2` (no colour class) both use it, and a ring offset is `surface`. Tailwind's default half-transparent blue ring is gone.
-- Tokens hold space-separated RGB channels (`--ws-coral-600: 191 69 32;`) so Tailwind's `<alpha-value>` works.
+- Tokens hold space-separated RGB channels (`--ws-coral-600: 191 69 32;`), so `rgb(var(--ws-coral-600) / 0.4)` works anywhere. Tailwind's alpha modifier (`bg-accent/10`) mixes the colour with transparent.
 - There is no dark theme in this project. Aliases are the seam for one later: a theme redefines the aliases and nothing else.
-- **Legacy only:** `primary-50…900` still exists in a commented block in `tailwind.config.js`, re-pointed at ocean so the old pages render. New code must not use it, and the token guard rejects it.
+- **Legacy only:** `primary-50…900` still exists in a commented block of the `@theme` in `src/renderer/styles/index.css`, re-pointed at ocean so the old pages render. New code must not use it, and the token guard rejects it.
 
 ## Contrast pairs
 

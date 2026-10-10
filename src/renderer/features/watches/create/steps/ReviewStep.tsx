@@ -131,7 +131,7 @@ export function ReviewStep({
               name={v.location?.name ?? 'The place'}
               place={place}
               loading={placeLoading}
-              className="aspect-[4/3] w-28 rounded-md"
+              className="aspect-4/3 w-28 rounded-md"
             />
             <div className="flex min-w-0 flex-col gap-1">
               <p className="text-base font-semibold text-fg">{v.location?.name}</p>

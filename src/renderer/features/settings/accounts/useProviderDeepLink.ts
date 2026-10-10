@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 
 /**
  * `/settings/accounts?provider=<id>` (Watches, Site Sniper and Bookings link here): once the

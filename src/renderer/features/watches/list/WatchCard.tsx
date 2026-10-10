@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
 import type { Watch } from '../../../../shared/types/watch.types';
 import { ROUTES } from '../../../app/routes';
@@ -120,7 +120,7 @@ export function WatchCard({
         name={location.name}
         place={place}
         loading={placeLoading}
-        className="aspect-[16/9] w-full rounded-md sm:aspect-[4/3] sm:w-36 sm:self-start"
+        className="aspect-video w-full rounded-md sm:aspect-4/3 sm:w-36 sm:self-start"
       />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-start justify-between gap-3">

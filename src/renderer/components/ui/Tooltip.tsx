@@ -56,7 +56,7 @@ export function Tooltip({ content, children, side = 'top', describe = true }: To
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const { style } = usePosition(triggerRef, tipRef, { open, side, align: 'center', offset: 6 });
 
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -77,11 +77,12 @@ export function Tooltip({ content, children, side = 'top', describe = true }: To
   };
   const keepOpen = () => clearTimeout(timer.current);
 
-  const child = Children.only(children) as ReactElement<TriggerProps> & { ref?: Ref<HTMLElement> };
+  const child = Children.only(children) as ReactElement<TriggerProps>;
   const own = child.props;
 
   const trigger = cloneElement(child, {
-    ref: mergeRefs(child.ref, triggerRef),
+    // React 19: a ref is a prop like any other.
+    ref: mergeRefs(child.props.ref, triggerRef),
     'aria-describedby': describe ? cx(own['aria-describedby'], id) : own['aria-describedby'],
     onPointerEnter: composeHandlers(own.onPointerEnter, (event: PointerEvent<HTMLElement>) => {
       if (event.pointerType === 'touch') return;

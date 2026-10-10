@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import { toApiError, useLocationDetail } from '../../../api';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
 import { toLocationChoice } from '../../../components/LocationCombobox';

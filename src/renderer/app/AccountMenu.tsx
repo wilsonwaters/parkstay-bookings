@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { CircleUser, Info, Settings } from 'lucide-react';
-import { useHref } from 'react-router-dom';
+import { useHref } from 'react-router';
 import { APP_NAME } from '@shared/constants';
 import { IconButton, Menu, MenuItem } from '../components/ui';
 import { AboutDialog } from '../features/settings/about/AboutDialog';

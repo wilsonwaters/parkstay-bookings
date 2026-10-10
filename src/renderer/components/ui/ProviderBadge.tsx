@@ -48,8 +48,8 @@ export interface ProviderBadgeProps {
 }
 
 const MONOGRAM_SIZE = {
-  sm: 'h-5 min-w-[1.25rem] px-1 text-[0.625rem]',
-  md: 'h-6 min-w-[1.5rem] px-1.5 text-xs',
+  sm: 'h-5 min-w-5 px-1 text-[0.625rem]',
+  md: 'h-6 min-w-6 px-1.5 text-xs',
 };
 
 /**

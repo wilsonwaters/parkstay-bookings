@@ -23,7 +23,7 @@ export interface DialogProps {
   closeOnEsc?: boolean;
   closeOnOverlayClick?: boolean;
   /** Focused on open. Default: the first focusable element, skipping the close button. */
-  initialFocusRef?: RefObject<HTMLElement>;
+  initialFocusRef?: RefObject<HTMLElement | null>;
   hideCloseButton?: boolean;
   /** `alertdialog` for confirmations that interrupt (ConfirmDialog). */
   role?: 'dialog' | 'alertdialog';
@@ -105,7 +105,7 @@ export function DialogFrame({
           aria-describedby={description ? descriptionId : undefined}
           tabIndex={-1}
           className={cx(
-            'relative flex w-full flex-col bg-surface text-fg shadow-modal focus:outline-none',
+            'relative flex w-full flex-col bg-surface text-fg shadow-modal focus:outline-hidden',
             sheet
               ? cx('h-full animate-fade-in rounded-l-xl', SHEET_SIZE[size])
               : cx('max-h-full animate-scale-in rounded-xl', CENTER_SIZE[size]),

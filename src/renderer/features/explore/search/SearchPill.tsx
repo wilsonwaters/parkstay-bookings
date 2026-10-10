@@ -61,7 +61,7 @@ export function SearchPill({
     }
   }, [query]);
 
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   const apply = (text: string) => {
     clearTimeout(timer.current);

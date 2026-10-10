@@ -87,7 +87,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function emailFormSchema({ passwordRequired }: { passwordRequired: boolean }) {
   return z
     .object({
-      preset: z.nativeEnum(SMTPPreset),
+      preset: z.enum(SMTPPreset),
       host: z.string(),
       port: z.string(),
       security: z.enum(['tls', 'starttls']),
@@ -98,7 +98,7 @@ export function emailFormSchema({ passwordRequired }: { passwordRequired: boolea
     })
     .superRefine((values, ctx) => {
       const issue = (path: keyof EmailFormValues, message: string) =>
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+        ctx.addIssue({ code: 'custom', path: [path], message });
       if (values.preset === SMTPPreset.CUSTOM) {
         if (!values.host.trim()) issue('host', 'Enter the mail server, such as smtp.example.com');
         const port = Number(values.port.trim());

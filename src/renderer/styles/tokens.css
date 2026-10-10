@@ -1,8 +1,9 @@
 /*
  * WA Stay design tokens — the single source of truth.
  *
- * Colours are space-separated RGB channels so Tailwind can add alpha:
- *   rgb(var(--ws-accent) / <alpha-value>)  ->  bg-accent, bg-accent/10
+ * Colours are space-separated RGB channels, so a rule can add alpha:
+ *   rgb(var(--ws-accent) / 0.4)
+ * Tailwind maps them in index.css (`@theme`): bg-accent, and bg-accent/10 with alpha.
  *
  * Components use the semantic aliases (second block) through Tailwind.
  * The raw palette is for illustration only (brushstroke, map, logo).

@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import type { Booking } from '../../../../shared/types/booking.types';
 import { ROUTES } from '../../../app/routes';
 

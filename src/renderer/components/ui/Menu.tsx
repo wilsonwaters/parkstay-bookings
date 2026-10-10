@@ -130,10 +130,11 @@ export function Menu({ trigger, children, label, align = 'start' }: MenuProps) {
     }
   };
 
-  const child = Children.only(trigger) as ReactElement<TriggerProps> & { ref?: Ref<HTMLElement> };
+  const child = Children.only(trigger) as ReactElement<TriggerProps>;
   const triggerId = child.props.id ?? generatedTriggerId;
   const triggerElement = cloneElement(child, {
-    ref: mergeRefs(child.ref, triggerRef),
+    // React 19: a ref is a prop like any other.
+    ref: mergeRefs(child.props.ref, triggerRef),
     id: triggerId,
     'aria-haspopup': 'menu',
     'aria-expanded': open,
@@ -160,7 +161,7 @@ export function Menu({ trigger, children, label, align = 'start' }: MenuProps) {
             aria-labelledby={label ? undefined : triggerId}
             style={style}
             onKeyDown={onMenuKeyDown}
-            className="z-overlay min-w-[12rem] max-w-[calc(100vw-1rem)] animate-scale-in rounded-lg border border-border bg-surface p-1 text-fg shadow-pop"
+            className="z-overlay min-w-48 max-w-[calc(100vw-1rem)] animate-scale-in rounded-lg border border-border bg-surface p-1 text-fg shadow-pop"
           >
             <MenuContext.Provider value={{ select }}>{children}</MenuContext.Provider>
           </div>

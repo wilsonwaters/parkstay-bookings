@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import { useAnnounce } from '../components/ui';
 import { pageTitleFor, routeFocusKey } from './routes';
 
@@ -24,7 +24,7 @@ function focusHeading(heading: HTMLElement) {
  * when a page replaces the `h1` it showed first (a page that shows its heading, then a spinner,
  * then the heading again): focus lost with the old one follows the new one.
  */
-export function useRouteFocus(mainRef: RefObject<HTMLElement>): void {
+export function useRouteFocus(mainRef: RefObject<HTMLElement | null>): void {
   const { pathname } = useLocation();
   const page = routeFocusKey(pathname);
   // Read for the announcement only: a new path on the same page moves nothing

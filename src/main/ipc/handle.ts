@@ -78,7 +78,9 @@ async function invoke<D extends MethodDef>(
   }
 
   try {
-    const data = await fn(parsed.data);
+    // zod types a generic schema's output as its constraint's (`unknown`); this is the
+    // method's own schema, so the data is the handler's payload type.
+    const data = await fn(parsed.data as RequestOutput<D>);
     return { success: true, data };
   } catch (error) {
     return failure(channel, error);

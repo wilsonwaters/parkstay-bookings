@@ -41,7 +41,7 @@ const shape = z.object({
   adults: z.number(),
   children: z.number(),
   infants: z.number(),
-  stayParams: z.record(z.union([z.string(), z.number(), z.boolean()]).optional()),
+  stayParams: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()]).optional()),
   unitIds: z.array(z.string()),
   /** A `releaseModes` id of the provider. */
   releaseMode: z.string(),
@@ -122,7 +122,7 @@ export function snipeFormSchema({ manifest, today, now }: SnipeFormContext) {
   const modes = manifest?.releaseModes ?? [];
   return shape.superRefine((v, ctx) => {
     const issue = (path: (string | number)[], message: string) =>
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
+      ctx.addIssue({ code: 'custom', path, message });
 
     if (!v.providerId) issue(['providerId'], 'Choose a provider');
     if (!v.location) issue(['location'], 'Choose a location');

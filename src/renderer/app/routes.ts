@@ -3,7 +3,7 @@
  * `ROUTES.placeDetail('parkstay', '123')`. The route table is `AppRoutes.tsx`; the list of routes
  * and their stable names is in docs/design/shell.md.
  */
-import { matchPath } from 'react-router-dom';
+import { matchPath } from 'react-router';
 import { PROVIDER_ID_PATTERN } from '../../shared/types/provider.types';
 import { parseStayParams, stayParamsQuery, type StayParams } from './stayParams';
 

@@ -1,5 +1,5 @@
 import { memo, useEffect, useId, useRef, useState, type FocusEvent, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { MapPinOff } from 'lucide-react';
 import type { LocationSummary } from '../../shared/types/catalog.types';
 import { ROUTES } from '../app/routes';
@@ -207,7 +207,7 @@ export const LocationCard = memo(function LocationCard({
     >
       <LocationPhoto
         location={location}
-        className={cx('aspect-[4/3] shrink-0 rounded-lg', row ? 'w-2/5 max-w-[15rem]' : 'w-full')}
+        className={cx('aspect-4/3 shrink-0 rounded-lg', row ? 'w-2/5 max-w-60' : 'w-full')}
       />
       <div className={cx('flex min-w-0 flex-1 flex-col gap-1', row && 'py-1')}>
         <p id={nameId} className="line-clamp-2 text-base font-semibold text-fg">

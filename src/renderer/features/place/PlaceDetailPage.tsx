@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { useHref, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useHref, useLocation, useNavigate, useParams } from 'react-router';
 import { CircleAlert, MapPinOff } from 'lucide-react';
 import type { StayQuery } from '../../../shared/types/provider.types';
 import { todayIn } from '../../../shared/utils/calendar-date';
@@ -370,7 +370,7 @@ export default function PlaceDetailPage() {
           className="mt-6"
         />
       ) : (
-        <Skeleton className={`mt-6 aspect-[16/9] rounded-2xl lg:aspect-[3/1] ${GALLERY_SIZE}`} />
+        <Skeleton className={`mt-6 aspect-video rounded-2xl lg:aspect-3/1 ${GALLERY_SIZE}`} />
       )}
 
       <div
@@ -379,7 +379,7 @@ export default function PlaceDetailPage() {
       >
         {/* First in the page's order, so one column (below 1024 px) reads card, results, then
             the place; from 1024 px it is the sticky right-hand column. */}
-        <div className="lg:sticky lg:top-[5.5rem] lg:col-start-2 lg:row-start-1">
+        <div className="lg:sticky lg:top-22 lg:col-start-2 lg:row-start-1">
           <StayCard
             shortName={shortName}
             dates={dates}

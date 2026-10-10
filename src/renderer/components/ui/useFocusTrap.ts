@@ -62,7 +62,7 @@ export function getTabbables(container: HTMLElement): HTMLElement[] {
 export interface FocusTrapOptions {
   active: boolean;
   /** Focused on activation. Default: the first tabbable not marked `data-skip-initial-focus`. */
-  initialFocusRef?: RefObject<HTMLElement>;
+  initialFocusRef?: RefObject<HTMLElement | null>;
   /** Return focus to the element that had it on activation (default true). */
   restoreFocus?: boolean;
 }
@@ -77,7 +77,7 @@ const activeTraps: object[] = [];
  * document). Focus in another layer outside the container (a Popover, a toast) is left alone.
  */
 export function useFocusTrap(
-  containerRef: RefObject<HTMLElement>,
+  containerRef: RefObject<HTMLElement | null>,
   { active, initialFocusRef, restoreFocus = true }: FocusTrapOptions
 ): void {
   // Read in render, before any child can move focus (autoFocus runs before our effects).

@@ -15,8 +15,8 @@ export interface UsePositionOptions {
  * chosen side (once measured), for a scrolling layer's max height.
  */
 export function usePosition(
-  anchorRef: RefObject<HTMLElement>,
-  floatingRef: RefObject<HTMLElement>,
+  anchorRef: RefObject<HTMLElement | null>,
+  floatingRef: RefObject<HTMLElement | null>,
   { open, side = 'bottom', align = 'start', offset = 8 }: UsePositionOptions
 ): { style: CSSProperties; side: Side; available?: number; update: () => void } {
   const [position, setPosition] = useState<Position | null>(null);

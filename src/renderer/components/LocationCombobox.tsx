@@ -69,7 +69,7 @@ export function LocationCombobox({
 }: LocationComboboxProps) {
   const [text, setText] = useState(value?.name ?? '');
   const [query, setQuery] = useState('');
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const choosing = useRef(false);
   const announce = useAnnounce();
   useEffect(() => () => clearTimeout(timer.current), []);

@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createElement } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { PARKSTAY_LOCATIONS } from '../../../../../tests/fixtures/catalog/parkstay-locations';
 import { ProviderManifestsProvider } from '../../../components/ui';
 import { createHighlightStore, HighlightContext } from '../state/highlight';
@@ -26,7 +26,7 @@ const PLACES = PARKSTAY_LOCATIONS.slice(0, 10);
 function renderList(props: Partial<ResultsListProps> = {}) {
   const store = createHighlightStore();
   const view = render(
-    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter>
       <ProviderManifestsProvider manifests={[]}>
         <HighlightContext.Provider value={store}>
           {createElement(ResultsList, {
@@ -72,7 +72,7 @@ describe('ResultsList', () => {
     const { rerender, store } = renderList({ selectedKey: PLACES[1].key });
     renders.clear();
     rerender(
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <ProviderManifestsProvider manifests={[]}>
           <HighlightContext.Provider value={store}>
             <ResultsList

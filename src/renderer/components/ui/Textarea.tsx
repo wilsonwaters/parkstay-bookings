@@ -13,7 +13,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
     <textarea
       ref={ref}
       rows={rows}
-      className={cx(CONTROL_CLASS, 'min-h-[5rem] px-3 py-2', className)}
+      className={cx(CONTROL_CLASS, 'min-h-20 px-3 py-2', className)}
       {...rest}
     />
   );

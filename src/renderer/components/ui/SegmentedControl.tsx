@@ -66,7 +66,7 @@ export function SegmentedControl({
               'transition-colors duration-fast ease-standard hover:text-fg',
               'peer-checked:bg-surface-inverse peer-checked:text-fg-inverse',
               'peer-disabled:cursor-not-allowed peer-disabled:opacity-50',
-              'peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus'
+              'peer-focus-visible:outline-solid peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-focus'
             )}
           >
             {option.icon}

@@ -43,7 +43,7 @@ export const bookingUpdateSchema = bookingInputSchema.omit({ providerId: true })
 assertTypeEquals<z.input<typeof bookingUpdateSchema>, BookingUpdate>(true);
 assertTypeEquals<z.output<typeof bookingUpdateSchema>, BookingUpdate>(true);
 
-const bookingStatusSchema: z.ZodType<BookingStatus> = z.nativeEnum(BookingStatus);
+const bookingStatusSchema: z.ZodType<BookingStatus, BookingStatus> = z.enum(BookingStatus);
 
 /** `bookings.list`: every booking of the local profile, or those of one provider or status. */
 export const bookingListFilterSchema = z.object({

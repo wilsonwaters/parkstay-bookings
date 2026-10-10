@@ -25,7 +25,7 @@ export function Skeleton({ shape = 'rect', className }: SkeletonProps) {
     <span
       aria-hidden="true"
       className={cx(
-        'block animate-shimmer bg-gradient-to-r from-surface-subtle via-canvas to-surface-subtle bg-[length:200%_100%]',
+        'block animate-shimmer bg-linear-to-r from-surface-subtle via-canvas to-surface-subtle bg-size-[200%_100%]',
         SHAPE[shape],
         className
       )}

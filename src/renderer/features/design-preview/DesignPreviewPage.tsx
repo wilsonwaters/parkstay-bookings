@@ -336,9 +336,9 @@ function MotionDemo() {
           Skeletons only. Static under reduced motion.
         </p>
         <div className="mt-4 space-y-3" aria-hidden="true">
-          <div className="h-20 animate-shimmer rounded-md bg-gradient-to-r from-surface-subtle via-canvas to-surface-subtle bg-[length:200%_100%]" />
-          <div className="h-3 w-3/4 animate-shimmer rounded-sm bg-gradient-to-r from-surface-subtle via-canvas to-surface-subtle bg-[length:200%_100%]" />
-          <div className="h-3 w-1/2 animate-shimmer rounded-sm bg-gradient-to-r from-surface-subtle via-canvas to-surface-subtle bg-[length:200%_100%]" />
+          <div className="h-20 animate-shimmer rounded-md bg-linear-to-r from-surface-subtle via-canvas to-surface-subtle bg-size-[200%_100%]" />
+          <div className="h-3 w-3/4 animate-shimmer rounded-sm bg-linear-to-r from-surface-subtle via-canvas to-surface-subtle bg-size-[200%_100%]" />
+          <div className="h-3 w-1/2 animate-shimmer rounded-sm bg-linear-to-r from-surface-subtle via-canvas to-surface-subtle bg-size-[200%_100%]" />
         </div>
       </div>
     </div>
@@ -649,16 +649,16 @@ export default function DesignPreviewPage() {
           intro="Shown when a provider has no photo, or a photo fails to load. The name says what is missing."
         >
           <div className="grid gap-6 md:grid-cols-[1fr_1fr_2fr]">
-            <div className="aspect-[4/3] overflow-hidden rounded-lg">
+            <div className="aspect-4/3 overflow-hidden rounded-lg">
               <PhotoPlaceholder kind="campground" aria-label="No photo available for Lucky Bay" />
             </div>
-            <div className="aspect-[4/3] overflow-hidden rounded-lg">
+            <div className="aspect-4/3 overflow-hidden rounded-lg">
               <PhotoPlaceholder
                 kind="farm-stay"
                 aria-label="No photo available for Wildflower Farm"
               />
             </div>
-            <div className="aspect-[16/9] overflow-hidden rounded-xl">
+            <div className="aspect-video overflow-hidden rounded-xl">
               <PhotoPlaceholder
                 kind="caravan-park"
                 size="hero"

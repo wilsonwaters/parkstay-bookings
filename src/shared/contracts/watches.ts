@@ -26,7 +26,7 @@ const checkIntervalSchema = z
   .number()
   .int()
   .refine((minutes) => (WATCH_INTERVAL_OPTIONS as readonly number[]).includes(minutes), {
-    message: `Must be one of ${WATCH_INTERVAL_OPTIONS.join(', ')} minutes`,
+    error: `Must be one of ${WATCH_INTERVAL_OPTIONS.join(', ')} minutes`,
   });
 
 /**

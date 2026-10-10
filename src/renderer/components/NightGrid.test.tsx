@@ -1,10 +1,7 @@
-import fs from 'fs';
-import path from 'path';
-import postcss from 'postcss';
-import tailwindcss from 'tailwindcss';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { availabilityFor } from '../../../tests/fixtures/catalog/place-detail';
+import { compileStylesheet } from '../../../tests/utils/tailwind';
 import type { UnitAvailability } from '../../shared/types/provider.types';
 import { NightGrid } from './NightGrid';
 
@@ -258,23 +255,10 @@ describe('NightGrid', () => {
 
 describe('NightGrid layout (with the real stylesheet)', () => {
   let style: HTMLStyleElement;
-  const ROOT = path.resolve(__dirname, '../../..');
-  const read = (file: string) => fs.readFileSync(path.join(ROOT, file), 'utf8');
 
   beforeAll(async () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const config = require(path.join(ROOT, 'tailwind.config.js'));
-    const result = await postcss([
-      tailwindcss({
-        ...config,
-        content: [
-          { raw: read('src/renderer/components/NightGrid.tsx'), extension: 'tsx' },
-          { raw: read('src/renderer/components/ui/VisuallyHidden.tsx'), extension: 'tsx' },
-        ],
-      }),
-    ]).process('@tailwind base; @tailwind utilities;', { from: undefined });
     style = document.createElement('style');
-    style.textContent = result.css;
+    style.textContent = await compileStylesheet({ unlayered: true });
     document.head.appendChild(style);
   });
   afterAll(() => style.remove());

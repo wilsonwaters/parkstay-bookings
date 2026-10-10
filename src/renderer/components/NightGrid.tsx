@@ -107,7 +107,7 @@ function NightCell({ kind, label, short }: { kind: CellKind; label: string; shor
     <td className="px-1 py-1.5 text-center">
       <span
         className={cx(
-          'inline-flex h-9 min-w-[3rem] items-center justify-center gap-1 rounded-md px-1.5 text-xs font-semibold tabular-nums',
+          'inline-flex h-9 min-w-12 items-center justify-center gap-1 rounded-md px-1.5 text-xs font-semibold tabular-nums',
           look.cell
         )}
       >
@@ -276,7 +276,7 @@ export function NightGrid({
                   <tr key={unit.unitId} className="border-b border-border last:border-b-0">
                     <th
                       scope="row"
-                      className="sticky left-0 max-w-[12rem] bg-surface px-3 py-1.5 text-left font-semibold text-fg"
+                      className="sticky left-0 max-w-48 bg-surface px-3 py-1.5 text-left font-semibold text-fg"
                     >
                       <span className="block truncate">{unit.unitName}</span>
                       {unit.unitType && (

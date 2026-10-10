@@ -32,7 +32,7 @@ export function useStatusAnnouncements(
   manifestOf: (providerId: string) => ProviderManifest | undefined
 ): string {
   const announce = useAnnounce();
-  const seen = useRef<Map<number, string>>();
+  const seen = useRef<Map<number, string>>(undefined);
   const [alert, setAlert] = useState('');
 
   useEffect(() => {

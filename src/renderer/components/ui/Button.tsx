@@ -3,6 +3,7 @@ import {
   type AnchorHTMLAttributes,
   type ButtonHTMLAttributes,
   type ForwardedRef,
+  type JSX,
   type ReactNode,
 } from 'react';
 import { LoaderCircle } from 'lucide-react';
@@ -24,7 +25,7 @@ const VARIANT: Record<InternalVariant, string> = {
     'border border-fg bg-surface text-fg [&:not(:disabled):not([aria-disabled=true])]:hover:bg-surface-subtle',
   // Ghost inherits its text colour, so it reads correctly on tints (notices, toasts).
   ghost:
-    'bg-transparent text-inherit [&:not(:disabled):not([aria-disabled=true])]:hover:bg-surface-inverse/[0.06]',
+    'bg-transparent text-inherit [&:not(:disabled):not([aria-disabled=true])]:hover:bg-surface-inverse/6',
   // The default destructive style: a crimson outline, never confused with the coral primary.
   danger:
     'border border-danger bg-surface text-danger [&:not(:disabled):not([aria-disabled=true])]:hover:bg-danger-subtle',

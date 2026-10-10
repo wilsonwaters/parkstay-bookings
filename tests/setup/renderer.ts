@@ -5,16 +5,14 @@
  */
 
 import '@testing-library/jest-dom';
-import { configure as configureUserEventDom } from '@testing-library/dom';
-import { getConfig as getReactTestingLibraryConfig } from '@testing-library/react';
+import { TextDecoder, TextEncoder } from 'util';
 import { createMockWindowApi } from '../utils/window-api';
 
-// user-event resolves the top-level @testing-library/dom (v10), while @testing-library/react
-// configures its own nested copy (v9) to wrap events in act(). Without this, events fired by
-// user-event are not act()-wrapped: state updates are not flushed, and under fake timers they
-// never flush at all. Give the top-level copy React Testing Library's own wrappers.
-const { asyncWrapper, eventWrapper } = getReactTestingLibraryConfig();
-configureUserEventDom({ asyncWrapper, eventWrapper });
+// React Router 7 creates a TextEncoder when it loads; jest-environment-jsdom 29 (jsdom 20) has
+// none. Node's are the same WHATWG classes.
+if (typeof globalThis.TextEncoder === 'undefined') {
+  Object.assign(globalThis, { TextEncoder, TextDecoder });
+}
 
 function installMockWindowApi(): void {
   Object.defineProperty(window, 'api', {

@@ -21,7 +21,7 @@ import { NotificationItem } from './NotificationItem';
 
 export interface NotificationListProps {
   /** The list's heading: focused when the list opens, and after its focused control goes. */
-  headingRef: RefObject<HTMLHeadingElement>;
+  headingRef: RefObject<HTMLHeadingElement | null>;
   /** A notification's link was followed: close the list (it has been marked read). */
   onNavigate: () => void;
   /** "Clear all" was pressed: close the list and confirm. */

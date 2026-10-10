@@ -7,7 +7,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { act, render, screen, waitFor } from '@testing-library/react';
-import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
+import { Link, MemoryRouter, Route, Routes } from 'react-router';
 import { AnnouncerProvider } from '../components/ui';
 import { useRouteFocus } from './useRouteFocus';
 
@@ -53,7 +53,7 @@ function setup(extra?: ReactNode) {
   };
   render(
     <AnnouncerProvider>
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <Shell reload={reload} extra={extra} />
       </MemoryRouter>
     </AnnouncerProvider>
@@ -154,9 +154,7 @@ function DeepLinkShell() {
 function renderAt(shell: ReactNode) {
   render(
     <AnnouncerProvider>
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        {shell}
-      </MemoryRouter>
+      <MemoryRouter>{shell}</MemoryRouter>
     </AnnouncerProvider>
   );
 }

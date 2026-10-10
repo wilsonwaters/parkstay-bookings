@@ -41,7 +41,7 @@ export function useInvalidateOn(
   const queryClient = useQueryClient();
   const latestKey = useRef(queryKey);
   latestKey.current = queryKey;
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => () => clearTimeout(timer.current), []);
 

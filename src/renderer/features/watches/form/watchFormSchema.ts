@@ -34,7 +34,7 @@ const shape = z.object({
   adults: z.number(),
   children: z.number(),
   infants: z.number(),
-  stayParams: z.record(z.union([z.string(), z.number(), z.boolean()]).optional()),
+  stayParams: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()]).optional()),
   unitIds: z.array(z.string()),
   /** As typed: '' is no limit. Never `valueAsNumber`, which turns '' into NaN. */
   maxPrice: z.string(),
@@ -127,7 +127,7 @@ export function watchFormSchema({ manifest, today, keepArrival, keepInterval }: 
   const intervals = intervalOptions(manifest, keepInterval);
   return shape.superRefine((v, ctx) => {
     const issue = (path: (string | number)[], message: string) =>
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
+      ctx.addIssue({ code: 'custom', path, message });
 
     if (!v.providerId) issue(['providerId'], 'Choose a provider');
     if (!v.location) issue(['location'], 'Choose a location');

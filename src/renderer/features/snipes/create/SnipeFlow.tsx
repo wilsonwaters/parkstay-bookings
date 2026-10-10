@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FormProvider, useForm, type Resolver } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toApiError, useCreateSnipe, useLocationDetail } from '../../../api';
 import { SnipeReleaseMode } from '../../../../shared/types/common.types';
@@ -71,7 +71,7 @@ export function SnipeFlow({ manifests, initialValues, initialStep, notices = [] 
     resolver,
     mode: 'onTouched',
   });
-  const { watch, setValue, getValues, trigger, getFieldState, setError, reset, formState } = form;
+  const { watch, setValue, getValues, trigger, getFieldState, setError, reset } = form;
   const values = watch();
   const manifest = manifestOf(values.providerId);
   const today = providerToday(manifest, now);
@@ -88,12 +88,16 @@ export function SnipeFlow({ manifests, initialValues, initialStep, notices = [] 
     step === 'review' && Boolean(manifest)
   );
 
-  // Suggest a name from the place and dates until the person writes their own.
-  const nameEdited = Boolean(formState.dirtyFields.name);
+  // Suggest a name from the place and dates until the person writes their own: any name but
+  // the last suggestion, or none. Not `dirtyFields.name`: react-hook-form counts any value that
+  // differs from its default as dirty, the suggestion included.
+  const lastSuggestion = useRef('');
   useEffect(() => {
-    if (!nameEdited)
-      setValue('name', suggestedName(values.location, values.arrival, values.departure, today));
-  }, [values.location, values.arrival, values.departure, today, nameEdited, setValue]);
+    if (values.name !== '' && values.name !== lastSuggestion.current) return;
+    const next = suggestedName(values.location, values.arrival, values.departure, today);
+    lastSuggestion.current = next;
+    if (next !== values.name) setValue('name', next);
+  }, [values.location, values.arrival, values.departure, values.name, today, setValue]);
 
   const changeProvider = (id: string) =>
     reset({ ...emptySnipeForm(manifestOf(id)), name: '' }, { keepDefaultValues: true });

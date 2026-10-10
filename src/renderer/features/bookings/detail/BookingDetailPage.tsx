@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router';
 import { Ellipsis, LoaderCircle, Trash2 } from 'lucide-react';
 import {
   toApiError,
@@ -68,7 +68,7 @@ function BookingDetailView({ booking, manifest, updating }: ViewProps) {
               name={location.name}
               place={place.data}
               loading={place.isLoading}
-              className="aspect-[16/9] w-full rounded-xl sm:aspect-[5/2]"
+              className="aspect-video w-full rounded-xl sm:aspect-5/2"
             />
           )
         }

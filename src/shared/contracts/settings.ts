@@ -16,7 +16,7 @@ import { CHANNELS } from './channels';
 import type { Namespace } from './define';
 
 export interface SettingDefinition {
-  readonly schema: z.ZodTypeAny;
+  readonly schema: z.ZodType;
   readonly valueType: SettingValueType;
   readonly category: SettingCategory;
   /** What `settings.get` answers while nothing is stored. */
@@ -116,7 +116,7 @@ const setRequest = z
     if (!result.success) {
       for (const issue of result.error.issues) {
         ctx.addIssue({
-          code: z.ZodIssueCode.custom,
+          code: 'custom',
           message: issue.message,
           path: ['value', ...issue.path],
         });

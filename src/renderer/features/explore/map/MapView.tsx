@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { Search, X } from 'lucide-react';
 import type { BoundingBox, LocationSummary } from '../../../../shared/types/catalog.types';
 import { LocationPhoto } from '../../../components/LocationCard';
@@ -425,7 +425,7 @@ export default function MapView({
           </div>
         ) : preview ? (
           <div role="group" aria-label={preview.name} className="relative w-72">
-            <LocationPhoto location={preview} className="aspect-[16/9]" />
+            <LocationPhoto location={preview} className="aspect-video" />
             <IconButton
               label="Close preview"
               icon={<X size={16} />}

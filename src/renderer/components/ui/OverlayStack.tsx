@@ -85,7 +85,7 @@ export const OverlayStackContext = createContext<OverlayStack | null>(null);
 export interface UseOverlayOptions {
   open: boolean;
   modal: boolean;
-  elementRef: RefObject<HTMLElement>;
+  elementRef: RefObject<HTMLElement | null>;
   /** Called on Escape when this overlay is on top. Leave undefined to ignore Escape. */
   onEscape?: () => void;
 }

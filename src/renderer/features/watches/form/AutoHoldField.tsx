@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { useFormContext } from 'react-hook-form';
 import { useAccountStatus } from '../../../api';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';

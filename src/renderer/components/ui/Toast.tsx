@@ -180,7 +180,7 @@ function useToastContext() {
 
 /** Holds the app's toasts. Place one `ToastViewport` somewhere inside it. */
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const storeRef = useRef<ToastStore>();
+  const storeRef = useRef<ToastStore>(undefined);
   if (!storeRef.current) storeRef.current = new ToastStore();
   const store = storeRef.current;
 
