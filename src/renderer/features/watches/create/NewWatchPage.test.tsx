@@ -54,7 +54,9 @@ describe('NewWatchPage', () => {
     expect(screen.queryByRole('radio', { name: 'Browse Only' })).toBeNull();
     expect(button('Continue')).toBeEnabled();
     await user.click(button('Continue'));
-    expect(await screen.findByRole('heading', { level: 2, name: /Location$/ })).toHaveFocus();
+    // The heading takes focus in an effect after the step renders.
+    const location = await screen.findByRole('heading', { level: 2, name: /Location$/ });
+    await waitFor(() => expect(location).toHaveFocus());
   });
 
   it('Create watch sends providerId, location, YYYY-MM-DD stay and no user id, then opens the watch', async () => {

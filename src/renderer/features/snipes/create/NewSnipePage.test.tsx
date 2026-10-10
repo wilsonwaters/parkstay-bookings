@@ -20,7 +20,9 @@ describe('NewSnipePage', () => {
     await waitFor(() => expect(screen.getByRole('radio', { name: 'ParkStay WA' })).toBeChecked());
     expect(screen.queryByRole('radio', { name: 'Fake Stay Holidays' })).toBeNull();
     await user.click(button('Continue'));
-    expect(await step(/Location$/)).toHaveFocus();
+    // The heading takes focus in an effect after the step renders.
+    const location = await step(/Location$/);
+    await waitFor(() => expect(location).toHaveFocus());
   });
 
   it('lists the place’s units as checkboxes, never a free-text site id', async () => {
