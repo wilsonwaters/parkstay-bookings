@@ -3,11 +3,11 @@
  *
  * A container on an in-memory database with every handler registered, plus FakeProvider so
  * the catalogue's availability reads return real data: seed a ParkStay account with a session
- * cookie in its partition, a sign-in link carrying a token (pasted through IPC), a Gmail
- * client secret and an SMTP password, invoke every read channel, and check that none of the
- * seeded strings is in any response or in any log line (captured at debug level). Also: saving SMTP settings without a password keeps the stored one only for the
- * same server and account (so `notifiers:test` cannot send it elsewhere), and the Gmail
- * inbox channels are gone.
+ * cookie in its partition, a sign-in link carrying a token (pasted through IPC) and an SMTP
+ * password, invoke every read channel, and check that none of the seeded strings is in any
+ * response or in any log line (captured at debug level). Also: saving SMTP settings without a
+ * password keeps the stored one only for the same server and account (so `notifiers:test`
+ * cannot send it elsewhere), and no Gmail channel is registered (the OTP back end is gone, P7).
  */
 
 import { Writable } from 'stream';
@@ -47,13 +47,12 @@ jest.mock('nodemailer', () => ({
   },
 }));
 
-const CLIENT_SECRET = 'GOCSPX-sweep-client-secret-7f3a';
 const SMTP_PASS = 'sweep-smtp-app-password-q9z';
 /** A ParkStay session cookie in the provider partition. */
 const SESSION_COOKIE = 'SWEEP-SESSION-COOKIE-4c1d';
 /** The token of a pasted sign-in (magic) link. */
 const MAGIC_TOKEN = 'SWEEP-MAGIC-TOKEN-88ab';
-const SECRETS = [CLIENT_SECRET, SMTP_PASS, SESSION_COOKIE, MAGIC_TOKEN];
+const SECRETS = [SMTP_PASS, SESSION_COOKIE, MAGIC_TOKEN];
 const SIGN_IN_LINK = `https://dbcab2c.b2clogin.com/dbcab2c.onmicrosoft.com/oauth2/v2.0/authorize?token=${MAGIC_TOKEN}`;
 
 const STAY = { arrival: '2026-11-10', departure: '2026-11-12', adults: 2 };
@@ -78,8 +77,6 @@ const READS: Array<[string, unknown]> = [
   ['accounts:list', undefined],
   // ParkStay's /api/profile check: no network in tests, so the stored account answers
   ['accounts:status', { providerId: 'parkstay' }],
-  ['gmail:get-credentials', undefined],
-  ['gmail:check-auth-status', undefined],
   ['notifiers:list', undefined],
   ['notifiers:get', { channel: NotifierChannel.EMAIL_SMTP }],
   ['settings:get', { key: 'launchOnStartup' }],
@@ -87,6 +84,9 @@ const READS: Array<[string, unknown]> = [
   ['settings:get', { key: 'app.startMinimised' }],
   ['settings:get', { key: 'notifications.desktop' }],
   ['settings:get', { key: 'notifications.sound' }],
+  // P7's retention periods (main-only numbers)
+  ['settings:get', { key: 'retention.notificationDays' }],
+  ['settings:get', { key: 'retention.deliveryLogDays' }],
   ['settings:get-all', undefined],
   ['app:get-info', undefined],
   ['app:get-auto-launch', undefined],
@@ -141,7 +141,6 @@ describe('secrets never reach the renderer', () => {
       if (transport !== capture) transport.silent = true;
     }
 
-    // Gmail settings are really written (gmail-oauth.json in this userData), then read back
     const secrets = containerSecrets();
     userDataDir = secrets.userDataDir;
     container = createContainer({
@@ -220,7 +219,6 @@ describe('secrets never reach the renderer', () => {
     return [
       // A pasted sign-in link: main loads it in the sign-in window, never logs its token
       await call('accounts:open-sign-in-link', { providerId: 'parkstay', url: SIGN_IN_LINK }),
-      await call('gmail:set-credentials', { clientId: 'client-123', clientSecret: CLIENT_SECRET }),
       await call('notifiers:configure', {
         channel: NotifierChannel.EMAIL_SMTP,
         displayName: 'Email (SMTP)',
@@ -284,10 +282,6 @@ describe('secrets never reach the renderer', () => {
           displayName: 'Sweep Person',
         },
       ],
-    });
-    await expect(call('gmail:get-credentials')).resolves.toEqual({
-      success: true,
-      data: { clientId: 'client-123', hasClientSecret: true },
     });
     const notifier = await call<Record<string, unknown>>('notifiers:get', {
       channel: NotifierChannel.EMAIL_SMTP,
@@ -496,11 +490,17 @@ describe('secrets never reach the renderer', () => {
     );
   });
 
-  it('the Gmail inbox channels are not registered', async () => {
+  it('no Gmail channel is registered: neither the inbox reads nor the OTP sign-in', async () => {
+    expect(ipc.registrations.filter((channel) => channel.startsWith('gmail:'))).toEqual([]);
     for (const channel of [
       'gmail:get-recent-emails',
       'gmail:test-search',
       'gmail:wait-for-email',
+      'gmail:set-credentials',
+      'gmail:get-credentials',
+      'gmail:authorize',
+      'gmail:check-auth-status',
+      'gmail:revoke-auth',
     ]) {
       expect(ipc.registrations).not.toContain(channel);
       expect(() => ipc.invoke(channel, fakeEvent(), {})).toThrow(

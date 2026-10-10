@@ -4,8 +4,9 @@
  *
  *   grep -rnE "pbkdf2Sync|createCipheriv|machineIdSync|encryptionKey" src/main | grep -v "src/main/security/"
  *
- * as a test, plus: `node-machine-id` is imported only by the legacy decryptors, and nothing
- * imports `electron-store` any more.
+ * as a test, plus: `node-machine-id` is imported only by the legacy decryptors, nothing
+ * imports `electron-store` or the Google API clients any more (P7 removed the Gmail OTP back
+ * end), and package.json no longer depends on them.
  */
 
 import fs from 'fs';
@@ -51,5 +52,17 @@ describe('secret crypto boundary (src/main/security)', () => {
       expect.stringMatching(/^src\/main\/security\/legacy-decryptors\.ts:\d+$/),
     ]);
     expect(matches(files, /from 'electron-store'/)).toEqual([]);
+  });
+
+  it('nothing imports the Google API clients, and the removed packages are not dependencies', () => {
+    expect(matches(files, /from '(googleapis|google-auth-library|conf)'/)).toEqual([]);
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')) as {
+      dependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+    const declared = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
+    for (const removed of ['electron-store', 'googleapis', 'googleapis-common', 'conf']) {
+      expect(declared).not.toContain(removed);
+    }
   });
 });

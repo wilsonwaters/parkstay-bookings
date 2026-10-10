@@ -236,12 +236,13 @@ describe('migrateLegacyInstall', () => {
       pendingFollowUps: ['welcome', 'loginItems'],
     });
 
-    expect(dataFolderFiles()).toEqual(['gmail-oauth.json', 'legacy-snapshot', 'wa-stay.db']);
+    // The retired Gmail OTP file is not copied
+    expect(dataFolderFiles()).toEqual(['legacy-snapshot', 'wa-stay.db']);
     expect(readMarker(install)).toMatchObject({
       status: 'complete',
       source: install.paths.snapshotDir,
       sourceKind: 'snapshot',
-      copied: ['parkstay.db', 'gmail-oauth.json'],
+      copied: ['parkstay.db'],
     });
     // The snapshot is the backup of the pre-vault secrets: never deleted or changed
     expectUnchanged(install.paths.snapshotDir, before);
@@ -586,15 +587,15 @@ describe('migrateLegacyInstall', () => {
     let failures = 1;
     const atPrompt: string[][] = [];
     const deps: RecordedDeps = recordedDeps([], {
-      // The Gmail copy runs after the database is in place, so a failure there must undo it
+      // The copy is in place when the disk fills up writing the "complete" marker: undone
       fs: fsWith({
-        copyFileSync: (from, to, mode) => {
-          if (failures > 0) {
+        writeFileSync: ((file: fs.PathOrFileDescriptor, data: string) => {
+          if (failures > 0 && typeof data === 'string' && data.includes('"complete"')) {
             failures -= 1;
-            throw errorWithCode('ENOSPC', 'ENOSPC: no space left on device, copyfile');
+            throw errorWithCode('ENOSPC', 'ENOSPC: no space left on device, write');
           }
-          return fs.copyFileSync(from, to, mode);
-        },
+          return fs.writeFileSync(file, data);
+        }) as MigrationFs['writeFileSync'],
       }),
       prompt: async (request) => {
         deps.prompts.push(request);
@@ -602,7 +603,7 @@ describe('migrateLegacyInstall', () => {
         expect(readMarker(install)).toMatchObject({
           status: 'failed',
           reason: 'disk-full',
-          error: 'ENOSPC: no space left on device, copyfile',
+          error: 'ENOSPC: no space left on device, write',
         });
         return 'retry';
       },
@@ -615,11 +616,11 @@ describe('migrateLegacyInstall', () => {
     expect(deps.prompts).toEqual([
       { reason: 'disk-full', message: expect.stringContaining('disk space'), keptDir: legacyDir() },
     ]);
-    expect(atPrompt).toEqual([[]]); // wa-stay.db, gmail-oauth.json and .migrating all undone
-    expect(dataFolderFiles()).toEqual(['gmail-oauth.json', 'wa-stay.db']);
+    expect(atPrompt).toEqual([[]]); // wa-stay.db undone; the Gmail file never copied
+    expect(dataFolderFiles()).toEqual(['wa-stay.db']);
     expect(readMarker(install)).toMatchObject({
       status: 'complete',
-      copied: ['parkstay.db', 'gmail-oauth.json'],
+      copied: ['parkstay.db'],
     });
   });
 
@@ -708,33 +709,18 @@ describe('migrateLegacyInstall', () => {
     );
   });
 
-  it('gmail-oauth.json is copied byte-identical, and the legacy one is untouched', async () => {
+  it('the retired gmail-oauth.json is not copied, and the legacy one is untouched', async () => {
     writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
     writeGmail(legacyDir(), '{"gmail_credentials":"abc","gmail_oauth_tokens":"def"}\n');
     const legacyGmail = sha256(gmailIn(legacyDir()));
 
-    await migrateLegacyInstall(install.paths, recordedDeps());
-
-    expect(sha256(gmailIn(install.paths.userData))).toBe(legacyGmail);
-    expect(sha256(gmailIn(legacyDir()))).toBe(legacyGmail);
-    expect(readMarker(install)).toMatchObject({ copied: ['parkstay.db', 'gmail-oauth.json'] });
-  });
-
-  it('gmail-oauth.json never overwrites one already in the data folder', async () => {
-    writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
-    writeGmail(legacyDir(), '{"legacy":true}');
-    writeGmail(install.paths.userData, '{"already":"here"}');
-    const deps = recordedDeps();
-
-    await expect(migrateLegacyInstall(install.paths, deps)).resolves.toMatchObject({
+    await expect(migrateLegacyInstall(install.paths, recordedDeps())).resolves.toMatchObject({
       outcome: 'migrated',
     });
 
-    expect(fs.readFileSync(gmailIn(install.paths.userData), 'utf8')).toBe('{"already":"here"}');
+    expect(fs.existsSync(gmailIn(install.paths.userData))).toBe(false);
+    expect(sha256(gmailIn(legacyDir()))).toBe(legacyGmail);
     expect(readMarker(install)).toMatchObject({ copied: ['parkstay.db'] });
-    expect(deps.lines).toContain(
-      'warn: legacy-install: gmail-oauth.json already exists in the data folder; kept it'
-    );
   });
 
   it('a damaged marker is treated as absent', async () => {

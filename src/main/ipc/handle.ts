@@ -12,7 +12,7 @@
  *    → `CAPABILITY`); anything else is `INTERNAL`.
  *
  * Logs name the channel and, for validation failures, the failing paths. Payload values are
- * never logged (auth, gmail and notifier payloads carry passwords), and a response never
+ * never logged (account and notifier payloads carry secrets), and a response never
  * carries a stack. The returned promise always resolves, so a handler that fails after its
  * window has closed cannot become an unhandled rejection.
  */

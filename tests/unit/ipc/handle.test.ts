@@ -280,24 +280,23 @@ describe('handle()', () => {
       expect(logged()).not.toContain('me@example.com');
     });
 
-    it('logs no payload values for accounts and gmail failures either', async () => {
+    it('logs no payload values for account failures either, nor for one that fails validation', async () => {
       register(contract.accounts.openSignInLink, () => {
         throw new Error('disk full');
       });
-      register(contract.gmail.setCredentials, jest.fn());
+      register(contract.accounts.signIn, jest.fn());
 
       await ipc.invoke('accounts:open-sign-in-link', fakeEvent(), {
         providerId: 'parkstay',
         url: `https://dbcab2c.b2clogin.com/link?token=${SECRET}&email=me@example.com`,
       });
-      await ipc.invoke('gmail:set-credentials', fakeEvent(), {
-        clientId: 'client-id',
-        clientSecret: 42,
+      await ipc.invoke('accounts:sign-in', fakeEvent(), {
+        providerId: 42,
         extra: SECRET,
       });
 
       expect(logged()).toContain('accounts:open-sign-in-link');
-      expect(logged()).toContain('gmail:set-credentials');
+      expect(logged()).toContain('accounts:sign-in');
       expect(logged()).not.toContain(SECRET);
       expect(logged()).not.toContain('me@example.com');
     });

@@ -131,7 +131,7 @@ export function testVault(
 
 /**
  * The secret options `createContainer` needs: a userData path (by default an
- * `unusedUserData()` one: remove it with `removeUserData` if the test saves Gmail settings)
+ * `unusedUserData()` one: remove it with `removeUserData` if the test saves a secret there)
  * and a ready, available fake `safeStorage`.
  */
 export function containerSecrets(

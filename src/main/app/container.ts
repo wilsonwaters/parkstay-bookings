@@ -1,8 +1,8 @@
 /**
  * Composition root.
  *
- * Builds every repository, service, notifier, dispatcher, scheduler, updater and Gmail
- * service exactly once and wires them together by constructor injection. This is the only
+ * Builds every repository, service, notifier, dispatcher, scheduler and updater exactly once
+ * and wires them together by constructor injection. This is the only
  * place in `src/main` that constructs them: anything else receives what it needs from the
  * container. Main → renderer events go through `rendererEvents`, which reaches only the
  * webContents registered in `trustedWebContents` (the main window registers itself).
@@ -45,8 +45,6 @@ import {
 import { SmtpEmailNotifier } from '../core/notifications/notifiers/email-smtp.notifier';
 import { SiteSniperService } from '../core/snipes/snipe.service';
 import { WatchService } from '../core/watches/watch.service';
-import { GmailOTPService } from '../services/gmail/GmailOTPService';
-import { OAuth2Handler } from '../services/gmail/oauth2-handler';
 import { AutoUpdaterService } from '../services/updater/auto-updater.service';
 import { JobScheduler } from '../scheduler/job-scheduler';
 import { RendererEvents } from '../ipc/events';
@@ -56,7 +54,7 @@ import { ProviderRegistry } from '../providers/registry';
 import { createProviderContext, type ProviderContextDeps } from '../providers/sdk';
 import { ElectronSessionHttpClient } from '../providers/sdk/http-electron';
 import { legacyMachineId } from '../security/legacy-decryptors';
-import { migrateLegacySecrets } from '../security/legacy-migration';
+import { migrateLegacySecrets, removeRetiredGmailStore } from '../security/legacy-migration';
 import { FileLocalKeyStore, SecretVault, type SafeStorageLike } from '../security/secret-vault';
 import { FixtureHttpClient, type FixtureModeOptions } from '../testing';
 import { logger } from '../utils/logger';
@@ -113,7 +111,6 @@ export interface AppContainer {
   readonly notificationService: NotificationService;
   readonly watchService: WatchService;
   readonly siteSniperService: SiteSniperService;
-  readonly gmailService: GmailOTPService;
   readonly autoUpdater: AutoUpdaterService;
   readonly scheduler: JobScheduler;
   /**
@@ -136,8 +133,8 @@ export interface ContainerOptions {
   /** The log folder returned by `initFileLogging` (`<userData>/logs`). */
   readonly logsDir: string;
   /**
-   * The final userData folder: the vault's `secret-vault.key` and `gmail-oauth.json` live
-   * here. B3 sets the path before `ready`; it must not change afterwards.
+   * The final userData folder: the vault's `secret-vault.key` lives here. B3 sets the path
+   * before `ready`; it must not change afterwards.
    */
   readonly userDataDir: string;
   /** Electron's `safeStorage` (a fake in tests). Used lazily, never before `isReady()`. */
@@ -173,10 +170,6 @@ export function createContainer({
     logger,
     isReady,
   });
-  // legacy: never change the file name — existing data depends on it (v1.x electron-store
-  // `name: 'gmail-oauth'`, which the legacy secret migration reads in place)
-  const gmailStorePath = path.join(userDataDir, 'gmail-oauth.json');
-
   const providerState = new ProviderStateRepository(db);
   const repositories: AppRepositories = {
     users: new UserRepository(db),
@@ -193,7 +186,9 @@ export function createContainer({
 
   // v1.x ciphertexts become vault envelopes before any secret is read (first vault use).
   // The machine id is read only if a machine-bound legacy value is found.
-  migrateLegacySecrets({ db, vault, machineId: legacyMachineId, gmailStorePath });
+  migrateLegacySecrets({ db, vault, machineId: legacyMachineId });
+  // The retired Gmail OTP sign-in (its OAuth client secret and inbox token) is deleted, not kept
+  removeRetiredGmailStore(userDataDir);
 
   const profile = createLocalProfile(repositories.users);
 
@@ -314,7 +309,6 @@ export function createContainer({
     locations: repositories.locations,
     logger,
   });
-  const gmailService = new GmailOTPService(new OAuth2Handler({ vault, filePath: gmailStorePath }));
   const autoUpdater = new AutoUpdaterService(rendererEvents);
   const scheduler = new JobScheduler({
     watches: watchService,
@@ -371,7 +365,6 @@ export function createContainer({
     notificationService,
     watchService,
     siteSniperService,
-    gmailService,
     autoUpdater,
     scheduler,
     dispose,

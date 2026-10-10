@@ -15,7 +15,6 @@ import { catalog } from './catalog';
 import type { Channels } from './channels';
 import type { MethodDef, NamespaceApi } from './define';
 import type { EventsApi } from './events';
-import { gmail } from './gmail';
 import { notifications } from './notifications';
 import { notifiers } from './notifiers';
 import { providers } from './providers';
@@ -30,7 +29,6 @@ export const contract = {
   snipes,
   notifications,
   notifiers,
-  gmail,
   settings,
   app,
   updater,

@@ -126,7 +126,7 @@ describe('IPC contract', () => {
     expect(keysSeen).toBeGreaterThan(80);
   });
 
-  it('exposes no Gmail inbox reads: not in the contract, the preload or the renderer', () => {
+  it('has no Gmail namespace (the OTP back end is gone, P7) and no inbox reads anywhere', () => {
     const src = path.resolve(__dirname, '../../../src');
     const files = ['preload', 'shared/contracts', 'renderer'].flatMap((dir) =>
       (fs.readdirSync(path.join(src, dir), { recursive: true }) as string[])
@@ -134,14 +134,13 @@ describe('IPC contract', () => {
         .filter((file) => /\.tsx?$/.test(file))
     );
     const offenders = files.filter((file) =>
-      /getRecentEmails|testSearch|waitForEmail/.test(fs.readFileSync(file, 'utf8'))
+      /getRecentEmails|testSearch|waitForEmail|['"]gmail:/.test(fs.readFileSync(file, 'utf8'))
     );
 
     expect(files.length).toBeGreaterThan(20);
     expect(offenders).toEqual([]);
-    expect(Object.keys(contract.gmail).sort()).toEqual(
-      ['authorize', 'checkAuthStatus', 'getCredentials', 'revokeAuth', 'setCredentials'].sort()
-    );
+    expect(Object.keys(contract)).not.toContain('gmail');
+    expect(Object.keys(CHANNELS)).not.toContain('gmail');
   });
 
   it('has no transitional auth namespace: ParkStay sign-in is accounts.* (V6)', () => {

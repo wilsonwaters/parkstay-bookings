@@ -9,7 +9,6 @@ import { registerAccountsHandlers } from './handlers/accounts.handlers';
 import { registerAppHandlers } from './handlers/app.handlers';
 import { registerBookingsHandlers } from './handlers/bookings.handlers';
 import { registerCatalogHandlers } from './handlers/catalog.handlers';
-import { registerGmailHandlers } from './handlers/gmail.handlers';
 import { registerNotificationsHandlers } from './handlers/notifications.handlers';
 import { registerNotifiersHandlers } from './handlers/notifiers.handlers';
 import { registerProvidersHandlers } from './handlers/providers.handlers';
@@ -37,7 +36,6 @@ export function registerIpcHandlers(
   registerSnipesHandlers(handle, container);
   registerNotificationsHandlers(handle, container);
   registerNotifiersHandlers(handle, container);
-  registerGmailHandlers(handle, container);
   registerSettingsHandlers(handle, container);
   registerAppHandlers(handle, container);
   registerUpdaterHandlers(handle, container);
