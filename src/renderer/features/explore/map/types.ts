@@ -10,7 +10,8 @@ export interface MapViewState {
   bbox: BoundingBox;
   /**
    * The person moved the map (drag, wheel, keys, the zoom buttons, a click on a cluster), rather
-   * than code (the first view, a fit to results, a fly to a place, a pan to fit a popup).
+   * than code (the first view, a fit to results, a fly to a place, a pan to fit a popup) or the
+   * window (a resize).
    */
   userInitiated: boolean;
 }

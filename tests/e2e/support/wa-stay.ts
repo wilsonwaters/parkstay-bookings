@@ -81,6 +81,11 @@ export interface LaunchOptions {
    * `WA_STAY_LEGACY_DATA_DIR` for the v1.x upgrade.
    */
   env?: Record<string, string>;
+  /**
+   * Extra Electron switches, after the project root, e.g. software GL for a run with the map
+   * (`explore-resize.spec.ts`). Never needed for a network-free run.
+   */
+  args?: string[];
 }
 
 /** Console errors the network guard explains: a request it cancelled and logged. */
@@ -285,7 +290,11 @@ async function startWaStay(
 
   const app = await electron.launch({
     // The project root, not the main script, so Electron reads package.json (name, version, main)
-    args: [REPO_ROOT, ...(process.platform === 'linux' && process.env.CI ? ['--no-sandbox'] : [])],
+    args: [
+      REPO_ROOT,
+      ...(process.platform === 'linux' && process.env.CI ? ['--no-sandbox'] : []),
+      ...(options.args ?? []),
+    ],
     cwd: REPO_ROOT,
     env: launchEnv(userDataDir, options.env),
   });

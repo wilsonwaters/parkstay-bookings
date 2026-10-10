@@ -93,12 +93,15 @@ module.exports = {
   ],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
+  // A ratchet a few points below the measured coverage (2.0: branches 87, functions 93, lines 96,
+  // statements 94), so a change that drops tests fails here. Raise it as coverage grows; never
+  // lower it to pass.
   coverageThreshold: {
     global: {
-      branches: 9,
-      functions: 17,
-      lines: 16,
-      statements: 16,
+      branches: 85,
+      functions: 90,
+      lines: 93,
+      statements: 92,
     },
   },
   testTimeout: 30000,

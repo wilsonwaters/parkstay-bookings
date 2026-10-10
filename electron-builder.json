@@ -12,6 +12,8 @@
   },
   "files": [
     "dist/**/*",
+    "!dist/**/*.d.ts",
+    "!dist/**/*.map",
     "package.json",
     "node_modules/**/*"
   ],

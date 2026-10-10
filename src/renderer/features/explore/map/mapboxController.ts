@@ -68,6 +68,31 @@ function errorStatus(event: { error?: unknown }): number | undefined {
 
 const isAuthFailure = (status: number | undefined) => status === 401 || status === 403;
 
+/**
+ * Whether a move's `originalEvent` is the person's input, so the move is theirs.
+ *
+ * Mapbox passes the DOM event behind a move as its `originalEvent`: a drag or box zoom ends on
+ * a mouse or touch event, a scroll zoom on its last `WheelEvent`, the keyboard on its
+ * `KeyboardEvent`, a double-click and the zoom buttons on theirs, and a cluster click passes
+ * its click on (`openCluster`). But Mapbox GL 3 also ends a move with the window's own event:
+ * `_onWindowResize` calls `resize({ originalEvent })` for `resize`, `orientationchange` and
+ * `fullscreenchange`, so maximising or resizing the window would read as a pan and narrow the
+ * list to the map area (M1).
+ *
+ * An allowlist of input event classes (`WheelEvent` and `PointerEvent` are `MouseEvent`s) rather
+ * than a blocklist of `resize`: it stays right when Mapbox passes some other non-input event
+ * (it already passes three), and needs no state. Tracking gestures with flags (`dragstart`,
+ * `wheel`, `keydown`…) would have to know when each one ends, including inertia and eased
+ * keyboard moves, and a resize during a gesture would still pass.
+ */
+function isUserInput(event: unknown): boolean {
+  return (
+    event instanceof MouseEvent ||
+    event instanceof KeyboardEvent ||
+    (typeof TouchEvent === 'function' && event instanceof TouchEvent)
+  );
+}
+
 /** `getView` of a map removed before it was ever asked: the first view of WA. */
 const REMOVED_VIEW: MapViewState = {
   camera: {
@@ -279,7 +304,7 @@ export const createMapboxController: CreateMapController = async ({
   };
 
   map.on('moveend', (event: { originalEvent?: unknown }) => {
-    const state = view(Boolean(event.originalEvent));
+    const state = view(isUserInput(event.originalEvent));
     for (const listener of moveListeners) listener(state);
   });
 

@@ -89,14 +89,20 @@ Support/WA Stay` or `~/.config/WA Stay`). To try something on a throwaway profil
 ## Building and packaging
 
 ```bash
-npm run build     # main (tsc + tsc-alias), preload (esbuild), renderer (Vite) into dist/
+npm run build     # empties dist/, then main (tsc + tsc-alias), preload (esbuild), renderer (Vite) into it
 npm run dist:win  # build, then the Windows installer and portable exe in release/
 npm run pack      # build, then an unpacked app in release/ (quicker to try)
 ```
 
-The preload is bundled by `scripts/build-preload.js` for the sandboxed window; the build fails if
-it imports anything but `electron`. The production Content-Security-Policy is written into
-`dist/renderer/index.html` at build time. Releasing: [release process](release-process.md).
+The build starts by removing `dist/` (`scripts/clean-dist.js`): tsc and esbuild never delete
+what they wrote before, and electron-builder packages `dist/**`, so a module whose source was
+deleted would otherwise ship. The preload is bundled by `scripts/build-preload.js` for the
+sandboxed window; the build fails if it imports anything but `electron`. The production
+Content-Security-Policy is written into `dist/renderer/index.html` at build time. The package
+(`electron-builder.json` `files`) leaves out the `.d.ts` and `.map` files tsc and esbuild write
+beside the JavaScript: nothing reads them at run time (Node applies source maps to stack traces
+only with `--enable-source-maps`, which the app does not use, so the logs carry the compiled
+positions either way). Releasing: [release process](release-process.md).
 
 ## Scripts
 
@@ -104,7 +110,7 @@ it imports anything but `electron`. The production Content-Security-Policy is wr
 | --- | --- |
 | `npm run dev` | Development: main in watch mode, the preload bundle, the Vite dev server |
 | `npm start` | Electron on the dev server (`http://localhost:3000`) |
-| `npm run build` | Production build into `dist/` |
+| `npm run build` | Production build into an emptied `dist/` |
 | `npm run build:e2e` | The same build with no Mapbox token (for the Electron smoke tests) |
 | `npm run dist:win` | Build and package the Windows installer and portable exe (not published) |
 | `npm run pack` | Build and package an unpacked app |
@@ -147,10 +153,12 @@ npm run rebuild              # better-sqlite3 for Electron
 xvfb-run -a npm run test:e2e # or just npm run test:e2e with a display
 ```
 
-Playwright's `_electron` launcher drives the **built** app through 19 journeys in 9 specs
-(`tests/e2e/*.spec.ts`): launch, navigation, Explore and its dates, a place to a watch, creating
-a watch and a snipe, a held snipe paid from its notification, bookings, the v1.x upgrade, and a
-lifecycle walk through every page and Settings section with a relaunch. The harness
+Playwright's `_electron` launcher drives the **built** app through 21 journeys in 10 specs
+(`tests/e2e/*.spec.ts`): launch, navigation, Explore and its dates, resizing the window, a place
+to a watch, creating a watch and a snipe, a held snipe paid from its notification, bookings, the
+v1.x upgrade, and a lifecycle walk through every page and Settings section with a relaunch. One
+more check is opt-in: with a Mapbox token in the build and `E2E_MAP=1`, resizing the window must
+not count as a map move (`explore-resize.spec.ts`). The harness
 (`tests/e2e/support/wa-stay.ts`) gives every launch:
 
 - its own temp userData (`WA_STAY_USER_DATA_DIR`), checked before anything else;
@@ -171,10 +179,12 @@ use roles and accessible names only. More: [tests/README.md](../tests/README.md)
   `ElectronSessionHttpClient` on a real partition, the ParkStay module through it, and the
   provider sign-in and payment windows, all against loopback servers.
 - **The packaged app** (`npx electron-builder --linux dir --publish never`, then
-  `xvfb-run -a npm run smoke:packaged`): starts `release/linux-unpacked/wa-stay`, and a copy
-  renamed `electron`, with every test hook set and a temp `XDG_CONFIG_HOME`. It checks that the
-  hooks are ignored (userData is the normal `WA Stay` folder under that temp config folder), the
-  page comes from `app.asar`, and the app quits with code 0 within 10 s. CI's `packaged-smoke` job.
+  `xvfb-run -a npm run smoke:packaged`): first reads `app.asar`'s index (the main, preload and
+  renderer builds are there, and no `.d.ts` or `.map` file under `dist/`), then starts
+  `release/linux-unpacked/wa-stay`, and a copy renamed `electron`, with every test hook set and a
+  temp `XDG_CONFIG_HOME`. It checks that the hooks are ignored (userData is the normal `WA Stay`
+  folder under that temp config folder), the page comes from `app.asar`, and the app quits with
+  code 0 within 10 s. CI's `packaged-smoke` job.
 - **A real browser for browser providers** (opt-in):
   `WA_STAY_BROWSER_E2E=1 npx jest tests/integration/browser-automation.smoke.test.ts`
   ([browser providers](providers/browser-providers.md#the-real-browser-smoke-test)).

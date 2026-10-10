@@ -97,6 +97,22 @@ describe('EditWatchPage', () => {
     expect(mock.watches.update).not.toHaveBeenCalled();
   });
 
+  it('a 1.x site type ("Unpowered") shows as Any with what it was, and a rename keeps it', async () => {
+    const mock = api({ ...LEGACY, stayParams: { parkId: '17', gearType: 'Unpowered' } });
+    const { user } = renderWithApp({ route: '/watches/5/edit', api: mock });
+    const gear = await screen.findByRole('combobox', { name: 'Camping with' });
+    expect(gear).toHaveValue('all');
+    expect(gear).toHaveAccessibleDescription(
+      'Camping with was saved as "Unpowered", which can\'t be checked any more, so it is now Any.'
+    );
+    const name = screen.getByRole('textbox', { name: 'Name' });
+    await user.clear(name);
+    await user.type(name, 'Renamed');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    // Only the name: the stored "Unpowered" is not replaced by the Any the form shows.
+    await waitFor(() => expect(mock.watches.update).toHaveBeenCalledWith(5, { name: 'Renamed' }));
+  });
+
   it('rename a legacy 5-minute watch saves without changing the interval', async () => {
     const mock = api({ ...LEGACY, checkIntervalMinutes: 5 });
     const { user } = renderWithApp({ route: '/watches/5/edit', api: mock });

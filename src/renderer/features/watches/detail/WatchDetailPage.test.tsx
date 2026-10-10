@@ -59,6 +59,17 @@ describe('WatchDetailPage', () => {
     expect(screen.getByText('Near the water')).toBeInTheDocument();
   });
 
+  it('shows a 1.x site type that is not one of the options as it was saved ("Unpowered")', async () => {
+    renderWithApp({
+      route: '/watches/7',
+      api: api({ ...WATCH, stayParams: { parkId: '17', gearType: 'Unpowered' } }),
+    });
+    const stay = await screen.findByRole('region', { name: 'Stay' });
+    expect(within(stay).getByText('Camping with')).toBeInTheDocument();
+    expect(within(stay).getByText('Unpowered')).toBeInTheDocument();
+    expect(within(stay).queryByText('Any')).toBeNull();
+  });
+
   it('keeps heading and summaries while watch:updated and Check now refetch', async () => {
     let answer: (value: unknown) => void = () => undefined;
     const mock = api(WATCH, {

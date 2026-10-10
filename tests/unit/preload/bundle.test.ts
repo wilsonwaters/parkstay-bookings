@@ -74,8 +74,9 @@ describe('build pipeline', () => {
     const { scripts } = readJson('package.json');
     expect(scripts['build:preload']).toBe('node scripts/build-preload.js');
     expect(scripts['dev:preload']).toBe('node scripts/build-preload.js --watch');
+    // After emptying dist/ (scripts/clean-dist.js, tests/scripts/clean-dist.test.ts)
     expect(scripts.build).toBe(
-      'npm run build:main && npm run build:preload && npm run build:renderer'
+      'node scripts/clean-dist.js && npm run build:main && npm run build:preload && npm run build:renderer'
     );
     expect(scripts.dev).toContain('npm run dev:preload');
 

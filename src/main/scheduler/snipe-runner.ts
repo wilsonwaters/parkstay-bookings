@@ -256,8 +256,17 @@ export class SnipeRunner {
     return snipe;
   }
 
-  /** The plan, after the expiry checks; undefined (and the run finished) when there is none. */
-  private planFor(id: number, run: SnipeRun, snipe: SiteSnipe): SnipePlan | undefined {
+  /**
+   * The plan, after the expiry checks; undefined (and the run finished) when there is none.
+   * With `window: false` the window is not checked: the stored release instant may be about to
+   * move (a daily rollover is asked again), and the window moves with it.
+   */
+  private planFor(
+    id: number,
+    run: SnipeRun,
+    snipe: SiteSnipe,
+    { window = true }: { window?: boolean } = {}
+  ): SnipePlan | undefined {
     const plan = this.snipes.plan(snipe);
     if (!plan) {
       log.warn(`Snipe ${id}: UNKNOWN_PROVIDER "${snipe.providerId}"; skipped`);
@@ -271,7 +280,7 @@ export class SnipeRunner {
       this.finish(id, run);
       return undefined;
     }
-    if (plan.windowEnd && now.getTime() >= plan.windowEnd.getTime()) {
+    if (window && plan.windowEnd && now.getTime() >= plan.windowEnd.getTime()) {
       this.snipes.expire(id, 'The snipe window closed without a hold');
       this.finish(id, run);
       return undefined;
@@ -284,8 +293,12 @@ export class SnipeRunner {
     if (!snipe) return this.finish(id, run);
 
     // V3 stored the release instant at save time: a daily rollover asks the provider again
-    // (a v8-migrated row still carries the old midnight instant).
-    if (snipe.releaseMode === SnipeReleaseMode.DAILY_ROLLOVER && this.snipes.plan(snipe)) {
+    // (a v8-migrated row still carries the old midnight instant). A snipe that is over whatever
+    // the release time (its provider gone, its arrival passed) ends first, without asking: a
+    // stale snipe at start-up costs the provider no request (m1). The window is checked after
+    // the refresh, as the release (and so the window) can move later.
+    if (snipe.releaseMode === SnipeReleaseMode.DAILY_ROLLOVER) {
+      if (!this.planFor(id, run, snipe, { window: false })) return;
       await this.snipes.refreshReleaseAt(snipe, run.controller.signal);
       if (!this.isCurrent(id, run)) return;
       snipe = this.live(id);

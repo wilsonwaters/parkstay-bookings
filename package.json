@@ -25,7 +25,7 @@
     "dev:renderer": "vite",
     "start": "cross-env ELECTRON_RENDERER_URL=http://localhost:3000 electron .",
     "start:electron": "electron .",
-    "build": "npm run build:main && npm run build:preload && npm run build:renderer",
+    "build": "node scripts/clean-dist.js && npm run build:main && npm run build:preload && npm run build:renderer",
     "build:main": "tsc -p tsconfig.main.json && tsc-alias -p tsconfig.main.json",
     "build:preload": "node scripts/build-preload.js",
     "build:renderer": "vite build",

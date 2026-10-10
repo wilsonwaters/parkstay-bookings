@@ -278,4 +278,34 @@ describe('SiteSniperService on ParkStay (fixture server)', () => {
       await Promise.all(runner.stop());
     }
   });
+
+  it('expires a stale daily-rollover snipe at start-up without asking ParkStay anything (m1)', async () => {
+    // Its arrival (30 Sep) has passed on 2 Oct, and Bungarra's release time is not known yet,
+    // so refreshing the release would fetch the campground's view.
+    const stale = repo.create(userId, {
+      providerId: 'parkstay',
+      name: 'Bungarra rollover (stale)',
+      location: { externalId: '20', name: 'Bungarra' },
+      stay: { arrival: '2026-09-30', departure: '2026-10-02', adults: 2 },
+      stayParams: { gearType: 'all', numVehicles: 1 },
+      releaseMode: SnipeReleaseMode.DAILY_ROLLOVER,
+      releaseAt: new Date('2026-04-02T16:00:00.000Z'),
+    });
+    repo.activate(stale.id);
+    const runner = new SnipeRunner({ snipes: service });
+    try {
+      runner.start();
+      for (let i = 0; i < 100 && runner.isScheduled(stale.id); i++) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(repo.findById(stale.id)).toMatchObject({
+        status: SnipeStatus.EXPIRED,
+        isActive: false,
+      });
+      expect(runner.isScheduled(stale.id)).toBe(false);
+      expect(server.requests.map((request) => request.path)).toEqual([]);
+    } finally {
+      await Promise.all(runner.stop());
+    }
+  });
 });

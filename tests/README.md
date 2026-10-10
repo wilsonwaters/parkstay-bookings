@@ -43,7 +43,7 @@ npm run test:electron
 
 - Test files are named `*.test.ts` / `*.test.tsx`.
 - `npm test -- <path>` runs only the project whose files match the path.
-- Coverage (`collectCoverageFrom`, `coverageThreshold`, `coverageReporters`) is configured once at the root. It is aggregated across both projects and the threshold (branches 9, functions 17, lines 16, statements 16) is evaluated once, globally.
+- Coverage (`collectCoverageFrom`, `coverageThreshold`, `coverageReporters`) is configured once at the root. It is aggregated across both projects and the threshold (branches 85, functions 90, lines 93, statements 92: a ratchet a few points below the measured coverage, raised as it grows) is evaluated once, globally.
 
 ### Writing tests for the `main` project
 
@@ -257,6 +257,13 @@ npx playwright show-report        # the HTML report of the last run
   running as root. If Electron aborts with a sandbox error on your machine, run with `CI=1`.
 - **One app at a time.** `workers: 1`, no parallelism; each test launches its own app, so the
   suite takes about a minute. On CI a failed test is retried once.
+- **The map (opt-in).** `explore-resize.spec.ts` has a second check that needs the map: a build
+  with a Mapbox token (`npm run build`, not `build:e2e`) and Mapbox reachable. Run it with
+  `E2E_MAP=1`: it lets `api.mapbox.com` through the network guard (`WA_STAY_E2E_ALLOW_HOSTS`),
+  launches with SwiftShader on Linux (the harness's `args`), and adds `E2E_ELECTRON_ARGS`
+  (space-separated switches, e.g. `--proxy-server=host:port`). It checks that resizing the
+  window leaves the results and `map=` alone, and that a zoom button still counts as a move.
+  Without `E2E_MAP` it is skipped.
 
 ### What every launch gets (`support/wa-stay.ts`)
 
@@ -359,7 +366,9 @@ release tag.
 
 The `packaged-smoke` job checks what electron-builder ships: `npm run build:e2e`,
 `npx electron-builder --linux dir --publish never`, then `xvfb-run -a npm run smoke:packaged`
-(`scripts/packaged-smoke.js`). It starts `release/linux-unpacked/wa-stay` with a temp
+(`scripts/packaged-smoke.js`). It first reads `app.asar`'s index: the main, preload and
+renderer builds are there, and no `.d.ts` or `.map` file under `dist/`. It then starts
+`release/linux-unpacked/wa-stay` with a temp
 `XDG_CONFIG_HOME` and every test-only hook set, waits for the window's `h1`, and requires that
 userData is the temp `WA Stay` folder, the page comes from `app.asar`, and `app.quit()` exits
 with code 0 within 10 s. It then does the same with a copy of the executable named `electron`,
@@ -560,7 +569,7 @@ npm run type-check
 
 ## Coverage Thresholds
 
-`jest.config.js` enforces a global floor across both projects: branches 9%, functions 17%, lines 16%, statements 16%. Do not lower it to make a run pass.
+`jest.config.js` enforces a global floor across both projects: branches 85%, functions 90%, lines 93%, statements 92%, a few points below the measured coverage. Raise it as coverage grows; do not lower it to make a run pass.
 
 ## Contributing
 

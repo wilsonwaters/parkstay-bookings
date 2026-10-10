@@ -156,3 +156,88 @@ describe('SnipeRunner generation token', () => {
     expect(snipe.status).toBe(SnipeStatus.WAITING_RELEASE);
   });
 });
+
+describe('SnipeRunner daily-rollover start (m1)', () => {
+  let snipe: SiteSnipe;
+  let service: Record<string, jest.Mock>;
+  let runner: SnipeRunner;
+
+  beforeEach(() => {
+    jest.useFakeTimers({ now: NOW });
+    snipe = createMockSiteSnipe({
+      id: 1,
+      isActive: true,
+      status: SnipeStatus.ARMED,
+      accessGateEnabled: false,
+      releaseMode: SnipeReleaseMode.DAILY_ROLLOVER,
+      // As migration v8 left it: the old midnight instant, an hour ago, whose 15-minute
+      // window has closed
+      releaseAt: new Date(NOW.getTime() - 60 * 60_000),
+      leadTimeSeconds: 0,
+      windowDurationMs: 900_000,
+    });
+    service = {
+      find: jest.fn(() => snipe),
+      getActive: jest.fn(() => [snipe]),
+      getHeld: jest.fn(() => []),
+      plan: jest.fn(
+        (s: SiteSnipe): SnipePlan => ({
+          provider: {} as SnipePlan['provider'],
+          releaseAt: s.releaseAt,
+          warmupAt: s.releaseAt,
+          windowEnd: new Date(s.releaseAt!.getTime() + s.windowDurationMs),
+          pollIntervalMs: 1500,
+          timeZone: 'Australia/Perth',
+        })
+      ),
+      setStatus: jest.fn((_id: number, status: SnipeStatus) => {
+        snipe = { ...snipe, status };
+      }),
+      expire: jest.fn(),
+      arrivalPassed: jest.fn(() => false),
+      // The provider moves the release to the campground's own time, two hours later
+      refreshReleaseAt: jest.fn(async () => {
+        snipe = { ...snipe, releaseAt: new Date(NOW.getTime() + 60 * 60_000) };
+        return snipe.releaseAt;
+      }),
+      execute: jest.fn(),
+      markUnknownProvider: jest.fn(),
+    };
+    runner = new SnipeRunner({ snipes: service as unknown as SiteSniperService });
+  });
+
+  afterEach(() => {
+    void runner.stop();
+    jest.useRealTimers();
+  });
+
+  it('expires a snipe whose arrival has passed without asking the provider for the release', async () => {
+    service.arrivalPassed.mockReturnValue(true);
+    runner.start();
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(service.refreshReleaseAt).not.toHaveBeenCalled();
+    expect(service.expire).toHaveBeenCalledWith(1, 'The arrival date has passed');
+    expect(runner.isScheduled(1)).toBe(false);
+  });
+
+  it('skips a snipe of an unknown provider without asking for the release', async () => {
+    service.plan.mockReturnValue(undefined);
+    runner.start();
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(service.refreshReleaseAt).not.toHaveBeenCalled();
+    expect(service.markUnknownProvider).toHaveBeenCalledWith(1, snipe.providerId);
+    expect(runner.isScheduled(1)).toBe(false);
+  });
+
+  it('checks the window after the refresh: a release that moved later keeps the snipe armed', async () => {
+    runner.start();
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(service.refreshReleaseAt).toHaveBeenCalledTimes(1);
+    expect(service.expire).not.toHaveBeenCalled();
+    expect(snipe.status).toBe(SnipeStatus.ARMED);
+    expect(runner.isScheduled(1)).toBe(true);
+  });
+});

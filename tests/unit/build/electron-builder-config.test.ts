@@ -76,6 +76,22 @@ describe('electron-builder.json', () => {
     expect(builder.linux.description).toMatch(/^WA Stay /);
     expect(builder.linux.vendor).toBe('WA Stay');
   });
+
+  it('ships the built JavaScript without declarations or source maps', () => {
+    // electron-builder already leaves out `*.d.ts` (its default excludedExts), but not the
+    // `*.d.ts.map` beside them. The source maps are not used at run time: Node applies them to
+    // stack traces only with --enable-source-maps or process.setSourceMapsEnabled(), which the
+    // app never sets, so the logger and the crash policy (app/crash-policy.ts) log the compiled
+    // positions either way; the preload's map is read only by DevTools. `npm run
+    // smoke:packaged` checks the real app.asar.
+    expect(builder.files).toEqual([
+      'dist/**/*',
+      '!dist/**/*.d.ts',
+      '!dist/**/*.map',
+      'package.json',
+      'node_modules/**/*',
+    ]);
+  });
 });
 
 describe('package.json', () => {

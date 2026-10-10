@@ -603,6 +603,38 @@ describe('createMapboxController', () => {
     ]);
   });
 
+  it('counts only the person’s gestures as their moves, not a window resize (M1)', async () => {
+    const { controller, map } = await loaded();
+    const moves: boolean[] = [];
+    controller.onMoveEnd((view) => moves.push(view.userInitiated));
+
+    // What Mapbox GL 3 passes as `originalEvent` for each gesture: a drag or a box zoom ends
+    // on a mouse or touch event, a scroll zoom on its last wheel event, the keyboard and a
+    // double-click on theirs, the zoom buttons and a cluster click on the click.
+    const gestures: Event[] = [
+      new MouseEvent('mouseup'),
+      new WheelEvent('wheel'),
+      new KeyboardEvent('keydown', { key: '+' }),
+      new MouseEvent('dblclick'),
+      new MouseEvent('click'),
+      ...(typeof TouchEvent === 'function' ? [new TouchEvent('touchend')] : []),
+    ];
+    for (const originalEvent of gestures) map.fire('moveend', { originalEvent });
+    expect(moves).toEqual(gestures.map(() => true));
+
+    // Mapbox's `_onWindowResize` calls `resize({ originalEvent })` with the window's event
+    // (maximising, resizing, rotating or going full screen), which ends a move too.
+    moves.length = 0;
+    for (const type of ['resize', 'orientationchange', 'fullscreenchange']) {
+      map.fire('moveend', { originalEvent: new Event(type) });
+    }
+    map.fire('moveend', { originalEvent: new UIEvent('resize') });
+    // Anything else that is not an input event, or not an event at all, is not the person.
+    map.fire('moveend', { originalEvent: new FocusEvent('blur') });
+    map.fire('moveend', { originalEvent: { type: 'mouseup' } });
+    expect(moves).toEqual([false, false, false, false, false, false]);
+  });
+
   it('reports the whole canvas as the map area, not the bounds inside the camera padding', async () => {
     const { controller, map } = await loaded();
     Object.defineProperty(map.canvas, 'clientWidth', { configurable: true, value: 600 });

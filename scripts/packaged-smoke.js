@@ -21,6 +21,9 @@
  * For each: userData is the temp data folder, the window shows the built page from app.asar
  * with its `h1`, and `app.quit()` ends the process with exit code 0 within 10 s.
  *
+ * First, app.asar's own index: it holds the main, preload and renderer builds, and no `.d.ts`
+ * or `.map` file under `dist/` (unused at run time; `electron-builder.json` leaves them out).
+ *
  * Not in fixture mode, so the app may make its usual start-up requests (the update check); it
  * is closed before the catalogue sync and account check (5 s after the window opens) start.
  */
@@ -66,6 +69,52 @@ function launchEnv(configHome, hookDir) {
     ELECTRON_RENDERER_URL: 'http://127.0.0.1:9/',
     NODE_ENV: 'development',
   };
+}
+
+/**
+ * Every file in an asar archive, read from its header: a Chromium pickle holding the header's
+ * size, then a pickle holding the header JSON (a tree of `files`). No dependency needed.
+ */
+function asarFiles(archive) {
+  const fd = fs.openSync(archive, 'r');
+  try {
+    const sizePickle = Buffer.alloc(8);
+    fs.readSync(fd, sizePickle, 0, 8, 0);
+    const headerPickle = Buffer.alloc(sizePickle.readUInt32LE(4));
+    fs.readSync(fd, headerPickle, 0, headerPickle.length, 8);
+    const header = JSON.parse(headerPickle.toString('utf8', 8, 8 + headerPickle.readUInt32LE(4)));
+    const files = [];
+    const walk = (node, prefix) => {
+      for (const [name, entry] of Object.entries(node.files ?? {})) {
+        const at = prefix ? `${prefix}/${name}` : name;
+        if (entry.files) walk(entry, at);
+        else files.push(at);
+      }
+    };
+    walk(header, '');
+    return files;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function checkContents(executable) {
+  const archive = path.join(path.dirname(executable), 'resources', 'app.asar');
+  console.log(`# contents: ${archive}`);
+  const dist = asarFiles(archive).filter((file) => file.startsWith('dist/'));
+  check(
+    ['dist/main/main/index.js', 'dist/preload/index.js', 'dist/renderer/index.html'].every((file) =>
+      dist.includes(file)
+    ),
+    'app.asar has the main, preload and renderer builds'
+  );
+  const unused = dist.filter((file) => /\.(d\.ts|map)$/.test(file));
+  check(
+    unused.length === 0,
+    unused.length === 0
+      ? 'dist/ in app.asar has no declarations or source maps'
+      : `dist/ in app.asar has ${unused.length} declaration or source map file(s): ${unused.slice(0, 5).join(', ')}`
+  );
 }
 
 async function smoke(executable, label, expectPackaged) {
@@ -140,6 +189,7 @@ async function main() {
       `${executable} is missing: run \`npx electron-builder --linux dir --publish never\` first`
     );
   }
+  checkContents(executable);
   await smoke(executable, 'packaged', true);
 
   // Electron reports any executable not named `electron` as packaged; this one says it is not.
