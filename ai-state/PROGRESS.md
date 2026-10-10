@@ -19,11 +19,23 @@ Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wils
     3. PD3: the campground map in a sandboxed document window.
 
     All are in `ai-state/streams/providers/tasks/`.
-  - **Next:** PD1, then its review, then the merge, then PD2, then PD3.
+  - **PD1 is implemented but not yet reviewed:** commit `1de03ce` (base `29619cc`), backed up to the GitHub branch `wip/pd1-parkstay-details`. The stakeholder paused the session for quota right after it.
+    - **The agent's report:**
+      - "View on ParkStay" and "Book on ParkStay" open `/search-availability/information/?campground_id=<id>[&arrival&departure]`. `getLocation` also replaces a stored summary's old `bookingUrl`.
+      - Per-site description, people and vehicle limits show in the night grid, joined by `unitId`.
+      - The About marks the 10 unavailable Bungarra items "(not available)" (`description.ts`).
+      - Gate: 4006 tests, `test:tz`, and e2e with 21 passed.
+    - Screenshots are in the orchestrator's scratchpad, `shots/PD1/`.
+    - `docs/images/place-detail.png` is not regenerated.
+  - **To resume:**
+    1. `git fetch origin wip/pd1-parkstay-details`.
+    2. Rebase onto the feature branch, which has moved only in `ai-state`.
+    3. Run an independent review of PD1, apply its fixes, merge and push.
+    4. Then PD2, then PD3, one agent at a time.
   - **Open for the stakeholder:**
     - PD2 reads ParkStay's public page HTML, so DBCA's terms for reusing page content are unknown.
     - The queue endpoint change is noted as a follow-up under "Next to dispatch".
-- PR #42 is green on `32f43e2`. A safety-net check-in is armed for 02:20 UTC.
+- PR #42 is green on `af83d28`. The safety-net check-in is cancelled while paused; re-arm it on resume.
 
 ## Notes
 - 2026-10-10 ~04:30 UTC: a third usage limit stopped U4 (final gate), U2 (gate), the U3 fix and the E3 fix; all resumed at 06:25 UTC from saved state (U4 `28f3e40` and U2 `cd243b0` backed up to `wip/*`).
