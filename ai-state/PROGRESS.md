@@ -3,10 +3,11 @@
 _Last updated: 2026-10-09 (orchestrator)_
 
 ## Phase
-Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
+Phase 5 — System verification (all feature tasks merged except Q2 docs). Previously: Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
 
 ## Currently in flight
 - **Q2** (#41) Documentation: implementing (L; design round waived for docs, plan committed first), lane Y. README + upgrade guide, accurate CLAUDE.md, provider developer guide with a compiling example test, verified ParkStay API docs, Gmail docs removed, 2.0.0 CHANGELOG, consolidated stakeholder release checklist, docs screenshots.
+- **Phase 5 system verification** running on `056c5d3` (lane W, read-only): brief success criteria 1–10, tech-review critical/high traceability, full gate ×3 + e2e + electron + packaged smoke, runtime walkthrough of every screen (≤ 10 read-only ParkStay requests, no holds), v5/v6 upgrade path, security and branding spot-checks.
 - Next: merge Q2; system verification (Phase 5); final review (Phase 6); sync issue bodies; open the single PR (no AI attribution; Closes #12–#41); hand the stakeholder the repo description and checklist.
 
 ## Notes
