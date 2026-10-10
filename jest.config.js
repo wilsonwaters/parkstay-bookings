@@ -140,4 +140,7 @@ module.exports = {
     },
   },
   testTimeout: 30000,
+  // A worker that has grown past this is replaced after its current test file. Long-lived
+  // workers crashed (SIGSEGV) on the macOS runner after the move to Jest 30 and jsdom 26.
+  workerIdleMemoryLimit: '1GB',
 };

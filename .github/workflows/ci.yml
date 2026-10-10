@@ -24,6 +24,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24.x
+          # The newest 24.x patch on every runner (the macOS image's cached 24.20 crashed Jest workers)
+          check-latest: true
           cache: 'npm'
 
       - name: Install dependencies
@@ -47,6 +49,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24.x
+          # The newest 24.x patch on every runner (the macOS image's cached 24.20 crashed Jest workers)
+          check-latest: true
           cache: 'npm'
 
       - name: Install dependencies
@@ -72,6 +76,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node-version }}
+          # The newest 24.x patch on every runner (the macOS image's cached 24.20 crashed Jest workers)
+          check-latest: true
           cache: 'npm'
 
       # better-sqlite3 ships one prebuilt Node-API binary, loaded by Jest (Node) and the app
@@ -108,6 +114,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24.x
+          # The newest 24.x patch on every runner (the macOS image's cached 24.20 crashed Jest workers)
+          check-latest: true
           cache: 'npm'
 
       - name: Run npm audit
@@ -142,6 +150,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24.x
+          # The newest 24.x patch on every runner (the macOS image's cached 24.20 crashed Jest workers)
+          check-latest: true
           cache: 'npm'
 
       - name: Install dependencies
@@ -175,6 +185,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24.x
+          # The newest 24.x patch on every runner (the macOS image's cached 24.20 crashed Jest workers)
+          check-latest: true
           cache: 'npm'
 
       - name: Install dependencies
@@ -219,6 +231,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24.x
+          # The newest 24.x patch on every runner (the macOS image's cached 24.20 crashed Jest workers)
+          check-latest: true
           cache: 'npm'
 
       - name: Install dependencies
