@@ -33,7 +33,7 @@ function runSeed<T>(job: Record<string, unknown>): T {
       const failure = error as { stderr?: Buffer; message: string };
       throw new Error(
         `Seeding (${String(job.op)}) failed: ${failure.stderr?.toString() || failure.message}\n` +
-          'If it says NODE_MODULE_VERSION, better-sqlite3 is built for Node: run `npm run rebuild`.'
+          'If it says NODE_MODULE_VERSION, node_modules predates better-sqlite3 13: run `npm ci`.'
       );
     }
     return JSON.parse(fs.readFileSync(out, 'utf8')) as T;

@@ -20,24 +20,23 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        node-version: [20.x]
+        node-version: [24.x]
       fail-fast: false
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
+      # better-sqlite3 ships one prebuilt Node-API binary, loaded by Jest (Node) and the app
+      # (Electron) alike: nothing to rebuild after npm ci.
       - name: Install dependencies
         run: npm ci
-
-      - name: Rebuild native modules
-        run: npm rebuild better-sqlite3
 
       - name: Type check
         run: npm run type-check
@@ -72,12 +71,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20.x
+          node-version: 24.x
           cache: 'npm'
 
       - name: Install dependencies
@@ -126,12 +125,20 @@ jobs:
           npx electron-builder --win --publish never
         shell: pwsh
 
+      # The app as packaged: WA Stay.exe's Electron fuses, the app.asar integrity record that
+      # Electron checks on Windows, and one better-sqlite3 binary (scripts/check-windows-package.js)
+      - name: Check the packaged Windows app
+        run: node scripts/check-windows-package.js release/win-unpacked
+
+      # The installer's .blockmap lets electron-updater download only the blocks that changed
+      # (docs/release-process.md): every release must carry it.
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: windows-artifacts
           path: |
             release/*.exe
+            release/*.blockmap
             release/latest.yml
           retention-days: 14
 
@@ -145,7 +152,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download Windows artifacts
         uses: actions/download-artifact@v4

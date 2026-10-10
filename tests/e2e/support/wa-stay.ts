@@ -273,7 +273,7 @@ class Launch implements WaStay {
       [
         `WA Stay did not start: ${reason}`,
         stripAnsi(log),
-        'If it says NODE_MODULE_VERSION, better-sqlite3 is built for Node: run `npm run rebuild`.',
+        'If it says NODE_MODULE_VERSION, node_modules predates better-sqlite3 13: run `npm ci`.',
       ].join('\n')
     );
   }

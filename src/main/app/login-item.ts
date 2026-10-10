@@ -7,7 +7,9 @@
  *   `main-window.ts`). The portable build runs from a temp folder, so the entry points at the
  *   portable exe itself (`PORTABLE_EXECUTABLE_FILE`). The path is quoted: Electron writes
  *   it as given, and "WA Stay" has a space.
- * - macOS: a login item, opened hidden only when "Start minimised" is on.
+ * - macOS: a login item. Electron 44 removed `openAsHidden` (it only worked on macOS 12 and
+ *   earlier, which Electron no longer supports), so a macOS login launch opens the window as
+ *   usual whatever "Start minimised" says.
  *
  * v1.x never set an AppUserModelId, so its Run value is named with Electron's default,
  * `electron.app.<productName>` (`LEGACY_LOGIN_ITEM_NAMES`), and runs the v1.x executable
@@ -47,7 +49,6 @@ export interface LoginItemApp {
   };
   setLoginItemSettings(settings: {
     openAtLogin: boolean;
-    openAsHidden?: boolean;
     path?: string;
     args?: string[];
     name?: string;
@@ -107,11 +108,11 @@ export function setLaunchAtLogin(
   { enabled, startMinimised }: LaunchAtLoginChoice,
   host: LaunchTarget = currentLaunchTarget()
 ): void {
-  const hidden = enabled && startMinimised;
   if (host.platform === 'darwin') {
-    host.app.setLoginItemSettings({ openAtLogin: enabled, openAsHidden: hidden });
+    host.app.setLoginItemSettings({ openAtLogin: enabled });
     return;
   }
+  const hidden = enabled && startMinimised;
   host.app.setLoginItemSettings({
     openAtLogin: enabled,
     path: `"${launchExecutable(host)}"`,

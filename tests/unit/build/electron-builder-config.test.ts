@@ -64,7 +64,8 @@ describe('electron-builder.json', () => {
   });
 
   it('describes WA Stay in the Linux desktop entry and package metadata', () => {
-    expect(builder.linux.desktop).toEqual({
+    // electron-builder 26 takes the [Desktop Entry] keys under `desktop.entry`
+    expect(builder.linux.desktop.entry).toEqual({
       Name: 'WA Stay',
       Comment: 'Find and book places to stay across Western Australia',
       Categories: 'Utility;Office;',
@@ -84,13 +85,39 @@ describe('electron-builder.json', () => {
     // app never sets, so the logger and the crash policy (app/crash-policy.ts) log the compiled
     // positions either way; the preload's map is read only by DevTools. `npm run
     // smoke:packaged` checks the real app.asar.
-    expect(builder.files).toEqual([
-      'dist/**/*',
-      '!dist/**/*.d.ts',
-      '!dist/**/*.map',
-      'package.json',
-      'node_modules/**/*',
+    expect(builder.files).toEqual(
+      expect.arrayContaining([
+        'dist/**/*',
+        '!dist/**/*.d.ts',
+        '!dist/**/*.map',
+        'package.json',
+        'node_modules/**/*',
+      ])
+    );
+  });
+
+  it("ships one better-sqlite3 binary, the target's, and none of its C sources", () => {
+    // better-sqlite3 13 ships prebuilt Node-API binaries for 8 platforms, plus SQLite's and its
+    // own C sources (for builds from source, which the app never does). Only the target's
+    // binary is packaged, unpacked from app.asar (a native module cannot load from inside it);
+    // its JavaScript stays in the archive, under asar integrity. `${platform}` and `${arch}` are
+    // the build's: electron-builder expands `${platform}` to the build machine's platform, so
+    // each OS packages its own target (no cross-builds; per-target `win.files` does not work in
+    // electron-builder 26). `npm run smoke:packaged` checks the real package.
+    expect(builder.files.slice(-3)).toEqual([
+      '!node_modules/better-sqlite3/{deps,src}/**',
+      '!node_modules/better-sqlite3/prebuilds/*.node',
+      'node_modules/better-sqlite3/prebuilds/${platform}-${arch}.node',
     ]);
+    expect(builder.asar).toEqual({ smartUnpack: false });
+    expect(builder.asarUnpack).toEqual([
+      'node_modules/playwright-core/**',
+      'node_modules/better-sqlite3/prebuilds/*.node',
+    ]);
+  });
+
+  it('asks for the macOS version Electron 44 needs', () => {
+    expect(builder.mac.minimumSystemVersion).toBe('13.0.0');
   });
 });
 

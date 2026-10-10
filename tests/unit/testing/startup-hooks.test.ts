@@ -114,6 +114,7 @@ jest.mock('@main/app/main-window', () => {
       Object.assign(new Emitter(), { isDestroyed: () => false, isMinimized: () => false })
     ),
     denyWebviews: jest.fn(),
+    refuseClientCertificates: jest.fn(),
   };
 });
 

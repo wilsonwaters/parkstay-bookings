@@ -26,7 +26,7 @@ export function chromeBrands(major: string): string {
 export const CHROME_USER_AGENT = chromeUserAgent(CHROME_MAJOR_VERSION);
 
 /**
- * The major version of the Chromium this process runs (`120` in Electron 28), or
+ * The major version of the Chromium this process runs (`152` in Electron 44), or
  * `CHROME_MAJOR_VERSION` outside Electron.
  */
 export function runtimeChromeMajor(

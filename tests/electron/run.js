@@ -42,7 +42,7 @@ for (const entry of entries) {
     outfile,
     bundle: true,
     platform: 'node',
-    target: 'node18',
+    target: 'node24',
     format: 'cjs',
     // playwright-core is loaded lazily, on the first browser automation; these tests never do.
     external: ['electron', 'playwright-core'],

@@ -18,12 +18,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20.x
+          node-version: 24.x
           cache: 'npm'
 
       - name: Install dependencies
@@ -41,12 +41,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20.x
+          node-version: 24.x
           cache: 'npm'
 
       - name: Install dependencies
@@ -61,24 +61,23 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        node-version: [20.x]
+        node-version: [24.x]
       fail-fast: false
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
+      # better-sqlite3 ships one prebuilt Node-API binary, loaded by Jest (Node) and the app
+      # (Electron) alike: nothing to rebuild after npm ci.
       - name: Install dependencies
         run: npm ci
-
-      - name: Rebuild native modules
-        run: npm rebuild better-sqlite3
 
       - name: Run unit tests
         run: npm run test:coverage
@@ -103,12 +102,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20.x
+          node-version: 24.x
           cache: 'npm'
 
       - name: Run npm audit
@@ -137,12 +136,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20.x
+          node-version: 24.x
           cache: 'npm'
 
       - name: Install dependencies
@@ -170,18 +169,21 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20.x
+          node-version: 24.x
           cache: 'npm'
 
-      # postinstall (electron-builder install-app-deps) builds better-sqlite3 for Electron,
-      # which is what the app needs: do not rebuild it for Node in this job.
       - name: Install dependencies
         run: npm ci
+
+      # Since Electron 42, npm ci no longer downloads the Electron binary; Playwright's launcher
+      # would fetch it during the first test. Fetch it here instead.
+      - name: Download the Electron binary
+        run: npx install-electron
 
       - name: Install xvfb
         run: command -v xvfb-run || (sudo apt-get update && sudo apt-get install -y xvfb)
@@ -211,15 +213,14 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20.x
+          node-version: 24.x
           cache: 'npm'
 
-      # postinstall builds better-sqlite3 for Electron, as the packaged app needs.
       - name: Install dependencies
         run: npm ci
 
@@ -232,8 +233,9 @@ jobs:
       - name: Package it for Linux, unpacked and not published
         run: npx electron-builder --linux dir --publish never
 
-      # Starts release/linux-unpacked/wa-stay (and a copy named electron) with a temp data
-      # folder, waits for the window, quits within 10 s with exit code 0, and checks that the
-      # test-only hooks are ignored (scripts/packaged-smoke.js).
+      # Reads the packaged binary's Electron fuses, then starts release/linux-unpacked/wa-stay
+      # (and a copy named electron) with a temp data folder, waits for the window, quits within
+      # 10 s with exit code 0, and checks that the test-only hooks are ignored
+      # (scripts/packaged-smoke.js).
       - name: Start and quit the packaged app
         run: xvfb-run -a npm run smoke:packaged

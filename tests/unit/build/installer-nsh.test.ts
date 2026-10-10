@@ -147,7 +147,10 @@ describe('installer.nsh', () => {
 
   it('defines customCheckAppRunning: the usual check, then (installer only) close v1.x, then the snapshot', () => {
     const check = macro('customCheckAppRunning');
+    // electron-builder 26's own check is IS_POWERSHELL_AVAILABLE, then _CHECK_APP_RUNNING, which
+    // reads the variable the first sets
     expect(check).toEqual([
+      '!insertmacro IS_POWERSHELL_AVAILABLE',
       '!insertmacro _CHECK_APP_RUNNING',
       '!ifndef BUILD_UNINSTALLER',
       '!insertmacro waStayCloseLegacyApp',
@@ -162,8 +165,20 @@ describe('installer.nsh', () => {
     // _CHECK_APP_RUNNING looks only for "WA Stay.exe"
     expect(CODE).toContain('!define WA_STAY_LEGACY_EXE "WA ParkStay Bookings.exe"');
 
+    // Found by its exe name, as electron-builder 24's FIND_PROCESS did: electron-builder 26's
+    // looks for any process under $INSTDIR, which an interactive upgrade nests in v1's folder
+    expect(macro('waStayFindLegacyApp _RETURN')).toEqual([
+      '!ifdef INSTALL_MODE_PER_ALL_USERS',
+      '${nsProcess::FindProcess} "${WA_STAY_LEGACY_EXE}" ${_RETURN}',
+      '!else',
+      'nsExec::Exec `%SYSTEMROOT%\\System32\\cmd.exe /c tasklist /FI "USERNAME eq %USERNAME%" /FI "IMAGENAME eq ${WA_STAY_LEGACY_EXE}" /FO csv | %SYSTEMROOT%\\System32\\find.exe "${WA_STAY_LEGACY_EXE}"`',
+      'Pop ${_RETURN}',
+      '!endif',
+    ]);
+
     const close = macro('waStayCloseLegacyApp');
-    const find = close.indexOf('!insertmacro FIND_PROCESS "${WA_STAY_LEGACY_EXE}" $R0');
+    expect(close.join('\n')).not.toContain('FIND_PROCESS');
+    const find = close.indexOf('!insertmacro waStayFindLegacyApp $R0');
     expect(find).toBeGreaterThan(0);
     // An update waits for the app to exit by itself, then stops it without asking
     expect(close.slice(0, find)).toEqual(

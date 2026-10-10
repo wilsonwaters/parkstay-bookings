@@ -3,11 +3,8 @@
 ## Quick Start
 
 ```bash
-# Install dependencies
+# Install dependencies (better-sqlite3's one prebuilt binary serves Jest and the app alike)
 npm ci
-
-# Build better-sqlite3 for Node (npm ci builds it for Electron; see "Native module ABI guard")
-npm rebuild better-sqlite3
 
 # Run all Jest tests (both projects)
 npm test
@@ -112,11 +109,11 @@ TZ=Pacific/Kiritimati npx jest --selectProjects main   # UTC+14
 
 ## Native module ABI guard
 
-`better-sqlite3` is a native module and must be compiled for the runtime that loads it. `npm install` / `npm ci` run the `postinstall` script (`electron-builder install-app-deps`), which compiles it for **Electron** (NODE_MODULE_VERSION 119). Jest runs on plain **Node** (115 on Node 20, 127 on Node 22) and needs the Node build.
+`better-sqlite3` is a native module. Since version 13 it ships prebuilt **Node-API** binaries inside the package (Windows, macOS and Linux, x64 and arm64), and Node-API binaries do not depend on the runtime's NODE_MODULE_VERSION: the same file loads in Jest (Node 24) and in the app (Electron 44). Nothing is compiled, and nothing needs rebuilding between running the tests and running the app. (Before 2.0, better-sqlite3 9 was compiled per runtime, and `npm ci` built it for Electron, NODE_MODULE_VERSION 119.)
 
 `scripts/check-native-abi.js` runs as `pretest`, `pretest:coverage` and `pretest:watch`. It loads `better-sqlite3`, opens a `:memory:` database and exits silently if that works (it adds well under a second). Otherwise it stops the run with one message instead of a `dlopen` error in every database test:
 
-- **ABI mismatch:** prints both NODE_MODULE_VERSION numbers, explains that Electron's build is installed, and gives the fix, `npm rebuild better-sqlite3`.
+- **ABI mismatch** (only an install from before better-sqlite3 13 can have one): prints both NODE_MODULE_VERSION numbers, explains which build is installed, and gives the fix, `npm rebuild better-sqlite3`, or `npm ci` for an install that predates better-sqlite3 13.
 - **Not installed** (missing package, or `npm ci --ignore-scripts` left no binary): prints an install hint.
 - **Any other load error** (for example a missing libc symbol): prints the original error unchanged.
 
@@ -126,7 +123,7 @@ Set `AUTO_REBUILD_NATIVE=1` to have the guard run `npm rebuild better-sqlite3` i
 AUTO_REBUILD_NATIVE=1 npm test
 ```
 
-To run the Electron app again afterwards, rebuild for Electron with `npm run rebuild`. Calling `npx jest` directly skips the guard. The diagnosis logic lives in `scripts/lib/native-abi.js` and is unit tested in `tests/scripts/native-abi.test.ts`.
+Calling `npx jest` directly skips the guard. The diagnosis logic lives in `scripts/lib/native-abi.js` and is unit tested in `tests/scripts/native-abi.test.ts`.
 
 ## Directory Structure
 
@@ -246,10 +243,13 @@ npx playwright show-report        # the HTML report of the last run
   build` with `MAPBOX_ACCESS_TOKEN` set to an empty string, so a token in your `.env` never
   reaches the e2e build and Explore is deterministically list-only. The suite stops at once
   with "run `npm run build:e2e` first" when `dist/` is missing.
-- **Native ABI.** The app needs better-sqlite3 built for Electron, Jest needs it built for Node
-  (see [Native module ABI guard](#native-module-abi-guard)). After `npm rebuild better-sqlite3`
-  for Jest, run `npm run rebuild` before the suite. With the Node build the launch fails with
-  "WA Stay did not start" and the main process's `NODE_MODULE_VERSION` error.
+- **Native module.** better-sqlite3's one Node-API binary loads in Electron as it does in Jest
+  (see [Native module ABI guard](#native-module-abi-guard)): there is nothing to rebuild. A
+  launch that fails with "WA Stay did not start" and a `NODE_MODULE_VERSION` error means
+  `node_modules` predates better-sqlite3 13: run `npm ci`.
+- **The Electron binary.** Since Electron 42, `npm ci` no longer downloads it: it is fetched
+  the first time something runs Electron (`npx electron`, or Playwright's launcher), or ahead of
+  time with `npx install-electron`.
 - **Display.** Electron needs one: on Linux without a desktop use `xvfb-run -a`. Windows and
   macOS need nothing extra.
 - **Linux sandbox.** On CI (`CI` set) the harness passes `--no-sandbox`, because Ubuntu 24.04
@@ -358,8 +358,8 @@ condition that turns false once the gap is closed; then remove the line. The sui
 ### CI
 
 The `e2e` job in `.github/workflows/ci.yml` runs on `ubuntu-latest` (20 minutes at most):
-`npm ci` (whose postinstall builds better-sqlite3 for Electron, so the job does not rebuild it
-for Node), `npm run build:e2e`, then `xvfb-run -a npm run test:e2e`. It always uploads
+`npm ci`, `npx install-electron` (the Electron binary, which `npm ci` no longer downloads),
+`npm run build:e2e`, then `xvfb-run -a npm run test:e2e`. It always uploads
 `playwright-report/` and `test-results/` (7 days), so a test that failed and passed on its
 retry leaves its first attempt's trace and logs. It is not in `build.yml`, so it never blocks a
 release tag.
@@ -367,12 +367,24 @@ release tag.
 The `packaged-smoke` job checks what electron-builder ships: `npm run build:e2e`,
 `npx electron-builder --linux dir --publish never`, then `xvfb-run -a npm run smoke:packaged`
 (`scripts/packaged-smoke.js`). It first reads `app.asar`'s index: the main, preload and
-renderer builds are there, and no `.d.ts` or `.map` file under `dist/`. It then starts
-`release/linux-unpacked/wa-stay` with a temp
-`XDG_CONFIG_HOME` and every test-only hook set, waits for the window's `h1`, and requires that
-userData is the temp `WA Stay` folder, the page comes from `app.asar`, and `app.quit()` exits
-with code 0 within 10 s. It then does the same with a copy of the executable named `electron`,
-which Electron reports as unpackaged.
+renderer builds are there, no `.d.ts` or `.map` file under `dist/`, every packed file has an
+integrity hash, and exactly one better-sqlite3 binary ships (`linux-x64.node` on CI), the only
+file of it outside the archive, with none of its C sources. It reads the executable's Electron fuses back with `@electron/fuses`
+(`getCurrentFuseWire`) and checks each one `electron-builder.json` sets
+([security](../docs/security.md#the-packaged-app-electron-fuses)). Every start gets a temp
+`XDG_CONFIG_HOME` and every test-only hook set. The executable as shipped is started with
+`--inspect=0` and `--remote-debugging-port=0`: Node's inspector must stay off, the window
+(seen through Chromium's DevTools endpoint) must show the page from `app.asar`, and closing it
+must quit with code 0 within 10 s. Playwright's launcher needs Node's inspector, so the other
+two starts use copies with only `EnableNodeCliInspectArguments` turned back on: the
+executable, then a copy named `electron`, which Electron reports as unpackaged. Each waits for
+the window's `h1` and requires that userData is the temp `WA Stay` folder, the page comes from
+`app.asar`, and `app.quit()` exits with code 0 within 10 s.
+
+The release build (`build.yml`, job "Build Windows") checks the Windows package with the same
+helpers (`scripts/lib/packaged-app.js`): `node scripts/check-windows-package.js
+release/win-unpacked` reads `WA Stay.exe`'s fuses, compares its asar integrity record with the
+SHA-256 of `app.asar`'s header, and checks for exactly one better-sqlite3 binary, `win32-x64`.
 
 ## Test Utilities
 
@@ -528,10 +540,11 @@ open coverage/index.html
 The workflows are `.github/workflows/ci.yml` (lint and format, type-check, Jest with coverage
 on Ubuntu, Windows and macOS plus `npm run test:tz`, a build check, the Electron smoke tests and
 the packaged smoke check) and `.github/workflows/build.yml` (the release build, which runs the
-Jest suite and `test:tz` first). The Jest jobs run `npm rebuild better-sqlite3` after `npm ci`.
+Jest suite and `test:tz` first). Every job runs on Node 24 (`.nvmrc`), and none rebuilds
+better-sqlite3: its prebuilt binary serves Node and Electron alike.
 
-The Electron smoke tests need the Electron build of better-sqlite3, so they run in their own
-job (see [Electron smoke tests → CI](#ci)).
+The Electron smoke tests need a display and the Electron binary, so they run in their own job
+(see [Electron smoke tests → CI](#ci)).
 
 ## Troubleshooting
 
@@ -555,8 +568,9 @@ npm rebuild better-sqlite3
 
 ### E2E tests not starting
 - "run `npm run build:e2e` first": the suite drives the built app; build it.
-- "WA Stay did not start" with `NODE_MODULE_VERSION` in the log: better-sqlite3 is built for
-  Node (for Jest). Run `npm run rebuild` (the Electron build), then the suite again.
+- "WA Stay did not start" with `NODE_MODULE_VERSION` in the log: `node_modules` predates
+  better-sqlite3 13, whose one binary serves Node and Electron. Run `npm ci`, then the suite
+  again.
 - "Unable to open X display" on Linux: run it under `xvfb-run -a`.
 
 ### TypeScript errors

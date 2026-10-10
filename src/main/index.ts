@@ -28,7 +28,7 @@ import {
   replaceLegacyLoginItems,
   startMinimisedSetting,
 } from './app/login-item';
-import { createMainWindow, denyWebviews } from './app/main-window';
+import { createMainWindow, denyWebviews, refuseClientCertificates } from './app/main-window';
 import { getBrandIconPath } from './app/paths';
 import { isProviderWindow } from './app/provider-windows';
 import { installQuitHold } from './app/quit-hold';
@@ -70,15 +70,11 @@ let container: AppContainer | null = null;
 let mainWindow: BrowserWindow | null = null;
 
 /**
- * A login launch with "Start minimised" (`--hidden`, or macOS's open-as-hidden login item)
+ * A login launch with "Start minimised": the Windows Run value adds `--hidden`. macOS login
+ * items can no longer open hidden (`app/login-item.ts`).
  */
 function isHiddenLaunch(): boolean {
-  if (process.argv.includes(HIDDEN_ARG)) return true;
-  if (process.platform === 'darwin') {
-    const loginSettings = app.getLoginItemSettings();
-    if (loginSettings.wasOpenedAsHidden) return true;
-  }
-  return false;
+  return process.argv.includes(HIDDEN_ARG);
 }
 
 /**
@@ -209,6 +205,7 @@ async function start(): Promise<void> {
 
 if (instance.isPrimary) {
   denyWebviews(app);
+  refuseClientCertificates(app);
 
   app
     .whenReady()

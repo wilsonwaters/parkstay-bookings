@@ -24,9 +24,11 @@
 !include "getProcessInfo.nsh"
 Var pid
 
-; Close a running app as electron-builder does, then (installer only) close a running v1 app
-; and take the legacy snapshot.
+; Close a running app as electron-builder does (its own check, electron-builder 26: whether
+; PowerShell can list processes, then _CHECK_APP_RUNNING), then (installer only) close a running
+; v1 app and take the legacy snapshot.
 !macro customCheckAppRunning
+  !insertmacro IS_POWERSHELL_AVAILABLE
   !insertmacro _CHECK_APP_RUNNING
   !ifndef BUILD_UNINSTALLER
     !insertmacro waStayCloseLegacyApp
@@ -37,9 +39,22 @@ Var pid
 ; v1.x's executable, whose process holds the v1 database open until it exits
 !define WA_STAY_LEGACY_EXE "WA ParkStay Bookings.exe" ; legacy-name-ok
 
-; Closes a running v1.x app the way _CHECK_APP_RUNNING closes WA Stay, so the snapshot copies a
-; database nothing is writing to: in an update, give the app time to exit by itself; otherwise
-; ask first. Then taskkill, wait, and taskkill /f until it is gone.
+; Sets _RETURN to 0 when a v1.x app is running, found by its executable's name, as
+; electron-builder 24's FIND_PROCESS did. electron-builder 26's FIND_PROCESS looks instead for
+; any process under $INSTDIR (when PowerShell is available), which misses v1.x when an
+; interactive upgrade installs into a "WA Stay" subfolder of v1's folder.
+!macro waStayFindLegacyApp _RETURN
+  !ifdef INSTALL_MODE_PER_ALL_USERS
+    ${nsProcess::FindProcess} "${WA_STAY_LEGACY_EXE}" ${_RETURN}
+  !else
+    nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c tasklist /FI "USERNAME eq %USERNAME%" /FI "IMAGENAME eq ${WA_STAY_LEGACY_EXE}" /FO csv | %SYSTEMROOT%\System32\find.exe "${WA_STAY_LEGACY_EXE}"`
+    Pop ${_RETURN}
+  !endif
+!macroend
+
+; Closes a running v1.x app the way electron-builder 24's _CHECK_APP_RUNNING closed WA Stay, so
+; the snapshot copies a database nothing is writing to: in an update, give the app time to exit
+; by itself; otherwise ask first. Then taskkill, wait, and taskkill /f until it is gone.
 !macro waStayCloseLegacyApp
   ${GetProcessInfo} 0 $pid $1 $2 $3 $4
   ${if} ${isUpdated}
@@ -47,7 +62,7 @@ Var pid
     Sleep 300
   ${endIf}
 
-  !insertmacro FIND_PROCESS "${WA_STAY_LEGACY_EXE}" $R0
+  !insertmacro waStayFindLegacyApp $R0
   ${if} $R0 == 0
     ${if} ${isUpdated}
       ; allow the app to exit without an explicit kill
@@ -71,7 +86,7 @@ Var pid
     waStayLegacyLoop:
       IntOp $R1 $R1 + 1
 
-      !insertmacro FIND_PROCESS "${WA_STAY_LEGACY_EXE}" $R0
+      !insertmacro waStayFindLegacyApp $R0
       ${if} $R0 == 0
         ; wait to give it a chance to exit gracefully
         Sleep 1000
@@ -80,7 +95,7 @@ Var pid
         !else
           nsExec::Exec `%SYSTEMROOT%\System32\cmd.exe /c taskkill /f /im "${WA_STAY_LEGACY_EXE}" /fi "PID ne $pid" /fi "USERNAME eq %USERNAME%"`
         !endif
-        !insertmacro FIND_PROCESS "${WA_STAY_LEGACY_EXE}" $R0
+        !insertmacro waStayFindLegacyApp $R0
         ${if} $R0 == 0
           DetailPrint `Waiting for "${WA_STAY_LEGACY_EXE}" to close.`
           Sleep 2000
@@ -157,7 +172,9 @@ Var pid
 !macroend
 
 ; Offers to delete the app's data, but never during an update (the installer runs the old
-; uninstaller with --updated) and never in a silent uninstall (/SD IDNO).
+; uninstaller with --updated) and never in a silent uninstall (/SD IDNO). electron-builder 26
+; runs it before removing the program files (24 ran it after); it touches only the data
+; folders, so the order changes nothing but when the question appears.
 !macro customUnInstall
   ${ifNot} ${isUpdated}
     ; Electron keeps app data per user

@@ -38,6 +38,7 @@ Existing installs upgrade in place and keep their data (see Upgrade notes).
 - Email alerts name the provider in their subject (#27, #39).
 - Scheduling uses precise timers instead of cron; snipes and watches re-arm after the computer wakes (#22).
 - Data is stored per provider, with stay dates as calendar dates (database migrations v7–v10) (#13, #20, #24, #18).
+- Built on Electron 44 (from 28) with a current Chromium, and an updated SQLite (3.53). Updates after 2.0.0 download only the parts of the installer that changed; the first update from 1.2.0 downloads in full.
 
 ### Removed
 - Gmail OTP sign-in. Nothing used it any more. WA Stay deletes any saved Gmail sign-in from its own data folder on start. If you used Gmail OTP in v1.x, a copy of that sign-in (`gmail-oauth.json`, with a still-valid access token) remains in the old v1 data folder (`%APPDATA%\parkstay-bookings`), which WA Stay keeps untouched as your backup; it is safe to delete that file. To revoke the access you gave the app, remove it from your Google account at https://myaccount.google.com/permissions.
@@ -58,6 +59,8 @@ Existing installs upgrade in place and keep their data (see Upgrade notes).
 ### Security
 - Stored secrets are encrypted with the operating system's own encryption (Electron `safeStorage`: Windows DPAPI, the macOS Keychain or a Linux keyring) instead of keys derived from constants in the code; v1.x secrets are re-encrypted once (#16).
 - The old ParkStay password is removed from the database file, and its freed pages are overwritten (#24).
+- The installed app is locked down with Electron fuses: it cannot be run as a plain Node.js runtime or with a debugger attached, loads its code only from its own integrity-checked archive, and encrypts its cookies on disk. The app window refuses every browser permission except writing to the clipboard (for "Copy").
+- Dependencies with known vulnerabilities are updated: nodemailer, sanitize-html and the YAML parser the updater uses.
 - Secrets are never sent to the window: the email password is write-only (#15).
 - The window is sandboxed with a bundled preload, a Content-Security-Policy, blocked navigation and new windows, and checks that every request comes from the app's own page (#14, #15, #17).
 - Provider sign-in and payment windows show only the provider's own pages, sandboxed, with no app script, an allow-list of sites, and every permission and certificate error refused (#24).

@@ -3,6 +3,9 @@
  * - new windows are always denied; http(s) and mailto go to `shell.openExternal`;
  * - navigations and redirects off the app origin are cancelled, hash routes are not;
  * - `<webview>` attaches are denied for every webContents;
+ * - no request offers a client certificate, `net` requests (no webContents) included;
+ * - its session (the default session) refuses every permission request and check except a
+ *   clipboard write from the app's own page;
  * - the window is sandboxed and isolated, registered as the trusted IPC sender, and in
  *   development gets the dev CSP as a response header;
  * - without its preload file the window shows a "preload missing" page instead of the app.
@@ -16,11 +19,14 @@ import { pathToFileURL } from 'url';
 import type { App, Session, WebContents } from 'electron';
 import { buildCsp } from '@main/app/csp';
 import {
+  APP_PERMISSIONS,
   createMainWindow,
   denyWebviews,
   guardNavigation,
+  guardPermissions,
   installDevCsp,
   preloadMissingPage,
+  refuseClientCertificates,
 } from '@main/app/main-window';
 import { createAppUrlMatcher } from '@main/app/renderer-entry';
 import { TrustedWebContents } from '@main/ipc/trusted-web-contents';
@@ -34,11 +40,19 @@ jest.mock('electron', () => {
     id = FakeWebContents.nextId++;
     windowOpenHandler: ((details: { url: string }) => { action: string }) | null = null;
     headersListener: ((details: unknown, callback: (r: unknown) => void) => void) | null = null;
+    permissionRequestHandler: unknown = null;
+    permissionCheckHandler: unknown = null;
     session = {
       webRequest: {
         onHeadersReceived: (listener: FakeWebContents['headersListener']) => {
           this.headersListener = listener;
         },
+      },
+      setPermissionRequestHandler: (handler: unknown) => {
+        this.permissionRequestHandler = handler;
+      },
+      setPermissionCheckHandler: (handler: unknown) => {
+        this.permissionCheckHandler = handler;
       },
     };
     setWindowOpenHandler(handler: FakeWebContents['windowOpenHandler']) {
@@ -95,9 +109,25 @@ interface FakeContents extends EventEmitter {
         callback: (response: { responseHeaders?: Record<string, string[]> }) => void
       ) => void)
     | null;
+  permissionRequestHandler: PermissionRequestHandler | null;
+  permissionCheckHandler: PermissionCheckHandler | null;
   reload: jest.Mock;
   openDevTools: jest.Mock;
 }
+
+/** The handlers `guardPermissions` installs, as Electron calls them. */
+type PermissionRequestHandler = (
+  contents: unknown,
+  permission: string,
+  callback: (granted: boolean) => void,
+  details: { requestingUrl: string; isMainFrame: boolean }
+) => void;
+type PermissionCheckHandler = (
+  contents: unknown,
+  permission: string,
+  requestingOrigin: string,
+  details: { requestingUrl?: string; isMainFrame: boolean }
+) => boolean;
 
 const INDEX = path.join(os.tmpdir(), 'WA Stay', 'resources', 'dist', 'renderer', 'index.html');
 const APP_URL = pathToFileURL(INDEX).href;
@@ -213,6 +243,94 @@ describe('guardNavigation', () => {
   });
 });
 
+describe('guardPermissions', () => {
+  let request: PermissionRequestHandler;
+  let check: PermissionCheckHandler;
+
+  /** What the request handler answers for `permission` asked by `requestingUrl`. */
+  function ask(permission: string, requestingUrl: string, isMainFrame = true): boolean {
+    const callback = jest.fn();
+    request({}, permission, callback, { requestingUrl, isMainFrame });
+    expect(callback).toHaveBeenCalledTimes(1);
+    return callback.mock.calls[0][0];
+  }
+
+  beforeEach(() => {
+    const session = {
+      setPermissionRequestHandler: jest.fn(),
+      setPermissionCheckHandler: jest.fn(),
+    };
+    guardPermissions(session as unknown as Session, {
+      isAppUrl: createAppUrlMatcher({ kind: 'file', path: INDEX }),
+    });
+    request = session.setPermissionRequestHandler.mock.calls[0][0];
+    check = session.setPermissionCheckHandler.mock.calls[0][0];
+  });
+
+  it('refuses every permission request from the app page except a clipboard write', () => {
+    for (const permission of [
+      'media',
+      'display-capture',
+      'geolocation',
+      'notifications',
+      'clipboard-read',
+      'fullscreen',
+      'openExternal',
+      'hid',
+      'serial',
+      'usb',
+      'storage-access',
+      'unknown',
+    ]) {
+      expect(`${permission}: ${ask(permission, `${APP_URL}#/watches`)}`).toBe(
+        `${permission}: false`
+      );
+    }
+    expect([...APP_PERMISSIONS]).toEqual(['clipboard-sanitized-write']);
+    expect(ask('clipboard-sanitized-write', `${APP_URL}#/bookings/1`)).toBe(true);
+  });
+
+  it('refuses even a clipboard write to a sub-frame or a page that is not the app', () => {
+    expect(ask('clipboard-sanitized-write', APP_URL, false)).toBe(false);
+    for (const url of [
+      'https://parkstay.dbca.wa.gov.au/',
+      pathToFileURL(path.join(os.tmpdir(), 'other.html')).href,
+      'devtools://devtools/bundled/inspector.html',
+      '',
+    ]) {
+      expect(ask('clipboard-sanitized-write', url)).toBe(false);
+    }
+  });
+
+  it('logs a refused request by permission and origin only', () => {
+    ask('geolocation', 'https://example.com/path?token=secret');
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Refused the geolocation permission for https://example.com'
+    );
+    expect(JSON.stringify((logger.warn as jest.Mock).mock.calls)).not.toContain('secret');
+  });
+
+  it('answers permission checks the same way', () => {
+    const appPage = { requestingUrl: `${APP_URL}#/settings`, isMainFrame: true };
+    expect(check(null, 'clipboard-sanitized-write', 'file:///', appPage)).toBe(true);
+    for (const permission of ['media', 'notifications', 'geolocation', 'clipboard-read', 'hid']) {
+      expect(`${permission}: ${check(null, permission, 'file:///', appPage)}`).toBe(
+        `${permission}: false`
+      );
+    }
+    expect(
+      check(null, 'clipboard-sanitized-write', 'file:///', { ...appPage, isMainFrame: false })
+    ).toBe(false);
+    expect(
+      check(null, 'clipboard-sanitized-write', 'https://example.com', {
+        requestingUrl: 'https://example.com/',
+        isMainFrame: true,
+      })
+    ).toBe(false);
+    expect(check(null, 'clipboard-sanitized-write', 'file:///', { isMainFrame: true })).toBe(false);
+  });
+});
+
 describe('denyWebviews', () => {
   it('every webContents the app creates refuses a <webview> attach', () => {
     const app = new EventEmitter();
@@ -224,6 +342,36 @@ describe('denyWebviews', () => {
     created.emit('will-attach-webview', attach, {}, {});
 
     expect(attach.preventDefault).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('refuseClientCertificates', () => {
+  it.each([
+    ['a net request (no webContents, as Electron 44 emits it)', null],
+    ['a page', { id: 7 }],
+  ])('offers no certificate to %s and logs the origin only', (_case, contents) => {
+    const app = new EventEmitter();
+    refuseClientCertificates(app as unknown as App);
+
+    const event = { preventDefault: jest.fn() };
+    const callback = jest.fn();
+    const certificate = { subjectName: 'CN=Someone', fingerprint: 'sha256/abc' };
+    app.emit(
+      'select-client-certificate',
+      event,
+      contents,
+      'https://parkstay.dbca.wa.gov.au/api/profile?token=secret',
+      [certificate],
+      callback
+    );
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith();
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Refused a client certificate request from https://parkstay.dbca.wa.gov.au'
+    );
+    expect(JSON.stringify((logger.warn as jest.Mock).mock.calls)).not.toContain('secret');
   });
 });
 
@@ -312,6 +460,21 @@ describe('createMainWindow', () => {
     expect(
       navigate(window.webContents, 'will-navigate', 'https://example.com').preventDefault
     ).toHaveBeenCalled();
+
+    // Its session (the default session) refuses permissions but a clipboard write from the app
+    const request = window.webContents.permissionRequestHandler;
+    const check = window.webContents.permissionCheckHandler;
+    if (!request || !check) throw new Error('The permission handlers are not installed');
+    const callback = jest.fn();
+    request({}, 'media', callback, { requestingUrl: APP_URL, isMainFrame: true });
+    request({}, 'clipboard-sanitized-write', callback, {
+      requestingUrl: APP_URL,
+      isMainFrame: true,
+    });
+    expect(callback.mock.calls).toEqual([[false], [true]]);
+    expect(
+      check(null, 'notifications', 'file:///', { requestingUrl: APP_URL, isMainFrame: true })
+    ).toBe(false);
 
     // Shown when ready, unless launched hidden
     window.emit('ready-to-show');

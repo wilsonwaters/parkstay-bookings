@@ -43,7 +43,7 @@ async function bundlePreload(): Promise<{ result: BuildResult; js: OutputFile }>
 }
 
 describe('preload build options', () => {
-  it('bundles src/preload/index.ts to dist/preload/index.js for Chromium 120, electron external', () => {
+  it('bundles src/preload/index.ts to dist/preload/index.js for Chromium 152, electron external', () => {
     expect(preloadBuildOptions).toEqual(
       expect.objectContaining({
         entryPoints: ['src/preload/index.ts'],
@@ -51,7 +51,7 @@ describe('preload build options', () => {
         bundle: true,
         format: 'cjs',
         platform: 'browser',
-        target: 'chrome120',
+        target: 'chrome152',
         external: ['electron'],
         sourcemap: 'linked',
         metafile: true,

@@ -111,6 +111,25 @@ test('lists seeded trips in tabs and opens one with its manage link, then remove
   await expect(window.getByRole('region', { name: 'Cost' })).toContainText('$45.00');
   await expect(window.getByRole('button', { name: 'Copy reference PB0001234' })).toBeVisible();
 
+  // The main window's session refuses every permission but the clipboard write that copying
+  // needs (main-window.ts guardPermissions): copying works, and the reference is on the clipboard.
+  const permissionStates = await window.evaluate(() =>
+    Promise.all(
+      (['clipboard-write', 'geolocation', 'notifications', 'camera'] as PermissionName[]).map(
+        (name) => navigator.permissions.query({ name }).then((status) => `${name}: ${status.state}`)
+      )
+    )
+  );
+  expect(permissionStates).toEqual([
+    'clipboard-write: granted',
+    'geolocation: denied',
+    'notifications: denied',
+    'camera: denied',
+  ]);
+  await window.getByRole('button', { name: 'Copy reference PB0001234' }).click();
+  await expect(window.getByText('Copied', { exact: true })).toBeVisible();
+  expect(await wa.app.evaluate(({ clipboard }) => clipboard.readText())).toBe('PB0001234');
+
   // Remove it from WA Stay (nothing changes at ParkStay).
   await window.getByRole('button', { name: 'More actions for Bungarra' }).click();
   await window.getByRole('menuitem', { name: 'Remove from WA Stay' }).click();

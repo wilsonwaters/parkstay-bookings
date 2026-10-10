@@ -3,14 +3,15 @@
 /**
  * Diagnosis for the native-ABI guard (scripts/check-native-abi.js).
  *
- * better-sqlite3 is a native module. `npm install` / `npm ci` run the postinstall
- * `electron-builder install-app-deps`, which compiles it for Electron's ABI, while Jest
- * runs on plain Node and needs a build for Node's ABI. These functions turn whatever
- * loading better-sqlite3 threw into an actionable message. They are pure so they can be
- * unit tested without touching a native binary.
+ * better-sqlite3 is a native module. Since version 13 it ships prebuilt Node-API binaries in
+ * the package, and one binary loads in both Node (Jest) and Electron (the app), so it is no
+ * longer built per runtime. An ABI mismatch now means an install from before that upgrade:
+ * better-sqlite3 9, which the old postinstall (`electron-builder install-app-deps`) built for
+ * Electron 28. These functions turn whatever loading better-sqlite3 threw into an actionable
+ * message. They are pure so they can be unit tested without touching a native binary.
  */
 
-/** Electron 28.3.3, the version this app ships with. */
+/** Electron 28, whose better-sqlite3 9 build `npm ci` installed before better-sqlite3 13. */
 const ELECTRON_ABI = 119;
 
 /** NODE_MODULE_VERSION → runtime, for the ABIs this project meets. */
@@ -19,6 +20,7 @@ const KNOWN_ABIS = {
   115: 'Node 20',
   [ELECTRON_ABI]: 'Electron 28',
   127: 'Node 22',
+  137: 'Node 24',
 };
 
 const FIX_COMMAND = 'npm rebuild better-sqlite3';
@@ -82,9 +84,9 @@ function mismatchMessage(compiledAbi, runtime) {
   const why =
     compiledAbi === ELECTRON_ABI
       ? [
-          "The installed binary is Electron's build. `npm install` and `npm ci` run the",
-          'postinstall `electron-builder install-app-deps`, which compiles better-sqlite3 for',
-          'the Electron app. Jest runs on plain Node and needs the Node build.',
+          "The installed binary is Electron's build of better-sqlite3 9, from an install made",
+          'before better-sqlite3 13, whose one binary loads in both Node and Electron. Jest runs',
+          'on plain Node and needs a build it can load.',
         ]
       : [
           `The installed binary was built for ${builtFor}, not for this Node.js (for`,
@@ -107,7 +109,7 @@ function mismatchMessage(compiledAbi, runtime) {
     `  ${FIX_COMMAND}`,
     '',
     'Or let the test scripts rebuild it for you: AUTO_REBUILD_NATIVE=1 npm test',
-    'To run the Electron app afterwards, switch back with: npm run rebuild',
+    'If node_modules predates better-sqlite3 13, reinstall instead: npm ci',
   ].join('\n');
 }
 

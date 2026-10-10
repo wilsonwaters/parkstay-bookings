@@ -12,6 +12,21 @@
 
 const TEST_FILE = '*.test.[jt]s?(x)';
 
+/**
+ * Dependencies that ship only ES modules: sanitize-html's parser, htmlparser2, with its dom*
+ * packages and entities. The app's Node (Electron 44, Node 24) loads them with `require(esm)`;
+ * Jest 29's module system cannot, so ts-jest compiles them to CommonJS for the tests.
+ */
+const ESM_ONLY_DEPENDENCIES = [
+  'htmlparser2',
+  'domhandler',
+  'domutils',
+  'dom-serializer',
+  'domelementtype',
+  'entities',
+];
+const ESM_ONLY = `node_modules/(?:${ESM_ONLY_DEPENDENCIES.join('|')})/`;
+
 const base = {
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   transform: {
@@ -29,7 +44,12 @@ const base = {
         },
       },
     ],
+    [`${ESM_ONLY}.+\\.js$`]: [
+      'ts-jest',
+      { tsconfig: { allowJs: true, esModuleInterop: true, isolatedModules: true } },
+    ],
   },
+  transformIgnorePatterns: [`/node_modules/(?!${ESM_ONLY.slice('node_modules/'.length)})`],
   moduleNameMapper: {
     '^@main/(.*)$': '<rootDir>/src/main/$1',
     '^@renderer/(.*)$': '<rootDir>/src/renderer/$1',

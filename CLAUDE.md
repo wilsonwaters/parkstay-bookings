@@ -15,19 +15,19 @@ WA Stay is an Electron + React + TypeScript desktop app (Windows first) for find
 
 | Component | Technology |
 | --- | --- |
-| Desktop Framework | Electron 28 |
+| Desktop Framework | Electron 44 (its own Node 24); development and CI on Node 24 (`.nvmrc`) |
 | UI Framework | React 18, React Router (HashRouter), React Query, react-hook-form |
 | Language | TypeScript 5 |
 | Database | SQLite via better-sqlite3 (`<userData>/wa-stay.db`) |
 | Map | Mapbox GL JS 3 (token at build time; Explore is list-only without one) |
 | Scheduling | Chained `setTimeout` timers (`src/main/scheduler/`) |
 | HTTP | The provider SDK's `HttpClient`: Electron `net.request` on each provider's session partition in the app, Node `fetch` in tests (axios is only used by `tests/manual/test-queue-live.ts`) |
-| Browser automation | playwright-core 1.56.1, driving the installed Edge or Chrome (lazy-loaded) |
+| Browser automation | playwright-core 1.64.0 (pinned, the same version as `@playwright/test`), driving the installed Edge or Chrome (lazy-loaded) |
 | HTML sanitising | sanitize-html (provider HTML, in main) |
 | Email | nodemailer (SMTP) |
 | Validation | Zod |
 | Styling | Tailwind CSS with design tokens, lucide-react icons, Figtree and Fraunces (`@fontsource-variable`) |
-| Build | Vite 5 (renderer), tsc + tsc-alias (main), esbuild (preload), Electron Builder |
+| Build | Vite 5 (renderer), tsc + tsc-alias (main), esbuild (preload), Electron Builder 26 (with Electron fuses) |
 | Testing | Jest 29 + Playwright (`_electron`) |
 | Logging | Winston |
 
@@ -49,7 +49,7 @@ npm run type-check   # TypeScript type checking (main, renderer, tests/e2e, test
 npm run dist:win     # Package Windows installer
 ```
 
-**Native module:** better-sqlite3 must be built for Node to run Jest (`npm rebuild better-sqlite3`; the test scripts check it, `scripts/check-native-abi.js`) and for Electron to run the app (`npm run rebuild`; `npm ci` does this).
+**Native module:** better-sqlite3 13 ships prebuilt Node-API binaries: the same binary loads in Jest (Node 24) and in the app (Electron 44), so nothing is rebuilt between them, and nothing rebuilds it for Electron (no `postinstall`, `npmRebuild: false`). `npm ci` still runs node-gyp over its `binding.gyp` (it builds nothing with a prebuilt binary), so Windows needs the Node.js "Tools for Native Modules" (Python, C++ build tools). The test scripts check that it loads (`scripts/check-native-abi.js`); a `NODE_MODULE_VERSION` error means `node_modules` predates better-sqlite3 13: run `npm ci`. Since Electron 42 `npm ci` does not download the Electron binary: the first `electron` run does, or `npx install-electron`.
 
 **Mapbox token:** `.env` (gitignored, from `.env.example`) holds a public `pk.` `MAPBOX_ACCESS_TOKEN`, read at build time by `vite.config.ts`; a secret `sk.` token fails the build. CI uses `secrets.MAPBOX_ACCESS_TOKEN || vars.MAPBOX_ACCESS_TOKEN`. Never print or commit a token.
 
@@ -226,7 +226,7 @@ Full guide: `docs/providers/adding-a-provider.md` (with compiling API and browse
 - **`npm run test:tz`:** the timestamp tests with `TZ=Australia/Perth` (unzoned SQLite timestamps must read as UTC)
 - **Electron smoke E2E** (`tests/e2e/`, `npm run build:e2e && npm run test:e2e`, `xvfb-run -a` on Linux): 21 journeys in 10 specs on the built app via Playwright's `_electron` (plus `explore-resize.spec.ts`'s opt-in map check, `E2E_MAP=1` on a build with a Mapbox token). The harness (`tests/e2e/support/wa-stay.ts`) gives each launch a temp userData (checked), fixture mode (`tests/e2e/fixtures/http/`), a production renderer with no Mapbox token, Perth time, a window forced online (`forceOnline`), seeding before launch (`support/seed.ts`) and temp folders (`tempDir`); failed tests get a trace, screenshot and logs. Role and name selectors only. CI's `e2e` job (report always uploaded). Details: `tests/README.md`
 - **`npm run test:electron`:** live Electron tests of `ElectronSessionHttpClient`, the ParkStay module and the provider windows, against loopback servers
-- **`npm run smoke:packaged`:** CI's `packaged-smoke` job packages Linux (`electron-builder --linux dir`) and checks that `app.asar` ships no `.d.ts` or `.map` under `dist/`, and that the real package, and a copy renamed `electron`, ignore the test hooks and quit cleanly
+- **`npm run smoke:packaged`:** CI's `packaged-smoke` job packages Linux (`electron-builder --linux dir`) and checks that `app.asar` ships no `.d.ts` or `.map` under `dist/`, an integrity hash for every packed file and exactly one better-sqlite3 binary (the build machine's `${platform}-${arch}`, so each OS packages its own target), reads the Electron fuses back (`@electron/fuses`), starts the executable as shipped (it must ignore `--inspect`), and checks that the package, and a copy renamed `electron` (both with only the inspector fuse turned back on, for Playwright), ignore the test hooks and quit cleanly. `build.yml` checks the Windows exe's fuses, asar integrity record and binary with the same helpers (`scripts/check-windows-package.js`)
 - **Docs tests** (`tests/unit/docs/`): every relative link and image in the docs resolves with alt text, CLAUDE.md's backticked paths exist, the provider guide's code blocks equal their source regions, the example providers compile and register, and every ParkStay endpoint has a verification status
 - **Guards:** `tests/unit/renderer/api-boundary.test.ts`, `tests/unit/design/token-guard.test.ts`, `tests/unit/brand/branding-guard.test.ts` (the old app name only on lines marked `legacy-name-ok`), `tests/unit/lint/secret-crypto-boundary.test.ts`
 

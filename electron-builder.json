@@ -2,9 +2,12 @@
   "appId": "com.parkstay.bookings",
   "productName": "WA Stay",
   "copyright": "© 2025-2026 Wilson Waters",
-  "asar": true,
+  "asar": {
+    "smartUnpack": false
+  },
   "asarUnpack": [
-    "node_modules/playwright-core/**"
+    "node_modules/playwright-core/**",
+    "node_modules/better-sqlite3/prebuilds/*.node"
   ],
   "directories": {
     "output": "release",
@@ -15,7 +18,10 @@
     "!dist/**/*.d.ts",
     "!dist/**/*.map",
     "package.json",
-    "node_modules/**/*"
+    "node_modules/**/*",
+    "!node_modules/better-sqlite3/{deps,src}/**",
+    "!node_modules/better-sqlite3/prebuilds/*.node",
+    "node_modules/better-sqlite3/prebuilds/${platform}-${arch}.node"
   ],
   "extraResources": [
     {
@@ -42,7 +48,7 @@
     "entitlements": "resources/entitlements.mac.plist",
     "entitlementsInherit": "resources/entitlements.mac.plist",
     "darkModeSupport": true,
-    "minimumSystemVersion": "10.15.0",
+    "minimumSystemVersion": "13.0.0",
     "type": "distribution",
     "artifactName": "WA-Stay-${version}-${arch}.${ext}",
     "publish": {
@@ -87,8 +93,9 @@
     "icon": "resources/icons/icon.ico",
     "artifactName": "WA-Stay-Setup-${version}.${ext}",
     "requestedExecutionLevel": "asInvoker",
-    "signingHashAlgorithms": ["sha256"],
-    "signDlls": false,
+    "signtoolOptions": {
+      "signingHashAlgorithms": ["sha256"]
+    },
     "verifyUpdateCodeSignature": false,
     "publish": {
       "provider": "github",
@@ -141,11 +148,13 @@
     "icon": "resources/icons",
     "category": "Utility",
     "desktop": {
-      "Name": "WA Stay",
-      "Comment": "Find and book places to stay across Western Australia",
-      "Categories": "Utility;Office;",
-      "Keywords": "camping;caravan;holiday;accommodation;parkstay;booking;",
-      "StartupWMClass": "WA Stay"
+      "entry": {
+        "Name": "WA Stay",
+        "Comment": "Find and book places to stay across Western Australia",
+        "Categories": "Utility;Office;",
+        "Keywords": "camping;caravan;holiday;accommodation;parkstay;booking;",
+        "StartupWMClass": "WA Stay"
+      }
     },
     "artifactName": "WA-Stay-${version}-${arch}.${ext}",
     "synopsis": "Find and book places to stay across Western Australia",
@@ -192,11 +201,17 @@
   },
   "compression": "maximum",
   "removePackageScripts": true,
-  "npmRebuild": true,
+  "npmRebuild": false,
   "buildDependenciesFromSource": false,
   "nodeGypRebuild": false,
   "electronCompile": false,
-  "electronDist": "node_modules/electron/dist",
-  "electronVersion": "28.0.0",
+  "electronFuses": {
+    "runAsNode": false,
+    "enableNodeOptionsEnvironmentVariable": false,
+    "enableNodeCliInspectArguments": false,
+    "onlyLoadAppFromAsar": true,
+    "enableCookieEncryption": true,
+    "enableEmbeddedAsarIntegrityValidation": true
+  },
   "extends": null
 }

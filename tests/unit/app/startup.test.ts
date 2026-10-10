@@ -181,6 +181,7 @@ jest.mock('@main/app/main-window', () => {
       return window;
     }),
     denyWebviews: jest.fn(),
+    refuseClientCertificates: jest.fn(),
   };
 });
 

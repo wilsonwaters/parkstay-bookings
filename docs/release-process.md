@@ -154,7 +154,9 @@ For GitHub → the repository's About settings:
 ci (ubuntu, windows): type-check, lint, test:coverage, test:tz
   -> build-windows: npm run build (with MAPBOX_ACCESS_TOKEN), icon check,
                     electron-builder --win --publish never (signed when CSC_LINK is set),
-                    uploads the .exe files and latest.yml
+                    checks WA Stay.exe's fuses, asar integrity record and better-sqlite3
+                    binary (scripts/check-windows-package.js),
+                    uploads the .exe files, the installer's .blockmap and latest.yml
     -> release (tags only): a draft GitHub release with the artifacts
 ```
 
@@ -169,6 +171,7 @@ a release tag; consider making `e2e` a required check once it has run green for 
 | File | What it is |
 | --- | --- |
 | `WA-Stay-Setup-x.y.z.exe` | The NSIS installer (recommended; updates itself) |
+| `WA-Stay-Setup-x.y.z.exe.blockmap` | The installer's block map, for differential updates |
 | `WA-Stay-Portable-x.y.z.exe` | The portable exe (does not update itself) |
 | `latest.yml` | Update metadata for electron-updater |
 
@@ -176,6 +179,22 @@ The installed app checks GitHub Releases 15 seconds after it starts (`electron-u
 `publish` in `electron-builder.json`). It never downloads by itself: an update card offers
 **Download**, then **Restart now**; a downloaded update also installs on quit. The `appId`
 stays `com.parkstay.bookings`, so every release upgrades the existing install in place.
+
+**Differential updates.** The NSIS installer is built with `differentialPackage`, so
+electron-builder writes a block map beside it (`WA-Stay-Setup-x.y.z.exe.blockmap`: a
+compressed list of the installer's blocks and their hashes). `latest.yml` names only the
+installer (its `url`, `sha512` and `size`); electron-updater finds the block maps by convention,
+the installer's URL plus `.blockmap`: the new one from the new release, and the installed
+version's from its own release (the same URL with the old version number in place of the new),
+unless it kept a copy from the previous update.
+With both, it downloads only the blocks that changed, and falls back to the whole installer
+when either block map is missing. So:
+
+- **Every release must carry its `.blockmap`**, now and later: `build.yml` uploads
+  `release/*.blockmap` with the installers, and the draft release attaches it. A release
+  without one makes the next update from it download in full.
+- **The first update from 1.2.0 downloads in full**: 1.2.0's release has no block map. Updates
+  between 2.x releases that both carry one download only what changed.
 
 ## Hotfixes and rollback
 

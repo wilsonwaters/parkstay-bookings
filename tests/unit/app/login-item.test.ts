@@ -52,7 +52,6 @@ class FakeRunKey implements LoginItemApp {
 
   setLoginItemSettings(settings: {
     openAtLogin: boolean;
-    openAsHidden?: boolean;
     path?: string;
     args?: string[];
     name?: string;
@@ -168,26 +167,25 @@ describe('setLaunchAtLogin', () => {
     expect(app.values.size).toBe(0);
   });
 
-  it.each([
-    [true, true],
-    [false, false],
-  ])('macOS: a login item, opened hidden when start minimised is %s', (startMinimised, hidden) => {
-    const app = {
-      isPackaged: true,
-      getLoginItemSettings: jest.fn(),
-      setLoginItemSettings: jest.fn(),
-    };
+  // Electron 44 removed `openAsHidden`: it worked only on macOS 12 and earlier, which Electron
+  // no longer supports
+  it.each([true, false])(
+    'macOS: a login item, without the removed openAsHidden (start minimised %s)',
+    (startMinimised) => {
+      const app = {
+        isPackaged: true,
+        getLoginItemSettings: jest.fn(),
+        setLoginItemSettings: jest.fn(),
+      };
 
-    setLaunchAtLogin(
-      { enabled: true, startMinimised },
-      { app, platform: 'darwin', execPath: '/Applications/WA Stay.app', env: {} }
-    );
+      setLaunchAtLogin(
+        { enabled: true, startMinimised },
+        { app, platform: 'darwin', execPath: '/Applications/WA Stay.app', env: {} }
+      );
 
-    expect(app.setLoginItemSettings).toHaveBeenCalledWith({
-      openAtLogin: true,
-      openAsHidden: hidden,
-    });
-  });
+      expect(app.setLoginItemSettings).toHaveBeenCalledWith({ openAtLogin: true });
+    }
+  );
 });
 
 describe('replaceLegacyLoginItems (after the first-run migration)', () => {

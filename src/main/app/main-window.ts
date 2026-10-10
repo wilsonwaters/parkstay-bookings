@@ -10,6 +10,9 @@
  *   app through `shell.openExternal`; anything else (`javascript:`, `file:`, …) is logged.
  * - Navigations and redirects off the app origin are cancelled. Hash-route changes are
  *   in-page navigations and never reach these guards.
+ * - Its session (the default session) refuses every permission request and check, except
+ *   `clipboard-sanitized-write` for the app's own page (`guardPermissions`).
+ * - No request the app makes offers a client certificate (`refuseClientCertificates`).
  * - In development the CSP is sent as a response header from the Vite dev server. The
  *   production build carries it as a `<meta>` tag (`csp.ts`, `vite.config.ts`).
  * - A crashed renderer is reloaded once (`crash-policy.ts`).
@@ -31,6 +34,13 @@ const log = logger.child({ module: 'main-window' });
 
 /** Protocols a link may hand to the operating system. */
 const EXTERNAL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
+
+/**
+ * The only permission the app's page may use: `navigator.clipboard.writeText` ("Copy
+ * reference", "Copy error details") asks for it, and fails when it is refused. Desktop
+ * notifications come from the main process (Electron's `Notification`) and need none.
+ */
+export const APP_PERMISSIONS: ReadonlySet<string> = new Set(['clipboard-sanitized-write']);
 
 export interface MainWindowOptions {
   entry: RendererEntry;
@@ -74,10 +84,12 @@ export function createMainWindow({
 
   // Only this window's webContents may call IPC and receive events
   trustedWebContents.register(contents);
+  const isAppUrl = createAppUrlMatcher(entry);
   guardNavigation(contents, {
-    isAppUrl: createAppUrlMatcher(entry),
+    isAppUrl,
     openExternal: (url) => shell.openExternal(url),
   });
+  guardPermissions(contents.session, { isAppUrl });
   reloadOnceOnRenderCrash(contents, log);
 
   if (!hasPreload) {
@@ -167,6 +179,47 @@ export function guardNavigation(
     };
   contents.on('will-navigate', blockForeign('a navigation'));
   contents.on('will-redirect', blockForeign('a redirect'));
+}
+
+/**
+ * The permission policy of the main window's session, the default session. Electron grants
+ * whatever a page asks for until a session has handlers; this one refuses every request and
+ * check except `APP_PERMISSIONS`, and those only for the app's own page in the top frame.
+ * Refused requests are logged by permission and origin. Provider partitions refuse everything
+ * (`provider-windows.ts`).
+ */
+export function guardPermissions(
+  session: Pick<Session, 'setPermissionRequestHandler' | 'setPermissionCheckHandler'>,
+  { isAppUrl }: Pick<NavigationGuardOptions, 'isAppUrl'>
+): void {
+  const allowed = (permission: string, url: string | undefined, isMainFrame: boolean): boolean =>
+    APP_PERMISSIONS.has(permission) && isMainFrame && url !== undefined && isAppUrl(url);
+
+  session.setPermissionRequestHandler((_contents, permission, callback, details) => {
+    const granted = allowed(permission, details.requestingUrl, details.isMainFrame);
+    if (!granted) {
+      log.warn(`Refused the ${permission} permission for ${describeUrl(details.requestingUrl)}`);
+    }
+    callback(granted);
+  });
+  session.setPermissionCheckHandler((_contents, permission, _origin, details) =>
+    allowed(permission, details.requestingUrl, details.isMainFrame)
+  );
+}
+
+/**
+ * No request the app makes offers a client certificate. Since Electron 44, `app` emits
+ * `select-client-certificate` for `net` requests too (every provider's HttpClient and the
+ * updater, with `webContents` null), and when nothing handles it Electron sends the first
+ * matching certificate from the system store; before 44 those requests failed instead. Provider
+ * windows refuse their own requests as well (`provider-windows.ts`). Logged by origin only.
+ */
+export function refuseClientCertificates(app: Pick<App, 'on'>): void {
+  app.on('select-client-certificate', (event, _contents, url, _certificates, callback) => {
+    event.preventDefault();
+    callback();
+    log.warn(`Refused a client certificate request from ${describeUrl(url)}`);
+  });
 }
 
 /** Every webContents the app creates refuses to attach a `<webview>`. */

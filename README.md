@@ -114,12 +114,14 @@ Details: [upgrading from WA ParkStay Bookings](docs/installation.md#upgrading-fr
 
 ## Building from source
 
-You need **Node.js 20** (npm 10) and Git.
+You need **Node.js 24** (npm 10 or later; `.nvmrc` says 24) and Git. On Windows, also install
+the Node.js installer's **Tools for Native Modules** (Python and the C++ build tools): `npm ci`
+runs node-gyp for better-sqlite3, which needs them even though it compiles nothing.
 
 ```bash
 git clone https://github.com/wilsonwaters/wa-stay.git
 cd wa-stay
-npm ci                       # also builds better-sqlite3 for Electron
+npm ci
 cp .env.example .env         # optional: MAPBOX_ACCESS_TOKEN=pk.your-token-here
 npm run build
 npx electron .               # or npm run dist:win for the Windows installer
@@ -127,9 +129,9 @@ npx electron .               # or npm run dist:win for the Windows installer
 
 - **The map** needs a **public** Mapbox token (`pk.`) in `.env`; it is bundled into the app. A
   secret `sk.` token fails the build. Without a token, Explore shows a list.
-- **better-sqlite3 is native**: it must be built for Electron to run the app (`npm run rebuild`)
-  and for Node to run the Jest tests (`npm rebuild better-sqlite3`). The test scripts tell you
-  which one is installed.
+- **better-sqlite3 is native**, but ships one prebuilt Node-API binary that both the Jest tests
+  (Node) and the app (Electron) load: there is nothing to rebuild. `npx electron .` downloads
+  the Electron binary the first time it runs.
 
 ## Development
 
@@ -150,7 +152,7 @@ npm start       # terminal 2: Electron on the dev server
 | `npm run docs:screenshots` | Retakes the screenshots in `docs/images/` |
 | `npm run lint`, `npm run format:check`, `npm run type-check` | The checks CI runs with `npm test` |
 
-Stack: Electron 28, React 18, TypeScript 5, Vite 5, Tailwind CSS, SQLite (better-sqlite3),
+Stack: Electron 44, React 18, TypeScript 5, Vite 5, Tailwind CSS, SQLite (better-sqlite3),
 React Query, Mapbox GL JS, playwright-core, Jest 29 and Playwright. Start with
 [development](docs/development.md) and the [architecture overview](docs/architecture/overview.md);
 [CLAUDE.md](CLAUDE.md) has the code conventions.

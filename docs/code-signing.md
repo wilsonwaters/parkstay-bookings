@@ -16,7 +16,9 @@ job "Build Windows") passes one through only when the repository has these secre
 | `CSC_KEY_PASSWORD` | The certificate's password |
 
 Without them the build runs unsigned, as today. `electron-builder.json` signs with SHA-256
-(`win.signingHashAlgorithms`) and leaves DLLs unsigned (`signDlls: false`).
+(`win.signtoolOptions.signingHashAlgorithms`) and signs the executables only, not the DLLs
+(electron-builder's default; `win.signExts` would add other file types). The Electron fuses are
+flipped before signing ([security](security.md#the-packaged-app-electron-fuses)).
 
 - **Getting a certificate.** An OV (organisation-validated) certificate stops the "unknown
   publisher" text, but SmartScreen still warns until the certificate builds a reputation over

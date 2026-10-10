@@ -8,9 +8,8 @@
  *    map, with only Mapbox's host let through; without one, Explore is list-only and the run
  *    is entirely network-free.
  * 2. `npm run build`, then the `@docs` Playwright spec (`tests/docs`,
- *    `playwright.docs.config.ts`) against the built app in fixture mode. better-sqlite3 must be
- *    built for Electron (`npm run rebuild`), as for `npm run test:e2e`. On Linux without a
- *    display it runs under `xvfb-run`.
+ *    `playwright.docs.config.ts`) against the built app in fixture mode, as for
+ *    `npm run test:e2e`. On Linux without a display it runs under `xvfb-run`.
  * 3. Optimises each capture (a 256-colour palette at full compression) into `docs/images/`.
  */
 

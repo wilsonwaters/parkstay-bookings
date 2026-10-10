@@ -20,8 +20,14 @@ providers, the pre-commit checks) are in [CLAUDE.md](../CLAUDE.md); the structur
 
 ## Prerequisites
 
-- **Node.js 20** and npm 10 (`engines` in `package.json`; CI uses Node 20).
+- **Node.js 24** and npm 10 or later (`engines` in `package.json`, `.nvmrc`; CI uses Node 24).
+  The app itself runs on Electron 44, which bundles its own Node 24.
 - Git.
+- What node-gyp needs: `npm ci` runs it over better-sqlite3's `binding.gyp`, and it needs its
+  tools even though it compiles nothing ([below](#the-native-module-better-sqlite3)). On
+  Windows, the Node.js installer's **Tools for Native Modules** (Python and Visual Studio's C++
+  build tools; `install_tools.bat` in the Node.js folder adds them later); on macOS, the Xcode
+  Command Line Tools (`xcode-select --install`); on Linux, Python 3 and `make`.
 - Windows, macOS or Linux. Windows is the shipped platform; the Electron smoke tests run on
   Linux under xvfb in CI.
 
@@ -33,8 +39,10 @@ cd wa-stay
 npm ci
 ```
 
-`npm ci` runs `electron-builder install-app-deps` afterwards, which builds better-sqlite3 for
-Electron ([below](#the-native-module-better-sqlite3)).
+`npm ci` installs everything, better-sqlite3's prebuilt binary included
+([below](#the-native-module-better-sqlite3)). It does not download the Electron binary: since
+Electron 42 that happens the first time Electron runs (`npm start`, `npx electron .`, the
+Electron tests), or ahead of time with `npx install-electron`.
 
 **The Mapbox token.** Explore's map needs a public Mapbox token at build time:
 
@@ -51,16 +59,30 @@ cp .env.example .env
 
 ## The native module (better-sqlite3)
 
-better-sqlite3 is native code, built for one runtime at a time:
+better-sqlite3 is native code. Since version 13 the package ships prebuilt **Node-API**
+binaries (Windows, macOS and Linux; x64 and arm64), and a Node-API binary loads in any runtime
+that supports it: the same file serves Jest on Node 24 and the app on Electron 44. Nothing is
+compiled at install, nothing needs rebuilding between running the tests and running the app,
+and electron-builder packages the prebuilt binary as it is.
 
-| To | It must be built for | Command |
-| --- | --- | --- |
-| Run the app (`npm start`, `test:e2e`, `test:electron`, `smoke:packaged`, `docs:screenshots`) | Electron | `npm run rebuild` |
-| Run Jest (`npm test`, `test:tz`, `test:coverage`) | Node | `npm rebuild better-sqlite3` |
+`npm ci` still runs node-gyp for better-sqlite3: installing from the lockfile, npm does not see
+the package's `gypfile: false` and runs node-gyp over its `binding.gyp`. That needs Python, and
+on Windows Visual Studio's C++ build tools (the Node.js installer's "Tools for Native Modules";
+[prerequisites](#prerequisites)), and node-gyp downloads Node's headers. With a prebuilt binary
+for the platform it only touches stamp files and compiles nothing.
 
-The Jest scripts check this first (`scripts/check-native-abi.js`) and say which build is
-installed instead of failing every database test. `AUTO_REBUILD_NATIVE=1 npm test` rebuilds it
-for Node by itself.
+Nothing rebuilds native modules for Electron any more: there is no `postinstall`
+(`electron-builder install-app-deps`), and `electron-builder.json` sets `npmRebuild: false`.
+Each would run node-gyp again, against Electron's headers (downloaded for it), to build
+nothing, and electron-builder refuses that step when it packages for another platform.
+`npm run rebuild` (Electron) and `npm rebuild better-sqlite3` (Node) remain for a native module
+that ships no Node-API binary; better-sqlite3 needs neither.
+
+The Jest scripts check that better-sqlite3 loads first (`scripts/check-native-abi.js`) and say
+why it does not instead of failing every database test. A `NODE_MODULE_VERSION` mismatch can
+only come from a `node_modules` installed before better-sqlite3 13, when it was compiled per
+runtime and had to be swapped between a Node build and an Electron build: run `npm ci`. Any
+script that swapped those builds is no longer needed.
 
 ## Running in development
 
@@ -102,7 +124,15 @@ Content-Security-Policy is written into `dist/renderer/index.html` at build time
 (`electron-builder.json` `files`) leaves out the `.d.ts` and `.map` files tsc and esbuild write
 beside the JavaScript: nothing reads them at run time (Node applies source maps to stack traces
 only with `--enable-source-maps`, which the app does not use, so the logs carry the compiled
-positions either way). Releasing: [release process](release-process.md).
+positions either way). The packaged executable's Electron fuses are set at package time
+(`electronFuses` in `electron-builder.json`; [security](security.md#the-packaged-app-electron-fuses)).
+
+Of better-sqlite3, the package holds its JavaScript (inside `app.asar`) and one prebuilt
+binary, `prebuilds/${platform}-${arch}.node` (in `app.asar.unpacked`); its C sources and the
+other platforms' binaries are left out (`files`, `asarUnpack` and `asar.smartUnpack: false` in
+`electron-builder.json`). electron-builder expands `${platform}` to the platform of the machine
+that builds, so **each OS packages its own target**: build the Windows app on Windows (as CI
+does), not on Linux or macOS. Releasing: [release process](release-process.md).
 
 ## Scripts
 
@@ -125,7 +155,7 @@ positions either way). Releasing: [release process](release-process.md).
 | `npm run format` / `format:check` | Prettier on `src/`, `tests/` and `scripts/` |
 | `npm run type-check` | TypeScript: main, renderer, the e2e and docs-screenshot projects |
 | `npm run icons` | Regenerates the icons from the brand sources |
-| `npm run rebuild` | better-sqlite3 for Electron |
+| `npm run rebuild` | Rebuilds native modules for Electron (nothing to compile with better-sqlite3's prebuilt binary) |
 
 ## Testing
 
@@ -149,7 +179,6 @@ examples compile and register, and every ParkStay endpoint has a verification st
 
 ```bash
 npm run build:e2e            # no Mapbox token: Explore is list-only, deterministically
-npm run rebuild              # better-sqlite3 for Electron
 xvfb-run -a npm run test:e2e # or just npm run test:e2e with a display
 ```
 
@@ -180,11 +209,14 @@ use roles and accessible names only. More: [tests/README.md](../tests/README.md)
   provider sign-in and payment windows, all against loopback servers.
 - **The packaged app** (`npx electron-builder --linux dir --publish never`, then
   `xvfb-run -a npm run smoke:packaged`): first reads `app.asar`'s index (the main, preload and
-  renderer builds are there, and no `.d.ts` or `.map` file under `dist/`), then starts
-  `release/linux-unpacked/wa-stay`, and a copy renamed `electron`, with every test hook set and a
-  temp `XDG_CONFIG_HOME`. It checks that the hooks are ignored (userData is the normal `WA Stay`
-  folder under that temp config folder), the page comes from `app.asar`, and the app quits with
-  code 0 within 10 s. CI's `packaged-smoke` job.
+  renderer builds are there, no `.d.ts` or `.map` file under `dist/`, and every packed file has
+  an integrity hash) and the executable's Electron fuses
+  ([security](security.md#the-packaged-app-electron-fuses)). It then starts the executable as
+  shipped (Node's inspector must stay off), and two copies with only the inspector fuse turned
+  back on for Playwright: `release/linux-unpacked/wa-stay` and a copy renamed `electron`. Every
+  start has every test hook set and a temp `XDG_CONFIG_HOME`. It checks that the hooks are
+  ignored (userData is the normal `WA Stay` folder under that temp config folder), the page
+  comes from `app.asar`, and the app quits with code 0 within 10 s. CI's `packaged-smoke` job.
 - **A real browser for browser providers** (opt-in):
   `WA_STAY_BROWSER_E2E=1 npx jest tests/integration/browser-automation.smoke.test.ts`
   ([browser providers](providers/browser-providers.md#the-real-browser-smoke-test)).
@@ -192,8 +224,8 @@ use roles and accessible names only. More: [tests/README.md](../tests/README.md)
   Mapbox token if `.env` has one), drives it in fixture mode (`tests/docs/`,
   `playwright.docs.config.ts`) and writes optimised PNGs to `docs/images/`. With a token only
   `api.mapbox.com` is reached; without one the run is network-free and Explore is list-only.
-  Provider photos are never loaded, so cards show the placeholder. Needs better-sqlite3 built
-  for Electron; on Linux without a display it runs under `xvfb-run`.
+  Provider photos are never loaded, so cards show the placeholder. On Linux without a display
+  it runs under `xvfb-run`.
 
 **No test touches live provider data that matters.** Tests use recorded fixtures; live checks
 are anonymous and read-only, and nothing ever places a real hold, booking or payment
@@ -267,12 +299,10 @@ Or point Electron at the port Vite printed:
    builds it; `npm run build:preload` builds it once.
 4. Check the DevTools console and the main-process log.
 
-**"better-sqlite3 is built for the wrong runtime, so the Jest suite cannot load it."** Run
-`npm rebuild better-sqlite3` (or `AUTO_REBUILD_NATIVE=1 npm test`), and `npm run rebuild` again
-before running the app.
+**"better-sqlite3 is built for the wrong runtime, so the Jest suite cannot load it."** Your
+`node_modules` predates better-sqlite3 13 (one binary for Node and Electron): run `npm ci`.
 
-**The app does not start: "NODE_MODULE_VERSION".** better-sqlite3 is built for Node: run
-`npm run rebuild`.
+**The app does not start: "NODE_MODULE_VERSION".** The same: run `npm ci`.
 
 **"Cannot find module".** Reinstall: `rm -rf node_modules && npm ci`.
 

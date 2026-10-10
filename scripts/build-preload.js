@@ -34,8 +34,8 @@ const preloadBuildOptions = {
   bundle: true,
   format: 'cjs',
   platform: 'browser',
-  // Electron 28 ships Chromium 120
-  target: 'chrome120',
+  // Electron 44 ships Chromium 152
+  target: 'chrome152',
   external: ['electron'],
   sourcemap: 'linked',
   metafile: true,

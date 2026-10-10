@@ -1,6 +1,6 @@
 # Architecture overview
 
-WA Stay is an Electron 28 desktop app: React 18 and TypeScript 5 in the window, Node in the
+WA Stay is an Electron 44 desktop app: React 18 and TypeScript 5 in the window, Node in the
 main process, SQLite (better-sqlite3) on disk. This page is the map; the binding decisions
 behind it are in `ai-state/architecture-notes.md`, and the conventions for working in the code
 are in [CLAUDE.md](../../CLAUDE.md).
@@ -176,7 +176,8 @@ The baseline (architecture-notes §7), as built:
   is a bundle that imports only `electron`. A Content-Security-Policy is set (a meta tag built
   into the production `index.html`, a header in development). New windows are denied and
   http(s) links open in the system browser; navigation away from the app is blocked;
-  `<webview>` is refused.
+  `<webview>` is refused. Its session refuses every permission except the clipboard write that
+  "Copy" needs.
 - **IPC** accepts calls only from the app's own top-level frame on the app's origin; every
   payload is validated with zod; the renderer never sends a user id; logs never include
   payload values.
@@ -189,6 +190,9 @@ The baseline (architecture-notes §7), as built:
   permission request and certificate error refused.
 - **One instance** at a time (a lock in userData).
 - **Test hooks** are honoured only when the app runs from source.
+- **Electron fuses** in the packaged app: `ELECTRON_RUN_AS_NODE`, `NODE_OPTIONS` and `--inspect`
+  are ignored, the app loads only from an integrity-checked `app.asar`, and cookies are
+  encrypted.
 
 Details: [Security](../security.md).
 

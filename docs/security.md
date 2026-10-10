@@ -1,7 +1,10 @@
 # Security
 
-This document describes how WA Stay protects data on the user's machine. The overall baseline
-(sandboxing, CSP, IPC checks) is in the [architecture overview](architecture/overview.md#security).
+This document describes how WA Stay protects data on the user's machine: [secret
+storage](#secret-storage), [provider windows](#provider-sign-in-and-payment-windows), [the main
+window's permissions](#the-main-windows-permissions) and [the packaged app's Electron
+fuses](#the-packaged-app-electron-fuses). The overall baseline (sandboxing, CSP, IPC checks) is
+in the [architecture overview](architecture/overview.md#security).
 
 ## Secret storage
 
@@ -249,3 +252,52 @@ pages, so it gets nothing of the app (`src/main/app/provider-windows.ts`):
 Signing out clears the partition (cookies, storage, HTTP auth cache) and nothing else: the
 local profile, watches, snipes and bookings stay. It is refused while a snipe or hold needs
 the session.
+
+## The main window's permissions
+
+Electron grants every permission a page asks for unless its session has handlers. The main
+window runs on the default session, and `guardPermissions` (`src/main/app/main-window.ts`)
+gives it handlers that refuse every permission request and every permission check, with one
+exception: `clipboard-sanitized-write`, for the app's own page in its top frame.
+`navigator.clipboard.writeText` needs it ("Copy reference" on a booking, "Copy error details"
+on the error screen) and fails without it. Desktop notifications are shown by the main process
+(Electron's `Notification`) and need no permission. A refused request is logged with the
+permission and the page's origin only. The Electron smoke tests check, in the built app, that
+the clipboard write is granted, that other permissions read as denied, and that copying works.
+
+Provider windows refuse everything, the clipboard included ([above](#provider-sign-in-and-payment-windows)).
+
+No request the app makes offers a client certificate. Since Electron 44, `app` emits
+`select-client-certificate` for `net` requests as well (every provider's HTTP client and the
+updater; there is no webContents), and when nothing handles it Electron sends the first
+matching certificate from the system store. `refuseClientCertificates`
+(`src/main/app/main-window.ts`) handles it for every request and offers none; the request then
+continues without a certificate. Provider windows do the same for their pages.
+
+## The packaged app (Electron fuses)
+
+Electron fuses are switches in the Electron executable itself. electron-builder flips them when
+it packages the app (`electronFuses` in `electron-builder.json`), just before signing, so they
+apply to the installed `WA Stay.exe` (changing one means modifying the executable, which breaks
+its signature when the build is signed):
+
+| Fuse | Set to | Effect |
+| --- | --- | --- |
+| `RunAsNode` | off | `ELECTRON_RUN_AS_NODE` is ignored: the executable cannot be used as a plain Node.js runtime. Nothing in the app forks a Node process. |
+| `EnableNodeOptionsEnvironmentVariable` | off | `NODE_OPTIONS` and `NODE_EXTRA_CA_CERTS` are ignored, so no environment variable can load code (`--require`) into the main process. A TLS-inspecting proxy's certificate cannot be added that way; provider traffic goes through Chromium's network stack, which uses the system's certificates. |
+| `EnableNodeCliInspectArguments` | off | `--inspect`, `--inspect-brk` and `SIGUSR1` do not open Node's inspector on the main process. |
+| `OnlyLoadAppFromAsar` | on | The app is loaded only from `resources/app.asar`, never from a `resources/app` folder. |
+| `EnableEmbeddedAsarIntegrityValidation` | on | electron-builder records the SHA-256 of `app.asar`'s header in the executable (a Windows resource; `Info.plist` on macOS), and every file packed in the archive carries its own block hashes. Electron checks both as it reads, so a modified `app.asar` does not run. Windows and macOS only: Linux has no such check. Only the files kept outside the archive (`app.asar.unpacked`) are not covered: playwright-core, and better-sqlite3's one native binary (`prebuilds/<platform>-<arch>.node`, which cannot load from inside an archive). better-sqlite3's JavaScript is inside the archive and checked, and its C sources and other platforms' binaries are not packaged. |
+| `EnableCookieEncryption` | on | Cookie values on disk, such as a provider session's (`persist:provider-<id>`), are encrypted with the operating system's key (DPAPI on Windows), as Chrome does. It is one-way: cookies saved before are encrypted the next time they are written, and turning the fuse off again would make the stored cookies unreadable. |
+
+The other fuses keep Electron's defaults; `GrantFileProtocolExtraPrivileges` stays on because
+the window loads its page from `file://`.
+
+`npm run smoke:packaged` reads the fuses back from the packaged Linux executable with
+`@electron/fuses` and checks each one, checks that every file in `app.asar` has its integrity
+hash and that the only better-sqlite3 file outside it is the one binary, and starts the
+executable as shipped with `--inspect`, which it must ignore. The release build checks the
+Windows executable the same way (`scripts/check-windows-package.js`, in `build.yml`): its fuses,
+its integrity record against `app.asar`'s header, and its one better-sqlite3 binary. Running from
+source (`npm start`, the Electron tests) uses `node_modules/electron`'s own executable, whose
+fuses are not changed.
