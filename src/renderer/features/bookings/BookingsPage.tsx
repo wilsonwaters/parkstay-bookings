@@ -113,7 +113,7 @@ export function BookingsPage() {
     <div className={PAGE}>
       <PageHeader
         title="Bookings"
-        description="Your trips across every provider"
+        description="Your trips across every provider."
         actions={
           <>
             {importButton}

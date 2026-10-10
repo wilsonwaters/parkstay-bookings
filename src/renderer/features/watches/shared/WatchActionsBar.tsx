@@ -14,14 +14,13 @@ export interface WatchActionsBarProps {
   actions: WatchActions;
   /** Opens the delete ConfirmDialog. */
   onDelete: () => void;
-  /** Whether "Pay now" sits here (the list) or in the page's hold notice (the detail page). */
-  payHere?: boolean;
 }
 
 /**
  * One visible action and a "More actions for {name}" menu, by state (U1 design §3): no
- * rainbow of buttons. Pause/Resume, Edit and Delete live in the menu; Resume is never offered
- * once a watch has held or booked a unit, because main refuses it.
+ * rainbow of buttons. A held unit's "Pay now" is in its hold panel, as for a snipe.
+ * Pause/Resume, Edit and Delete live in the menu; Resume is never offered once a watch has held
+ * or booked a unit, because main refuses it.
  */
 export function WatchActionsBar({
   watch,
@@ -29,7 +28,6 @@ export function WatchActionsBar({
   manifest,
   actions,
   onDelete,
-  payHere = true,
 }: WatchActionsBarProps) {
   const known = manifest !== undefined;
   const checkable = state === 'active' || state === 'paused';
@@ -48,11 +46,6 @@ export function WatchActionsBar({
           disabled={!known}
         >
           Check now
-        </Button>
-      )}
-      {state === 'held' && payHere && (
-        <Button variant="secondary" size="sm" onClick={actions.payNow} loading={actions.paying}>
-          Pay now
         </Button>
       )}
       <Menu

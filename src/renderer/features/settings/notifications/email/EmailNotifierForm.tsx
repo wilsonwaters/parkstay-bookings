@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FormProvider, useForm, type Resolver } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { SMTPPreset } from '../../../../../shared/types/notifier.types';
@@ -23,6 +23,23 @@ export interface EmailNotifierFormProps {
   notifier: EmailNotifierView | null;
   /** Closes the form; `saved` once the settings were stored. */
   onClose(saved: boolean): void;
+  /**
+   * Focus the first field when the form opens: it replaced the button that opened it, so focus
+   * would otherwise fall to the page.
+   */
+  focusOnOpen?: boolean;
+}
+
+/** The form's first field: for a radio group, its checked radio (the group's one tab stop). */
+function firstField(form: HTMLFormElement): HTMLElement | null {
+  const first = form.querySelector<HTMLElement>('input, select, textarea');
+  if (first instanceof HTMLInputElement && first.type === 'radio') {
+    const group = [...form.querySelectorAll<HTMLInputElement>('input[type="radio"]')].filter(
+      (radio) => radio.name === first.name
+    );
+    return group.find((radio) => radio.checked) ?? first;
+  }
+  return first;
 }
 
 /**
@@ -30,7 +47,8 @@ export interface EmailNotifierFormProps {
  * person replaces it, or changes the server or account it belongs to (then main needs a new
  * one, and so does this form).
  */
-export function EmailNotifierForm({ notifier, onClose }: EmailNotifierFormProps) {
+export function EmailNotifierForm({ notifier, onClose, focusOnOpen }: EmailNotifierFormProps) {
+  const formRef = useRef<HTMLFormElement>(null);
   const configure = useConfigureEmailNotifier();
   const info = useAppInfo();
   const [replacing, setReplacing] = useState(false);
@@ -82,6 +100,12 @@ export function EmailNotifierForm({ notifier, onClose }: EmailNotifierFormProps)
     }
   };
 
+  // Once, as it opens.
+  const focusFirst = useRef(focusOnOpen);
+  useEffect(() => {
+    if (focusFirst.current && formRef.current) firstField(formRef.current)?.focus();
+  }, []);
+
   const save = methods.handleSubmit(async (formValues) => {
     if (await store(formValues)) onClose(true);
   });
@@ -97,7 +121,13 @@ export function EmailNotifierForm({ notifier, onClose }: EmailNotifierFormProps)
 
   return (
     <FormProvider {...methods}>
-      <form noValidate onSubmit={save} className="flex flex-col gap-5" aria-label="Email settings">
+      <form
+        ref={formRef}
+        noValidate
+        onSubmit={save}
+        className="flex flex-col gap-5"
+        aria-label="Email settings"
+      >
         <SmtpPresetFields />
         {custom && <CustomServerFields />}
         <Field

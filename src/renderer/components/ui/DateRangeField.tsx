@@ -7,6 +7,7 @@ import {
   choosingDeparture,
   rangeSummary,
   shortDay,
+  shortRange,
   type DateRange,
   type IsoDate,
 } from './calendar';
@@ -39,7 +40,7 @@ export interface DateRangeFieldProps {
 function display(value: DateRange, placeholder: string): string {
   if (!value.arrival) return placeholder;
   if (!value.departure) return `${shortDay(value.arrival)} – add check-out`;
-  return `${shortDay(value.arrival)} – ${shortDay(value.departure)}`;
+  return shortRange(value.arrival, value.departure);
 }
 
 /**

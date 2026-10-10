@@ -1,11 +1,12 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import {
   TYPED_PASSWORD,
+  form,
   openForm,
   setupEmail as setup,
 } from '@tests/fixtures/renderer/settings-email';
 import { emailNotifier, politeAnnouncement } from '@tests/fixtures/renderer/settings';
-import { NotifierStatus } from '../../../../../shared/types/notifier.types';
+import { NotifierStatus, SMTPPreset } from '../../../../../shared/types/notifier.types';
 
 describe('EmailNotifierCard with a stored password (hasPassword)', () => {
   it('shows the status and a one-line summary, never a password', async () => {
@@ -134,5 +135,44 @@ describe('EmailNotifierCard with a stored password (hasPassword)', () => {
     expect(within(settings).getByLabelText('App password')).toHaveAccessibleDescription(
       /couldn't be read on this computer\. Enter it again\./
     );
+  });
+});
+
+describe('EmailNotifierCard focus when the form opens', () => {
+  it('"Set up email" moves focus to the form’s first field, the mail service', async () => {
+    const { user } = setup(null);
+    await user.click(await screen.findByRole('button', { name: 'Set up email' }));
+
+    const settings = form();
+    const service = within(settings).getByRole('group', { name: 'Mail service' });
+    await waitFor(() =>
+      expect(within(service).getByRole('radio', { name: 'Gmail' })).toHaveFocus()
+    );
+  });
+
+  it('"Edit settings" moves focus to the stored service’s radio', async () => {
+    const { user } = setup(
+      emailNotifier({
+        config: {
+          ...emailNotifier().config,
+          preset: SMTPPreset.OUTLOOK,
+          host: 'smtp-mail.outlook.com',
+        },
+      })
+    );
+    const settings = await openForm(user);
+
+    await waitFor(() =>
+      expect(within(settings).getByRole('radio', { name: 'Outlook' })).toHaveFocus()
+    );
+  });
+
+  it('turning the switch on before setting up opens the form and leaves focus on the switch', async () => {
+    const { user } = setup(null);
+    const toggle = await screen.findByRole('switch', { name: 'Email notifications' });
+    await user.click(toggle);
+
+    expect(form()).toBeInTheDocument();
+    expect(toggle).toHaveFocus();
   });
 });

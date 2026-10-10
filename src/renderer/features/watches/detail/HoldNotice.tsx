@@ -2,10 +2,11 @@ import { Link } from 'react-router-dom';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
 import type { Watch } from '../../../../shared/types/watch.types';
 import { ROUTES } from '../../../app/routes';
+import { HoldPanel } from '../../../components/stay/HoldPanel';
 import { timeInZone } from '../../../components/timeFormat';
-import { Button, Notice } from '../../../components/ui';
+import { Notice } from '../../../components/ui';
 import type { WatchActions } from '../shared/useWatchActions';
-import { unitNameOf, unitNounFor, type WatchState } from '../shared/watchState';
+import { holdRegionLabel, unitNameOf, unitNounFor, type WatchState } from '../shared/watchState';
 
 export interface HoldNoticeProps {
   watch: Watch;
@@ -15,8 +16,8 @@ export interface HoldNoticeProps {
 }
 
 /**
- * The watch's automatic hold: pay before it runs out (the page's one coral button), that it
- * ran out, or that it was booked.
+ * The watch's automatic hold: the shared `HoldPanel` while it is held (the same panel as a
+ * snipe's, with the page's one coral button), then that it ran out, or that it was booked.
  */
 export function HoldNotice({ watch, state, manifest, actions }: HoldNoticeProps) {
   const provider = manifest?.shortName ?? 'the provider';
@@ -26,17 +27,14 @@ export function HoldNotice({ watch, state, manifest, actions }: HoldNoticeProps)
     : undefined;
   if (state === 'held') {
     return (
-      <Notice
-        tone="warning"
-        title={`${unit} is held until ${at}`}
-        actions={
-          <Button variant="primary" onClick={actions.payNow} loading={actions.paying}>
-            Pay now
-          </Button>
-        }
-      >
-        Pay on {provider} before then to keep it. The payment page opens in its own window.
-      </Notice>
+      <HoldPanel
+        unit={unit}
+        expiresAt={watch.hold ? new Date(watch.hold.expiresAt) : undefined}
+        manifest={manifest}
+        label={holdRegionLabel(watch)}
+        onPay={actions.payNow}
+        paying={actions.paying}
+      />
     );
   }
   if (state === 'hold-expired') {

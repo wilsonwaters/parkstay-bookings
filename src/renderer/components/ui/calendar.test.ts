@@ -9,6 +9,7 @@ import {
   parseIsoDate,
   pickDate,
   rangeSummary,
+  shortRange,
   startOfWeekIso,
 } from './calendar';
 
@@ -101,12 +102,21 @@ describe('calendar helpers', () => {
     expect(dayLabel('2026-10-04', range)).toBe('Sunday 4 October 2026');
   });
 
+  it('writes a range compactly: the month once when shared, the year only when asked', () => {
+    expect(shortRange('2026-10-11', '2026-10-13')).toBe('Sun 11 – Tue 13 Oct');
+    expect(shortRange('2026-10-30', '2026-11-02')).toBe('Fri 30 Oct – Mon 2 Nov');
+    expect(shortRange('2026-12-30', '2027-01-01')).toBe('Wed 30 Dec – Fri 1 Jan');
+    expect(shortRange('2027-03-26', '2027-03-29', true)).toBe('Fri 26 – Mon 29 Mar 2027');
+    expect(shortRange('2027-02-26', '2027-03-01', true)).toBe('Fri 26 Feb – Mon 1 Mar 2027');
+    expect(shortRange('2026-12-30', '2027-01-01', true)).toBe('Wed 30 Dec 2026 – Fri 1 Jan 2027');
+  });
+
   it('summarises the range', () => {
     expect(rangeSummary({ arrival: '2026-10-02', departure: '2026-10-04' })).toBe(
-      'Fri 2 Oct – Sun 4 Oct · 2 nights'
+      'Fri 2 – Sun 4 Oct · 2 nights'
     );
     expect(rangeSummary({ arrival: '2026-10-02', departure: '2026-10-03' })).toBe(
-      'Fri 2 Oct – Sat 3 Oct · 1 night'
+      'Fri 2 – Sat 3 Oct · 1 night'
     );
     expect(rangeSummary({ arrival: '2026-10-02' })).toBe('Fri 2 Oct – choose check-out');
     expect(rangeSummary({})).toBeUndefined();

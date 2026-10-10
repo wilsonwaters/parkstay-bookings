@@ -41,7 +41,7 @@ export { statusPresets, type StatusPreset } from './statusPresets';
 export { Spinner, type SpinnerProps, type SpinnerSize } from './Spinner';
 export { Skeleton, type SkeletonProps } from './Skeleton';
 export { EmptyState, type EmptyStateProps } from './EmptyState';
-export { PageHeader, type PageHeaderProps } from './PageHeader';
+export { BackLink, PageHeader, type BackLinkProps, type PageHeaderProps } from './PageHeader';
 export { Notice, type NoticeProps, type NoticeTone } from './Notice';
 export { VisuallyHidden, type VisuallyHiddenProps } from './VisuallyHidden';
 export {

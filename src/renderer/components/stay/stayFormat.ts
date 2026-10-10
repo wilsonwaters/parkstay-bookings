@@ -3,10 +3,9 @@
  * "Wed 30 Dec 2026 – Fri 1 Jan 2027"; "2 nights"; "2 adults, 1 child". Calendar dates stay
  * `YYYY-MM-DD` strings until they are formatted, so no time zone can shift them. Pure.
  */
-import { format } from 'date-fns';
 import { nightsBetween } from '../../../shared/utils/calendar-date';
 import { guestsSummary } from '../ui';
-import { nightsLabel, parseIsoDate } from '../ui/calendar';
+import { nightsLabel, parseIsoDate, shortRange } from '../ui/calendar';
 
 /**
  * "Fri 12 – Sun 14 Dec": a stay with its weekdays, as a watch or snipe shows it (the place page
@@ -20,13 +19,7 @@ export function stayDatesLabel(arrival: string, departure: string, today?: strin
   const thisYear = today ? today.slice(0, 4) : String(new Date().getFullYear());
   const showYear =
     arrival.slice(0, 4) !== departure.slice(0, 4) || arrival.slice(0, 4) !== thisYear;
-  const sameMonth = arrival.slice(0, 7) === departure.slice(0, 7);
-  const end = format(d, showYear ? 'EEE d MMM yyyy' : 'EEE d MMM');
-  if (sameMonth && !(showYear && arrival.slice(0, 4) !== departure.slice(0, 4))) {
-    return `${format(a, 'EEE d')} – ${end}`;
-  }
-  const yearOnBoth = arrival.slice(0, 4) !== departure.slice(0, 4);
-  return `${format(a, yearOnBoth ? 'EEE d MMM yyyy' : 'EEE d MMM')} – ${end}`;
+  return shortRange(arrival, departure, showYear);
 }
 
 /** "2 nights". */

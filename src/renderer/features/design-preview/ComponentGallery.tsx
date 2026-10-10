@@ -572,7 +572,7 @@ function PageHeaderSection() {
         <PageHeader
           headingLevel={3}
           title="Lucky Bay long weekend"
-          description="Watching 3 sites at Lucky Bay for Fri 3 Oct – Sun 5 Oct."
+          description="Watching 3 sites at Lucky Bay for Fri 3 – Sun 5 Oct."
           back={{ label: 'Watches', href: '#/__design' }}
           actions={
             <>

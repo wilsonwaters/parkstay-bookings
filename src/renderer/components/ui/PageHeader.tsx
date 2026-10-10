@@ -1,6 +1,36 @@
-import type { ReactNode } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { cx } from './cx';
+
+export interface BackLinkProps {
+  /** Where it leads: a hash route, `#/watches`. */
+  href: string;
+  /** The parent page's name: "Watches", "Explore". */
+  children: ReactNode;
+  /** To take over the navigation (call `preventDefault`), e.g. to go back one step instead. */
+  onClick?: (event: MouseEvent<HTMLAnchorElement>) => void;
+  className?: string;
+}
+
+/**
+ * "← Watches": the link back to the parent page, at the top of a page. `PageHeader` renders it
+ * from `back`; a page with its own title block (a place's page) uses it directly.
+ */
+export function BackLink({ href, children, onClick, className }: BackLinkProps) {
+  return (
+    <a
+      href={href}
+      onClick={onClick}
+      className={cx(
+        'inline-flex w-fit items-center gap-1.5 rounded-sm text-sm font-semibold text-brand-strong hover:underline',
+        className
+      )}
+    >
+      <ArrowLeft size={16} aria-hidden="true" />
+      {children}
+    </a>
+  );
+}
 
 export interface PageHeaderProps {
   title: ReactNode;
@@ -50,15 +80,7 @@ export function PageHeader({
   );
   return (
     <header className={cx('flex flex-col gap-3', className)}>
-      {back && (
-        <a
-          href={back.href}
-          className="inline-flex w-fit items-center gap-1.5 rounded-sm text-sm font-semibold text-brand-strong hover:underline"
-        >
-          <ArrowLeft size={16} aria-hidden="true" />
-          {back.label}
-        </a>
-      )}
+      {back && <BackLink href={back.href}>{back.label}</BackLink>}
       {hero && <div className="mb-3">{hero}</div>}
       <div className="flex flex-wrap items-start justify-between gap-4">
         {media ? (

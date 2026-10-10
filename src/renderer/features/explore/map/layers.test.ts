@@ -133,14 +133,15 @@ describe('map source and layers', () => {
 
     const HAS_FREE = ['>', ['get', 'availableCount'], 0];
 
-    it('turns a cluster with a free place eucalypt, saying how many are free', () => {
+    it('turns a cluster with an available place eucalypt, saying how many are available', () => {
       expect(clusters.paint?.['circle-color']).toEqual([
         'case',
         HAS_FREE,
         TOKENS.eucalypt600,
         TOKENS.ink,
       ]);
-      // "12" over "free", in a cluster at least 20 px across; the others keep their count.
+      // "12" over "available" (the cards' word), in a cluster at least 52 px across; the others
+      // keep their count.
       expect(count.layout?.['text-field']).toEqual([
         'case',
         HAS_FREE,
@@ -150,15 +151,15 @@ describe('map source and layers', () => {
           {},
           '\n',
           {},
-          'free',
-          { 'font-scale': 0.8 },
+          'available',
+          { 'font-scale': 0.75 },
         ],
         ['format', ['get', 'point_count_abbreviated'], {}],
       ]);
       expect(clusters.paint?.['circle-radius']).toEqual([
         'case',
         HAS_FREE,
-        ['step', ['get', 'point_count'], 20, 50, 23],
+        ['step', ['get', 'point_count'], 26, 50, 28],
         ['step', ['get', 'point_count'], 15, 10, 19, 50, 23],
       ]);
       expect(count.paint).toEqual({ 'text-color': ['case', ACTIVE, TOKENS.white, TOKENS.white] });

@@ -35,9 +35,7 @@ describe('NewWatchPage prefill (§12.10)', () => {
     ).toBeInTheDocument();
     expect(within(stepList()).getByRole('button', { name: 'Provider, done' })).toBeInTheDocument();
     expect(within(stepList()).getByRole('button', { name: 'Location, done' })).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Dates Sat 12 Dec – Mon 14 Dec' })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Dates Sat 12 – Mon 14 Dec' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Guests 2 adults/ })).toBeInTheDocument();
     expect(mock.catalog.get).toHaveBeenCalledWith('parkstay:20');
     expect(screen.queryByText("Some of the link couldn't be used")).toBeNull();

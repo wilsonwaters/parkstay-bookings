@@ -69,7 +69,8 @@ and dates). The flow has five steps:
 ## When a site is held
 
 You get a desktop notification (and an email, if set up), and the snipe shows "<site> is held
-for you · Held until 10:42 am · 23:10 left to pay".
+for you · Held until 10:42 am AWST · 23:10 left", with **Pay now** (the same panel as a watch's
+automatic hold).
 
 1. **Pay now** opens the provider's payment page in its own window, on the same session that
    holds the site. If the DBCA queue is active, the app first waits (at most a minute) to get

@@ -75,7 +75,7 @@ Build every address with `ROUTES` (or `buildPath` with a pattern), never by join
 
 **Prefill query** for create flows (§12.10): `?provider=<id>&location=<externalId>&arrival=YYYY-MM-DD&departure=YYYY-MM-DD&adults=N&children=N`. `ROUTES.watchNew(prefill)` and `ROUTES.snipeNew(prefill)` build it and leave out empty values, and `parseCreatePrefill(search)` reads it back, dropping values that are not valid. `location` is the provider's external id, not the composite location key. New watch (U1) and New snipe (U2) read it with `parseCreatePrefill`, keep the dates to the provider's day with `clampStayParams`, and say which parts of a link they could not use.
 
-**From Explore to a place and back.** Explore's cards and the map preview's "View details" open `ROUTES.placeDetail(providerId, externalId, stay)` with Explore's stay, and history state `{ from: 'explore', search }` (`PlaceLinkState`). "Back to Explore" on the place page goes back one step when it has that state, so Explore returns exactly as it was left: its state is in the URL, and `useExploreScrollMemory` puts back the window's scroll and the number of cards, saved per search in `sessionStorage['ws:explore:scroll:' + search]`. Otherwise it opens Explore with the place's stay. Explore's hidden `h1` is `fixed`, so the focus it takes on arrival never scrolls the list.
+**From Explore to a place and back.** Explore's cards and the map preview's "View details" open `ROUTES.placeDetail(providerId, externalId, stay)` with Explore's stay, and history state `{ from: 'explore', search }` (`PlaceLinkState`). The place page's back link, "← Explore" (`BackLink`, as `PageHeader`'s on every other page), goes back one step when it has that state, so Explore returns exactly as it was left: its state is in the URL, and `useExploreScrollMemory` puts back the window's scroll and the number of cards, saved per search in `sessionStorage['ws:explore:scroll:' + search]`. Otherwise it opens Explore with the place's stay. Explore's hidden `h1` is `fixed`, so the focus it takes on arrival never scrolls the list.
 
 ## Focus and announcements
 
@@ -163,7 +163,7 @@ With no `window.api` (the renderer opened in a plain browser with `npm run dev:r
 | Explore map | region, switch | Map of places · Search as I move the map |
 | Explore below 1024 px | button | Show map · Show list |
 | Place page title | heading level 1 | The place's name, or "This place isn't available" |
-| Place page | link, region, button | Back to Explore · Check your dates · Check availability |
+| Place page | link, region, button | Explore (the back link) · Check your dates · Check availability |
 | Place hand-offs | link | Book on {shortName} (opens in your browser) · Watch for availability · Snipe a site, coming soon |
 | Place gallery | button, dialog | Show all {n} photos · Photos of {name} |
 | Place results | region, table, switch | Availability · Availability by night, {dates} · Fully available only |

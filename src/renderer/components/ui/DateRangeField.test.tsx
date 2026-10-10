@@ -69,12 +69,12 @@ describe('DateRangeField', () => {
     await user.keyboard('{ArrowRight}{ArrowRight}{Enter}');
     expect(latest).toEqual({ arrival: '2030-10-02', departure: '2030-10-04' });
     expect(typeof latest.arrival).toBe('string');
-    expect(within(popover).getByText('Wed 2 Oct – Fri 4 Oct · 2 nights')).toBeInTheDocument();
+    expect(within(popover).getByText('Wed 2 – Fri 4 Oct · 2 nights')).toBeInTheDocument();
     expect(day('Friday 4 October 2030, check-out')).toBeInTheDocument();
 
     await user.click(within(popover).getByRole('button', { name: 'Done' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Dates Wed 2 Oct – Fri 4 Oct' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Dates Wed 2 – Fri 4 Oct' })).toHaveFocus();
   });
 
   it('cannot choose dates before minDate', async () => {
@@ -192,7 +192,7 @@ describe('DateRangeField', () => {
         onChange={jest.fn()}
       />
     );
-    const trigger = screen.getByRole('button', { name: 'Dates Wed 2 Oct – Fri 4 Oct' });
+    const trigger = screen.getByRole('button', { name: 'Dates Wed 2 – Fri 4 Oct' });
     expect(trigger).not.toHaveAttribute('aria-describedby');
     expect(trigger).not.toHaveAttribute('aria-invalid');
   });

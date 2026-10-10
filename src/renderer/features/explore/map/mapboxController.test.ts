@@ -427,7 +427,7 @@ describe('createMapboxController', () => {
     expect(head(clusters().paint['circle-color'])).toBe('case');
     expect(map.featureState.get(PLACE.key)).toEqual({ hover: true });
     // Only what differs is restyled: the halos are left alone, and the cluster counts only
-    // change their text ("12 free").
+    // change their text ("12 available").
     expect(new Set(map.restyled)).toEqual(
       new Set([LAYER_IDS.clusters, LAYER_IDS.clusterCount, LAYER_IDS.dot, LAYER_IDS.pill])
     );

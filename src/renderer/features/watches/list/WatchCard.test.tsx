@@ -158,11 +158,13 @@ describe('WatchCard', () => {
       watches: { openPayment, list: jest.fn().mockResolvedValue(ok([])) },
     });
     expect(within(card()).getByText('Site held')).toBeInTheDocument();
-    expect(
-      within(card()).getByText(/Site 12 is held until .* Pay on ParkStay before then/)
-    ).toBeInTheDocument();
+    // The hold panel a snipe's card has: the unit, the time left, and Pay now in it.
+    const hold = within(card()).getByRole('region', { name: 'Hold at Osprey Bay' });
+    expect(within(hold).getByText('Site 12 is held for you')).toBeInTheDocument();
+    expect(within(hold).getByRole('timer', { name: /left to pay$/ })).toBeInTheDocument();
     expect(within(card()).queryByRole('button', { name: 'Check now' })).toBeNull();
-    await user.click(screen.getByRole('button', { name: 'Pay now' }));
+    expect(within(card()).getAllByRole('button', { name: 'Pay now' })).toHaveLength(1);
+    await user.click(within(hold).getByRole('button', { name: 'Pay now' }));
     expect(openPayment).toHaveBeenCalledWith(1);
     expect(
       await within(toasts()).findByText('This hold has expired, so it can no longer be paid for.')

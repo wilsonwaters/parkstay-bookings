@@ -257,7 +257,7 @@ describe('Explore map', () => {
       await user.click(details);
       await screen.findByRole('heading', { level: 1, name: 'Bungarra' });
 
-      await user.click(screen.getByRole('link', { name: 'Back to Explore' }));
+      await user.click(within(screen.getByRole('main')).getByRole('link', { name: 'Explore' }));
       expect(await screen.findByRole('group', { name: 'Bungarra' })).toBeInTheDocument();
       expect(currentRoute()).toBe(left);
       expect(maps.current.options.camera).toEqual({ lng: 113.9, lat: -22.2, zoom: 9 });

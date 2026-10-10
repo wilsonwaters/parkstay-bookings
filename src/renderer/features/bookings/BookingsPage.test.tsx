@@ -56,7 +56,7 @@ describe('BookingsPage', () => {
   it('shows the banner, one h1, Add booking and three counted tabs with Upcoming selected', async () => {
     setup();
     expect(screen.getByRole('heading', { level: 1, name: 'Bookings' })).toBeInTheDocument();
-    expect(screen.getByText('Your trips across every provider')).toBeInTheDocument();
+    expect(screen.getByText('Your trips across every provider.')).toBeInTheDocument();
     expect(screen.getByText(/Bookings is still being finalised/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add booking' })).toBeInTheDocument();
 

@@ -91,7 +91,6 @@ function WatchDetailView({ watch, manifest, updating }: ViewProps) {
               manifest={manifest}
               actions={actions}
               onDelete={() => setConfirming(true)}
-              payHere={false}
             />
           </>
         }

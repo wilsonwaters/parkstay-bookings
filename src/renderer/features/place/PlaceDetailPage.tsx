@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, CircleAlert, MapPinOff } from 'lucide-react';
+import { useHref, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { CircleAlert, MapPinOff } from 'lucide-react';
 import type { StayQuery } from '../../../shared/types/provider.types';
 import { todayIn } from '../../../shared/utils/calendar-date';
 import {
@@ -14,6 +14,7 @@ import { buildPath, PATTERNS, placeLinkState, ROUTES } from '../../app/routes';
 import { stayParamsQuery, type StayParams } from '../../app/stayParams';
 import { areaLine, kindLabel, unitNoun } from '../../components/locationFormat';
 import {
+  BackLink,
   Badge,
   Button,
   EmptyState,
@@ -27,7 +28,7 @@ import {
 } from '../../components/ui';
 import { buttonClassName } from '../../components/ui/Button';
 import { AvailabilitySection } from './AvailabilitySection';
-import { Gallery } from './Gallery';
+import { Gallery, GALLERY_SIZE } from './Gallery';
 import {
   AboutSection,
   BookingRulesSection,
@@ -55,11 +56,11 @@ const NOT_AVAILABLE_CODES = new Set(['NOT_FOUND', 'UNKNOWN_PROVIDER', 'VALIDATIO
 const PAGE = 'mx-auto w-full max-w-[1120px] px-6 pb-24 pt-6 lg:px-8';
 
 /**
- * "Back to Explore". Opened from Explore, it goes one step back, so Explore comes back as it
- * was left (search, filters, map, selection, scroll). Otherwise (a deep link, a reload) it
+ * The way back to Explore. Opened from Explore, it goes one step back, so Explore comes back as
+ * it was left (search, filters, map, selection, scroll). Otherwise (a deep link, a reload) it
  * opens Explore with the stay from this page.
  */
-function BackToExplore({ stay, className }: { stay: StayParams; className?: string }) {
+function useBackToExplore(stay: StayParams) {
   const location = useLocation();
   const navigate = useNavigate();
   const fromExplore = placeLinkState(location.state);
@@ -68,18 +69,38 @@ function BackToExplore({ stay, className }: { stay: StayParams; className?: stri
     typeof saved === 'string'
       ? saved
       : buildPath(PATTERNS.explore, {}, stayParamsQuery(stay)).slice(1);
+  const to = { pathname: ROUTES.explore(), search };
+  const href = useHref(to);
 
   const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (!fromExplore) return;
+    // A plain click only, as a router Link does.
+    if (event.button !== 0 || event.metaKey || event.altKey || event.ctrlKey || event.shiftKey) {
+      return;
+    }
     event.preventDefault();
-    navigate(-1);
+    if (fromExplore) navigate(-1);
+    else navigate(to);
   };
+  return { href, onClick };
+}
 
+/** "← Explore" at the top of the page, as `PageHeader`'s back link on every other page. */
+function ExploreBackLink({ stay }: { stay: StayParams }) {
+  const back = useBackToExplore(stay);
   return (
-    <Link to={{ pathname: ROUTES.explore(), search }} onClick={onClick} className={className}>
-      <ChevronLeft size={18} aria-hidden="true" />
+    <BackLink href={back.href} onClick={back.onClick}>
+      Explore
+    </BackLink>
+  );
+}
+
+/** "Back to Explore" as a button, where the page could not be shown. */
+function BackToExplore({ stay, className }: { stay: StayParams; className?: string }) {
+  const back = useBackToExplore(stay);
+  return (
+    <a href={back.href} onClick={back.onClick} className={className}>
       Back to Explore
-    </Link>
+    </a>
   );
 }
 
@@ -301,12 +322,9 @@ export default function PlaceDetailPage() {
 
   return (
     <div className={PAGE}>
-      <BackToExplore
-        stay={stay}
-        className={buttonClassName({ variant: 'ghost', size: 'sm', className: '-ml-3' })}
-      />
+      <ExploreBackLink stay={stay} />
 
-      <div className="mt-4 flex flex-col gap-3">
+      <div className="mt-3 flex flex-col gap-3">
         <h1 className="font-display text-display-md font-medium text-fg">
           {detail ? (
             detail.name
@@ -352,7 +370,7 @@ export default function PlaceDetailPage() {
           className="mt-6"
         />
       ) : (
-        <Skeleton className="mt-6 aspect-[16/9] rounded-2xl lg:aspect-[3/1]" />
+        <Skeleton className={`mt-6 aspect-[16/9] rounded-2xl lg:aspect-[3/1] ${GALLERY_SIZE}`} />
       )}
 
       <div

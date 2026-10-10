@@ -25,9 +25,7 @@ describe('HeldPanel', () => {
     expect(screen.getByRole('timer', { name: /^2[23] minutes left to pay$/ })).toHaveTextContent(
       /^2[23]:\d{2}$/
     );
-    expect(
-      screen.getByText(/Complete payment on ParkStay before the hold runs out/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/^Pay on ParkStay before the hold runs out\./)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Pay now' }));
     expect(openPayment).toHaveBeenCalledWith(7);
     expect(open).not.toHaveBeenCalled();
@@ -44,7 +42,12 @@ describe('HeldPanel', () => {
       jest.advanceTimersByTime(3000);
     });
     expect(screen.queryByRole('button', { name: 'Pay now' })).toBeNull();
-    expect(screen.getByText('Hold expired. The site has been released.')).toBeInTheDocument();
+    expect(screen.getByText('The hold has expired')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'The hold on Site 12 ran out before it was paid for, so ParkStay has released it.'
+      )
+    ).toBeInTheDocument();
   });
 
   it('shows a hold without an expiry, with no timer', () => {
@@ -68,7 +71,7 @@ describe('HeldPanel', () => {
 
     await user.click(screen.getByRole('button', { name: 'Pay now' }));
     expect(
-      await screen.findByText('Hold expired. The site has been released.')
+      await screen.findByText('This hold has expired, so it can no longer be paid for.')
     ).toBeInTheDocument();
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['snipes'] }));
     expect(screen.getByRole('button', { name: 'Pay now' })).toBeInTheDocument();

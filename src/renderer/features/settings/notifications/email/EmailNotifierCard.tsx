@@ -47,7 +47,8 @@ export function EmailNotifierCard() {
   const setEnabled = useSetEmailNotifierEnabled();
   const announce = useAnnounce();
   const toast = useToast();
-  const [editing, setEditing] = useState(false);
+  // How the form was opened: from the button it replaces, focus moves into it.
+  const [editing, setEditing] = useState<false | 'button' | 'switch'>(false);
   const editButton = useRef<HTMLButtonElement>(null);
 
   if (notifier.isPending) {
@@ -80,7 +81,7 @@ export function EmailNotifierCard() {
   const toggle = (on: boolean) => {
     if (!setUp) {
       // Nothing to switch on yet: the form comes first
-      setEditing(on);
+      setEditing(on ? 'switch' : false);
       return;
     }
     setEnabled.mutate(on, {
@@ -97,7 +98,7 @@ export function EmailNotifierCard() {
 
   // Edit and test sit on one row
   const editOrSetUp = (
-    <Button ref={editButton} variant="secondary" onClick={() => setEditing(true)}>
+    <Button ref={editButton} variant="secondary" onClick={() => setEditing('button')}>
       {setUp ? 'Edit settings' : 'Set up email'}
     </Button>
   );
@@ -107,7 +108,7 @@ export function EmailNotifierCard() {
       <Switch
         label="Email notifications"
         description="Alerts by email when a watch finds a site or a site is held."
-        checked={setUp ? view.enabled : editing}
+        checked={setUp ? view.enabled : Boolean(editing)}
         disabled={setEnabled.isPending}
         onChange={(event) => toggle(event.target.checked)}
       />
@@ -123,7 +124,11 @@ export function EmailNotifierCard() {
         {setUp && <p className="text-fg-secondary">{summary(view)}</p>}
       </div>
       {editing ? (
-        <EmailNotifierForm notifier={setUp ? view : null} onClose={close} />
+        <EmailNotifierForm
+          notifier={setUp ? view : null}
+          onClose={close}
+          focusOnOpen={editing === 'button'}
+        />
       ) : !setUp ? (
         <div>{editOrSetUp}</div>
       ) : (

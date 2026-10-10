@@ -148,14 +148,29 @@ export const monthLabel = (month: IsoDate): string => format(parseIsoDate(month)
 /** "Fri 3 Oct". */
 export const shortDay = (date: IsoDate): string => format(parseIsoDate(date), 'EEE d MMM');
 
+/**
+ * Two days with their weekdays, the month once when they share it: "Sun 11 – Tue 13 Oct",
+ * "Fri 30 Oct – Mon 2 Nov". With `withYear`, the year ends it ("Fri 26 – Mon 29 Mar 2027"), and
+ * a range across two years carries both ("Wed 30 Dec 2026 – Fri 1 Jan 2027"). The one format
+ * for a stay's dates: the search pill, the date fields, and watch and snipe cards.
+ */
+export function shortRange(arrival: IsoDate, departure: IsoDate, withYear = false): string {
+  const end = format(parseIsoDate(departure), withYear ? 'EEE d MMM yyyy' : 'EEE d MMM');
+  if (arrival.slice(0, 7) === departure.slice(0, 7)) {
+    return `${format(parseIsoDate(arrival), 'EEE d')} – ${end}`;
+  }
+  const bothYears = withYear && arrival.slice(0, 4) !== departure.slice(0, 4);
+  return `${format(parseIsoDate(arrival), bothYears ? 'EEE d MMM yyyy' : 'EEE d MMM')} – ${end}`;
+}
+
 export const nightsLabel = (nights: number): string =>
   `${nights} ${nights === 1 ? 'night' : 'nights'}`;
 
-/** "Fri 3 Oct – Sun 5 Oct · 2 nights", or as much of it as is chosen. */
+/** "Fri 3 – Sun 5 Oct · 2 nights", or as much of it as is chosen. */
 export function rangeSummary(range: DateRange): string | undefined {
   if (!range.arrival) return undefined;
   if (!range.departure) return `${shortDay(range.arrival)} – choose check-out`;
-  return `${shortDay(range.arrival)} – ${shortDay(range.departure)} · ${nightsLabel(
+  return `${shortRange(range.arrival, range.departure)} · ${nightsLabel(
     nightsBetween(range.arrival, range.departure)
   )}`;
 }

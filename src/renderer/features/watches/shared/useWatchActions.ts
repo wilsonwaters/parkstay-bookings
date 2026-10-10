@@ -8,12 +8,10 @@ import {
 } from '../../../api';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
 import type { Watch } from '../../../../shared/types/watch.types';
+import { HOLD_EXPIRED_MESSAGE } from '../../../components/stay/HoldPanel';
 import { useToast } from '../../../components/ui';
 import { runResultMessage } from './resultSummary';
 import { unitNounFor } from './watchState';
-
-/** Shown when the hold a watch placed has run out before it could be paid for. */
-export const HOLD_EXPIRED_MESSAGE = 'This hold has expired, so it can no longer be paid for.';
 
 /**
  * The actions a watch offers wherever it is shown (card, detail, edit), each telling the

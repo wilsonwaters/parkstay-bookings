@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Button } from './Button';
-import { PageHeader } from './PageHeader';
+import { BackLink, PageHeader } from './PageHeader';
 
 describe('PageHeader', () => {
   it('renders one h1 with description, actions and a back link', () => {
@@ -49,6 +50,19 @@ describe('PageHeader', () => {
     const heading = screen.getByRole('heading', { level: 1, name: 'Kurrajong' });
     expect(back.compareDocumentPosition(photo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(photo.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('BackLink: the same link on its own, which can take over the navigation', async () => {
+    const onClick = jest.fn((event: { preventDefault(): void }) => event.preventDefault());
+    render(
+      <BackLink href="#/" onClick={onClick}>
+        Explore
+      </BackLink>
+    );
+    const link = screen.getByRole('link', { name: 'Explore' });
+    expect(link).toHaveAttribute('href', '#/');
+    await userEvent.click(link);
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 
   it('has no back link unless asked', () => {

@@ -99,8 +99,9 @@ postcode), when the sites are released, and a review. Hold only what you will us
 
 ### When a site is held
 
-You get a notification and the snipe (or watch) shows the site, the time it is held until and a
-countdown.
+You get a notification, and the snipe (or watch) shows "<site> is held for you", the time it is
+held until and a countdown of the time left to pay ("Held until 10:42 am AWST · 23:10 left").
+A watch and a snipe show the same panel.
 
 1. **Pay now** opens ParkStay's payment page in its own window. If the DBCA queue is busy,
    WA Stay first gets you through it.

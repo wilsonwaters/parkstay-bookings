@@ -6,6 +6,14 @@ import { cx } from '../../components/ui/cx';
 /** Photos shown beside the large one at 1024 px and wider. */
 const MAX_TILES = 4;
 
+/**
+ * The gallery's size: always the page's full width (stated, or the aspect ratio would narrow
+ * it to the height), and at most as tall as leaves the window room for the page's title above
+ * and, below, the "Check your dates" card down to its main button (all of it at 1440 × 900),
+ * but never under 18rem. Taller windows get more of the photo, up to its own 16:9 or 3:1.
+ */
+export const GALLERY_SIZE = 'w-full max-h-[max(18rem,calc(100vh-36rem))]';
+
 /** Only https photos load (main drops other schemes; this is the renderer's own check). */
 function isHttps(url: string): boolean {
   try {
@@ -97,10 +105,11 @@ export interface GalleryProps {
 
 /**
  * A place's photos. At 1024 px and wider, one large photo and up to 4 tiles (3:2); below, the
- * large photo alone. "Show all {n} photos" (and each photo) opens them all in a full-size
- * dialog, "Photos of {name}", with ←/→, a "3 of 12" counter, Escape to close and focus back
- * where it was. One photo is a 16:9 hero; none is the placeholder. Photos that fail to load
- * show the placeholder and drop out of the count.
+ * large photo alone; never taller than `GALLERY_SIZE` allows, so the stay card shows too. "Show
+ * all {n} photos" (and each photo) opens them all in a full-size dialog, "Photos of {name}",
+ * with ←/→, a "3 of 12" counter, Escape to close and focus back where it was. One photo is a
+ * 16:9 hero; none is the placeholder. Photos that fail to load show the placeholder and drop
+ * out of the count.
  */
 export function Gallery({ name, kind, imageUrls, className }: GalleryProps) {
   const urls = useMemo(() => [...new Set(imageUrls)].filter(isHttps), [imageUrls]);
@@ -141,7 +150,13 @@ export function Gallery({ name, kind, imageUrls, className }: GalleryProps) {
   if (urls.length === 0) {
     return (
       // As tall as the photo grid would be, so a place without photos stays calm.
-      <div className={cx('aspect-[16/9] overflow-hidden rounded-2xl lg:aspect-[3/1]', className)}>
+      <div
+        className={cx(
+          'aspect-[16/9] overflow-hidden rounded-2xl lg:aspect-[3/1]',
+          GALLERY_SIZE,
+          className
+        )}
+      >
         <PhotoPlaceholder aria-label={`No photo available for ${name}`} kind={kind} size="hero" />
       </div>
     );
@@ -160,7 +175,7 @@ export function Gallery({ name, kind, imageUrls, className }: GalleryProps) {
         name={name}
         kind={kind}
         onFailed={markFailed}
-        className={cx('aspect-[16/9] rounded-2xl', className)}
+        className={cx('aspect-[16/9] rounded-2xl', GALLERY_SIZE, className)}
       />
     );
   }
@@ -203,10 +218,13 @@ export function Gallery({ name, kind, imageUrls, className }: GalleryProps) {
 
   return (
     <div className={cx('relative', className)}>
-      <div className="grid gap-2 lg:aspect-[3/1] lg:grid-cols-4 lg:grid-rows-2">
+      <div className={cx('grid gap-2 lg:aspect-[3/1] lg:grid-cols-4 lg:grid-rows-2', GALLERY_SIZE)}>
         {tile(
           hero,
-          'aspect-[16/9] rounded-2xl lg:col-span-2 lg:row-span-2 lg:aspect-auto lg:rounded-r-none lg:rounded-l-2xl'
+          cx(
+            'aspect-[16/9] rounded-2xl lg:col-span-2 lg:row-span-2 lg:aspect-auto lg:rounded-r-none lg:rounded-l-2xl',
+            GALLERY_SIZE
+          )
         )}
         {tiles.map((url, i) => tile(url, tileLayout[i], 'max-lg:hidden'))}
       </div>

@@ -60,8 +60,10 @@ on the first fully matching site, by the same path and safety rules as Site Snip
 - one booking per night: a night already held by a snipe or another watch's hold blocks it;
 - the hold is recorded on the watch with its reference and expiry, and a notification says
   "Site held at <place>";
-- **Pay now** on the watch opens the provider's payment page in its own window, on the session
-  that holds the site (ParkStay: 30 minutes);
+- the watch shows the same hold panel as a snipe: "<site> is held for you", the time it is held
+  until and a countdown of the time left to pay (ParkStay: 30 minutes);
+- **Pay now** in that panel opens the provider's payment page in its own window, on the session
+  that holds the site;
 - if a hold is not placed (the site went, the provider refused), the watch alerts as usual and
   shows why.
 

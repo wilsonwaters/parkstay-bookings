@@ -304,7 +304,7 @@ describe('Explore (list-only)', () => {
     await waitFor(() =>
       expect(currentRoute()).toBe('/?arrival=2099-01-10&departure=2099-01-12&adults=2')
     );
-    expect(screen.getByRole('button', { name: /^When/ })).toHaveTextContent(/10 Jan.*12 Jan/);
+    expect(screen.getByRole('button', { name: /^When/ })).toHaveTextContent('Sat 10 – Mon 12 Jan');
     expect(screen.getByRole('button', { name: /^Who/ })).toHaveTextContent('2 adults');
     await user.click(screen.getByRole('button', { name: /^Who/ }));
     await user.click(screen.getByRole('button', { name: 'Increase children' }));
@@ -409,7 +409,7 @@ describe('Explore and the detail page', () => {
     await user.click(screen.getByRole('link', { name: bungarra.name }));
     await screen.findByRole('heading', { level: 1, name: 'Bungarra' });
     window.scrollY = 0;
-    await user.click(screen.getByRole('link', { name: 'Back to Explore' }));
+    await user.click(within(screen.getByRole('main')).getByRole('link', { name: 'Explore' }));
 
     await screen.findByRole('heading', { level: 2, name: '169 places' });
     expect(cards()).toHaveLength(80);

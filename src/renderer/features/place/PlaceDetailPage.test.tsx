@@ -191,7 +191,7 @@ describe('Place detail page', () => {
   it('prefills the side card from the address', async () => {
     await renderPlace();
     expect(within(card()).getByRole('button', { name: /^Dates/ })).toHaveTextContent(
-      'Fri 6 Nov – Sun 8 Nov'
+      'Fri 6 – Sun 8 Nov'
     );
     expect(within(card()).getByRole('button', { name: /^Guests/ })).toHaveTextContent('2 adults');
   });
@@ -499,10 +499,13 @@ describe('Place detail page', () => {
     });
   });
 
-  describe('Back to Explore', () => {
+  describe('the Explore back link', () => {
     it('opens Explore with the stay when the page was not opened from Explore', async () => {
       const { user } = await renderPlace();
-      await user.click(screen.getByRole('link', { name: 'Back to Explore' }));
+      // "← Explore", as PageHeader's back link on every other page.
+      const back = within(screen.getByRole('main')).getByRole('link', { name: 'Explore' });
+      expect(back).toHaveAttribute('href', '#/?arrival=2099-11-06&departure=2099-11-08&adults=2');
+      await user.click(back);
       expect(currentRoute()).toBe('/?arrival=2099-11-06&departure=2099-11-08&adults=2');
     });
 
@@ -515,7 +518,7 @@ describe('Place detail page', () => {
       await waitFor(() => expect(title).toHaveFocus());
       expect(currentRoute()).toBe('/places/parkstay/20');
 
-      await user.click(screen.getByRole('link', { name: 'Back to Explore' }));
+      await user.click(within(screen.getByRole('main')).getByRole('link', { name: 'Explore' }));
       await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' });
       expect(currentRoute()).toBe('/?q=Bungarra');
       // Back, not a new entry: forward returns to the place.

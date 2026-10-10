@@ -53,9 +53,7 @@ describe('EditWatchPage', () => {
     expect(within(provider).getByText('A watch stays with its provider.')).toBeInTheDocument();
 
     expect(screen.getByRole('combobox', { name: 'Location' })).toHaveValue('Osprey Bay');
-    expect(
-      screen.getByRole('button', { name: 'Dates Fri 11 Dec – Sun 13 Dec' })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Dates Fri 11 – Sun 13 Dec' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Guests 2 adults/ })).toBeInTheDocument();
     const gear = screen.getByRole('combobox', { name: 'Camping with' });
     expect(gear).toHaveValue('all');

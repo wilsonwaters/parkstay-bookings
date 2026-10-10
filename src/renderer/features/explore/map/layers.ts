@@ -28,7 +28,7 @@
  * Pins are filled eucalypt, or muted (`fg-muted` on the sand land, 5.60:1) for none free and
  * not open, with a white ring; not bookable online is hollow with a muted ring, the rest
  * hollow with an ink ring. Clusters holding an available place turn eucalypt and say how
- * many are free ("12 free"); available pills win collisions. Only checking pills ("···")
+ * many are available ("12 available", the cards' word); available pills win collisions. Only checking pills ("···")
  * pulse.
  */
 
@@ -143,12 +143,13 @@ export function buildLayers(tokens: MapTokens, options: LayerOptions = {}): MapL
         : tokens.ink,
       'circle-stroke-color': tokens.white,
       'circle-stroke-width': 2,
-      // With dates a cluster with free places is at least 20 px across, for "12 / free".
+      // With dates a cluster with available places is at least 52 px across, for "12 /
+      // available".
       'circle-radius': withAvailability
         ? [
             'case',
             HAS_FREE,
-            ['step', ['get', 'point_count'], 20, 50, 23],
+            ['step', ['get', 'point_count'], 26, 50, 28],
             ['step', ['get', 'point_count'], 15, 10, 19, 50, 23],
           ]
         : ['step', ['get', 'point_count'], 15, 10, 19, 50, 23],
@@ -161,8 +162,8 @@ export function buildLayers(tokens: MapTokens, options: LayerOptions = {}): MapL
     source: SOURCE_ID,
     filter: CLUSTERED,
     layout: {
-      // With dates a cluster with free places says how many ("12" over "free"), so green
-      // clusters still tell them apart when most places are free.
+      // With dates a cluster with available places says how many ("12" over "available", the
+      // cards' word), so green clusters still tell them apart when most places are available.
       'text-field': withAvailability
         ? [
             'case',
@@ -173,8 +174,8 @@ export function buildLayers(tokens: MapTokens, options: LayerOptions = {}): MapL
               {},
               '\n',
               {},
-              'free',
-              { 'font-scale': 0.8 },
+              'available',
+              { 'font-scale': 0.75 },
             ],
             ['format', ['get', 'point_count_abbreviated'], {}],
           ]

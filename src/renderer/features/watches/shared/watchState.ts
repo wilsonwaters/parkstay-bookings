@@ -61,6 +61,11 @@ export function unitNameOf(watch: Watch, unitId: string | undefined, noun: UnitN
   return unit?.unitName ?? `${noun.one.charAt(0).toUpperCase()}${noun.one.slice(1)} ${unitId}`;
 }
 
+/** The hold panel's region name, unique per hold: "Hold at Osprey Bay". */
+export function holdRegionLabel(watch: Watch): string {
+  return `Hold at ${watch.location.name || watch.name}`;
+}
+
 /**
  * The Automatic hold line for a watch. Once its auto-hold has placed a hold (held, expired or
  * paid for), that is what it says, whatever else is stored; otherwise the stored setting.

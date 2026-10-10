@@ -5,8 +5,8 @@
  * availability on the cards and "Available only" (E3). And Explore with 5,000 places.
  */
 import { act, configure, screen, waitFor, within } from '@testing-library/react';
-import { format, parseISO } from 'date-fns';
 import { stayRangeLabel } from '../../../src/renderer/components/nightGrid';
+import { shortRange } from '../../../src/renderer/components/ui/calendar';
 import { addDays, todayIn } from '../../../src/shared/utils/calendar-date';
 import { bulkAvailabilityFor } from '../../fixtures/catalog/bulk-availability';
 import { PARKSTAY_LOCATIONS } from '../../fixtures/catalog/parkstay-locations';
@@ -113,9 +113,7 @@ describe('Explore journey', () => {
     const steps = screen.getByRole('navigation', { name: 'New watch steps' });
     expect(within(steps).getByRole('button', { name: 'Provider, done' })).toBeInTheDocument();
     expect(within(steps).getByRole('button', { name: 'Location, done' })).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Dates Sat 10 Jan – Mon 12 Jan' })
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Dates Sat 10 – Mon 12 Jan' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^Guests 2 adults/ })).toBeInTheDocument();
     expect(screen.queryByText("Some of the link couldn't be used")).toBeNull();
     await user.click(within(steps).getByRole('button', { name: 'Location, done' }));
@@ -124,7 +122,7 @@ describe('Explore journey', () => {
     // Back to the place, then back to Explore as it was left.
     act(() => window.history.back());
     await screen.findByRole('heading', { level: 1, name: 'Bungarra' });
-    await user.click(screen.getByRole('link', { name: 'Back to Explore' }));
+    await user.click(within(screen.getByRole('main')).getByRole('link', { name: 'Explore' }));
     await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' });
     expect(currentRoute()).toBe(explore);
     expect(screen.getByRole('combobox', { name: 'Where' })).toHaveValue('Cape');
@@ -184,7 +182,7 @@ describe('Explore journey', () => {
     expect(currentRoute()).toBe(`/places/parkstay/20?${stay}`);
     const card = screen.getByRole('region', { name: 'Check your dates' });
     expect(within(card).getByRole('button', { name: /^Dates/ })).toHaveAccessibleName(
-      `Dates ${format(parseISO(arrival), 'EEE d MMM')} – ${format(parseISO(departure), 'EEE d MMM')}`
+      `Dates ${shortRange(arrival, departure)}`
     );
     // Opening the place asked ParkStay nothing more.
     expect(mock?.api.catalog.availability).toHaveBeenCalledTimes(1);

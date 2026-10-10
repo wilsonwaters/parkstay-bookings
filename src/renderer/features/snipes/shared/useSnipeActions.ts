@@ -10,11 +10,9 @@ import {
 import { SnipeResult } from '../../../../shared/types/common.types';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
 import type { SiteSnipe, SnipeExecutionResult } from '../../../../shared/types/site-sniper.types';
+import { HOLD_EXPIRED_MESSAGE } from '../../../components/stay/HoldPanel';
 import { useToast } from '../../../components/ui';
 import { unitLabel, unitNounFor } from './snipeState';
-
-/** Shown when the hold ran out before it could be paid for (`HOLD_EXPIRED`). */
-export const HOLD_EXPIRED_MESSAGE = 'Hold expired. The site has been released.';
 
 /** What one attempt found, for the toast that announces it. */
 export function runResultMessage(

@@ -3,14 +3,21 @@ import { Link } from 'react-router-dom';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
 import type { Watch } from '../../../../shared/types/watch.types';
 import { ROUTES } from '../../../app/routes';
+import { HoldPanel } from '../../../components/stay/HoldPanel';
 import { partyLabel, stayNightsLabel, stayDatesLabel } from '../../../components/stay/stayFormat';
 import { relativeTime, timeInZone } from '../../../components/timeFormat';
 import { Card, ProviderBadge, StatusPill } from '../../../components/ui';
 import { DeleteWatchDialog } from '../shared/DeleteWatchDialog';
 import { resultSummary } from '../shared/resultSummary';
-import { useWatchActions } from '../shared/useWatchActions';
+import { useWatchActions, type WatchActions } from '../shared/useWatchActions';
 import { WatchActionsBar } from '../shared/WatchActionsBar';
-import { statusPillFor, unitNameOf, unitNounFor, type WatchState } from '../shared/watchState';
+import {
+  holdRegionLabel,
+  statusPillFor,
+  unitNameOf,
+  unitNounFor,
+  type WatchState,
+} from '../shared/watchState';
 import { PlacePhoto, type PhotoPlace } from '../../../components/PlacePhoto';
 
 export interface WatchCardProps {
@@ -25,21 +32,33 @@ export interface WatchCardProps {
   placeLoading?: boolean;
 }
 
-/** The hold, expired hold or booking line under a card, in the provider's time zone. */
+/**
+ * The hold, expired hold or booking under a card, in the provider's time zone. A live hold is
+ * the shared `HoldPanel`, as on a snipe's card, with "Pay now" in it.
+ */
 export function HoldLine({
   watch,
   state,
   manifest,
-}: Pick<WatchCardProps, 'watch' | 'state' | 'manifest'>) {
+  actions,
+}: Pick<WatchCardProps, 'watch' | 'state' | 'manifest'> & {
+  actions: Pick<WatchActions, 'payNow' | 'paying'>;
+}) {
   const zone = manifest?.timezone ?? 'Australia/Perth';
   const provider = manifest?.shortName ?? 'the provider';
   const unit = unitNameOf(watch, watch.hold?.unitId, unitNounFor(manifest));
   const at = watch.hold ? timeInZone(new Date(watch.hold.expiresAt), zone) : undefined;
   if (state === 'held') {
     return (
-      <p className="text-sm text-warning-fg">
-        {unit} is held until {at}. Pay on {provider} before then to keep it.
-      </p>
+      <HoldPanel
+        unit={unit}
+        expiresAt={watch.hold ? new Date(watch.hold.expiresAt) : undefined}
+        manifest={manifest}
+        label={holdRegionLabel(watch)}
+        onPay={actions.payNow}
+        paying={actions.paying}
+        variant="card"
+      />
     );
   }
   if (state === 'hold-expired') {
@@ -125,7 +144,7 @@ export function WatchCard({
           {stayDatesLabel(stay.arrival, stay.departure, today)} ·{' '}
           {stayNightsLabel(stay.arrival, stay.departure)} · {partyLabel(stay)}
         </p>
-        <HoldLine watch={watch} state={state} manifest={manifest} />
+        <HoldLine watch={watch} state={state} manifest={manifest} actions={actions} />
         <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-1">
           <p className="min-w-0 text-sm text-fg-secondary">
             <span className="font-semibold text-fg">

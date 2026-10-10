@@ -161,15 +161,39 @@ describe('WatchDetailPage', () => {
       hold: { reference: 'PB1', unitId: '1', expiresAt: new Date(Date.now() + 20 * 60_000) },
     };
     const { user } = renderWithApp({ route: '/watches/7', api: api(held, { openPayment }) });
-    expect(await screen.findByText(/Site 1 is held until/)).toBeInTheDocument();
+    // The hold panel a held snipe shows: the unit, its expiry, the time left, Pay now.
+    const hold = await screen.findByRole('region', { name: 'Hold at Osprey Bay' });
+    expect(within(hold).getByText('Site 1 is held for you')).toBeInTheDocument();
+    expect(within(hold).getByText(/^Held until \d{1,2}:\d{2} [ap]m AWST/)).toBeInTheDocument();
+    expect(within(hold).getByRole('timer', { name: /left to pay$/ })).toBeInTheDocument();
+    expect(
+      within(hold).getByText(/^Pay on ParkStay before the hold runs out\./)
+    ).toBeInTheDocument();
     // The stored flag is off in this row, but a hold was placed: the summary says so.
     const preferences = screen.getByRole('region', { name: 'Preferences' });
     expect(within(preferences).getByText(/^On: Site 1 held until /)).toBeInTheDocument();
     expect(within(preferences).queryByText('Off')).toBeNull();
     expect(screen.getAllByRole('button', { name: 'Pay now' })).toHaveLength(1);
     expect(screen.queryByRole('button', { name: 'Check now' })).toBeNull();
-    await user.click(screen.getByRole('button', { name: 'Pay now' }));
+    await user.click(within(hold).getByRole('button', { name: 'Pay now' }));
     expect(openPayment).toHaveBeenCalledWith(7);
+  });
+
+  it('says why when the hold is gone by the time Pay now is pressed (HOLD_EXPIRED)', async () => {
+    const openPayment = jest.fn().mockResolvedValue(fail('gone', 'HOLD_EXPIRED'));
+    const held = {
+      ...WATCH,
+      lastResult: WatchResult.HELD,
+      hold: { reference: 'PB1', unitId: '1', expiresAt: new Date(Date.now() + 20 * 60_000) },
+    };
+    const { user } = renderWithApp({ route: '/watches/7', api: api(held, { openPayment }) });
+    const hold = await screen.findByRole('region', { name: 'Hold at Osprey Bay' });
+    await user.click(within(hold).getByRole('button', { name: 'Pay now' }));
+    expect(
+      await within(screen.getByRole('region', { name: 'Notifications' })).findByText(
+        'This hold has expired, so it can no longer be paid for.'
+      )
+    ).toBeInTheDocument();
   });
 
   it('Delete confirms and returns to /watches', async () => {
