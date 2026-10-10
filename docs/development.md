@@ -75,8 +75,9 @@ Nothing rebuilds native modules for Electron any more: there is no `postinstall`
 (`electron-builder install-app-deps`), and `electron-builder.json` sets `npmRebuild: false`.
 Each would run node-gyp again, against Electron's headers (downloaded for it), to build
 nothing, and electron-builder refuses that step when it packages for another platform.
-`npm run rebuild` (Electron) and `npm rebuild better-sqlite3` (Node) remain for a native module
-that ships no Node-API binary; better-sqlite3 needs neither.
+The old `electron-rebuild` dev dependency is gone too: it pinned node-gyp 9, which imports Python's
+removed `distutils` and fails on Python 3.12 and later. npm's own node-gyp (10 or later) runs the
+install step instead. `npm rebuild better-sqlite3` remains for a broken install.
 
 The Jest scripts check that better-sqlite3 loads first (`scripts/check-native-abi.js`) and say
 why it does not instead of failing every database test. A `NODE_MODULE_VERSION` mismatch can
@@ -155,7 +156,6 @@ does), not on Linux or macOS. Releasing: [release process](release-process.md).
 | `npm run format` / `format:check` | Prettier on `src/`, `tests/` and `scripts/` |
 | `npm run type-check` | TypeScript: main, renderer, the e2e and docs-screenshot projects |
 | `npm run icons` | Regenerates the icons from the brand sources |
-| `npm run rebuild` | Rebuilds native modules for Electron (nothing to compile with better-sqlite3's prebuilt binary) |
 
 ## Testing
 
