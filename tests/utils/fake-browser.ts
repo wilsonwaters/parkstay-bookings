@@ -73,8 +73,6 @@
  * with `tests/utils/fake-playwright.ts` instead.
  */
 
-import fs from 'fs';
-import path from 'path';
 import { JSDOM, ResourceLoader, VirtualConsole, type DOMWindow, type FetchOptions } from 'jsdom';
 import type { ElementHandle, Locator, Page, Response } from 'playwright-core';
 import {
@@ -85,6 +83,7 @@ import {
   type BrowserAvailability,
   type WithPageOptions,
 } from '@main/providers/sdk';
+import { answerFakeSite, type FakeSiteResponse } from './fake-site';
 
 // ---------------------------------------------------------------------------------------
 // Sites
@@ -235,18 +234,10 @@ type LocatorMethod = Of<
 type HandleMethod = Of<ElementHandle, Action | '$' | '$$' | '$eval' | '$$eval' | 'dispose'>;
 type ResponseMethod = Of<Response, 'status' | 'ok' | 'url' | 'statusText' | 'headers' | 'text'>;
 
-interface SiteResponse {
-  url: string;
-  status: number;
-  headers: Record<string, string>;
-  body: string;
-}
-
 const DEFAULT_TIMEOUT_MS = 5_000;
 const POLL_MS = 10;
 const MAX_REDIRECTS = 20;
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
-const NOT_FOUND_HTML = '<!doctype html><title>Not found</title><h1>Not found</h1>';
 const CLOSED = 'Target page, context or browser has been closed';
 
 type Query = (roots: ParentNode[]) => ParentNode[];
@@ -759,46 +750,8 @@ function fromPage(value: unknown, seen = new Set<object>()): unknown {
 }
 
 // ---------------------------------------------------------------------------------------
-// The site
+// The site (how it answers is in ./fake-site, shared with its loopback server)
 // ---------------------------------------------------------------------------------------
-
-function routeFor(routes: FakeRouteMap, request: FakeSiteRequest): FakeRoute | string | undefined {
-  const { url, method } = request;
-  const keys = [
-    url.origin + url.pathname + url.search,
-    url.origin + url.pathname,
-    url.pathname + url.search,
-    url.pathname,
-  ];
-  for (const prefix of [`${method} `, '']) {
-    for (const key of keys) {
-      const route = routes[prefix + key];
-      if (route !== undefined) return typeof route === 'function' ? route(url, request) : route;
-    }
-  }
-  return undefined;
-}
-
-function answer(site: FakeBrowserSite, request: FakeSiteRequest): SiteResponse {
-  const raw = typeof site === 'function' ? site(request.url, request) : routeFor(site, request);
-  const route: FakeRoute =
-    raw === undefined
-      ? { status: 404, body: NOT_FOUND_HTML }
-      : typeof raw === 'string'
-        ? { body: raw }
-        : raw;
-  const headers: Record<string, string> = { 'content-type': 'text/html; charset=utf-8' };
-  for (const [name, value] of Object.entries(route.headers ?? {})) {
-    headers[name.toLowerCase()] = value;
-  }
-  let body = route.body ?? route.html ?? '';
-  if (route.file !== undefined) {
-    const file = path.resolve(route.file);
-    if (!fs.existsSync(file)) throw new Error(`fake browser: ${request.url.href}: no file ${file}`);
-    body = fs.readFileSync(file, 'utf8');
-  }
-  return { url: request.url.href, status: route.status ?? 200, headers, body };
-}
 
 function fetchBody(body: unknown): string | undefined {
   if (body === undefined || body === null) return undefined;
@@ -817,7 +770,7 @@ function fetchBody(body: unknown): string | undefined {
 }
 
 /** The part of a fetch `Response` page scripts use. */
-function fetchResponse(window: DOMWindow, response: SiteResponse): object {
+function fetchResponse(window: DOMWindow, response: FakeSiteResponse): object {
   const header = (name: string): string | undefined => response.headers[name.toLowerCase()];
   return {
     ok: response.status >= 200 && response.status < 300,
@@ -1012,10 +965,10 @@ function openPage(shared: Shared, timeoutMs: number | undefined, onClose: () => 
   // ---- loading pages from the site ----
 
   /** Asks the site, following redirects, and records every request. */
-  function load(request: NavigationRequest, resourceType: FakeResourceType): SiteResponse {
+  function load(request: NavigationRequest, resourceType: FakeResourceType): FakeSiteResponse {
     let current = request;
     for (let hops = 0; ; hops++) {
-      const response = answer(shared.site, { ...current, resourceType });
+      const response = answerFakeSite(shared.site, { ...current, resourceType });
       shared.requests.push({
         resourceType,
         method: current.method,
@@ -1036,11 +989,14 @@ function openPage(shared: Shared, timeoutMs: number | undefined, onClose: () => 
   }
 
   /** Loads the next page and settles once it is in. A later navigation interrupts this one. */
-  function startNavigation(request: NavigationRequest, byScript: boolean): Promise<SiteResponse> {
+  function startNavigation(
+    request: NavigationRequest,
+    byScript: boolean
+  ): Promise<FakeSiteResponse> {
     const id = ++navigationId;
     navigationsStarted++;
     const interrupted = (): boolean => closed || id !== navigationId;
-    const run = (async (): Promise<SiteResponse> => {
+    const run = (async (): Promise<FakeSiteResponse> => {
       await tick();
       if (interrupted()) throw new Interrupted(`Navigation to "${request.url}" was interrupted`);
       const response = load(request, 'document');
@@ -1058,7 +1014,7 @@ function openPage(shared: Shared, timeoutMs: number | undefined, onClose: () => 
   }
 
   /** Replaces the document with the site's answer; its scripts run as it is parsed. */
-  function commit(response: SiteResponse): void {
+  function commit(response: FakeSiteResponse): void {
     dom.window.close();
     pendingChange = undefined;
     dom = new JSDOM(response.body, {
@@ -1719,7 +1675,7 @@ function openPage(shared: Shared, timeoutMs: number | undefined, onClose: () => 
     return facade;
   }
 
-  function responseFor(response: SiteResponse): object {
+  function responseFor(response: FakeSiteResponse): object {
     const api: Record<ResponseMethod, unknown> = {
       status: () => response.status,
       ok: () => response.status >= 200 && response.status < 300,
@@ -1755,7 +1711,7 @@ function openPage(shared: Shared, timeoutMs: number | undefined, onClose: () => 
   ): Promise<object> {
     const waitUntil = options.waitUntil ?? 'load';
     checkLoadState(api, waitUntil);
-    let response: SiteResponse;
+    let response: FakeSiteResponse;
     try {
       response = await startNavigation(request, false);
     } catch (error) {

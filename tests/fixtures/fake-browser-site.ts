@@ -13,8 +13,7 @@
  * Anything else is a 404 page.
  */
 
-import http from 'http';
-import type { AddressInfo } from 'net';
+import { serveFakeSite, type FakeSiteServer } from '../utils/fake-site';
 
 export interface FakeSiteUnit {
   id: string;
@@ -168,19 +167,6 @@ export function renderFakeSite(url: URL): { status: number; html: string } {
 }
 
 /** Serves the fake site on a loopback port (for a real browser). */
-export async function startFakeSiteServer(): Promise<{ baseUrl: string; close(): Promise<void> }> {
-  const server = http.createServer((req, res) => {
-    const { status, html } = renderFakeSite(new URL(req.url ?? '/', 'http://127.0.0.1'));
-    res.writeHead(status, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(html);
-  });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address() as AddressInfo;
-  return {
-    baseUrl: `http://127.0.0.1:${port}`,
-    close: () =>
-      new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve()))
-      ),
-  };
+export function startFakeSiteServer(): Promise<FakeSiteServer> {
+  return serveFakeSite(renderFakeSite);
 }
