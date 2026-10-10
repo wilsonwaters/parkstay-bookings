@@ -1,16 +1,19 @@
 # Project Progress — WA Stay
 
-_Last updated: 2026-10-10 (orchestrator)_
+_Last updated: 2026-10-11 (orchestrator)_
 
 ## Phase
-Phase 6 — Final review done; the single PR is next. Previously: Phase 5 — System verification (passed), Phase 4 — Execution loop. Planning: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
+Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wilsonwaters/wa-stay`). Phase 6 is done: the final review fixes are merged and the PR is open. The stakeholder asked for CI fixes, Node 24, hardening, dependency upgrades and developer-experience fixes on the same PR.
 
 ## Currently in flight
-- **Phase 6 final review** of the whole change (`b2b8db5..6f53a18`), two independent reviewers:
-  - **A — code, security, release readiness:** FIX FIRST on one major finding, now fixed (`d618101`): v8 copied v1's never-used `auto_book`, so upgraded watches with "Enable Auto-booking" ticked would have started placing real holds; v8 now writes 0 (test proves the old code failed). Also: background update-check failures no longer show the update card (only a download the person started reports, in plain words); the tag pipeline checks formatting. Provider boundary, composition root, IPC guard, CSP, window guards, `runsFromSource`, secrets and Mapbox token placement confirmed. `npm audit --omit=dev`: 12 high, 0 critical, none reachable at runtime by the reviewer's reading. Attribution and secrets scans clean.
-  - **B — docs, copy, design, a11y (also Q2's review):** FIX FIRST on docs: the release process bumped `minor` (1.3.0 under a v2.0.0 tag) and the checklist was out of order and asked for an auto-update test before publishing. Fixed (`9c46003`): `npm version major`, the 2.0.0 steps in order (rename → redirect incl. `releases.atom` → description → Mapbox secret → green CI → tag builds a draft → Windows checks on the draft, update path via the installer's `--updated` → publish → real update), LICENSE decision added, user-guide/troubleshooting/CHANGELOG/CLAUDE.md fixes. Design polish F1 (`434dff3`): one shared `HoldPanel` for watches and snipes, one `BackLink`, the place page's stay card on the first screen at 1440×900, focus into the email form, one "available" wording and date-range format. axe 0 critical/serious on 42 captures; 201 tab stops all with visible focus. Design verdict: crafted and Airbnb-like with photos; placeholders without (O8).
-- Gate on the final head: lint 0 errors, format, type-check, 3666 tests, `test:tz` 7, e2e 21 (+1 opt-in skip).
-- Next: open the single PR (no AI attribution; Closes #12–#41); hand the stakeholder the repo description, the release checklist and the open decisions. Issue bodies are not re-synced: the spec files in `ai-state/streams/*/tasks/` are canonical and the PR closes the issues.
+- **DX5** (validation follow-ups, `ai-state/streams/providers/tasks/DX5-validation-follow-ups.md`), on lane/a:
+  - doc errors: the example's hold requests bypass its limiter; `BulkAvailabilityEntry` is undocumented; the signed-in check's e2e fixture route isn't mentioned;
+  - doc gaps; Settings → Accounts wording driven by the manifest;
+  - the preview checks availability with dates;
+  - a browser-provider preview recipe that doesn't weaken TLS.
+
+  Then a review, a merge and a report to the stakeholder.
+- PR #42 CI is green on every head up to `8af2606` (Ubuntu, Windows and macOS on Node 24, e2e, packaged smoke, Build Windows). DX4 (`3726435`) and its spec commit (`10512b5`) are pushed; CI is running.
 
 ## Notes
 - 2026-10-10 ~04:30 UTC: a third usage limit stopped U4 (final gate), U2 (gate), the U3 fix and the E3 fix; all resumed at 06:25 UTC from saved state (U4 `28f3e40` and U2 `cd243b0` backed up to `wip/*`).
@@ -22,6 +25,32 @@ Phase 6 — Final review done; the single PR is next. Previously: Phase 5 — Sy
 - 2026-10-04 ~10:30 UTC: an account usage limit stopped all agents; resumed at 10:55 from their saved lanes (pre-rebase work pinned as `backup/e1-pre-rebase` and `backup/v4-pre-rebase`, local only).
 
 ## Completed
+- **DX4** Provider scaffold, agent checklist and guide (`1e048cf`, review follow-ups `3726435`).
+  - **Scaffold:** `npm run provider:new -- <id> [--api|--browser] [--search] [--name] [--no-register]` (`scripts/new-provider.mjs`, templates in `scripts/templates/provider/`). Every variant passes the full gate and e2e as generated. Placeholder addresses fail loudly and nothing is sent.
+  - **Checklist:** CLAUDE.md "Adding a provider", `.claude/commands/add-provider.md`, and `AGENTS.md` pointing to it.
+  - **Guide:** a rewrite with a quick start, the four corrections, compiling holds and sign-in examples, core timeouts, fixtures, the fake browser and an opt-in preview spec (`PREVIEW_PROVIDER`); internal references removed.
+  - **Review:** REQUEST_CHANGES, then fixed. The timeouts table now covers the 15 s sign-in check and bulk availability's 20 s. The ParkStay docs lose the open-question codes, and the docs test refuses them. The scaffold handles an empty built-in list, exits 1 on a Prettier failure, and undoes its folders on a failed run.
+  - **Validation run** (fresh agent, docs only; results in `ai-state/research/provider-dx-review.md`): an API provider was visible in the app in 6 min and green on the full gate in 11.5 min; a browser search-mode provider was green in 12.8 min. 0 unrelated failures (16 before). The browser preview needed improvising → DX5.
+- **DX3** Fake browser (`2a76509`): a jsdom `BrowserAutomation` with strict Playwright-like locators that runs page scripts. `createTestProviderContext` refuses a browser unless the test gives one.
+- **DX2** Search-mode catalogues in the app (`44f4dbb`, review follow-ups `b9c66ed`):
+  - `catalog.searchArea` by snapped map area, optional `searchText`;
+  - limits: at most 5 pages, a 20 s deadline, the provider's TTL, a 60 s failure backoff, only the 2 newest area searches keep paging;
+  - `pending` on results, `catalog:updated` on new places;
+  - Explore and the watch flow's location step work for such providers.
+- **DX1** Provider-agnostic tests (`6130011`): `providerFactories` on `createContainer`; the source-only `WA_STAY_PROVIDERS` hook (the e2e harness pins ParkStay); a two-provider container test. Registering a provider breaks no existing test.
+- **Provider DX review** (`61e11fd`, `ai-state/research/provider-dx-review.md`): two throwaway providers built from the docs, seven provider types assessed, ten ranked recommendations. The stakeholder approved the first group (DX1–DX4).
+- **M3** Tooling (`803c8b1`, Prettier reformat `bf5d405`, test waits `a7d52ed`): TypeScript 6.0 (not 7: typescript-eslint and ts-jest), Vite 8, Jest 30 with jsdom 26, ESLint 10 flat config, React Router 8 (ES modules only, compiled for Jest by esbuild), Prettier 3.9, husky 9.
+- **M2** Frameworks (`038b99c`, follow-ups `ae30dc3`): React 19, React Router 7, Tailwind CSS 4 (`@tailwindcss/postcss`), zod 4, react-hook-form 7.89. The token guard learned Tailwind 4's palette and utilities.
+- **M1** Platform (`102b196`):
+  - Node 24, Electron 44, better-sqlite3 13 (one Node-API binary for Node and Electron; `electron-rebuild` dropped in `2352340`), electron-builder 26;
+  - packaged hardening: fuses off for RunAsNode, NODE_OPTIONS and inspect; asar-only with integrity; a permission handler; no client certificates;
+  - packaging: one better-sqlite3 binary per platform; Windows exe checks in `build.yml`.
+- **CI on Windows and macOS** (`7caccca`, `a51e6a3`, `8024464`, `b182fae`, `6df444a`, `8af2606`, `d643f47`):
+  - Windows: file locks, path separators, ES-module transform patterns;
+  - Node differences: the emoji guard on Node 20;
+  - e2e: focus and date-pick waits; midnight-safe hold labels;
+  - CI setup: newest Node 24 patch on every runner (`check-latest`), and Jest recycles grown workers (`workerIdleMemoryLimit`), which fixed a macOS segfault.
+  - LICENSE holder is WA Stay. `.blockmap` files are uploaded for differential updates. `npm audit --omit=dev` = 0.
 - **Q2** (#41) Documentation (`35d6186` + example-provider tests `1b1c4ec`): README, upgrade guide (password and Gmail OTP do not carry over), accurate CLAUDE.md (migration rules intact), provider developer guide covering API and browser-automation providers with compiling examples registered in tests, verified ParkStay endpoint and auth docs, Gmail docs and stale architecture docs removed, CHANGELOG 2.0.0 [Unreleased], `docs/release-checklist-2.0.md`, `npm run docs:screenshots` (provider photos blocked per brief O8). Tests: example-providers, docs-sync, markdown-links, endpoints-doc. Gate ×3 green (3634) + test:tz. Merged; its independent review is folded into the Phase 6 final review. Open stakeholder decision: `LICENSE` copyright holder still "WA ParkStay Bookings".
 - **Final polish batch**: `runsFromSource` for the browser path and provider-window devTools; snipe unit names refresh on `catalog:updated`; one step total across snipe states (Held 4 of 5; cancellation 3 of 4); main rejects a scheduled release on/after check-in (`VALIDATION`, `releaseAt`); retention generation guard; Combobox fits 8 two-line suggestions (≈45 px may still scroll at the absolute minimum window; accepted). Gate ×3 green (3529) + test:tz; e2e 20/20. Merged.
 - **Q1 phase 2** (#40) E2E suite: review REQUEST_CHANGES (attribute selectors vs the grep criterion; leftover `test.fail`; Explore dates needed a host network; three journeys missing). Fixed (`ca4eb9f`): `runsFromSource` gate (unpackaged and not in asar) for hooks and the renderer URL, role-based step checks, `forceOnline()` via CDP, Perth dates, all Settings sections walked, persistence via a relaunched watch, CI artifacts `if: always()`, `test:tz` in the release-gating job, new `packaged-smoke` CI job; new journeys place → watch (+ relaunch), held snipe + notification deep link (seeded, payment page blocked, no hold), legacy v5 upgrade. 19/19 ×3 under xvfb and under `unshare -n`. Gate green (3517) + test:tz. Merged. Follow-ups for final polish: `WA_STAY_BROWSER_PATH`/provider-window devTools should use `runsFromSource`; the snipe page should refresh unit names on `catalog:updated`; the packaged-smoke job has only run locally.
@@ -61,14 +90,14 @@ Phase 6 — Final review done; the single PR is next. Previously: Phase 5 — Sy
 - Dependencies installed: playwright-core 1.56.1, sanitize-html 2.17, mapbox-gl, lucide-react, Figtree and Fraunces.
 
 ## Next to dispatch
-- Nothing: all 30 tasks, the verification fixes and the final-review fixes are merged.
+- Nothing after DX5. All 30 tasks, the verification and final-review fixes, M1–M3 and DX1–DX4 are merged. More provider DX work waits for the stakeholder (see Active blockers).
 
 ## Notes
 - Spec files in `ai-state/streams/*/tasks/` are canonical. Orchestrator addenda are added there, and issue bodies are synced at the end.
 
 ## Active blockers
-- None. Stakeholder actions (non-blocking, all in `docs/release-checklist-2.0.md`): rename the repo and set its description before tagging 2.0.0; add the `MAPBOX_ACCESS_TOKEN` Actions secret; decide the LICENSE holder; delete the merged `wip/*` branches; the manual Windows, ParkStay sign-in (PQ1/PQ2) and GPU checks.
-- Follow-ups suggested by the final review (not blocking): Electron fuses (RunAsNode, NODE_OPTIONS, inspect off; OnlyLoadAppFromAsar on); a permission handler on the main window's session; a non-major `npm audit fix` and moving `axios`/`tsconfig-paths` to devDependencies; small duplicated helpers (`zonedInstant`, `unitNounFor`, `needsAccountForHolds`, `withoutQuery`); `ParkStayBookingData` in shared types; upload `.blockmap` files for differential updates; real place photos in the docs screenshots.
+- None. Stakeholder actions (non-blocking, all in `docs/release-checklist-2.0.md`): add the `MAPBOX_ACCESS_TOKEN` Actions secret; the manual Windows checks, the ParkStay sign-in checks (PQ1/PQ2) and the GPU check; delete the 11 `wip/*` branches on GitHub (the git proxy refuses deletes). Done by the stakeholder: repo renamed to `wa-stay` with its description; LICENSE holder decided (WA Stay).
+- Provider DX follow-ups not yet approved: fixture mode for `ctx.browser` (the most valuable next fix after DX5), a typed `defineProvider`, contract-suite messages and checks, SDK helpers (`requestJson`, a rate limiter, `Retry-After`, per-provider timeouts), and the model gaps (minimum stay, tax and fees, `credentials`/OAuth sign-in, an access-gate base class).
 
 ## Proposed GitHub repo description (stakeholder to paste)
 > WA Stay — find and book places to stay across Western Australia. Map-first discovery, availability watches and instant site holds across providers, starting with ParkStay WA. Electron desktop app.

@@ -174,3 +174,42 @@ to write. Item 10 is for the providers on the roadmap (RAC, Hipcamp, Airbnb).
 The reviewer's friction log (40 timestamped entries), screenshots of Bush Camps WA in Explore, its
 place page and Settings → Accounts, the search-mode dead end, the deliberate-mistake catalogue and
 the experiment's code as a patch were kept with the orchestrator's working files.
+
+## Validation after the first fixes (DX1–DX4)
+
+_2026-10-11, on `1e048cf`._ A fresh agent, new to the codebase, added two fictional providers
+using only the scaffold and the docs. It started from README, CLAUDE.md and AGENTS.md, logged
+every source file the docs didn't point to, and used fixtures and loopback only.
+
+- **Saltbush Cabins** (API): a nested `parks[].cabins[]` catalogue of 5 parks, a per-cabin
+  `{date, status, priceCents}` calendar, bulk availability, watches, holds over fake HTTP, an
+  optional `browser-session` sign-in and a `pets` stay field.
+- **Dune Trail Camps** (browser): a `search`-mode catalogue (area and name search), with
+  availability that appears only after a JavaScript search form runs.
+
+| Provider | Compiles | Own tests green | Visible in the app | Full gate green |
+| --- | --- | --- | --- | --- |
+| Bush Camps WA (API), before | 5 min | 7 min (1 fix) | 11 min | 16 unrelated failures |
+| Saltbush Cabins (API), after | 3.8 min | 5.0 min (51/51, first run) | 6.0 min (preview spec, first run) | 11.5 min (Prettier on hand-written files) |
+| Coastal Caravan (browser, search), before | 2 min | 3 min | Dead end (search mode not wired) | — |
+| Dune Trail Camps (browser, search), after | 2.3 min | 2.9 min (42/42, first run) | 7.6 min (improvised; see below) | 12.8 min |
+
+- **Unrelated test failures after registering:** none. With both providers registered: 4043
+  tests passed, `test:tz` passed, and e2e had 21 passed.
+- **Source-diving:** four short lookups, about 2 minutes in total.
+- **No blockers.** The one major friction was previewing a browser provider in the app: there
+  is no recipe, because fixture mode does not serve `ctx.browser`. The agent improvised with a
+  loopback copy of its pages and a Chromium wrapper; that recipe weakens TLS and is not
+  documented.
+- **Doc errors:**
+  - the example's hold requests bypass its limiter;
+  - `BulkAvailabilityEntry` is undocumented and its field names invite a swap;
+  - the signed-in check's e2e fixture route isn't mentioned.
+- **Wording bug for providers other than ParkStay:** Settings → Accounts says "before a
+  release" for a provider without Site Sniper, and "No account needed" twice.
+
+Follow-ups are in DX5 (`ai-state/streams/providers/tasks/DX5-validation-follow-ups.md`). The
+review's item 5 (fixture mode for `ctx.browser`) is now the most valuable next fix.
+
+**Verdict:** an AI agent succeeds first time with an API provider. With a browser provider it
+gets everything first time except the in-app preview.
