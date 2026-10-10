@@ -22,7 +22,7 @@ Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wils
   - **Next:** PD1, then its review, then the merge, then PD2, then PD3.
   - **Open for the stakeholder:**
     - PD2 reads ParkStay's public page HTML, so DBCA's terms for reusing page content are unknown.
-    - Side note: ParkStay's page now uses `queue-endpoint.dbca.wa.gov.au` for queue checks, where the app uses `queue.dbca.wa.gov.au`. Worth a read-only check.
+    - The queue endpoint change is noted as a follow-up under "Next to dispatch".
 - PR #42 is green on `32f43e2`. A safety-net check-in is armed for 02:20 UTC.
 
 ## Notes
@@ -119,6 +119,14 @@ Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wils
 - Dependencies installed: playwright-core 1.56.1, sanitize-html 2.17, mapbox-gl, lucide-react, Figtree and Fraunces.
 
 ## Next to dispatch
+- **Follow-up, after PD1–PD3 (stakeholder, 2026-10-11): the DBCA queue endpoint changed.** ParkStay's live page now starts its queue manager with `sitequeuemanager.init('dbca.wa.gov.au','https://queue.dbca.wa.gov.au','https://queue-endpoint.dbca.wa.gov.au','parkstayv2','parkstay.dbca.wa.gov.au')`, and its session checks go to `https://queue-endpoint.dbca.wa.gov.au/api/check-create-session/?…&new_session_count=0`. WA Stay's queue gate uses `queue.dbca.wa.gov.au` (`src/main/providers/parkstay/constants.ts`, last verified 2026-04-06).
+  - **Plan:** find what changed and when from DBCA's GitHub history: the commits and PRs of `dbca-wa/parkstay_bs_v2`, and the repo for the queue system (`sitequeuemanager`, likely `dbca-wa/...queue...`).
+    - Did the session-check API move hosts?
+    - Is the old host kept as an alias?
+    - Did the API's shape change?
+  - Then a read-only check against both hosts, without joining or holding a queue place beyond what a visitor's page load does.
+  - Then update `queue/`, `constants.ts`, its fixtures and `docs/providers/parkstay/endpoints.md` if needed.
+  - Evidence so far: `ai-state/research/parkstay-details.md` §6.
 - Nothing. All 30 tasks, the verification and final-review fixes, M1–M3 and DX1–DX5 are merged. More provider DX work waits for the stakeholder (see Active blockers).
 
 ## Notes
