@@ -64,7 +64,12 @@ beforeEach(() => {
   log.warn.mockClear();
 });
 
+/** Set by a test that pins `process.platform`. */
+let restorePlatform: (() => void) | undefined;
+
 afterEach(() => {
+  restorePlatform?.();
+  restorePlatform = undefined;
   jest.useRealTimers();
   jest.restoreAllMocks();
 });
@@ -110,6 +115,10 @@ describe('installQuitHold', () => {
   });
 
   it('a browser that hangs on close: the hold ends when it is killed at 5 s, within the grace', async () => {
+    // The POSIX kill path (Windows uses taskkill, covered in browser-automation's tests).
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    Object.defineProperty(process, 'platform', { ...platform, value: 'linux' });
+    restorePlatform = () => Object.defineProperty(process, 'platform', platform);
     const kill = jest.spyOn(process, 'kill').mockImplementation(() => true);
     const registry = new ProviderRegistry();
     const fake = createFakeProvider({ id: 'fake' });

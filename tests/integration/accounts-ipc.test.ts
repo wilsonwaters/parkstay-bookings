@@ -131,7 +131,11 @@ describe('accounts over IPC', () => {
       registerIpcHandlers(container, { isTrustedSender: () => true, ipc });
     });
 
-    afterEach(() => disposeFixture(fixture));
+    // The container's own connection must close before the file goes (Windows locks it).
+    afterEach(async () => {
+      await container.dispose();
+      disposeFixture(fixture);
+    });
 
     it('lists ParkStay with the fixture email as a hint, and leaves out an account:none provider', async () => {
       await expect(call('accounts:list')).resolves.toEqual({

@@ -62,9 +62,11 @@ describe('logger', () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-stay-logs-'));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     opened.splice(0).forEach((logger) => logger.close());
-    fs.rmSync(dir, { recursive: true, force: true });
+    // Async with retries: Windows refuses to delete a log file until its transport has
+    // closed it, which happens on a later tick.
+    await fs.promises.rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
     jest.restoreAllMocks();
   });
 
