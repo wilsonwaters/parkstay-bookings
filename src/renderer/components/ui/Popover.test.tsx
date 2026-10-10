@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Button } from './Button';
 import { Popover } from './Popover';
@@ -53,6 +53,25 @@ describe('Popover', () => {
     await userEvent.click(trigger());
     await userEvent.click(screen.getByRole('button', { name: 'Elsewhere' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('an outside click on something focusable leaves focus there; anywhere else, on the trigger', async () => {
+    const { container } = render(
+      <>
+        <Filters />
+        <p>Plain text</p>
+      </>
+    );
+    await userEvent.click(trigger());
+    await userEvent.click(screen.getByRole('button', { name: 'Elsewhere' }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByRole('button', { name: 'Elsewhere' })).toHaveFocus();
+
+    await userEvent.click(trigger());
+    await userEvent.click(screen.getByText('Plain text'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(trigger()).toHaveFocus());
+    expect(container).toBeInTheDocument();
   });
 
   it('closes from inside with the close function, and when Tab leaves either end', async () => {

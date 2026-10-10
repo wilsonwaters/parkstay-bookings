@@ -1,4 +1,4 @@
-import { BaseRepository } from './base.repository';
+import { BaseRepository, readInstant } from './base.repository';
 import { Notification, NotificationInput } from '@shared/types';
 import { NotificationType, RelatedType } from '@shared/types/common.types';
 
@@ -126,7 +126,8 @@ export class NotificationRepository extends BaseRepository<Notification> {
       relatedType: row.related_type as RelatedType | undefined,
       actionUrl: row.action_url,
       isRead: Boolean(row.is_read),
-      createdAt: this.parseDate(row.created_at)!,
+      // `DEFAULT CURRENT_TIMESTAMP`: UTC with no zone, so "5 min ago" is right in Perth too
+      createdAt: readInstant(row.created_at) ?? new Date(0),
     };
   }
 }

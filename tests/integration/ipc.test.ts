@@ -11,6 +11,7 @@ import { createAppUrlMatcher } from '@main/app/renderer-entry';
 import { registerIpcHandlers } from '@main/ipc';
 import { createSenderGuard } from '@main/ipc/sender-guard';
 import { NotifierChannel, SMTPPreset, Watch } from '@shared/types';
+import { NotificationType } from '@shared/types/common.types';
 import type { APIResponse } from '@shared/types';
 import { createMockWatchInput } from '@tests/fixtures/watches';
 import {
@@ -152,6 +153,39 @@ describe('IPC through the container', () => {
       const listed = await call<Watch[]>('watches:list');
       expect(listed.data).toHaveLength(1);
       expect(container.repositories.users.findAll()).toHaveLength(1);
+    });
+
+    it('notifications.unreadCount counts every unread one, past the list page; markAllRead clears it', async () => {
+      const notifications = container.repositories.notifications;
+      for (let n = 1; n <= 25; n += 1) {
+        const created = notifications.create({
+          userId: 1,
+          providerId: 'parkstay',
+          type: NotificationType.WATCH_FOUND,
+          title: `Sites available at Camp ${n}`,
+          message: 'x',
+        });
+        if (n <= 2) notifications.markAsRead(created.id);
+      }
+
+      await expect(call('notifications:list', { limit: 20 })).resolves.toMatchObject({
+        success: true,
+        data: expect.objectContaining({ length: 20 }),
+      });
+      await expect(call('notifications:unread-count')).resolves.toEqual({
+        success: true,
+        data: 23,
+      });
+      await expect(call('notifications:mark-all-read')).resolves.toMatchObject({ success: true });
+      await expect(call('notifications:unread-count')).resolves.toEqual({
+        success: true,
+        data: 0,
+      });
+      // The payloads are void: anything else is refused before the handler runs
+      await expect(call('notifications:unread-count', { userId: 9 })).resolves.toMatchObject({
+        success: false,
+        code: 'VALIDATION',
+      });
     });
 
     it('a missing record is NOT_FOUND', async () => {

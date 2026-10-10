@@ -100,6 +100,13 @@ export function Popover({
       const target = event.target as Node;
       if (rootRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
       close();
+      // A press on something that cannot take focus moves it to the page itself once the press
+      // is handled: give it back to the trigger then.
+      const trigger = triggerRef.current;
+      setTimeout(() => {
+        const active = document.activeElement;
+        if (!active || active === document.body) trigger?.focus();
+      }, 0);
     };
     document.addEventListener('pointerdown', onPointerDown);
     return () => document.removeEventListener('pointerdown', onPointerDown);

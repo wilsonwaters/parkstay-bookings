@@ -108,7 +108,9 @@ describe('App shell', () => {
       });
 
       it('is an icon button named "Notifications" with no badge when all are read', async () => {
-        renderWithApp({ api: { notifications: { list: jest.fn().mockResolvedValue(ok([])) } } });
+        renderWithApp({
+          api: { notifications: { unreadCount: jest.fn().mockResolvedValue(ok(0)) } },
+        });
         const [banner] = getBanners();
         const bell = within(banner).getByRole('button', { name: 'Notifications' });
         expect(bell).toHaveAttribute('aria-expanded', 'false');
@@ -119,11 +121,10 @@ describe('App shell', () => {
         await screen.findByRole('heading', { level: 1, name: 'Explore places to stay' });
       });
 
-      it('puts the unread count in its name and shows it in a decorative badge', async () => {
-        const list = [1, 2, 3, 4].map((id) => notification(id, id === 2));
-        const mock = createMockApi({
-          notifications: { list: jest.fn().mockResolvedValue(ok(list)) },
-        });
+      it("puts main's unread count in its name and shows it in a decorative badge", async () => {
+        const unreadCount = jest.fn().mockResolvedValue(ok(3));
+        const list = jest.fn().mockResolvedValue(ok([notification(5, false)]));
+        const mock = createMockApi({ notifications: { unreadCount, list } });
         const { user } = renderWithApp({ api: mock });
         const bell = await screen.findByRole('button', { name: 'Notifications, 3 unread' });
         const badge = within(bell).getByTestId('notification-badge');
@@ -131,19 +132,21 @@ describe('App shell', () => {
         expect(badge).toHaveAttribute('aria-hidden', 'true');
         expect(badge).toHaveClass('bg-accent', 'text-accent-fg');
 
+        unreadCount.mockResolvedValue(ok(4));
         mock.emit('notification:created', notification(5, false));
-        expect(screen.getByRole('button', { name: 'Notifications, 4 unread' })).toBe(bell);
+        expect(await screen.findByRole('button', { name: 'Notifications, 4 unread' })).toBe(bell);
 
         await user.click(bell);
         expect(bell).toHaveAttribute('aria-expanded', 'true');
-        expect(screen.getByText('Notification 5')).toBeInTheDocument();
+        expect(await screen.findByText('Notification 5')).toBeInTheDocument();
       });
 
-      it('caps the badge at 9+ but names the full count', async () => {
-        const many = Array.from({ length: 12 }, (_, i) => notification(i + 1, false));
-        renderWithApp({ api: { notifications: { list: jest.fn().mockResolvedValue(ok(many)) } } });
-        const bell = await screen.findByRole('button', { name: 'Notifications, 12 unread' });
-        expect(within(bell).getByTestId('notification-badge')).toHaveTextContent('9+');
+      it('caps the badge at 99+ but names the full count', async () => {
+        renderWithApp({
+          api: { notifications: { unreadCount: jest.fn().mockResolvedValue(ok(120)) } },
+        });
+        const bell = await screen.findByRole('button', { name: 'Notifications, 120 unread' });
+        expect(within(bell).getByTestId('notification-badge')).toHaveTextContent('99+');
       });
     });
 
@@ -194,14 +197,12 @@ describe('App shell', () => {
         within(dialog).getByText('Find and book places to stay across Western Australia')
       ).toBeVisible();
       expect(within(dialog).getByText('28.3.3')).toBeVisible();
-      expect(within(dialog).getByRole('link', { name: 'GitHub' })).toHaveAttribute(
-        'href',
-        'https://github.com/wilsonwaters/wa-stay'
-      );
-      expect(within(dialog).getByRole('link', { name: 'Report an issue' })).toHaveAttribute(
-        'href',
-        'https://github.com/wilsonwaters/wa-stay/issues'
-      );
+      expect(
+        within(dialog).getByRole('link', { name: 'GitHub (opens in your browser)' })
+      ).toHaveAttribute('href', 'https://github.com/wilsonwaters/wa-stay');
+      expect(
+        within(dialog).getByRole('link', { name: 'Report an issue (opens in your browser)' })
+      ).toHaveAttribute('href', 'https://github.com/wilsonwaters/wa-stay/issues');
 
       await user.click(within(dialog).getByRole('button', { name: 'Done' }));
       expect(screen.queryByRole('dialog')).toBeNull();
@@ -358,19 +359,41 @@ describe('App shell', () => {
   });
 
   describe('tray', () => {
-    it('stacks a toast, the update card and queue status in that order in one container', async () => {
+    it('stacks a toast, the update card and the access chip in that order in one container', async () => {
       const mock = createMockApi({
-        providers: {
-          list: jest.fn().mockResolvedValue(fail('Registry offline', 'NOT_FOUND')),
-          accessStatus: jest.fn().mockResolvedValue(ok(activeAccess())),
+        providers: { accessStatus: jest.fn().mockResolvedValue(ok(activeAccess())) },
+        notifications: {
+          unreadCount: jest.fn().mockResolvedValue(ok(1)),
+          list: jest.fn().mockResolvedValue(
+            ok([
+              {
+                id: 1,
+                userId: 1,
+                providerId: 'parkstay',
+                type: NotificationType.WATCH_FOUND,
+                title: 'Sites available at Osprey Bay',
+                message: '2 sites',
+                isRead: false,
+                createdAt: new Date(),
+              },
+            ])
+          ),
+          markRead: jest.fn().mockResolvedValue(fail('The database is busy')),
         },
       });
-      renderWithApp({ api: mock });
+      const { user } = renderWithApp({ api: mock });
+      // A failed action raises an error toast.
+      await user.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }));
+      await user.click(
+        await screen.findByRole('button', { name: 'Mark as read: Sites available at Osprey Bay' })
+      );
       const toast = await screen.findByRole('alert');
-      expect(toast).toHaveTextContent("Provider details couldn't be loaded. Registry offline");
+      expect(toast).toHaveTextContent("That notification couldn't be marked as read.");
+      await user.keyboard('{Escape}');
       mock.emit('updater:available', { version: '2.1.0' });
-      const update = await screen.findByText('Update Available');
-      const queue = await screen.findByText('Queue Status');
+      const update = await screen.findByText('Update available');
+      const queue = await screen.findByRole('region', { name: 'ParkStay queue' });
+      expect(queue).toHaveTextContent('ParkStay · access granted · 15 min left');
 
       const tray = screen.getByTestId('tray');
       expect(tray).toContainElement(toast);
@@ -402,7 +425,7 @@ describe('App shell', () => {
       const mock = createMockApi();
       const { user } = renderWithApp({ api: mock });
       mock.emit('updater:available', { version: '2.1.0' });
-      const update = await screen.findByText('Update Available');
+      const update = await screen.findByText('Update available');
       const tray = screen.getByTestId('tray');
 
       await user.click(screen.getByRole('button', { name: 'Account and settings' }));

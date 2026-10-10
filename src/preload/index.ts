@@ -79,6 +79,8 @@ const api: WindowApi = {
   notifications: bind('notifications', {
     list: (limit) => ({ limit }),
     markRead: (id) => ({ id }),
+    markAllRead: none,
+    unreadCount: none,
     delete: (id) => ({ id }),
     clearAll: none,
   }),

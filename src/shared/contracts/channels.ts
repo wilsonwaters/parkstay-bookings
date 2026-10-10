@@ -40,6 +40,8 @@ export const CHANNELS = {
   notifications: {
     list: 'notifications:list',
     markRead: 'notifications:mark-read',
+    markAllRead: 'notifications:mark-all-read',
+    unreadCount: 'notifications:unread-count',
     delete: 'notifications:delete',
     clearAll: 'notifications:clear-all',
   },

@@ -339,10 +339,13 @@ describe('HoldPaymentService', () => {
       const [booking] = allBookings();
       expect(booking).toMatchObject({ bookingReference: 'BK-FAKE-7', unitIds: ['u2'] });
       expect(notifications.notifyBookingConfirmed).toHaveBeenCalledWith(
-        h.userId,
-        'fake',
-        booking.id,
-        'BK-FAKE-7'
+        expect.objectContaining({
+          id: booking.id,
+          userId: h.userId,
+          providerId: 'fake',
+          bookingReference: 'BK-FAKE-7',
+          location: booking.location,
+        })
       );
     });
   });

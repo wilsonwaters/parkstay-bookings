@@ -17,6 +17,14 @@ export function registerNotificationsHandlers(handle: Handle, c: AppContainer): 
 
   handle(notifications.markRead, ({ id }) => c.notificationService.markAsRead(id));
 
+  handle(notifications.markAllRead, () =>
+    c.notificationService.markAllAsRead(c.profile.requireUserId())
+  );
+
+  handle(notifications.unreadCount, () =>
+    c.notificationService.getUnreadCount(c.profile.requireUserId())
+  );
+
   handle(notifications.delete, async ({ id }) => {
     if (!(await c.notificationService.delete(id))) {
       throw new AppError('NOT_FOUND', 'Notification not found');

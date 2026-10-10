@@ -17,9 +17,6 @@ const TEST_FILE = /\.test\.(ts|tsx)$/;
 
 /** Pre-redesign code that still calls `window.api` itself, and the task that replaces it. */
 const LEGACY_ALLOW_LIST = [
-  'components/NotificationBell.tsx', // U5
-  'components/QueueStatus.tsx', // U5
-  'components/UpdateNotification.tsx', // U5
   'components/forms/ImportBookingForm.tsx', // U3
   'components/forms/ManualBookingForm.tsx', // U3
   'components/forms/SiteSniperForm.tsx', // U2
@@ -31,7 +28,7 @@ const LEGACY_ALLOW_LIST = [
   'features/snipes/legacy/index.tsx', // U2
 ];
 /** The length LEGACY_ALLOW_LIST had when D3 wrote it. Lower it as entries go; never raise it. */
-const LEGACY_ALLOW_LIST_MAX = 12;
+const LEGACY_ALLOW_LIST_MAX = 9;
 
 /** The globals the preload API hangs off. */
 const GLOBAL = String.raw`\b(?:window|globalThis|self)\b`;

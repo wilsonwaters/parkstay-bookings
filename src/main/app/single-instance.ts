@@ -48,6 +48,16 @@ export interface SingleInstance {
   attachWindow(window: FrontableWindow | null): void;
 }
 
+/**
+ * Restores a minimised window, shows a hidden one and focuses it: for a second launch, and for
+ * a click on a desktop notification.
+ */
+export function bringToFront(target: FrontableWindow): void {
+  if (target.isMinimized()) target.restore();
+  target.show();
+  target.focus();
+}
+
 export function acquireSingleInstance(
   app: SingleInstanceApp,
   { log, requestWindow }: SingleInstanceOptions
@@ -60,12 +70,6 @@ export function acquireSingleInstance(
 
   let window: FrontableWindow | null = null;
   let showRequested = false;
-
-  const bringToFront = (target: FrontableWindow): void => {
-    if (target.isMinimized()) target.restore();
-    target.show();
-    target.focus();
-  };
 
   app.on('second-instance', (_event, argv) => {
     if (argv.includes(HIDDEN_ARG)) {

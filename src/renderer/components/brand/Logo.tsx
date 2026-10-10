@@ -19,6 +19,8 @@ export interface LogoProps {
   decorative?: boolean;
   /** Sizing utilities. Replaces the default size (32 px high), so give a height. */
   className?: string;
+  /** The artwork failed to load: show a text wordmark instead of a broken image. */
+  onError?: () => void;
 }
 
 const SOURCES: Record<LogoVariant, string> = { mark: markUrl, lockup: lockupUrl };
@@ -26,7 +28,7 @@ const SOURCES: Record<LogoVariant, string> = { mark: markUrl, lockup: lockupUrl 
 /** Spacing-scale sizes: the lockup keeps its own aspect ratio from the SVG viewBox. */
 const DEFAULT_SIZE: Record<LogoVariant, string> = { mark: 'h-8 w-8', lockup: 'h-8 w-auto' };
 
-export function Logo({ variant, decorative = false, className }: LogoProps) {
+export function Logo({ variant, decorative = false, className, onError }: LogoProps) {
   return (
     <img
       src={SOURCES[variant]}
@@ -34,6 +36,7 @@ export function Logo({ variant, decorative = false, className }: LogoProps) {
       aria-hidden={decorative ? true : undefined}
       draggable={false}
       className={className ?? DEFAULT_SIZE[variant]}
+      onError={onError}
     />
   );
 }

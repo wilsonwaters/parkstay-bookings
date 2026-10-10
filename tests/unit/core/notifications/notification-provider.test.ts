@@ -3,8 +3,9 @@
  *
  * Notifications name their provider (V4; architecture-notes §12.31): watch, snipe and booking
  * notifications store `providerId` and an unprefixed title; only the OS desktop notification
- * title is prefixed with the provider's short name (`Fake · Availability Found!`), resolved
- * through the registry; notifiers get the unprefixed title plus `providerId`.
+ * title is prefixed with the provider's short name (`Fake · Sites available at Dales
+ * Campground`), resolved through the registry; notifiers get the unprefixed title plus
+ * `providerId`. Titles are calm sentence case naming the place (U5).
  */
 import { desktopTitle, NotificationService } from '@main/core/notifications/notification.service';
 import type { NotificationDispatcher } from '@main/core/notifications/notification-dispatcher';
@@ -80,25 +81,40 @@ describe('notifications carry their provider', () => {
       'Site u1'
     );
     await service.notifySnipeHeld(fakeSnipe);
-    await service.notifyBookingConfirmed(userId, 'fake', 7, 'FAKE-7');
+    await service.notifySnipeBooked({ ...fakeSnipe, bookedReference: 'FAKE-6' });
+    await service.notifyBookingConfirmed({
+      id: 7,
+      userId,
+      providerId: 'fake',
+      bookingReference: 'FAKE-7',
+      location: { externalId: '20', name: 'Bungarra' },
+    });
 
     const stored = repo.findByUserId(userId).sort((a, b) => a.id - b.id);
     expect(stored.map((n) => [n.providerId, n.title])).toEqual([
-      ['fake', 'Availability Found!'],
-      ['fake', 'Site Held — Complete Payment!'],
-      ['fake', 'Site Held — Complete Payment!'],
-      ['fake', 'Booking Confirmed'],
+      ['fake', 'Sites available at Dales Campground'],
+      ['fake', 'Site held at Dales Campground'],
+      ['fake', 'Site held at Osprey Bay'],
+      ['fake', 'Booked at Osprey Bay'],
+      ['fake', 'Booking confirmed at Bungarra'],
     ]);
     expect(stored[1]).toMatchObject({
       type: NotificationType.SNIPE_HELD,
       relatedType: 'watch',
       relatedId: fakeWatch.id,
     });
+    expect(stored[4]).toMatchObject({
+      type: NotificationType.BOOKING_CONFIRMED,
+      relatedType: 'booking',
+      relatedId: 7,
+      actionUrl: '/bookings/7',
+    });
     expect(mockNotification.mock.calls.map(([options]) => options.title)).toEqual([
-      'Fake · Availability Found!',
-      'Fake · Site Held — Complete Payment!',
-      'Fake · Site Held — Complete Payment!',
-      'Fake · Booking Confirmed',
+      'Fake · Sites available at Dales Campground',
+      'Fake · Site held at Dales Campground',
+      'Fake · Site held at Osprey Bay',
+      'Fake · Booked at Osprey Bay',
+      'Fake · Booking confirmed at Bungarra',
     ]);
   });
 
@@ -106,7 +122,7 @@ describe('notifications carry their provider', () => {
     await service.notifySnipeHeld(fakeSnipe);
 
     expect(dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({ title: 'Site Held — Complete Payment!', providerId: 'fake' })
+      expect.objectContaining({ title: 'Site held at Osprey Bay', providerId: 'fake' })
     );
   });
 

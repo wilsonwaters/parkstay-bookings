@@ -16,6 +16,7 @@ export { queryKeys } from './queryKeys';
 export { useApiEvent, useInvalidateOn, type InvalidateOnOptions } from './events';
 export { useAppInfo, useOpenLogsFolder } from './app';
 export {
+  useAccessStatus,
   useProvider,
   useProviders,
   useProvidersWith,
@@ -23,6 +24,17 @@ export {
   type ProviderCapability,
   type ProviderManifest,
 } from './providers';
+export {
+  NOTIFICATION_LIST_LIMIT,
+  useClearNotifications,
+  useDeleteNotification,
+  useMarkAllNotificationsRead,
+  useMarkNotificationRead,
+  useNotificationUpdates,
+  useNotifications,
+  useUnreadNotificationCount,
+} from './notifications';
+export { useDownloadUpdate, useInstallUpdate } from './updater';
 export {
   CATALOG_STALE_TIME_MS,
   LOCATION_CHECK_STALE_TIME_MS,

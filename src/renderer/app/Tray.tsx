@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Portal, ToastViewport } from '../components/ui';
-import QueueStatus from '../components/QueueStatus';
-import UpdateNotification from '../components/UpdateNotification';
+import { AccessStatusChips } from '../features/notifications/AccessStatusChip';
+import { UpdateCard } from '../features/notifications/UpdateCard';
 
 /**
  * True while a modal is open. The overlay stack marks `#root` inert for exactly that long
@@ -21,24 +21,17 @@ function useModalOpen(): boolean {
   return open;
 }
 
-export interface TrayProps {
-  /**
-   * The update card and queue status call `window.api` themselves (legacy until U5), so the
-   * shell leaves them out when the renderer runs outside the app.
-   */
-  showLegacySlots?: boolean;
-}
-
 /**
  * The one bottom-right stack for floating messages, top to bottom: toasts, the update card,
- * queue status. Portalled outside `#root`, so a modal's `inert` never silences it. The column
+ * then one access-status chip per provider whose queue is in use. They stack in one column and
+ * never overlap. Portalled outside `#root`, so a modal's `inert` never silences it. The column
  * never takes clicks itself (`pointer-events-none`); only the cards in it do.
  *
  * It sits at `z-tray`, under the modal scrim. While a modal is open it rises to `z-toast` so
  * toasts stay readable and clickable above the scrim, and the other slots are hidden (keeping
  * their space, so toasts do not move) until the modal closes.
  */
-export function Tray({ showLegacySlots = true }: TrayProps) {
+export function Tray() {
   const modalOpen = useModalOpen();
   return (
     <Portal>
@@ -50,16 +43,12 @@ export function Tray({ showLegacySlots = true }: TrayProps) {
         }`}
       >
         <ToastViewport />
-        {showLegacySlots && (
-          <>
-            <TraySlot hidden={modalOpen}>
-              <UpdateNotification />
-            </TraySlot>
-            <TraySlot hidden={modalOpen}>
-              <QueueStatus />
-            </TraySlot>
-          </>
-        )}
+        <TraySlot hidden={modalOpen}>
+          <UpdateCard />
+        </TraySlot>
+        <TraySlot hidden={modalOpen}>
+          <AccessStatusChips />
+        </TraySlot>
       </div>
     </Portal>
   );
