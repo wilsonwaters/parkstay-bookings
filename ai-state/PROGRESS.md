@@ -7,7 +7,8 @@ Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task spe
 
 ## Currently in flight
 - **Q2** (#41) Documentation: implementing (L; design round waived for docs, plan committed first), lane Y. README + upgrade guide, accurate CLAUDE.md, provider developer guide with a compiling example test, verified ParkStay API docs, Gmail docs removed, 2.0.0 CHANGELOG, consolidated stakeholder release checklist, docs screenshots.
-- Next: merge Q2; final polish batch; system verification (Phase 5); final review (Phase 6); sync issue bodies; open the single PR (no AI attribution; Closes #12–#41); hand the stakeholder the repo description and checklist.
+- **Final polish batch** (lane X): `runsFromSource` for browser path and devTools, snipe unit names refresh on `catalog:updated`, consistent step counts, main validates scheduled release vs arrival, retention start/stop guard, combobox height.
+- Next: merge Q2 and polish; system verification (Phase 5); final review (Phase 6); sync issue bodies; open the single PR (no AI attribution; Closes #12–#41); hand the stakeholder the repo description and checklist.
 
 ## Notes
 - 2026-10-10 ~04:30 UTC: a third usage limit stopped U4 (final gate), U2 (gate), the U3 fix and the E3 fix; all resumed at 06:25 UTC from saved state (U4 `28f3e40` and U2 `cd243b0` backed up to `wip/*`).
