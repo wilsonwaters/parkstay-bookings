@@ -147,7 +147,6 @@ tests/
 │   └── renderer.ts          # setupFilesAfterEnv for the renderer project
 ├── utils/
 │   ├── database-helper.ts   # Database setup/teardown
-│   ├── mock-api.ts          # Mock API responses
 │   ├── test-helpers.ts      # Common test utilities
 │   ├── http-transport-cases.ts # HttpClient cases shared by Jest (Node) and Electron runs
 │   └── window-api.ts        # createMockWindowApi() for renderer tests
@@ -340,19 +339,6 @@ await dbHelper.setup();            // Create & initialize test DB
 const db = dbHelper.getDb();       // Get database instance
 await dbHelper.reset();            // Clear all data
 await dbHelper.teardown();         // Delete test DB
-```
-
-### Mock API
-Provides mock responses for external APIs.
-
-```typescript
-import { MockParkStayAPI, MockGmailAPI } from '@tests/utils/mock-api';
-
-// Mock availability response
-const response = MockParkStayAPI.mockAvailabilityResponse('CG001', true);
-
-// Mock Gmail message
-const message = MockGmailAPI.mockMessageDetailsResponse('123456', 'https://link.com');
 ```
 
 ### Test Helpers

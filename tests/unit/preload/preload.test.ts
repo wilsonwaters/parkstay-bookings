@@ -131,7 +131,6 @@ describe('preload window.api', () => {
     await api.settings.set('notifications.desktop', false);
     await api.app.setAutoLaunch(true);
     await api.app.setAutoLaunch(true, false);
-    await api.gmail.setCredentials({ clientId: 'client-id', clientSecret: 'client-secret' });
 
     expect(ipcRenderer.invoke.mock.calls).toEqual([
       ['watches:list', undefined],
@@ -150,7 +149,6 @@ describe('preload window.api', () => {
       // An omitted start minimised keeps the stored choice: the payload leaves it out
       ['app:set-auto-launch', { enabled: true }],
       ['app:set-auto-launch', { enabled: true, startMinimised: false }],
-      ['gmail:set-credentials', { clientId: 'client-id', clientSecret: 'client-secret' }],
     ]);
     expect(JSON.stringify(ipcRenderer.invoke.mock.calls)).not.toContain('userId');
   });

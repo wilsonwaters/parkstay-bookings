@@ -53,13 +53,6 @@ export const CHANNELS = {
     disable: 'notifiers:disable',
     test: 'notifiers:test',
   },
-  gmail: {
-    setCredentials: 'gmail:set-credentials',
-    getCredentials: 'gmail:get-credentials',
-    authorize: 'gmail:authorize',
-    checkAuthStatus: 'gmail:check-auth-status',
-    revokeAuth: 'gmail:revoke-auth',
-  },
   settings: {
     get: 'settings:get',
     set: 'settings:set',

@@ -1,26 +1,19 @@
 /**
- * The v1.x decryptors recover the fixture plaintexts: P2's notifier row (machine id
- * `fixture-machine-id`) and a `gmail-oauth.json` written in this test by the installed
- * conf@10.2.0 with the legacy key. Wrong keys and malformed input throw LegacyDecryptError.
- * The v1.x ParkStay password is never decrypted: migration v9 drops it (§12.32).
+ * The v1.x notifier decryptor recovers the fixture plaintext: P2's notifier row (machine id
+ * `fixture-machine-id`). A wrong key and malformed input throw LegacyDecryptError. The v1.x
+ * ParkStay password is never decrypted: migration v9 drops it (§12.32). Nor is the v1.x Gmail
+ * OTP file: that feature is gone and its file is deleted (P7).
  */
 
-import fs from 'fs';
 import type Database from 'better-sqlite3';
+import * as decryptors from '@main/security/legacy-decryptors';
 import {
-  decryptLegacyGmailStore,
   decryptLegacyNotifierConfig,
   legacyMachineId,
   LegacyDecryptError,
 } from '@main/security/legacy-decryptors';
 import { FIXTURE_MACHINE_ID, FIXTURE_SMTP_PASSWORD } from '@tests/fixtures/db/constants';
 import { disposeFixture, loadFixture } from '@tests/utils/database-helper';
-import { removeUserData, tempUserData } from '@tests/utils/fake-safe-storage';
-import {
-  LEGACY_GMAIL_CREDENTIALS,
-  LEGACY_GMAIL_TOKENS,
-  writeLegacyGmailStore,
-} from '@tests/utils/legacy-gmail-store';
 
 jest.mock('node-machine-id', () => ({ machineIdSync: () => 'mocked-machine-id' }));
 
@@ -54,41 +47,18 @@ describe('legacy decryptors', () => {
     );
   });
 
-  it('gmail: recovers a gmail-oauth.json written by conf@10.2.0 with the legacy key', () => {
-    const dir = tempUserData();
-    try {
-      const file = writeLegacyGmailStore(dir);
-      const raw = fs.readFileSync(file);
-      // conf's encrypted format: 16-byte IV, ':', AES-256-CBC; nothing readable in it
-      expect(raw.subarray(16, 17).toString()).toBe(':');
-      expect(raw.includes(Buffer.from(LEGACY_GMAIL_CREDENTIALS.clientSecret))).toBe(false);
-
-      expect(JSON.parse(decryptLegacyGmailStore(raw))).toEqual({
-        gmail_credentials: LEGACY_GMAIL_CREDENTIALS,
-        gmail_oauth_tokens: LEGACY_GMAIL_TOKENS,
-      });
-    } finally {
-      removeUserData(dir);
-    }
-  });
-
-  it('wrong key: another machine id, or a store written with another key, throws', () => {
+  it('wrong key: another machine id throws', () => {
     expect(() => decryptLegacyNotifierConfig(notifierConfig, 'another-machine')).toThrow(
       LegacyDecryptError
     );
-
-    const dir = tempUserData();
-    try {
-      const raw = fs.readFileSync(writeLegacyGmailStore(dir, undefined, 'some-other-key'));
-      // As in conf: with the wrong key the bytes fail CBC padding (LegacyDecryptError) or,
-      // rarely, decrypt to garbage that is not JSON. Either way nothing is recovered.
-      expect(() => JSON.parse(decryptLegacyGmailStore(raw))).toThrow();
-    } finally {
-      removeUserData(dir);
-    }
   });
 
-  it('malformed input throws LegacyDecryptError; plain JSON passes through as conf read it', () => {
+  it('has no Gmail store decryptor any more', () => {
+    expect(Object.keys(decryptors).filter((name) => /gmail/i.test(name))).toEqual([]);
+    expect(Object.keys(decryptors)).toContain('decryptLegacyNotifierConfig');
+  });
+
+  it('malformed input throws LegacyDecryptError', () => {
     for (const config of [
       '',
       'not-hex:zz:yy',
@@ -99,10 +69,6 @@ describe('legacy decryptors', () => {
         LegacyDecryptError
       );
     }
-
-    const truncated = Buffer.concat([Buffer.alloc(16, 1), Buffer.from(':'), Buffer.alloc(5)]);
-    expect(() => decryptLegacyGmailStore(truncated)).toThrow(LegacyDecryptError);
-    expect(decryptLegacyGmailStore(Buffer.from('{"a":1}'))).toBe('{"a":1}');
   });
 
   it('legacyMachineId reads node-machine-id (the hashed id the v1.x keys used)', () => {

@@ -30,8 +30,6 @@ export const DATABASE_FILE_NAME = 'wa-stay.db';
 export const LEGACY_DATA_FOLDER_NAME = 'parkstay-bookings'; // legacy-name-ok
 /** The v1.x database file, in the legacy folder and in the installer's snapshot. */
 export const LEGACY_DATABASE_FILE_NAME = 'parkstay.db'; // legacy-name-ok
-/** The Gmail OAuth file, the same name in both folders (v1.x electron-store `name`). */
-export const GMAIL_STORE_FILE_NAME = 'gmail-oauth.json';
 /** Where the v2 installer copies the legacy data before the v1 uninstaller runs (B2). */
 export const LEGACY_SNAPSHOT_FOLDER_NAME = 'legacy-snapshot';
 /** What the first-run migration did (`migration/legacy-install.ts`). */

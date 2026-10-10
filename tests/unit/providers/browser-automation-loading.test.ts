@@ -15,9 +15,6 @@ jest.mock('electron', () => jest.requireActual('@tests/utils/electron-mocks').el
 jest.mock('electron-updater', () =>
   jest.requireActual('@tests/utils/electron-mocks').electronUpdater()
 );
-jest.mock('electron-store', () =>
-  jest.requireActual('@tests/utils/electron-mocks').electronStore()
-);
 jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }));
 
 import { createContainer } from '@main/app/container';

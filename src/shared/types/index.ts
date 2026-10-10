@@ -6,7 +6,6 @@ export * from './notification.types';
 export * from './notifier.types';
 export * from './api.types';
 export * from './common.types';
-export * from './gmail.types';
 export * from './provider.types';
 export * from './catalog.types';
 export * from './secret.types';

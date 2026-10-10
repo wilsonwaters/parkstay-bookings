@@ -18,8 +18,6 @@ import { ProviderAccountService } from '@main/core/accounts/provider-account.ser
 import { ProviderWindows } from '@main/app/provider-windows';
 import { BookingService } from '@main/core/bookings/booking.service';
 import { HoldPaymentService } from '@main/core/holds/hold-payment.service';
-import { GmailOTPService } from '@main/services/gmail/GmailOTPService';
-import { OAuth2Handler } from '@main/services/gmail/oauth2-handler';
 import { NotificationDispatcher } from '@main/core/notifications/notification-dispatcher';
 import { NotificationService } from '@main/core/notifications/notification.service';
 import { SmtpEmailNotifier } from '@main/core/notifications/notifiers/email-smtp.notifier';
@@ -82,12 +80,6 @@ jest.mock('@main/core/bookings/booking.service', () =>
 jest.mock('@main/core/holds/hold-payment.service', () =>
   mockCountedModule('@main/core/holds/hold-payment.service')
 );
-jest.mock('@main/services/gmail/GmailOTPService', () =>
-  mockCountedModule('@main/services/gmail/GmailOTPService')
-);
-jest.mock('@main/services/gmail/oauth2-handler', () =>
-  mockCountedModule('@main/services/gmail/oauth2-handler')
-);
 jest.mock('@main/core/notifications/notification-dispatcher', () =>
   mockCountedModule('@main/core/notifications/notification-dispatcher')
 );
@@ -141,8 +133,6 @@ const CONSTRUCTED_ONCE = {
   ProviderWindows,
   HoldPaymentService,
   BookingService,
-  GmailOTPService,
-  OAuth2Handler,
   NotificationDispatcher,
   NotificationService,
   SmtpEmailNotifier,
@@ -284,7 +274,6 @@ describe('createContainer', () => {
       power: expect.objectContaining({ on: expect.any(Function) }),
       retention: { notifications: r.notifications, notifiers: r.notifiers, settings: r.settings },
     });
-    expect(GmailOTPService).toHaveBeenCalledWith(jest.mocked(OAuth2Handler).mock.results[0].value);
     expect(NotificationDispatcher).toHaveBeenCalledWith(r.notifiers, [
       jest.mocked(SmtpEmailNotifier).mock.results[0].value,
     ]);
@@ -293,9 +282,6 @@ describe('createContainer', () => {
     const vault = container.vault;
     expect(jest.mocked(SecretVault).mock.results[0].value).toBe(vault);
     expect(repositories.NotifierRepository).toHaveBeenCalledWith(container.db, vault);
-    expect(OAuth2Handler).toHaveBeenCalledWith(
-      expect.objectContaining({ vault, filePath: expect.stringMatching(/gmail-oauth\.json$/) })
-    );
     expect(jest.mocked(createProviderContext).mock.calls[0][1].vault).toBe(vault);
     expect(repositories.SqliteKeyValueStore).toHaveBeenCalledWith(r.providerState, 'parkstay');
   });
@@ -349,12 +335,12 @@ describe('createContainer', () => {
     const first = build().container;
     const second = build().container;
 
-    expect(second.gmailService).not.toBe(first.gmailService);
     expect(second.notificationService).not.toBe(first.notificationService);
     expect(second.scheduler).not.toBe(first.scheduler);
     expect(second.repositories.users).not.toBe(first.repositories.users);
     expect(
-      'getInstance' in jest.requireActual('@main/services/gmail/GmailOTPService').GmailOTPService
+      'getInstance' in
+        jest.requireActual('@main/core/notifications/notification.service').NotificationService
     ).toBe(false);
   });
 

@@ -212,7 +212,7 @@ describe('installer.nsh', () => {
     expect(closed).toBe(close.length - 2);
   });
 
-  it('copies (never moves) the v1.x database, its -wal and -shm, and the Gmail file into legacy-snapshot, once', () => {
+  it('copies (never moves) the v1.x database, its -wal and -shm into legacy-snapshot, once; not the retired Gmail file', () => {
     const snapshot = macro('waStaySnapshotLegacyData');
     const guards = snapshot.filter((line) => /^\$\{(if|ifNot)\} \$\{FileExists\}/.test(line));
     expect(guards.slice(0, 3)).toEqual([
@@ -223,11 +223,12 @@ describe('installer.nsh', () => {
 
     const copies = snapshot.filter((line) => line.startsWith('CopyFiles'));
     expect(copies).toEqual(
-      ['parkstay.db', 'parkstay.db-wal', 'parkstay.db-shm', 'gmail-oauth.json'].map(
+      ['parkstay.db', 'parkstay.db-wal', 'parkstay.db-shm'].map(
         (file) =>
           `CopyFiles /SILENT "$APPDATA\\parkstay-bookings\\${file}" "$APPDATA\\WA Stay\\legacy-snapshot"`
       )
     );
+    expect(snapshot.join('\n')).not.toMatch(/gmail/i);
     // Copy only: nothing in the snapshot step moves or deletes a file
     expect(snapshot.join('\n')).not.toMatch(/\b(Rename|Delete|RMDir)\b/);
     // Every copy sits inside the three guards

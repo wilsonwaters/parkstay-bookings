@@ -1,7 +1,7 @@
 /**
  * The upgrade path from a v1.x install, end to end: the first-run copy
  * (`migrateLegacyInstall`), then the app's own startup on the copy (`openDatabase` runs the
- * v6 to v9 migrations; `createContainer` migrates the legacy secrets into the vault).
+ * v6 to v10 migrations; `createContainer` migrates the legacy secrets into the vault).
  *
  * - From the v5 fixture (the released v1.2.0) and the v6 fixture: the copy reaches the latest
  *   schema with every watch, snipe, booking, notification, notifier and setting, every watch,
@@ -11,8 +11,10 @@
  *   sha256 and no legacy file is deleted.
  * - A transaction committed only in the legacy `-wal` (never checkpointed) reaches
  *   `wa-stay.db`, from the legacy folder and from the installer's snapshot (§12.12).
- * - First start: the copied v1.2.0 secrets (SMTP config, Gmail file) become vault envelopes in the WA Stay data folder, while the legacy folder keeps the
- *   pre-vault originals as the backup.
+ * - The retired Gmail OTP file (`gmail-oauth.json`) is not copied, and a copy an earlier
+ *   build left in the data folder is deleted at the first start.
+ * - First start: the copied v1.2.0 SMTP config becomes a vault envelope in the WA Stay data
+ *   folder, while the legacy folder keeps the pre-vault originals as the backup.
  * - Exactly one "Your data has moved to WA Stay" notice after the copy, none on later starts.
  *   A start that crashes after the copy, before the follow-ups, leaves them to the next one.
  */
@@ -34,7 +36,6 @@ import {
   migrateLegacyInstall,
   WELCOME_NOTICE_TITLE,
 } from '@main/migration/legacy-install';
-import { parseGmailSecretFile } from '@main/security/gmail-secret-file';
 import { NotifierChannel } from '@shared/types';
 import {
   FIXTURE_MACHINE_ID,
@@ -42,7 +43,6 @@ import {
   type FixtureName,
 } from '@tests/fixtures/db/constants';
 import { FakeSafeStorage } from '@tests/utils/fake-safe-storage';
-import { LEGACY_GMAIL_TOKENS, writeLegacyGmailStore } from '@tests/utils/legacy-gmail-store';
 import {
   expectUnchanged,
   fingerprint,
@@ -64,6 +64,14 @@ jest.mock('electron-updater', () =>
 );
 
 type Row = Record<string, unknown>;
+
+/** A v1.x Gmail OTP sign-in file (its content is opaque here); returns its path. */
+function writeLegacyGmailFile(dir: string): string {
+  const file = path.join(dir, 'gmail-oauth.json');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(file, Buffer.concat([Buffer.alloc(16, 7), Buffer.from(':legacy-ciphertext')]));
+  return file;
+}
 
 const FIXTURES: Array<[FixtureName, number]> = [
   ['v5-release-1.2.0', 5],
@@ -122,7 +130,7 @@ const SECRET_SQL = {
 describe.each(FIXTURES)('upgrading a %s install', (fixture, sourceVersion) => {
   it('reaches the latest schema with every row, provider ids, byte-identical secrets and no foreign-key violation', async () => {
     writeLegacyDatabase(install.paths.legacyDbPath, fixture);
-    const gmail = writeLegacyGmailStore(install.paths.legacyUserData);
+    const gmail = writeLegacyGmailFile(install.paths.legacyUserData);
     const legacyDbHash = sha256(install.paths.legacyDbPath);
     const legacyGmailHash = sha256(gmail);
     const before = fingerprint(install.paths.legacyUserData);
@@ -167,8 +175,8 @@ describe.each(FIXTURES)('upgrading a %s install', (fixture, sourceVersion) => {
     expect(sha256(install.paths.legacyDbPath)).toBe(legacyDbHash);
     expect(sha256(gmail)).toBe(legacyGmailHash);
     expectUnchanged(install.paths.legacyUserData, before);
-    // gmail-oauth.json copied byte for byte
-    expect(sha256(path.join(install.paths.userData, 'gmail-oauth.json'))).toBe(legacyGmailHash);
+    // The retired Gmail OTP file is not copied
+    expect(fs.existsSync(path.join(install.paths.userData, 'gmail-oauth.json'))).toBe(false);
   });
 });
 
@@ -209,11 +217,14 @@ describe.each<['legacy' | 'snapshot']>([['legacy'], ['snapshot']])(
 describe('the first start after the copy', () => {
   it('migrates the copied v1.2.0 secrets into the vault; the legacy folder keeps the pre-vault originals', async () => {
     writeLegacyDatabase(install.paths.legacyDbPath, 'v5-release-1.2.0');
-    const legacyGmail = writeLegacyGmailStore(install.paths.legacyUserData);
+    const legacyGmail = writeLegacyGmailFile(install.paths.legacyUserData);
+    const legacyGmailHash = sha256(legacyGmail);
     const before = fingerprint(install.paths.legacyUserData);
 
     // The startup order of src/main/index.ts: migration, database, container
     await migrateLegacyInstall(install.paths, recordedDeps());
+    // As an earlier WA Stay build copied it: the retired Gmail sign-in goes at the first start
+    const copiedGmail = writeLegacyGmailFile(install.paths.userData);
     const container = createContainer({
       db: openDatabase(install.paths.dbPath),
       logsDir: path.join(install.paths.userData, 'logs'),
@@ -230,20 +241,14 @@ describe('the first start after the copy', () => {
       const notifier = new NotifierRepository(db, vault).findByChannel(NotifierChannel.EMAIL_SMTP);
       expect(notifier).toMatchObject({ secretState: 'ok' });
       expect(notifier?.config).toMatchObject({ auth: { pass: FIXTURE_SMTP_PASSWORD } });
-      expect(container.gmailService.getAuthStatus()).toMatchObject({
-        isAuthorized: true,
-        expiryDate: LEGACY_GMAIL_TOKENS.expiry_date,
-      });
-      // The data folder's Gmail file is now format 2
-      const copied = fs.readFileSync(path.join(install.paths.userData, 'gmail-oauth.json'));
-      expect(parseGmailSecretFile(copied)).toMatchObject({ format: 2 });
+      expect(fs.existsSync(copiedGmail)).toBe(false);
     } finally {
       await container.dispose();
     }
 
-    // The backup of the pre-vault secrets: untouched
+    // The backup of the pre-vault secrets: untouched, the legacy Gmail file included
     expectUnchanged(install.paths.legacyUserData, before);
-    expect(parseGmailSecretFile(fs.readFileSync(legacyGmail))).toBeNull();
+    expect(sha256(legacyGmail)).toBe(legacyGmailHash);
   });
 
   const replaceLoginItems = jest.fn();

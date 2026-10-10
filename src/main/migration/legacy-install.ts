@@ -9,8 +9,10 @@
  *   connection. That gives a consistent copy even while a v1.x app is still running, and
  *   includes any transactions still in the `-wal` file. The copy then goes through the
  *   normal migrations (`openDatabase`), and P5's `migrateLegacySecrets` re-encrypts its
- *   legacy secrets;
- * - `gmail-oauth.json`, byte for byte, unless the data folder already has one.
+ *   legacy secrets.
+ *
+ * The v1.x Gmail OTP sign-in (`gmail-oauth.json`) is not copied: the feature is gone (P7),
+ * and nothing would read it.
  *
  * The source is the live legacy folder when it exists, else the v2 installer's
  * `legacy-snapshot` (taken before the v1 uninstaller could delete the folder), else there
@@ -52,7 +54,7 @@ import fs from 'fs';
 import path from 'path';
 import type { NotificationInput } from '@shared/types';
 import { NotificationType } from '@shared/types/common.types';
-import { GMAIL_STORE_FILE_NAME, LEGACY_DATABASE_FILE_NAME, type AppPaths } from '../app/paths';
+import { LEGACY_DATABASE_FILE_NAME, type AppPaths } from '../app/paths';
 import { LATEST_SCHEMA_VERSION } from '../database/connection';
 import { logger as appLogger } from '../utils/logger';
 
@@ -333,7 +335,6 @@ export async function migrateLegacyInstall(
 
       const database = await copyDatabase(source, paths, deps, created);
       const copied = [LEGACY_DATABASE_FILE_NAME];
-      if (copyGmailStore(source, paths, deps, created)) copied.push(GMAIL_STORE_FILE_NAME);
 
       onTarget(() =>
         writeMarker(paths.markerPath, files, {
@@ -362,9 +363,6 @@ export async function migrateLegacyInstall(
       try {
         removeDatabaseFiles(tempPath, files);
         for (const file of created.reverse()) removeDatabaseFiles(file, files);
-        files.rmSync(`${path.join(paths.userData, GMAIL_STORE_FILE_NAME)}.migrating`, {
-          force: true,
-        });
       } catch (cleanupError) {
         log.warn(`legacy-install: could not undo the failed copy: ${errorDetail(cleanupError)}`);
       }
@@ -577,38 +575,6 @@ function readSchemaVersion(db: Database.Database): number {
     version: number | null;
   };
   return row.version ?? 0;
-}
-
-/**
- * Copies `gmail-oauth.json` from next to the source when the data folder has none (through
- * a temp file, so a crash never leaves half a file). Returns whether the data folder now
- * holds the source's file: an identical one left by an unfinished earlier copy counts.
- */
-function copyGmailStore(
-  source: Source,
-  paths: LegacyInstallPaths,
-  deps: LegacyInstallDeps,
-  created: string[]
-): boolean {
-  const { fs: files } = deps;
-  const from = path.join(source.dir, GMAIL_STORE_FILE_NAME);
-  if (!files.existsSync(from)) return false;
-
-  const to = path.join(paths.userData, GMAIL_STORE_FILE_NAME);
-  if (files.existsSync(to)) {
-    const same = onTarget(() => files.readFileSync(to)).equals(files.readFileSync(from));
-    if (!same) {
-      deps.logger.warn(
-        `legacy-install: ${GMAIL_STORE_FILE_NAME} already exists in the data folder; kept it`
-      );
-    }
-    return same;
-  }
-  const temp = `${to}.migrating`;
-  files.copyFileSync(from, temp);
-  onTarget(() => files.renameSync(temp, to));
-  created.push(to);
-  return true;
 }
 
 /** Removes a database file and its SQLite sidecars, if present. */

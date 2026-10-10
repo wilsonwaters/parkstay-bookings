@@ -94,14 +94,6 @@ const api: WindowApi = {
     test: (channel) => ({ channel }),
   }),
 
-  gmail: bind('gmail', {
-    setCredentials: (credentials) => credentials,
-    getCredentials: none,
-    authorize: none,
-    checkAuthStatus: none,
-    revokeAuth: none,
-  }),
-
   settings: bind('settings', {
     get: (key) => ({ key }),
     set: (key, value) => ({ key, value }),

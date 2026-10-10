@@ -103,10 +103,10 @@ Var pid
 !macroend
 
 ; Copies the v1 database with its -wal and -shm files (all three, so the copy holds every committed
-; change) and gmail-oauth.json from the v1 data folder into "$APPDATA\WA Stay\legacy-snapshot\",
-; unless the data was already migrated (migration.json) or a snapshot exists. It runs after
-; waStayCloseLegacyApp, so no v1 process is writing to them. Copies only: the legacy folder is
-; left as it is.
+; change) from the v1 data folder into "$APPDATA\WA Stay\legacy-snapshot\", unless the data was
+; already migrated (migration.json) or a snapshot exists. The v1 Gmail OTP file is not copied: that
+; feature is gone. It runs after waStayCloseLegacyApp, so no v1 process is writing to them. Copies
+; only: the legacy folder is left as it is.
 !macro waStaySnapshotLegacyData
   ; Electron keeps app data per user
   ${if} $installMode == "all"
@@ -123,9 +123,6 @@ Var pid
         ${endIf}
         ${if} ${FileExists} "$APPDATA\parkstay-bookings\parkstay.db-shm" ; legacy-name-ok
           CopyFiles /SILENT "$APPDATA\parkstay-bookings\parkstay.db-shm" "$APPDATA\WA Stay\legacy-snapshot" ; legacy-name-ok
-        ${endIf}
-        ${if} ${FileExists} "$APPDATA\parkstay-bookings\gmail-oauth.json" ; legacy-name-ok
-          CopyFiles /SILENT "$APPDATA\parkstay-bookings\gmail-oauth.json" "$APPDATA\WA Stay\legacy-snapshot" ; legacy-name-ok
         ${endIf}
         DetailPrint "Copied the previous version's data to $APPDATA\WA Stay\legacy-snapshot"
       ${endIf}
