@@ -164,7 +164,7 @@ describe('parameterised repository SQL', () => {
     );
 
     expect(notifications.getUnreadCount(userId)).toBe(1);
-    expect(notifications.deleteOld(30)).toBe(1);
+    expect(notifications.deleteCreatedBefore(new Date(Date.now() - 30 * 86_400_000), 100)).toBe(1);
     expect(notifications.deleteAllForUser(userId)).toBe(1);
     expect(notifications.getUnreadCount(otherUserId)).toBe(1);
   });
