@@ -12,7 +12,7 @@ export type RendererEntry =
   | { readonly kind: 'dev-server'; readonly url: string }
   | { readonly kind: 'file'; readonly path: string };
 
-/** Default Vite dev server (`vite.config.ts`). `start-electron.js` sets ELECTRON_RENDERER_URL instead. */
+/** Default Vite dev server (`vite.config.ts`). `npm start` sets ELECTRON_RENDERER_URL to it. */
 export const DEFAULT_DEV_SERVER_URL = 'http://localhost:3000';
 
 /**

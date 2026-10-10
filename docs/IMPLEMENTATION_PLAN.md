@@ -484,7 +484,7 @@ ody.match(/https:\/\/parkstay\.dbca\.wa\.gov\.au\/auth\/zA-Z0-9\-_]+/);
 **Process:**
 1. Run automated test suite
 2. Execute manual test scenarios
-3. Document all bugs in `QA_REPORT.md`
+3. Document all bugs as GitHub issues
 4. Create detailed bug reports with reproduction steps
 5. Retest after fixes
 6. Continue until all tests pass
@@ -627,7 +627,6 @@ All Phase 2 → Agent 10 (Integration Tests) → Agent 11 (QA) ⇄ 2 (Bug Fix)
 - `docs/parkstay-api/authentication-flow.md`
 - `docs/gmail-otp-setup.md`
 - `PROGRESS.md` (updated hourly)
-- `QA_REPORT.md`
 
 ### Code
 - Updated `parkstay.service.ts` with real API
