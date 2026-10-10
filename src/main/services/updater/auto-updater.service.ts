@@ -6,12 +6,23 @@
 import { autoUpdater, UpdateCheckResult, UpdateInfo, ProgressInfo } from 'electron-updater';
 import type { EventSink } from '@shared/contracts/events';
 import type { UpdateStatus } from '@shared/contracts/updater';
+import { AppError } from '../../utils/app-error';
 import { logger } from '../../utils/logger';
 
 export type { UpdateStatus };
 
+/** What the update card says when a download fails (the updater's own message is logged). */
+export const DOWNLOAD_FAILED_MESSAGE =
+  "The update didn't download. Check your internet connection and try again.";
+
 export class AutoUpdaterService {
   private status: UpdateStatus = { state: 'idle' };
+  /**
+   * Whether the person started a download. Only a failed download reaches the update card: a
+   * failed check (offline at start, or no release feed) is logged, and Settings → About reports
+   * the check the person asked for.
+   */
+  private downloading = false;
 
   /** `events` delivers `updater:*` events to trusted renderers only. */
   constructor(private readonly events: EventSink) {
@@ -77,9 +88,9 @@ export class AutoUpdaterService {
         error: error.message,
       };
       logger.error('Auto-updater error:', error);
-      this.events.emit('updater:error', {
-        error: error.message,
-      });
+      if (!this.downloading) return;
+      this.downloading = false;
+      this.events.emit('updater:error', { error: DOWNLOAD_FAILED_MESSAGE });
     });
   }
 
@@ -92,8 +103,17 @@ export class AutoUpdaterService {
     }
   }
 
+  /** Downloads the update the person accepted; a failure rejects with the card's message. */
   async downloadUpdate(): Promise<void> {
-    await autoUpdater.downloadUpdate();
+    this.downloading = true;
+    try {
+      await autoUpdater.downloadUpdate();
+    } catch (error) {
+      logger.error('Update download failed:', error);
+      throw new AppError('INTERNAL', DOWNLOAD_FAILED_MESSAGE);
+    } finally {
+      this.downloading = false;
+    }
   }
 
   quitAndInstall(): void {

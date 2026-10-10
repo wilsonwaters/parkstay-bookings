@@ -521,7 +521,11 @@ function v8EnsureLocalProfile(db: Database.Database): void {
   `);
 }
 
-/** watches: provider id, generic location, stay and unit columns; ParkStay extras in stay_params. */
+/**
+ * watches: provider id, generic location, stay and unit columns; ParkStay extras in stay_params.
+ * `auto_book` starts off for every copied watch: 1.x showed it as "auto-booking" but never acted
+ * on it, and it now places real holds (§12.31), so it is never turned on without the person.
+ */
 function v8RebuildWatches(db: Database.Database): void {
   if (columnsOf(db, 'watches').has('provider_id')) return;
   const seq = readSequence(db, 'watches');
@@ -570,7 +574,7 @@ function v8RebuildWatches(db: Database.Database): void {
         0, 0, COALESCE(preferred_sites, '[]'),
         ${stayParamsSql(['parkId', 'park_id'], ['gearType', 'site_type'])},
         check_interval_minutes,
-        is_active, last_checked_at, next_check_at, last_result, found_count, auto_book,
+        is_active, last_checked_at, next_check_at, last_result, found_count, 0,
         notify_only, allow_partial_match, max_price, notes, last_availability, created_at,
         updated_at
       FROM watches;

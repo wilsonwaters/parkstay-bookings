@@ -18,7 +18,7 @@ Existing installs upgrade in place and keep their data (see Upgrade notes).
 - **Providers**: a provider SDK and registry, so new accommodation sources plug in without changing the rest of the app, including sites with no API through browser automation of the installed Edge or Chrome (#19, #25). ParkStay WA is the first provider, rebuilt on it (#21). A developer guide with compiling examples: `docs/providers/adding-a-provider.md` (#41).
 - **Provider accounts**: sign in to ParkStay in the app, on ParkStay's own page, from Settings → Accounts; signing in is optional (#24, #38).
 - **Paying for a held site in the app**: "Pay now" opens ParkStay's payment page on the session that holds the site; once ParkStay confirms the payment, the snipe or watch shows as booked and the booking appears under Bookings (#24, #36).
-- **Hold a site automatically when found**, for watches on providers with holds (#22, #35). The old "auto-book" checkbox did nothing.
+- **Hold a site automatically when found**, for watches on providers with holds (#22, #35). The old "auto-booking" checkbox did nothing, so it is turned off on every upgraded watch: turn on the new option per watch if you want it.
 - **Site Sniper** *(coming soon)*: holds a hard-to-get site the moment it is released (a new date opening, a scheduled block release, or a cancellation), waiting in the DBCA queue when the release uses it, with one booking per night enforced across snipes and watches (#21, #22, #36).
 - **Bookings** *(coming soon)*: your trips from every provider, added by hand or recorded when you pay for a hold in the app, with "Manage on ParkStay" links (#37).
 - Every watch, snipe, booking and notification shows its provider, and every create flow starts by choosing one (#35, #36, #37, #39).
@@ -70,6 +70,7 @@ Existing installs upgrade in place and keep their data (see Upgrade notes).
 - **What does not carry over.** Two old sign-ins, by design: your saved ParkStay password (dropped; your ParkStay email is kept as a sign-in hint) and the Gmail OTP sign-in (removed, see Removed). Connect ParkStay once in Settings → Accounts if you like: ParkStay emails a code. It is optional (#24, #18).
 - **Shortcuts** are renamed to WA Stay. A taskbar pin made for the old version points at the old program (`WA ParkStay Bookings.exe`): unpin it and pin WA Stay again (#27).
 - **Install folder.** An automatic update keeps the old program folder (`%LOCALAPPDATA%\Programs\WA ParkStay Bookings\`); running the installer by hand installs into a `WA Stay` subfolder of it. Both work (#27).
+- **Automatic holds start off.** A watch that had the old "auto-booking" box ticked comes across with "Hold a site automatically when found" off, because the old box never did anything. Turn it on per watch if you want WA Stay to hold sites for you (#22, #35).
 - **Launch at login** carries over to WA Stay, with "Start minimised" turned on, as the old version always started hidden (#28, #38).
 - **Downgrading** to WA ParkStay Bookings is not supported.
 

@@ -23,13 +23,17 @@ The steps for publishing are in the [release process](release-process.md#the-200
 - [ ] **Rename the repository to `wa-stay` before publishing 2.0.0**, and never create a new
   `parkstay-bookings` repository (it would break the redirect v1.x installs update through).
 - [ ] **Check the redirect:** `curl -sIL https://github.com/wilsonwaters/parkstay-bookings/releases/latest`
-  ends at a `wa-stay` URL.
+  and `curl -sIL https://github.com/wilsonwaters/parkstay-bookings/releases.atom` (the feed v1.x's
+  updater reads) both end at a `wa-stay` URL.
 - [ ] **Set the description, topics and social preview** from
   [the release process](release-process.md#repository-description-and-topics).
 - [ ] **Delete the merged `wip/*` backup branches** on GitHub (the git proxy could not):
   `wip/e1-explore`, `wip/e3-dates`, `wip/p7-cleanup`, `wip/u1-watches`, `wip/u2-snipes`,
   `wip/u3-bookings`, `wip/u4-settings`, `wip/u5-notifications`, `wip/v3-class-listed`,
   `wip/v4-core-scheduler`, `wip/v6-accounts-phase1`, and any later ones once merged.
+- [ ] **The release commit is green in CI** (the `CI` workflow: format, lint, tests, `e2e` and
+  `packaged-smoke`) before you push the tag: the tag's own pipeline runs only type-check, lint,
+  format and the unit tests.
 - [ ] Optional: make the `e2e` check required for `main` once it has run green a few times.
 
 ## Install and upgrade (Windows)
@@ -48,6 +52,8 @@ The steps for publishing are in the [release process](release-process.md#the-200
 - [ ] **The old uninstaller's question (BQ2):** if v1.x's uninstaller asks whether to delete the
   data during the upgrade, answer **Yes** once (on a throwaway copy): WA Stay must still start
   with the data, from `%APPDATA%\WA Stay\legacy-snapshot`.
+- [ ] **Automatic holds start off:** a watch that had "Enable Auto-booking" ticked in v1.2.0
+  comes across with "Hold a site automatically when found" off.
 - [ ] **The old data folder** `%APPDATA%\parkstay-bookings` is untouched after the upgrade
   (compare its file dates and sizes).
 - [ ] **Launch at login (BQ4):** before upgrading, record the v1.x entry with

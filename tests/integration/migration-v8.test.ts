@@ -240,7 +240,8 @@ function expectedAfterV8(v7: Snapshot): Snapshot {
       next_check_at: w.next_check_at,
       last_result: w.last_result,
       found_count: w.found_count,
-      auto_book: w.auto_book,
+      // 1.x never acted on "auto-booking"; it now places holds, so it starts off (§12.31)
+      auto_book: 0,
       notify_only: w.notify_only,
       allow_partial_match: w.allow_partial_match,
       max_price: w.max_price,
@@ -1205,6 +1206,17 @@ describe('migration v8 edge cases', () => {
       'Migration 008: 2 watches row(s) have an arrival or departure that is not a calendar date (YYYY-MM-DD); copied unchanged'
     );
     expect(new WatchRepository(db).findById(2)?.stay.arrival).toBe('garbage');
+  });
+
+  it('turns auto-hold off for an active 1.x watch that had "auto-booking" ticked (it never acted)', () => {
+    db.exec(`UPDATE watches SET auto_book = 1, is_active = 1, notify_only = 0`);
+
+    runMigrations(db, 8);
+
+    const watches = new WatchRepository(db);
+    for (const { id } of db.prepare('SELECT id FROM watches').all() as { id: number }[]) {
+      expect(watches.findById(id)).toMatchObject({ isActive: true, autoHold: false });
+    }
   });
 
   it('turns NULL or empty preferred sites into [] and keeps malformed JSON verbatim, read as []', () => {

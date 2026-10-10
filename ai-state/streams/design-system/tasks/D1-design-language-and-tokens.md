@@ -88,7 +88,7 @@ M
 - `ai-state/research/ui-review.md`: styling, the top UX problems, branding.
 - `tailwind.config.js`, `postcss.config.js`, `src/renderer/styles/index.css`, `src/renderer/main.tsx`, `src/renderer/App.tsx`, `vite.config.ts`.
 - `node_modules/@fontsource-variable/fraunces/opsz.css`, `node_modules/lucide-react/dist/lucide-react.d.ts` (`LucideProvider`).
-- `/home/user/sandbox/projects/project-orchestration/ai-development-methodology.md`: Task Structure, Accessibility in Specs.
+- The orchestration methodology (`projects/project-orchestration/ai-development-methodology.md` in the sandbox repository): Task Structure, Accessibility in Specs.
 
 ## Notes
 
