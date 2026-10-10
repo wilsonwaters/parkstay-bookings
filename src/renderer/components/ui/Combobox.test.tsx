@@ -176,6 +176,41 @@ describe('Combobox', () => {
     expect(screen.getByText('Choose a place from the list')).toBeVisible();
   });
 
+  describe('the list height', () => {
+    const innerHeight = window.innerHeight;
+    afterEach(() => {
+      jest.restoreAllMocks();
+      Object.defineProperty(window, 'innerHeight', { value: innerHeight, configurable: true });
+    });
+
+    /** Opens the list under an input whose box ends 143 px down a window `height` px high. */
+    async function openIn(height: number) {
+      Object.defineProperty(window, 'innerHeight', { value: height, configurable: true });
+      jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+        top: 87,
+        left: 16,
+        width: 400,
+        height: 56,
+        bottom: 143,
+        right: 416,
+      } as DOMRect);
+      const user = userEvent.setup();
+      render(<Where />);
+      await user.click(input());
+      return listbox();
+    }
+
+    it('is up to 30rem, room for 8 two-line suggestions at the 640 px minimum window', async () => {
+      // 640 − 143 − 4 (offset) − 8 (edge) = 485 px of room: the 480 px cap applies
+      expect((await openIn(640)).style.maxHeight).toBe('480px');
+    });
+
+    it('is never taller than the room on its side, so it never covers its input', async () => {
+      // A window framed down to 589 px of page: 434 px of room
+      expect((await openIn(589)).style.maxHeight).toBe('434px');
+    });
+  });
+
   it('describes the field with its hint and error', () => {
     render(
       <Combobox

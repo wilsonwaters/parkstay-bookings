@@ -11,13 +11,14 @@ export interface UsePositionOptions {
 /**
  * Positions a fixed layer against its anchor: below by default, flipped above when there is
  * no room, clamped to the viewport. Recomputes on resize, on scroll in any container and when
- * either element changes size. No positioning dependency.
+ * either element changes size. No positioning dependency. `available` is the room on the
+ * chosen side (once measured), for a scrolling layer's max height.
  */
 export function usePosition(
   anchorRef: RefObject<HTMLElement>,
   floatingRef: RefObject<HTMLElement>,
   { open, side = 'bottom', align = 'start', offset = 8 }: UsePositionOptions
-): { style: CSSProperties; side: Side; update: () => void } {
+): { style: CSSProperties; side: Side; available?: number; update: () => void } {
   const [position, setPosition] = useState<Position | null>(null);
 
   const update = useCallback(() => {
@@ -36,7 +37,11 @@ export function usePosition(
       offset,
     });
     setPosition((prev) =>
-      prev && prev.top === next.top && prev.left === next.left && prev.side === next.side
+      prev &&
+      prev.top === next.top &&
+      prev.left === next.left &&
+      prev.side === next.side &&
+      prev.available === next.available
         ? prev
         : next
     );
@@ -68,5 +73,5 @@ export function usePosition(
     ? { position: 'fixed', top: position.top, left: position.left }
     : { position: 'fixed', top: 0, left: 0, opacity: 0, pointerEvents: 'none' };
 
-  return { style, side: position?.side ?? side, update };
+  return { style, side: position?.side ?? side, available: position?.available, update };
 }

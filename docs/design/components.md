@@ -90,7 +90,7 @@ All three take `appearance="field"` (forms) or `"segment"` (a segment of E1's se
 
 | Component | Use it for | Do | Don't |
 | --- | --- | --- | --- |
-| `Combobox` | Choosing one option from a long list by typing: campgrounds, places. | Pass `options` (optionally with `group`), and `filter={false}` with `onInputChange` when you filter or search yourself. | Use it for free text that need not match an option. |
+| `Combobox` | Choosing one option from a long list by typing: campgrounds, places. The list is at most 30rem high, room for 8 two-line options under 3 group headings at the 640 px minimum window, and never taller than the room on its side of the input. | Pass `options` (optionally with `group`), and `filter={false}` with `onInputChange` when you filter or search yourself. | Use it for free text that need not match an option. |
 | `DateRangeField` + `RangeCalendar` | Check-in and check-out dates. | Pass `minDate`, `maxDate` and `maxNights` from the provider's rules; values are `YYYY-MM-DD` strings. | Convert the values to `Date` or timestamps; time zones would shift days. |
 | `Stepper` | A small whole number: vehicles, nights, guests of one age. An `error` shows under it, joins its description and marks it `aria-invalid`, and the group can take focus, so a flow can move focus to it. | Set `min` and `max` from the real limits and give a `hint` for the rule. | Use it for numbers people type faster than they click (postcodes, prices); use `TextField`. |
 | `GuestsField` | Who is coming: adults, children, infants. | Override `limits` when a provider allows fewer people. | Add provider rules (concessions, equipment) here; they are provider stay fields (U1/U2). |
@@ -100,7 +100,7 @@ All three take `appearance="field"` (forms) or `"segment"` (a segment of E1's se
 | Hook | Use it for |
 | --- | --- |
 | `useFocusTrap(ref, { active })` | Keeping Tab inside a custom modal surface and returning focus on close. It skips hidden, invisible and disabled controls (including a disabled `<fieldset>`), and a Tab after focus fell to the body comes back in. Dialog and Sheet already use it. |
-| `usePosition(anchorRef, floatingRef, { open })` | Placing a floating layer below or above its anchor, flipped and clamped to the window. Built on the pure `computePosition`. |
+| `usePosition(anchorRef, floatingRef, { open })` | Placing a floating layer below or above its anchor, flipped and clamped to the window, with the room on that side (`available`) for a scrolling layer's max height. Built on the pure `computePosition`. |
 | `useDisclosure()` | The state and ARIA props for a custom show/hide pattern. `Disclosure` uses it. |
 | `useOverlay()` / `OverlayStack` | Registering a new kind of overlay so Escape order and `inert` stay correct. |
 | `useNow(intervalMs = 60_000)` (`hooks/useNow`) | The current time for relative times and countdowns. Every component asking for the same interval shares one timer (`useSyncExternalStore`), which stops when the last one unmounts, and while the window is hidden (on show, everyone gets the current time at once, then it ticks again): a list of 50 watches re-renders once a minute, not 50 times. Use a minute for "12 min ago" and a second only for a live countdown. `useHasPassed(at)` answers whether an instant has passed from the same ticker, re-rendering only when the answer changes (a hold's expiry, a release). |

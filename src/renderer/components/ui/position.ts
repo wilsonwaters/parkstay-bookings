@@ -32,6 +32,11 @@ export interface Position {
   top: number;
   left: number;
   side: Side;
+  /**
+   * The height there is room for on `side`, between the anchor (and offset) and the viewport's
+   * padding: a scrolling layer kept to it never covers its anchor.
+   */
+  available: number;
 }
 
 /** Places a layer below (or above) its anchor, flipping and clamping it inside the viewport. */
@@ -67,6 +72,7 @@ export function computePosition({
     top: clamp(top, padding, viewport.height - padding - floating.height),
     left: clamp(left, padding, viewport.width - padding - floating.width),
     side: placed,
+    available: Math.max(0, placed === 'bottom' ? spaceBelow : spaceAbove),
   };
 }
 

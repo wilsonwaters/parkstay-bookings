@@ -10,7 +10,7 @@ describe('computePosition', () => {
       floating,
       viewport,
     });
-    expect(p).toEqual({ top: 148, left: 50, side: 'bottom' });
+    expect(p).toEqual({ top: 148, left: 50, side: 'bottom', available: 484 });
   });
 
   it('flips above when there is no room below and more room above', () => {
@@ -42,6 +42,24 @@ describe('computePosition', () => {
     });
     expect(p.side).toBe('bottom');
     expect(p.top).toBe(58);
+  });
+
+  it('says how much height there is room for on the side it is placed', () => {
+    const anchor = { top: 100, left: 50, width: 120, height: 40 };
+    // Below: 640 − 140 − 8 (offset) − 8 (edge)
+    expect(computePosition({ anchor, floating, viewport }).available).toBe(484);
+    // Flipped above: 520 − 8 − 8
+    expect(computePosition({ anchor: { ...anchor, top: 520 }, floating, viewport }).available).toBe(
+      504
+    );
+    // No room on either side: 0, never a negative height
+    expect(
+      computePosition({
+        anchor: { ...anchor, top: 0 },
+        floating,
+        viewport: { width: 960, height: 30 },
+      }).available
+    ).toBe(0);
   });
 
   it('clamps at the right edge so there is no horizontal scroll at 960 px', () => {

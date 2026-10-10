@@ -158,6 +158,47 @@ test('Explore with dates shows each campground’s availability and narrows to "
   expect(withoutRemoteImages(wa.unexpectedRequests())).toEqual([]);
 });
 
+test('Explore’s "Where" shows 8 two-line suggestions without scrolling at the 960 × 640 minimum', async ({
+  launchWaStay,
+}) => {
+  const { app, window } = await launchWaStay();
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0].setContentSize(960, 640);
+  });
+  await expect.poll(() => window.evaluate(() => document.documentElement.clientHeight)).toBe(640);
+  await expect(
+    window
+      .getByRole('region', { name: 'Results' })
+      .getByRole('heading', { level: 2, name: `${FIXTURE_CAMPGROUNDS} places` })
+  ).toBeVisible({ timeout: 20_000 });
+
+  // "a" matches regions, areas and places: the most suggestions (8), under 3 headings
+  const where = window.getByRole('combobox', { name: 'Where' });
+  await where.fill('a');
+  const list = window.getByRole('listbox', { name: 'Where' });
+  await expect(list.getByRole('option')).toHaveCount(8);
+  await expect(list.getByRole('group')).toHaveCount(3);
+  const layout = await list.evaluate((el) => {
+    const anchor = document.querySelector('[role="combobox"]')?.parentElement;
+    const lines = Array.from(el.querySelectorAll('[role="option"]')).map(
+      (option) => option.querySelector('span > span + span') !== null
+    );
+    return {
+      twoLines: lines.every(Boolean),
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+      top: el.getBoundingClientRect().top,
+      bottom: el.getBoundingClientRect().bottom,
+      anchorBottom: anchor?.getBoundingClientRect().bottom ?? Number.NaN,
+    };
+  });
+  expect(layout.twoLines).toBe(true);
+  expect(layout.scrollHeight).toBeLessThanOrEqual(layout.clientHeight);
+  // Below the input, never over it, and inside the window
+  expect(layout.top).toBeGreaterThanOrEqual(layout.anchorBottom);
+  expect(layout.bottom).toBeLessThanOrEqual(640);
+});
+
 test('the window is titled WA Stay', async ({ launchWaStay }) => {
   const { window } = await launchWaStay();
 

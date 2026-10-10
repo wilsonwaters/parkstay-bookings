@@ -50,6 +50,13 @@ export interface ComboboxProps {
   className?: string;
 }
 
+/**
+ * The list's tallest (30rem): 8 two-line options under 3 group headings without scrolling,
+ * which fits below Explore's "Where" at the 640 px minimum window. Never more than the room on
+ * its side of the input (`usePosition`'s `available`), so it never covers the input.
+ */
+const LIST_MAX_HEIGHT_PX = 480;
+
 const matchesLabel = (option: ComboboxOption, query: string) =>
   option.label.toLowerCase().includes(query.trim().toLowerCase());
 
@@ -94,7 +101,7 @@ export function Combobox({
 
   const anchorRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const { style } = usePosition(anchorRef, listRef, { open, offset: 4 });
+  const { style, available } = usePosition(anchorRef, listRef, { open, offset: 4 });
   const [width, setWidth] = useState<number>();
   useLayoutEffect(() => {
     if (open) setWidth(anchorRef.current?.offsetWidth || undefined);
@@ -221,7 +228,9 @@ export function Combobox({
           if (!option.disabled) commit(option);
         }}
         className={cx(
-          'flex cursor-pointer items-start gap-2 rounded-md px-3 py-2 text-sm',
+          // Two lines (48 px) are padded less than one (36 px), so 8 fit the list's height
+          'flex cursor-pointer items-start gap-2 rounded-md px-3 text-sm',
+          option.description ? 'py-1' : 'py-2',
           isActive ? 'bg-surface-subtle' : undefined,
           option.disabled && 'cursor-not-allowed opacity-50'
         )}
@@ -318,8 +327,15 @@ export function Combobox({
           role="listbox"
           aria-label={label}
           hidden={!open}
-          style={{ ...style, minWidth: width }}
-          className="z-overlay max-h-72 max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-border bg-surface p-1 shadow-pop"
+          style={{
+            ...style,
+            minWidth: width,
+            maxHeight:
+              available === undefined
+                ? LIST_MAX_HEIGHT_PX
+                : Math.min(LIST_MAX_HEIGHT_PX, available),
+          }}
+          className="z-overlay max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-border bg-surface p-1 shadow-pop"
         >
           {visible.length === 0 ? (
             <div
