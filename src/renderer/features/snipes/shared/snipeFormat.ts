@@ -2,6 +2,7 @@
  * How a snipe's choices read (pure): a provider stay field's value, and its release in words.
  */
 import { SnipeReleaseMode } from '../../../../shared/types/common.types';
+import { buildPath, PATTERNS } from '../../../app/routes';
 import type {
   ProviderManifest,
   StayFieldDescriptor,
@@ -34,4 +35,12 @@ export function releaseText(
   const label = releaseModeLabel(manifest, mode);
   if (mode === SnipeReleaseMode.CANCELLATION || !releaseAt) return label;
   return `${label}: ${timeInZone(releaseAt, manifest?.timezone ?? 'Australia/Perth', now)}`;
+}
+
+/**
+ * Where a booked snipe's booking is: the Bookings list searched for its reference
+ * (`/bookings?q=PB123`), or the whole list when the reference is not known.
+ */
+export function bookingHref(bookedReference: string | undefined): string {
+  return buildPath(PATTERNS.bookings, {}, { q: bookedReference });
 }

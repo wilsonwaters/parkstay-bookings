@@ -115,8 +115,9 @@ export function SnipeFlow({ manifests, initialValues, initialStep, notices = [] 
       return true;
     } catch (error) {
       const apiError = toApiError(error);
+      const mode = getValues('releaseMode');
       const fields = (apiError.issues ?? [])
-        .map(issueField)
+        .map((path) => issueField(path, mode))
         .filter((n): n is SnipeFieldName => Boolean(n));
       if (apiError.code === 'VALIDATION' && fields.length > 0) {
         for (const name of fields) setError(name, { type: 'server', message: apiError.message });

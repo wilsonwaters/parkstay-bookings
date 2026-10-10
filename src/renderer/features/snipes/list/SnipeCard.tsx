@@ -13,9 +13,10 @@ import { DeleteSnipeDialog } from '../shared/DeleteSnipeDialog';
 import { HeldPanel } from '../shared/HeldPanel';
 import { ReleaseLine } from '../shared/ReleaseLine';
 import { SnipeActionsBar } from '../shared/SnipeActionsBar';
-import { SnipeTimeline } from '../shared/SnipeTimeline';
-import { isFinished, statusPillFor } from '../shared/snipeState';
+import { compactProgress } from '../shared/SnipeTimeline';
+import { isFinished, statusPillFor, timelineSteps } from '../shared/snipeState';
 import { useSnipeActions } from '../shared/useSnipeActions';
+import { useUnitNames } from '../shared/useUnitNames';
 
 export interface SnipeCardProps {
   snipe: SiteSnipe;
@@ -30,13 +31,15 @@ export interface SnipeCardProps {
 const attempts = (n: number) => `${n} ${n === 1 ? 'attempt' : 'attempts'}`;
 
 /**
- * One snipe in the list, photo first: whose and where, the stay, its status and a compact
- * timeline, when the sites open (the only part that ticks), the hold to pay for, and one
- * action with a menu for the rest.
+ * One snipe in the list, photo first: whose and where, the stay, its status and current step,
+ * when the sites open (the only part that ticks), the hold to pay for (its unit named as the
+ * place names it), and one action with a menu for the rest.
  */
 export function SnipeCard({ snipe, manifest, today, place, placeLoading }: SnipeCardProps) {
   const headingId = useId();
-  const actions = useSnipeActions(snipe, manifest);
+  // The place's unit names (its cached catalogue detail), asked only for a held snipe.
+  const unitNames = useUnitNames(snipe, snipe.status === SnipeStatus.HELD);
+  const actions = useSnipeActions(snipe, manifest, unitNames);
   const [confirming, setConfirming] = useState(false);
   const { location, stay } = snipe;
   const provider = manifest?.shortName ?? 'the provider';
@@ -76,10 +79,15 @@ export function SnipeCard({ snipe, manifest, today, place, placeLoading }: Snipe
           {stayDatesLabel(stay.arrival, stay.departure, today)} ·{' '}
           {stayNightsLabel(stay.arrival, stay.departure)} · {partyLabel(stay)}
         </p>
-        <SnipeTimeline snipe={snipe} compact className="pt-1" />
         <ReleaseLine snipe={snipe} manifest={manifest} />
         {snipe.status === SnipeStatus.HELD && (
-          <HeldPanel snipe={snipe} manifest={manifest} actions={actions} variant="card" />
+          <HeldPanel
+            snipe={snipe}
+            manifest={manifest}
+            actions={actions}
+            unitNames={unitNames}
+            variant="card"
+          />
         )}
         {snipe.status === SnipeStatus.BOOKED && (
           <p className="text-sm text-available-fg">
@@ -100,6 +108,7 @@ export function SnipeCard({ snipe, manifest, today, place, placeLoading }: Snipe
         )}
         <div className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pt-1">
           <p className="text-sm text-fg-muted">
+            {compactProgress(timelineSteps(snipe))} ·{' '}
             {snipe.attemptsCount > 0 ? attempts(snipe.attemptsCount) : 'No attempts yet'}
           </p>
           <div className="ml-auto">

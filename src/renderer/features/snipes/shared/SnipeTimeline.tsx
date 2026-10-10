@@ -6,7 +6,7 @@ import { STEP_STATE_TEXT, timelineSteps, type TimelineStep } from './snipeState'
 
 export interface SnipeTimelineProps {
   snipe: SiteSnipe;
-  /** One line of small steps, for a card. The detail page shows each step with its state. */
+  /** Only where it is ("Step 2 of 4: Waiting for release"), for a card. The detail page lists every step. */
   compact?: boolean;
   className?: string;
 }
@@ -28,6 +28,18 @@ function StepIcon({ step, size }: { step: TimelineStep; size: number }) {
 }
 
 /**
+ * A card's one line of progress: the current step and how many there are ("Step 2 of 4:
+ * Waiting for release"), "Stopped: Hold expired" once it has ended, "Not running" while paused.
+ */
+export function compactProgress(steps: readonly TimelineStep[]): string {
+  const at = steps.findIndex((step) => step.state === 'current');
+  const step = steps[at];
+  if (!step) return 'Not running';
+  if (step.terminal) return `Stopped: ${step.label}`;
+  return `Step ${at + 1} of ${steps.length}: ${step.label}`;
+}
+
+/**
  * Where a snipe is in its run: an ordered list of steps (Armed → Queueing → Waiting for release
  * → Sniping → Held → Booked), the current one `aria-current="step"`. Each step says its state
  * in words and with an icon, never by colour alone.
@@ -35,34 +47,7 @@ function StepIcon({ step, size }: { step: TimelineStep; size: number }) {
 export function SnipeTimeline({ snipe, compact = false, className }: SnipeTimelineProps) {
   const steps = timelineSteps(snipe);
   if (compact) {
-    return (
-      <ol
-        aria-label="Progress"
-        className={cx('flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs', className)}
-      >
-        {steps.map((step, i) => (
-          <li
-            key={step.id}
-            aria-current={step.state === 'current' ? 'step' : undefined}
-            className={cx(
-              'inline-flex items-center gap-1',
-              step.state === 'current' ? 'font-semibold text-fg' : 'text-fg-muted',
-              step.terminal && 'text-danger',
-              step.state === 'done' && 'text-fg-secondary'
-            )}
-          >
-            <StepIcon step={step} size={12} />
-            {step.label}
-            <VisuallyHidden>{`, ${STEP_STATE_TEXT[step.state]}`}</VisuallyHidden>
-            {i < steps.length - 1 && (
-              <span aria-hidden="true" className="pl-0.5 text-fg-muted">
-                ›
-              </span>
-            )}
-          </li>
-        ))}
-      </ol>
-    );
+    return <p className={cx('text-sm text-fg-muted', className)}>{compactProgress(steps)}</p>;
   }
   return (
     <ol aria-label="Progress" className={cx('flex flex-col', className)}>

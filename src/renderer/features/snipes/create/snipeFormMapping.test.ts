@@ -57,7 +57,10 @@ describe('toSnipeInput', () => {
 
 describe('issueField', () => {
   it('maps main’s issue paths to the form’s fields', () => {
-    expect(issueField('releaseAt')).toBe('releaseDate');
+    expect(issueField('releaseAt', 'scheduled')).toBe('releaseDate');
+    // A computed release the provider could not work out: the visible mode control, never the
+    // hidden date field.
+    expect(issueField('releaseAt', 'daily_rollover')).toBe('releaseMode');
     expect(issueField('releaseMode')).toBe('releaseMode');
     expect(issueField('stay.departure')).toBe('departure');
     expect(issueField('stay')).toBe('arrival');

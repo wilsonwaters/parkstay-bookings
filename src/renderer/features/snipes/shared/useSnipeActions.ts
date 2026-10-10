@@ -20,12 +20,13 @@ export const HOLD_EXPIRED_MESSAGE = 'Hold expired. The site has been released.';
 export function runResultMessage(
   result: SnipeExecutionResult,
   snipe: SiteSnipe,
-  manifest: ProviderManifest | undefined
+  manifest: ProviderManifest | undefined,
+  unitNames?: ReadonlyMap<string, string>
 ): string {
   const place = snipe.location.name || snipe.name;
   const provider = manifest?.shortName ?? 'the provider';
   if (result.held) {
-    const unit = unitLabel(result.matchedSiteId, unitNounFor(manifest));
+    const unit = unitLabel(result.matchedSiteId, unitNounFor(manifest), unitNames);
     return `${unit} held at ${place}. Pay on ${provider} to keep it.`;
   }
   if (!result.success) return result.error ?? `The attempt at ${place} failed. Try again soon.`;
@@ -44,9 +45,14 @@ export function runResultMessage(
 /**
  * The actions a snipe offers wherever it is shown (card, detail), each telling the outcome in a
  * toast. Arming a snipe of a provider whose holds need an account, while signed out, opens the
- * Connect prompt instead (`connectOpen`); main would refuse it (§12.32).
+ * Connect prompt instead (`connectOpen`), as does main refusing it for that (`AUTH_REQUIRED`,
+ * when the recorded account was stale; §12.32). `unitNames` names a unit Run now holds.
  */
-export function useSnipeActions(snipe: SiteSnipe, manifest: ProviderManifest | undefined) {
+export function useSnipeActions(
+  snipe: SiteSnipe,
+  manifest: ProviderManifest | undefined,
+  unitNames?: ReadonlyMap<string, string>
+) {
   const toast = useToast();
   const setActive = useSetSnipeActive();
   const run = useRunSnipeNow();
@@ -65,7 +71,11 @@ export function useSnipeActions(snipe: SiteSnipe, manifest: ProviderManifest | u
       { id: snipe.id, active },
       {
         onSuccess: () => toast.success(active ? `Armed ${snipe.name}` : `Disarmed ${snipe.name}`),
-        onError: (error) => toast.error(error.message),
+        onError: (error) => {
+          if (active && manifest && toApiError(error).code === 'AUTH_REQUIRED')
+            setConnectOpen(true);
+          else toast.error(error.message);
+        },
       }
     );
 
@@ -79,7 +89,7 @@ export function useSnipeActions(snipe: SiteSnipe, manifest: ProviderManifest | u
     running.current = true;
     run.mutate(snipe.id, {
       onSuccess: (result) => {
-        const message = runResultMessage(result, snipe, manifest);
+        const message = runResultMessage(result, snipe, manifest, unitNames);
         if (result.success) toast.success(message);
         else toast.error(message);
       },

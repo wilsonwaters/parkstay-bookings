@@ -53,7 +53,7 @@ describe('SnipeCard', () => {
     const { card } = renderCard(snipe);
     expect(within(card).getByRole('link', { name: 'View booking' })).toHaveAttribute(
       'href',
-      '#/bookings'
+      '#/bookings?q=PB123'
     );
     expect(within(card).getByText('Booked on ParkStay · PB123')).toBeInTheDocument();
   });
@@ -182,5 +182,30 @@ describe('SnipeCard', () => {
       await new Promise((r) => setTimeout(r, 50));
     });
     expect(within(card).queryByRole('button', { name: 'Connect ParkStay' })).toBeNull();
+  });
+
+  it.each<[string, Partial<SiteSnipe>]>([
+    ['paused', { status: SnipeStatus.DISABLED, isActive: false }],
+    ['failed', { status: SnipeStatus.FAILED, isActive: false }],
+    ['expired', { status: SnipeStatus.EXPIRED, isActive: false }],
+  ])('offers no Run now on a %s snipe, which main would refuse', async (_name, overrides) => {
+    const snipe = makeSnipe(overrides);
+    const { user, card } = renderCard(snipe);
+    await user.click(within(card).getByRole('button', { name: `More actions for ${snipe.name}` }));
+    expect(screen.queryByRole('menuitem', { name: 'Run now' })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'View details' })).toBeInTheDocument();
+  });
+
+  it('opens the Connect prompt when main says arming needs a sign-in after all', async () => {
+    const activate = jest
+      .fn()
+      .mockResolvedValue(fail('Sign in to ParkStay to hold a site', 'AUTH_REQUIRED'));
+    const paused = makeSnipe({ status: SnipeStatus.DISABLED, isActive: false });
+    const { user, card } = renderCard(paused, { snipes: { activate } });
+    await user.click(within(card).getByRole('button', { name: 'Arm' }));
+    expect(
+      await screen.findByRole('dialog', { name: `Connect ParkStay to arm ${paused.name}` })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('Sign in to ParkStay to hold a site')).toBeNull();
   });
 });

@@ -14,7 +14,7 @@ export function ProviderStep({ onProviderChange }: ProviderStepProps) {
   return (
     <ProviderPicker
       capability="snipes"
-      label="Provider"
+      label="Whose sites to snipe"
       hint="Site Sniper holds a site on this provider the moment it is released."
       value={providerId || undefined}
       onChange={(id) => {

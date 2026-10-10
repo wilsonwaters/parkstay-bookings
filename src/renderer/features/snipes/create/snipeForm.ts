@@ -111,6 +111,11 @@ export interface SnipeFormContext {
   now: Date;
 }
 
+/** Midnight of check-in day where the provider is (epoch ms), or never when there is no date. */
+function checkInAt(arrival: string, timeZone: string): number {
+  return zonedInstant(arrival, '00:00', timeZone)?.getTime() ?? Number.POSITIVE_INFINITY;
+}
+
 /** The form's rules for one provider. */
 export function snipeFormSchema({ manifest, today, now }: SnipeFormContext) {
   const fields = snipeStayFields(manifest);
@@ -140,6 +145,8 @@ export function snipeFormSchema({ manifest, today, now }: SnipeFormContext) {
       else if (!at) issue(['releaseDate'], 'Enter a real date and time');
       else if (at.getTime() <= now.getTime())
         issue(['releaseDate'], 'Choose a release time in the future');
+      else if (checkInAt(v.arrival, manifest.timezone) <= at.getTime())
+        issue(['releaseDate'], 'Choose a release time before check-in');
     }
     const whole = (text: string) => {
       const n = parseNumber(text);

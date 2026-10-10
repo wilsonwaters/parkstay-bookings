@@ -1,9 +1,9 @@
 /**
  * Creating a snipe in the built app (U2), network-free: the ParkStay catalogue, the place's
  * release rule and the release preview come from `fixtures/http/parkstay`. Provider step →
- * location → stay → release (a scheduled release a year away, so nothing is tried while the
- * test runs; no hold is ever placed, §12.33) → review → the new snipe's page, by role and
- * accessible name only.
+ * location → stay (two months out) → release (a scheduled release two weeks away and before
+ * check-in, so nothing is tried while the test runs; no hold is ever placed, §12.33) → review →
+ * the new snipe's page, by role and accessible name only.
  */
 
 import { expect, test, withoutGuardedRequests, withoutRemoteImages } from './support/wa-stay';
@@ -12,10 +12,13 @@ import { expectHeadingFocused, expectRoute, NAV_PAGES, navLink } from './support
 /** The catalogue syncs 5 s after launch (V5); give it room on a slow runner. */
 const CATALOGUE_TIMEOUT_MS = 30_000;
 
-/** A year from now, `YYYY-MM-DD`: a scheduled release that cannot come while the test runs. */
-function nextYear(): string {
+/**
+ * Two weeks from now, `YYYY-MM-DD`: a scheduled release that cannot come while the test runs,
+ * and before the stay's check-in (two months out), which the form requires.
+ */
+function inTwoWeeks(): string {
   const date = new Date();
-  date.setFullYear(date.getFullYear() + 1);
+  date.setDate(date.getDate() + 14);
   return date.toISOString().slice(0, 10);
 }
 
@@ -52,10 +55,10 @@ test('creates a ParkStay snipe through the provider-first flow', async ({ launch
   await expect(location).toHaveValue('Bungarra');
   await window.getByRole('button', { name: 'Continue' }).click();
 
-  // 3. Stay: two nights, picked with the keyboard; the provider's own snipe fields.
+  // 3. Stay: two nights two months out, picked with the keyboard; the provider's own fields.
   await expect(window.getByRole('heading', { level: 2, name: /Your stay$/ })).toBeFocused();
   await window.getByRole('button', { name: /^Dates/ }).click();
-  for (const key of ['ArrowRight', 'Enter', 'ArrowRight', 'ArrowRight', 'Enter']) {
+  for (const key of ['PageDown', 'PageDown', 'Enter', 'ArrowRight', 'ArrowRight', 'Enter']) {
     await window.keyboard.press(key);
   }
   await window
@@ -66,7 +69,7 @@ test('creates a ParkStay snipe through the provider-first flow', async ({ launch
   await expect(window.getByRole('textbox', { name: /Postcode/ })).toBeVisible();
   await window.getByRole('button', { name: 'Continue' }).click();
 
-  // 4. Release: the provider's modes, explained; a scheduled release a year away.
+  // 4. Release: the provider's modes, explained; a scheduled release before check-in.
   await expect(
     window.getByRole('heading', { level: 2, name: /Release and timing$/ })
   ).toBeFocused();
@@ -79,7 +82,7 @@ test('creates a ParkStay snipe through the provider-first flow', async ({ launch
   // The radio is the whole card (its native input is visually hidden): pick it by its label.
   await modes.locator('label', { hasText: 'At a scheduled time' }).click();
   await expect(modes.getByRole('radio', { name: 'At a scheduled time' })).toBeChecked();
-  await window.getByLabel('Release date').fill(nextYear());
+  await window.getByLabel('Release date').fill(inTwoWeeks());
   await window.getByLabel(/^Release time/).fill('10:00');
   await window.getByRole('button', { name: 'Continue' }).click();
 

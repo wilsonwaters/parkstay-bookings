@@ -1,10 +1,10 @@
 import { Ellipsis, Eye, Play, Trash2 } from 'lucide-react';
-import { SnipeStatus } from '../../../../shared/types/common.types';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
 import type { SiteSnipe } from '../../../../shared/types/site-sniper.types';
 import { ROUTES } from '../../../app/routes';
+import { bookingHref } from './snipeFormat';
 import { Button, IconButton, Menu, MenuItem, MenuSeparator } from '../../../components/ui';
-import { primaryActionFor } from './snipeState';
+import { isRunning, primaryActionFor } from './snipeState';
 import type { SnipeActions } from './useSnipeActions';
 
 export interface SnipeActionsBarProps {
@@ -21,7 +21,8 @@ export interface SnipeActionsBarProps {
 /**
  * One visible action by status (Arm, Arm again, Disarm, View booking; a held site's "Pay now"
  * is in its hold panel), and a "More actions for {name}" menu with View details, Run now and
- * Delete. A held or booked snipe is never offered Arm: main refuses it (§12.31).
+ * Delete (Run now only while it runs). A held or booked snipe is never offered Arm: main
+ * refuses it (§12.31).
  */
 export function SnipeActionsBar({
   snipe,
@@ -32,7 +33,8 @@ export function SnipeActionsBar({
 }: SnipeActionsBarProps) {
   const known = manifest !== undefined;
   const action = primaryActionFor(snipe);
-  const canRun = known && snipe.status !== SnipeStatus.HELD && snipe.status !== SnipeStatus.BOOKED;
+  // One attempt now only while it runs: main answers "not active" for a stopped snipe.
+  const canRun = known && isRunning(snipe);
   const size = onPage ? 'md' : 'sm';
 
   return (
@@ -60,7 +62,12 @@ export function SnipeActionsBar({
         </Button>
       )}
       {action === 'booking' && (
-        <Button as="a" href={`#${ROUTES.bookings()}`} variant="secondary" size={size}>
+        <Button
+          as="a"
+          href={`#${bookingHref(snipe.bookedReference)}`}
+          variant="secondary"
+          size={size}
+        >
           View booking
         </Button>
       )}

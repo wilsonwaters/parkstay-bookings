@@ -23,23 +23,33 @@ describe('SnipeTimeline', () => {
     expect(items().filter((li) => li.hasAttribute('aria-current'))).toHaveLength(1);
   });
 
-  it('leaves the queue out when the snipe does not use it, compactly on a card', () => {
-    render(<SnipeTimeline snipe={makeHeldSnipe()} compact />);
-    expect(items().map((li) => li.textContent?.replace('›', ''))).toEqual([
-      'Armed, done',
-      'Waiting for release, done',
-      'Sniping, done',
-      'Held, current step',
+  it('leaves the queue out when the snipe does not use it', () => {
+    render(<SnipeTimeline snipe={makeHeldSnipe()} />);
+    expect(items().map((li) => li.textContent)).toEqual([
+      'ArmedDonedone',
+      'Waiting for releaseDonedone',
+      'SnipingDonedone',
+      'HeldNowcurrent step',
     ]);
   });
 
   it('ends a failed snipe on a terminal step', () => {
-    render(
-      <SnipeTimeline snipe={makeSnipe({ status: SnipeStatus.FAILED, isActive: false })} compact />
-    );
+    render(<SnipeTimeline snipe={makeSnipe({ status: SnipeStatus.FAILED, isActive: false })} />);
     const last = items().at(-1);
-    expect(last).toHaveTextContent('Failed, current step');
+    expect(last).toHaveTextContent('FailedNow');
     expect(last).toHaveAttribute('aria-current', 'step');
-    expect(items()[1]).toHaveTextContent('Waiting for release, not reached');
+    expect(items()[1]).toHaveTextContent('Waiting for releaseNot reachednot reached');
+  });
+
+  it('shows a card only where the snipe is', () => {
+    const { rerender } = render(<SnipeTimeline snipe={makeHeldSnipe()} compact />);
+    expect(screen.getByText('Step 4 of 4: Held')).toBeInTheDocument();
+    expect(screen.queryByRole('list')).toBeNull();
+    rerender(<SnipeTimeline snipe={makeSnipe({ status: SnipeStatus.FAILED })} compact />);
+    expect(screen.getByText('Stopped: Failed')).toBeInTheDocument();
+    rerender(
+      <SnipeTimeline snipe={makeSnipe({ status: SnipeStatus.DISABLED, isActive: false })} compact />
+    );
+    expect(screen.getByText('Not running')).toBeInTheDocument();
   });
 });

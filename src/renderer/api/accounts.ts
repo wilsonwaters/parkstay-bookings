@@ -1,9 +1,32 @@
 import { useCallback } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import type { ProviderAccount, ProviderId } from '../../shared/types/provider.types';
 import { unwrap } from './client';
-import { useInvalidateOn } from './events';
+import { useApiEvent } from './events';
 import { queryKeys } from './queryKeys';
+
+/** One `account:updated` burst refreshes the accounts once, however many hooks listen. */
+export const ACCOUNT_EVENT_COALESCE_MS = 50;
+const pendingRefresh = new WeakMap<QueryClient, ReturnType<typeof setTimeout>>();
+
+/**
+ * Every list card asks for its provider's account, so `account:updated` reaches many hooks at
+ * once: the first schedules one invalidation for the whole app (per query client), the rest
+ * see it pending and do nothing.
+ */
+function useAccountUpdates(): void {
+  const queryClient = useQueryClient();
+  useApiEvent('account:updated', () => {
+    if (pendingRefresh.has(queryClient)) return;
+    pendingRefresh.set(
+      queryClient,
+      setTimeout(() => {
+        pendingRefresh.delete(queryClient);
+        void queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all });
+      }, ACCOUNT_EVENT_COALESCE_MS)
+    );
+  });
+}
 
 function listAccounts(): Promise<ProviderAccount[]> {
   return unwrap((api) => api.accounts.list());
@@ -24,7 +47,7 @@ function useStoreAccount() {
  * `account:updated`.
  */
 export function useAccountStatus(providerId: ProviderId | undefined) {
-  useInvalidateOn('account:updated', queryKeys.accounts.all);
+  useAccountUpdates();
   const select = useCallback(
     (accounts: ProviderAccount[]) => accounts.find((a) => a.providerId === providerId),
     [providerId]
@@ -39,7 +62,7 @@ export function useAccountStatus(providerId: ProviderId | undefined) {
 
 /** Every provider account with sign-in, as last recorded; refreshed on `account:updated`. */
 export function useAccounts() {
-  useInvalidateOn('account:updated', queryKeys.accounts.all);
+  useAccountUpdates();
   return useQuery({ queryKey: queryKeys.accounts.list(), queryFn: listAccounts });
 }
 

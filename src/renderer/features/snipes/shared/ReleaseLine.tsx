@@ -36,14 +36,18 @@ export function ReleaseLine({ snipe, manifest, className }: ReleaseLineProps) {
       );
     case 'countdown':
       return (
-        <p className={cx(classes, 'font-semibold text-warning-fg')}>
+        <p className={cx(classes, 'text-fg-secondary')}>
           <Clock size={16} aria-hidden="true" />
           {opened ? (
             'Opening now'
           ) : (
             <>
               <span aria-hidden="true">Opens in</span>
-              <Countdown to={line.at} label={(left) => `Opens in ${left}`} />
+              <Countdown
+                to={line.at}
+                label={(left) => `Opens in ${left}`}
+                className="font-semibold text-fg"
+              />
             </>
           )}
         </p>

@@ -1,4 +1,4 @@
-import { Timer } from 'lucide-react';
+import { CreditCard, Timer } from 'lucide-react';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
 import type { SiteSnipe } from '../../../../shared/types/site-sniper.types';
 import { Countdown } from '../../../components/Countdown';
@@ -38,6 +38,8 @@ export function HeldPanel({
   const provider = manifest?.shortName ?? 'the provider';
   const unit = unitLabel(snipe.holdUnitId, unitNounFor(manifest), unitNames);
   const page = variant === 'page';
+  // Unique per hold, so a list of held snipes has no two landmarks of one name.
+  const regionLabel = `Hold at ${snipe.location.name || snipe.name}`;
   const frame = cx(
     'flex flex-col gap-3 rounded-lg border p-4',
     expired ? 'border-border bg-surface-subtle' : 'border-warning-fg/30 bg-warning-subtle',
@@ -46,7 +48,7 @@ export function HeldPanel({
 
   if (expired) {
     return (
-      <section aria-label="Hold" className={frame}>
+      <section aria-label={regionLabel} className={frame}>
         <p className="text-sm font-semibold text-fg">{HOLD_EXPIRED_MESSAGE}</p>
         <p className="text-sm text-fg-secondary">
           The hold on {unit} ran out before it was paid for.
@@ -55,8 +57,8 @@ export function HeldPanel({
     );
   }
   return (
-    <section aria-label="Hold" className={frame}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <section aria-label={regionLabel} className={frame}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <p className="flex items-center gap-2 text-base font-semibold text-warning-fg">
             <Timer size={18} aria-hidden="true" />
@@ -74,9 +76,10 @@ export function HeldPanel({
             </p>
           ) : null}
         </div>
+        {/* The card's strongest action, below the page's one coral button (the detail page's). */}
         <Button
           variant={page ? 'primary' : 'secondary'}
-          size={page ? 'md' : 'sm'}
+          leadingIcon={<CreditCard size={18} />}
           onClick={actions.payNow}
           loading={actions.paying}
         >

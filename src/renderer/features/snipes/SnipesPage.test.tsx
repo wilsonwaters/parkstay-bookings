@@ -37,8 +37,9 @@ describe('SnipesPage', () => {
       within(card).getByText(/Fri 11 – Sun 13 Dec 2099 · 2 nights · 2 adults/)
     ).toBeInTheDocument();
     expect(within(card).getByText('Armed', { selector: 'span' })).toBeInTheDocument();
-    const progress = within(card).getByRole('list', { name: 'Progress' });
-    expect(within(progress).getAllByRole('listitem')[0]).toHaveAttribute('aria-current', 'step');
+    // A card shows only where the snipe is; the detail page lists every step.
+    expect(within(card).getByText(/Step 1 of 4: Armed/)).toBeInTheDocument();
+    expect(within(card).queryByRole('list', { name: 'Progress' })).toBeNull();
     expect(
       within(card).getByRole('timer', { name: /^Opens in 1 day 2 hours$/ })
     ).toBeInTheDocument();
@@ -143,5 +144,35 @@ describe('SnipesPage', () => {
     expect(screen.getByRole('button', { name: 'New snipe' })).toHaveAccessibleDescription(
       'No provider supports Site Sniper yet'
     );
+  });
+
+  it('refreshes the accounts once for one account:updated, however many cards listen', async () => {
+    const snipes = Array.from({ length: 11 }, (_, i) =>
+      makeSnipe({ id: i + 1, name: `Snipe ${i + 1}` })
+    );
+    const accounts = jest
+      .fn()
+      .mockResolvedValue(
+        ok([{ providerId: 'parkstay', requirement: 'optional', status: 'signed-out' }])
+      );
+    const mock = createMockApi({ ...listOf(...snipes), accounts: { list: accounts } });
+    renderWithProviders(<SnipesPage />, { api: mock });
+    expect(await screen.findAllByRole('article')).toHaveLength(11);
+    await waitFor(() => expect(accounts).toHaveBeenCalled());
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 100));
+    });
+    const before = accounts.mock.calls.length;
+
+    mock.emit('account:updated', {
+      providerId: 'parkstay',
+      requirement: 'optional',
+      status: 'signed-in',
+    });
+    await waitFor(() => expect(accounts).toHaveBeenCalledTimes(before + 1));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    expect(accounts).toHaveBeenCalledTimes(before + 1);
   });
 });

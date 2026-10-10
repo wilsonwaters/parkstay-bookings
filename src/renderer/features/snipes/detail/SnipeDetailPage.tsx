@@ -33,8 +33,11 @@ import { SnipeActionsBar } from '../shared/SnipeActionsBar';
 import { SnipeTimeline } from '../shared/SnipeTimeline';
 import { isFinished, timelineSteps } from '../shared/snipeState';
 import { useSnipeActions } from '../shared/useSnipeActions';
+import { useUnitNames } from '../shared/useUnitNames';
+import { bookingHref } from '../shared/snipeFormat';
 import { HoldAlert, useStatusAnnouncements } from '../shared/useStatusAnnouncements';
 import { SnipeRecord, SnipeSummary } from './SnipeSummary';
+import { useLingering } from './useLingering';
 
 const PAGE = 'mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-8 lg:px-8';
 const BACK = { label: 'Site Sniper', href: `#${ROUTES.snipes()}` };
@@ -46,19 +49,20 @@ interface ViewProps {
   updating: boolean;
 }
 
-function SnipeDetailView({ snipe, manifest, updating }: ViewProps) {
+function SnipeDetailView({ snipe, manifest, updating: fetching }: ViewProps) {
+  const updating = useLingering(fetching);
   const navigate = useNavigate();
   const now = useNow();
-  const actions = useSnipeActions(snipe, manifest);
   const [confirming, setConfirming] = useState(false);
   const place = useLocationDetail(snipe.locationKey);
+  const names = useUnitNames(snipe);
+  const actions = useSnipeActions(snipe, manifest, names);
   const snipes = useMemo(() => [snipe], [snipe]);
   const manifestOf = useCallback(() => manifest, [manifest]);
   const alert = useStatusAnnouncements(snipes, manifestOf);
   const { location } = snipe;
   const provider = manifest?.shortName ?? 'the provider';
   const today = providerToday(manifest, now);
-  const names = new Map((place.data?.units ?? []).map((u) => [u.unitId, u.unitName]));
   const terminal = timelineSteps(snipe).find((step) => step.terminal);
 
   return (
@@ -111,7 +115,7 @@ function SnipeDetailView({ snipe, manifest, updating }: ViewProps) {
       {snipe.status === SnipeStatus.BOOKED && (
         <Notice tone="success" title={`Booked on ${provider}`}>
           {snipe.bookedReference && <>Reference {snipe.bookedReference}. </>}
-          <Link to={ROUTES.bookings()} className="font-semibold underline">
+          <Link to={bookingHref(snipe.bookedReference)} className="font-semibold underline">
             See it in Bookings
           </Link>
         </Notice>

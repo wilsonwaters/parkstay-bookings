@@ -176,14 +176,20 @@ export function unitNounFor(manifest: ProviderManifest | undefined): UnitNoun {
   return unitNoun(manifest?.locationKinds[0]);
 }
 
-/** "Site 12": a unit by the place's name for it when known, else by the noun and id. */
+/**
+ * A unit by the place's own name for it ("CAMPSITE 01", "Camp site (no power)"). Without one, a
+ * plain number reads "Site 12"; any other id (a class such as `class:117`) is never shown and
+ * reads "A site".
+ */
 export function unitLabel(
   unitId: string | undefined,
   noun: UnitNoun,
   names?: ReadonlyMap<string, string>
 ): string {
-  if (!unitId) return `A ${noun.one}`;
-  return names?.get(unitId) ?? `${noun.one.charAt(0).toUpperCase()}${noun.one.slice(1)} ${unitId}`;
+  const named = unitId ? names?.get(unitId) : undefined;
+  if (named) return named;
+  if (!unitId || !/^\d+$/.test(unitId)) return `A ${noun.one}`;
+  return `${noun.one.charAt(0).toUpperCase()}${noun.one.slice(1)} ${unitId}`;
 }
 
 /** Most urgent first: a hold to pay for, then running snipes, paused, ended, booked. */

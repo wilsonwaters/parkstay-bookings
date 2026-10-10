@@ -92,7 +92,7 @@ describe('create a snipe, end to end', () => {
     };
     stored = held;
     mock.emit('snipe:updated', held);
-    const hold = await screen.findByRole('region', { name: 'Hold' });
+    const hold = await screen.findByRole('region', { name: 'Hold at Osprey Bay' });
     expect(screen.getByRole('alert')).toHaveTextContent(
       /^Site held at Osprey Bay\. Pay within (29|30) minutes\.$/
     );

@@ -162,6 +162,11 @@ describe('unitLabel', () => {
     );
     expect(unitLabel('12', sites)).toBe('Site 12');
     expect(unitLabel(undefined, sites)).toBe('A site');
+    // A class id is never shown.
+    expect(unitLabel('class:117', sites)).toBe('A site');
+    expect(unitLabel('class:117', sites, new Map([['class:117', 'Camp site (no power)']]))).toBe(
+      'Camp site (no power)'
+    );
   });
 });
 

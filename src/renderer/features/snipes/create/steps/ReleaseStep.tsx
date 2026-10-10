@@ -68,7 +68,7 @@ export function ReleaseStep({ manifest, noun, releaseInfo, now }: ReleaseStepPro
               isComputedMode(mode.id) ? (
                 <>
                   <span className="block">{mode.description}</span>
-                  <span className="mt-1 block font-semibold text-warning-fg">{preview}</span>
+                  <span className="mt-1 block font-semibold text-fg">{preview}</span>
                 </>
               ) : (
                 mode.description

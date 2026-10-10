@@ -120,6 +120,36 @@ describe('NewSnipePage: creating the snipe', () => {
     );
   });
 
+  it('refuses a scheduled release after check-in', async () => {
+    const { user } = renderWithApp({ route: PREFILL, api: api() });
+    await step(/Your stay$/);
+    await user.click(button('Continue'));
+    await step(/Release and timing$/);
+    await user.click(screen.getByRole('radio', { name: 'At a scheduled time' }));
+    const date = screen.getByLabelText('Release date');
+    await user.type(date, '2099-12-11');
+    await user.type(screen.getByLabelText('Release time (AWST)'), '10:00');
+    await user.click(button('Continue'));
+    await waitFor(() => expect(date).toHaveFocus());
+    expect(date).toHaveAccessibleDescription(/Choose a release time before check-in/);
+  });
+
+  it('shows main’s release issue for a computed release on the release choice', async () => {
+    const create = jest.fn().mockResolvedValue({
+      success: false,
+      code: 'VALIDATION',
+      error: 'ParkStay could not work out when these dates open',
+      issues: ['releaseAt'],
+    });
+    const { user } = renderWithApp({ route: PREFILL, api: api({ snipes: { create } }) });
+    await step(/Your stay$/);
+    for (const name of ['Continue', 'Continue', 'Create snipe']) await user.click(button(name));
+    expect(await step(/Release and timing$/)).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'ParkStay could not work out when these dates open'
+    );
+  });
+
   it('asks to connect a provider whose holds need an account, and stops asking once signed in', async () => {
     const accounts = jest
       .fn()

@@ -99,7 +99,6 @@ const TOP_LEVEL: Partial<Record<string, SnipeFieldName>> = {
   providerId: 'providerId',
   name: 'name',
   releaseMode: 'releaseMode',
-  releaseAt: 'releaseDate',
   accessGateEnabled: 'accessGateEnabled',
   leadTimeSeconds: 'leadTimeSeconds',
   pollIntervalMs: 'pollIntervalSeconds',
@@ -108,8 +107,15 @@ const TOP_LEVEL: Partial<Record<string, SnipeFieldName>> = {
   notes: 'notes',
 };
 
-/** The form field a `VALIDATION` issue path from main names (`releaseAt` → the release date). */
-export function issueField(path: string): SnipeFieldName | undefined {
+/**
+ * The form field a `VALIDATION` issue path from main names. `releaseAt` is the release date
+ * for a scheduled release, and otherwise the release mode: the provider could not work out
+ * the release, and the date field is hidden then.
+ */
+export function issueField(path: string, releaseMode?: string): SnipeFieldName | undefined {
+  if (path === 'releaseAt') {
+    return releaseMode === SnipeReleaseMode.SCHEDULED ? 'releaseDate' : 'releaseMode';
+  }
   if (path.startsWith('location')) return 'location';
   if (path === 'stay' || path.startsWith('stay.')) {
     const key = path.slice('stay.'.length);

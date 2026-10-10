@@ -65,7 +65,7 @@ describe('SnipeDetailPage', () => {
         snipes: { get: jest.fn().mockResolvedValue(ok(makeHeldSnipe(23))), openPayment },
       }),
     });
-    const hold = await screen.findByRole('region', { name: 'Hold' });
+    const hold = await screen.findByRole('region', { name: 'Hold at Osprey Bay' });
     expect(await within(hold).findByText('Site 12 (powered) is held for you')).toBeInTheDocument();
     expect(within(hold).getByRole('timer', { name: /minutes left to pay$/ })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Arm/ })).toBeNull();
@@ -83,7 +83,7 @@ describe('SnipeDetailPage', () => {
     expect(screen.getByText(/Reference PB123/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'See it in Bookings' })).toHaveAttribute(
       'href',
-      '#/bookings'
+      '#/bookings?q=PB123'
     );
   });
 
