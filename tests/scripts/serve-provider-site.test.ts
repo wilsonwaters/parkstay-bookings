@@ -52,9 +52,11 @@ describe('scripts/serve-provider-site.mjs', () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
       expect(out()).toMatch(/GET \/parks 200\nGET \/parks\/sunset-bay 200\nGET \/nowhere 404/);
     } finally {
-      const exited = new Promise((resolve) => child.once('exit', resolve));
+      const exited = new Promise((resolve) => child.once('exit', (code) => resolve(code)));
       child.kill('SIGTERM');
-      await expect(exited).resolves.toBe(0);
+      // The script closes its server and exits 0 on SIGTERM. Windows has no signals: kill() ends
+      // the process outright (exit code null), and the script's handler never runs there.
+      await expect(exited).resolves.toBe(process.platform === 'win32' ? null : 0);
     }
   }, 30_000);
 
