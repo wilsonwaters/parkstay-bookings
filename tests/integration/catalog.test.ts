@@ -400,7 +400,7 @@ describe('the location catalogue on a real database', () => {
     const entriesOf = (result: CatalogAvailabilityResult, providerId: string) =>
       result.entries.filter((e) => e.key.startsWith(`${providerId}:`));
 
-    it('returns parkstay:20 (5 available / 3 bookable) and leaves out the unknown id 1', async () => {
+    it('returns parkstay:20 (3 of its 5 sites free) and leaves out the unknown id 1', async () => {
       const { catalog } = await build({ parkstay: true });
       await catalog.sync('parkstay');
       const body = parkStayFixture('campground_availabilty_view.json');
@@ -413,8 +413,8 @@ describe('the location catalogue on a real database', () => {
       expect(result.errors).toEqual([]);
       expect(result.entries).toContainEqual({
         key: 'parkstay:20',
-        availableUnits: 5,
-        bookableUnits: 3,
+        availableUnits: 3,
+        bookableUnits: 5,
       });
       expect(result.entries.map((e) => e.key).sort()).toEqual(['parkstay:18', 'parkstay:20']);
     });
@@ -431,8 +431,8 @@ describe('the location catalogue on a real database', () => {
       ]);
       expect(entriesOf(result, 'parkstay')).toContainEqual({
         key: 'parkstay:20',
-        availableUnits: 5,
-        bookableUnits: 3,
+        availableUnits: 3,
+        bookableUnits: 5,
       });
       expect(entriesOf(result, 'fake2')).toHaveLength(2);
 
