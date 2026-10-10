@@ -26,7 +26,9 @@ describe('HoldPanel', () => {
   it('names the held unit, the expiry and the time left, and Pay now pays', async () => {
     const { onPay, user, panel } = renderPanel();
     expect(within(panel()).getByText('CAMPSITE 02 is held for you')).toBeInTheDocument();
-    expect(within(panel()).getByText(/^Held until \d{1,2}:\d{2} [ap]m AWST/)).toBeInTheDocument();
+    expect(
+      within(panel()).getByText(/^Held until (?:\w{3} \d{1,2} \w{3}, )?\d{1,2}:\d{2} [ap]m AWST/)
+    ).toBeInTheDocument();
     expect(
       within(panel()).getByRole('timer', { name: /^2[23] minutes left to pay$/ })
     ).toHaveTextContent(/^2[23]:\d{2}$/);

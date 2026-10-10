@@ -21,7 +21,9 @@ describe('HeldPanel', () => {
     const { user } = renderWithProviders(<Held snipe={snipe} />, {
       api: { snipes: { openPayment } },
     });
-    expect(screen.getByText(/Held until \d{1,2}:\d{2} [ap]m AWST/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Held until (?:\w{3} \d{1,2} \w{3}, )?\d{1,2}:\d{2} [ap]m AWST/)
+    ).toBeInTheDocument();
     expect(screen.getByRole('timer', { name: /^2[23] minutes left to pay$/ })).toHaveTextContent(
       /^2[23]:\d{2}$/
     );

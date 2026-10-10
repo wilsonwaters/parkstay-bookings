@@ -63,7 +63,7 @@ test('a held snipe: its notification opens it, it shows the hold and countdown, 
   await expect(hold).toContainText(/^CAMPSITE 02 is held for you/i);
   const timer = hold.getByRole('timer', { name: /left to pay$/ });
   await expect(timer).toHaveText(/^(19|20):\d\d$/);
-  await expect(hold).toContainText(/Held until \d{1,2}:\d\d/);
+  await expect(hold).toContainText(/Held until (?:\w{3} \d{1,2} \w{3}, )?\d{1,2}:\d\d/);
   const payNow = hold.getByRole('button', { name: 'Pay now' });
 
   // Pay now: the DBCA queue answers from its fixture, then the network guard cancels the

@@ -164,7 +164,9 @@ describe('WatchDetailPage', () => {
     // The hold panel a held snipe shows: the unit, its expiry, the time left, Pay now.
     const hold = await screen.findByRole('region', { name: 'Hold at Osprey Bay' });
     expect(within(hold).getByText('Site 1 is held for you')).toBeInTheDocument();
-    expect(within(hold).getByText(/^Held until \d{1,2}:\d{2} [ap]m AWST/)).toBeInTheDocument();
+    expect(
+      within(hold).getByText(/^Held until (?:\w{3} \d{1,2} \w{3}, )?\d{1,2}:\d{2} [ap]m AWST/)
+    ).toBeInTheDocument();
     expect(within(hold).getByRole('timer', { name: /left to pay$/ })).toBeInTheDocument();
     expect(
       within(hold).getByText(/^Pay on ParkStay before the hold runs out\./)
