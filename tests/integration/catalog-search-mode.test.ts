@@ -11,6 +11,7 @@ import { createContainer, type AppContainer } from '@main/app/container';
 import { AREA_SEARCH_MAX_PAGES } from '@main/core/catalog/location-catalog.service';
 import { openDatabase } from '@main/database/connection';
 import { registerIpcHandlers } from '@main/ipc';
+import { parkstayFactory } from '@main/providers/parkstay';
 import type {
   APIResponse,
   BoundingBox,
@@ -74,10 +75,12 @@ describe('a search-mode catalogue over IPC (real container, with ParkStay)', () 
   function build(options: FakeSearchProviderOptions = {}): void {
     const secrets = containerSecrets();
     userDataDir = secrets.userDataDir;
+    // ParkStay alone (with no network here) plus the fake, however many providers are built in
     container = createContainer({
       db: openDatabase(':memory:'),
       logsDir: TEST_LOGS_DIR,
       ...secrets,
+      providerFactories: [parkstayFactory],
     });
     search = createFakeSearchProvider(options);
     container.providers.register(search.factory, createTestProviderContext);

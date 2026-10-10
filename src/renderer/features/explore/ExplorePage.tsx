@@ -238,10 +238,11 @@ export default function ExplorePage() {
   );
 
   // A provider that cannot list all its places (`catalogMode: 'search'`) is asked for the area
-  // the map shows (all of WA without a map). Its places join the results when main announces
-  // them (`catalog:updated`); with only `full` catalogues (ParkStay) nothing is asked.
+  // the map shows (all of WA without a map), unless the provider filter leaves it out. Its
+  // places join the results when main announces them (`catalog:updated`); with only `full`
+  // catalogues (ParkStay) nothing is asked.
   const shownArea = useDebouncedValue(mapMode ? liveBbox : WA_BBOX, AREA_SEARCH_DEBOUNCE_MS);
-  useCatalogAreaSearch(shownArea);
+  useCatalogAreaSearch(shownArea, filters.providerIds);
 
   // ---- Availability for the dates (E3) ----------------------------------------------------
   // One bulk call per provider for the whole catalogue, once the stay has settled; panning the

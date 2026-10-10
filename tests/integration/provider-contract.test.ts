@@ -10,6 +10,7 @@ import { createFakeProvider, createTestProviderContext } from '@tests/utils/fake
 import { createFakeSearchProvider } from '@tests/utils/fake-search-provider';
 import {
   abortViolation,
+  defaultSearchText,
   describeProviderContract,
   searchAreaViolations,
   searchTextViolations,
@@ -68,6 +69,13 @@ describe('the search-mode checks of the contract suite', () => {
   const catalogOf = (searchArea: CatalogModule['searchArea']): CatalogModule => ({
     searchArea,
     getLocation: () => Promise.reject(new Error('unused')),
+  });
+
+  it('give searchText by default the first word of 3 or more characters, as the app asks', () => {
+    expect(defaultSearchText('Karri Loft')).toBe('Karri');
+    expect(defaultSearchText('St. Jo’s Bay Hut')).toBe('Bay');
+    expect(defaultSearchText('A1 Ox Inn')).toBe('Inn');
+    expect(defaultSearchText(' Ox ')).toBe('Ox');
   });
 
   it('pass a well-behaved search provider', async () => {

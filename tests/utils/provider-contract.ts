@@ -25,6 +25,7 @@ import {
   type CatalogModule,
   type ProviderContext,
 } from '@main/providers/sdk';
+import { TEXT_SEARCH_MIN_CHARS } from '@main/core/catalog/location-catalog.service';
 import { providerViolations, ProviderRegistry } from '@main/providers/registry';
 import type { BoundingBox, LocationSummary } from '@shared/types/catalog.types';
 import {
@@ -52,8 +53,8 @@ export interface ProviderContractSubject {
    */
   searchBbox?: BoundingBox;
   /**
-   * A text `catalog.searchText` finds locations for. Default: the first word of the first
-   * location's name.
+   * A text `catalog.searchText` finds locations for. Default: `defaultSearchText` of the
+   * first location's name (its first word of 3 or more characters).
    */
   searchText?: string;
   /** Called after the suite (e.g. to stop a fixture server). */
@@ -88,6 +89,18 @@ async function listAll(catalog: CatalogModule, bbox: BoundingBox): Promise<Locat
     if (!cursor) break;
   }
   return items;
+}
+
+/**
+ * The text the suite gives `catalog.searchText` by default for a location named `name`: its
+ * first word of at least `TEXT_SEARCH_MIN_CHARS` (3) letters or digits, as the app asks with
+ * no shorter text; else the whole name.
+ */
+export function defaultSearchText(name: string): string {
+  return (
+    name.split(/[^\p{L}\p{N}]+/u).find((word) => word.length >= TEXT_SEARCH_MIN_CHARS) ??
+    name.trim()
+  );
 }
 
 /** How far outside its box a `searchArea` item may be, for rounding: 0.01° (about 1 km). */
@@ -375,7 +388,7 @@ export function describeProviderContract(
         const catalog = searchCatalog();
         if (!catalog?.searchText) return;
         const text =
-          subject.searchText ?? (await listAll(catalog, bbox()))[0]?.name.split(/\s+/)[0] ?? 'a';
+          subject.searchText ?? defaultSearchText((await listAll(catalog, bbox()))[0]?.name ?? '');
         expect(await searchTextViolations(catalog, provider.manifest.id, text)).toEqual([]);
         const searchText = catalog.searchText.bind(catalog);
         expect(await abortViolation((signal) => searchText(text, signal))).toBe(undefined);

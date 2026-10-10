@@ -31,6 +31,14 @@ const SEARCH_MANIFEST: ProviderManifest = {
   capabilities: { ...FAKE_MANIFEST.capabilities, catalogMode: 'search' },
 };
 
+/** A second search-mode provider, for the provider filter. */
+const OTHER_SEARCH_MANIFEST: ProviderManifest = {
+  ...SEARCH_MANIFEST,
+  id: 'search2',
+  name: 'More Search Stays',
+  shortName: 'MoreStays',
+};
+
 const QUENDA: LocationSummary = makeLocation({
   providerId: 'search',
   externalId: 'quenda',
@@ -91,6 +99,37 @@ describe('Explore with a search-mode provider', () => {
     expect(await within(results).findByRole('heading', { name: '1 place' })).toBeInTheDocument();
     const card = within(results).getByRole('link', { name: 'Quenda Cottage' });
     expect(card).toHaveAttribute('href', '#/places/search/quenda');
+  });
+
+  it("asks only the search-mode providers Explore's provider filter keeps", async () => {
+    const search = storedSearch([...PARKSTAY_LOCATIONS]);
+    renderWithApp({
+      route: '/?providers=parkstay,search',
+      api: catalogApi({
+        catalog: { search },
+        stubs: providers(PARKSTAY_MANIFEST, SEARCH_MANIFEST, OTHER_SEARCH_MANIFEST),
+      }),
+    });
+
+    await waitFor(() =>
+      expect(areaRequests(search)).toEqual([{ bbox: WA_BBOX, providerIds: ['search'], limit: 1 }])
+    );
+  });
+
+  it('sends no map area when the provider filter leaves out every search-mode provider', async () => {
+    const search = storedSearch([...PARKSTAY_LOCATIONS]);
+    renderWithApp({
+      route: '/?providers=parkstay',
+      api: catalogApi({
+        catalog: { search },
+        stubs: providers(PARKSTAY_MANIFEST, SEARCH_MANIFEST, OTHER_SEARCH_MANIFEST),
+      }),
+    });
+    const results = await screen.findByRole('region', { name: 'Results' });
+    await within(results).findByRole('heading', { name: '169 places' });
+    await act(() => new Promise((resolve) => setTimeout(resolve, AREA_SEARCH_DEBOUNCE_MS + 100)));
+
+    expect(areaRequests(search)).toEqual([]);
   });
 
   it('with ParkStay alone (a full catalogue), sends no map area at all', async () => {

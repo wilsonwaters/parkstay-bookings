@@ -12,6 +12,7 @@ import {
   AREA_SEARCH_MAX_PAGES,
   CATALOG_SEARCH_STATE_KEY,
   LocationCatalogService,
+  SEARCH_MEMORY_SIZE,
   TEXT_SEARCH_MAX_ITEMS,
   type CatalogTimings,
 } from '@main/core/catalog/location-catalog.service';
@@ -28,7 +29,9 @@ import {
   createMemoryLogger,
   createTestProviderContext,
   FIXED_NOW,
+  type FakeLocationSeed,
   type FakeProvider,
+  type MemoryLogger,
 } from '@tests/utils/fake-provider';
 import {
   createFakeSearchProvider,
@@ -54,6 +57,7 @@ interface Setup {
   catalog: LocationCatalogService;
   events: Array<[EventName, unknown]>;
   clock: { now: Date };
+  logger: MemoryLogger;
 }
 
 let current: Setup | undefined;
@@ -72,16 +76,28 @@ function setup(
   const providerState = new ProviderStateRepository(db);
   const events: Setup['events'] = [];
   const clock = { now: FIXED_NOW };
+  const logger = createMemoryLogger();
   const catalog = new LocationCatalogService({
     registry,
     locations,
     providerState,
     events: { emit: (name, payload) => void events.push([name, payload]) },
-    logger: createMemoryLogger(),
+    logger,
     clock: () => clock.now,
     timings,
   });
-  current = { db, registry, fake, search, locations, providerState, catalog, events, clock };
+  current = {
+    db,
+    registry,
+    fake,
+    search,
+    locations,
+    providerState,
+    catalog,
+    events,
+    clock,
+    logger,
+  };
   return current;
 }
 
@@ -101,6 +117,20 @@ const later = (s: Setup, ms: number): void => {
   s.clock.now = new Date(s.clock.now.getTime() + ms);
 };
 const names = (items: LocationSummary[]): string[] => items.map((l) => l.name).sort();
+/** `n` places a hundredth of a degree apart from (`lat`, `lng`), with ids `<prefix>-<i>`. */
+const cluster = (prefix: string, lat: number, lng: number, n: number): FakeLocationSeed[] =>
+  Array.from({ length: n }, (_, i) => ({
+    externalId: `${prefix}-${i + 1}`,
+    name: `${prefix} stay ${i + 1}`,
+    lat: lat + i * 0.01,
+    lng,
+  }));
+/** Exmouth: a third area, apart from Perth and the Kimberley. */
+const EXMOUTH: BoundingBox = [113, -23, 115, -21];
+const inBox =
+  ([west, south, east, north]: BoundingBox) =>
+  (q: CatalogAreaQuery) =>
+    q.bbox[0] <= west && q.bbox[1] <= south && q.bbox[2] >= east && q.bbox[3] >= north;
 
 /** Lets every background search finish (each FakeProvider call waits on a timer). */
 async function idle(s: Setup): Promise<void> {
@@ -280,6 +310,60 @@ describe('area search', () => {
   });
 });
 
+describe('areas the map has left', () => {
+  const places = [
+    ...cluster('perth', -31.95, 115.86, 6),
+    ...cluster('broome', -17.96, 122.24, 6),
+    ...cluster('exmouth', -21.93, 114.13, 6),
+  ];
+
+  it('stops a search that is no longer one of the 2 newest before its next page, keeping what it found', async () => {
+    const s = setup({ locations: places, delayMs: 5 });
+
+    for (const bbox of [PERTH, KIMBERLEY, EXMOUTH]) s.catalog.search({ bbox });
+    await idle(s);
+
+    const queries = areaQueries(s.search);
+    expect(queries.filter(inBox(PERTH))).toHaveLength(1);
+    expect(queries.filter(inBox(KIMBERLEY))).toHaveLength(3);
+    expect(queries.filter(inBox(EXMOUTH))).toHaveLength(3);
+    expect(s.locations.countByProvider().search).toBe(2 + 6 + 6);
+    expect(s.events).toContainEqual([
+      'catalog:updated',
+      expect.objectContaining({ providerId: 'search', count: 2 }),
+    ]);
+  });
+
+  it('asks a left area again only after 60 s, and then reads it all', async () => {
+    const s = setup({ locations: places, delayMs: 5 });
+    for (const bbox of [PERTH, KIMBERLEY, EXMOUTH]) s.catalog.search({ bbox });
+    await idle(s);
+
+    expect(s.catalog.search({ bbox: PERTH }).pending).toBeUndefined();
+    later(s, 60_000);
+    expect(s.catalog.search({ bbox: PERTH }).pending).toEqual(['search']);
+    await idle(s);
+
+    expect(areaQueries(s.search).filter(inBox(PERTH))).toHaveLength(1 + 3);
+    expect(s.locations.countByProvider().search).toBe(18);
+  });
+
+  it('does not ask for an area inside one still being searched', async () => {
+    const s = setup({ delayMs: 5 });
+
+    s.catalog.search({ bbox: SOUTH_WEST });
+    const inside = s.catalog.search({ bbox: PERTH });
+    await idle(s);
+
+    expect(inside.pending).toEqual(['search']);
+    expect(areaQueries(s.search).every(inBox(SOUTH_WEST))).toBe(true);
+    expect(names(s.catalog.search({ bbox: PERTH }).items)).toEqual([
+      'Bilby Bungalow',
+      'Quenda Cottage',
+    ]);
+  });
+});
+
 describe('failures and stopping', () => {
   it('records a failure in status, backs off for 60 s, and the next success clears it', async () => {
     const s = setup();
@@ -331,6 +415,79 @@ describe('failures and stopping', () => {
       syncing: false,
     });
     expect(s.locations.countByProvider().search).toBeUndefined();
+  });
+
+  it('a page that fails after the first keeps the pages before it, records the error and backs off', async () => {
+    const s = setup({ locations: cluster('perth', -31.95, 115.86, 6) });
+    const searchArea = s.search.catalog!.searchArea!.bind(s.search.catalog);
+    let calls = 0;
+    jest.spyOn(s.search.catalog!, 'searchArea').mockImplementation((query, signal) =>
+      ++calls === 3
+        ? Promise.reject(
+            new ProviderHttpError({
+              providerId: 'search',
+              status: 502,
+              url: 'https://search.example/',
+            })
+          )
+        : searchArea(query, signal)
+    );
+
+    s.catalog.search({ bbox: PERTH });
+    await idle(s);
+
+    expect(calls).toBe(3);
+    expect(s.locations.countByProvider().search).toBe(4);
+    expect(s.events).toEqual([
+      ['catalog:updated', expect.objectContaining({ providerId: 'search', count: 4 })],
+    ]);
+    expect(s.catalog.status().providers.find((p) => p.providerId === 'search')).toMatchObject({
+      lastError: 'search: HTTP 502 from https://search.example/',
+    });
+    expect(s.catalog.search({ bbox: PERTH }).pending).toBeUndefined();
+    later(s, 60_000);
+    expect(s.catalog.search({ bbox: PERTH }).pending).toEqual(['search']);
+  });
+
+  it(`remembers at most ${SEARCH_MEMORY_SIZE} searches: the next one forgets the oldest`, async () => {
+    const s = setup({ textSearch: true });
+    jest.spyOn(s.search.catalog!, 'searchText').mockResolvedValue([]);
+
+    for (let i = 0; i <= SEARCH_MEMORY_SIZE; i++) s.catalog.search({ text: `place ${i}` });
+    await idle(s);
+    expect(s.search.catalog!.searchText).toHaveBeenCalledTimes(SEARCH_MEMORY_SIZE + 1);
+
+    // place 0 was forgotten when place 500 was remembered; place 1 was not
+    expect(s.catalog.search({ text: 'place 1' }).pending).toBeUndefined();
+    expect(s.catalog.search({ text: 'place 0' }).pending).toEqual(['search']);
+  });
+
+  it('warns once when a search for everything matches more than the 5000 it returns', () => {
+    const s = setup();
+    const rows: LocationSummary[] = Array.from({ length: 5001 }, (_, i) => ({
+      key: `fake:${i}`,
+      providerId: 'fake',
+      externalId: String(i),
+      name: `Camp ${i}`,
+      kind: 'campground',
+      bookingMode: 'online',
+      lat: -32,
+      lng: 116,
+      imageUrls: [],
+      amenities: [],
+    }));
+    s.locations.upsertMany('fake', rows, FIXED_NOW);
+    const capWarnings = () =>
+      s.logger.lines.filter((l) => l.level === 'warn' && /more than the 5000/.test(l.message));
+
+    s.catalog.search({ text: 'camp', limit: 20 });
+    expect(capWarnings()).toEqual([]);
+    expect(s.catalog.search({}).items).toHaveLength(5000);
+    s.catalog.search({ limit: 5000 });
+
+    expect(capWarnings().map((l) => l.message)).toEqual([
+      'A catalogue search matched 5001 locations, more than the 5000 a search returns: Explore leaves some places out',
+    ]);
   });
 
   it('stop() aborts a search in flight and queued ones, which then write nothing', async () => {

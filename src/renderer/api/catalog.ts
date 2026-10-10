@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   keepPreviousData,
   useMutation,
@@ -100,19 +100,25 @@ export function useCatalogSearch(query: CatalogQuery, options: { enabled?: boole
  * (`bbox`), limited to those providers. Main answers from its stored catalogue at once and
  * asks the providers in the background; the places they add arrive as `catalog:updated`,
  * which reloads Explore's own searches, so the answer here is not used. Keyed by the area main
- * snaps the box to (`catalogSearchArea`), so a small pan asks nothing new. Asks nothing while
- * `bbox` is null or no catalogue provider is search-mode (ParkStay is `full`).
+ * snaps the box to (`catalogSearchArea`), so a small pan asks nothing new. `providerIds` is
+ * Explore's provider filter (empty: all). Asks nothing while `bbox` is null or no catalogue
+ * provider it covers is search-mode (ParkStay is `full`).
  */
-export function useCatalogAreaSearch(bbox: BoundingBox | null): void {
+export function useCatalogAreaSearch(
+  bbox: BoundingBox | null,
+  providerIds: readonly ProviderId[] = []
+): void {
   const providers = useProvidersWith('catalog');
-  const searchIds = useMemo(
-    () =>
-      (providers.data ?? [])
-        .filter((p) => p.capabilities.catalogMode === 'search')
-        .map((p) => p.id)
-        .sort(),
-    [providers.data]
-  );
+  // Explore's provider filter (none: every provider) narrows who is asked.
+  const wanted = providerIds.join(',');
+  const searchIds = useMemo(() => {
+    const filter = wanted ? wanted.split(',') : null;
+    return (providers.data ?? [])
+      .filter((p) => p.capabilities.catalogMode === 'search')
+      .map((p) => p.id)
+      .filter((id) => !filter || filter.includes(id))
+      .sort();
+  }, [providers.data, wanted]);
   // Within the globe (a map zoomed far out reports edges past 180°); main snaps it again to
   // the same area.
   const box = bbox ? clampBbox(bbox) : null;
@@ -286,13 +292,22 @@ export const LOCATION_SEARCH_LIMIT = 20;
 export const LOCATION_SEARCH_MIN_CHARS = 2;
 /** While main is still asking a provider about the text (`pending`), it is asked this often. */
 export const LOCATION_SEARCH_PENDING_POLL_MS = 1000;
+/**
+ * How long a text's search waits for a provider main lists as `pending`: then it stops asking
+ * (main gives each provider call 20 s).
+ */
+export const LOCATION_SEARCH_PENDING_MAX_MS = 60_000;
 
 /**
  * A location picker's search: one provider's places matching `text`, best first (main's
  * full-text ranking), at most `LOCATION_SEARCH_LIMIT`. Runs from 2 characters; while the next
- * search loads, the previous results stay (`isPlaceholderData`). For a search-mode provider
- * with text search, main also asks the provider: while the answer lists it in `pending`, the
- * search is repeated every second (main answers from its own store), until its places arrive.
+ * search loads, the previous results stay (`isPlaceholderData`).
+ *
+ * For a search-mode provider with text search, main also asks the provider and lists it in
+ * `pending`. Then `waiting` is true and the search is repeated every second (main answers from
+ * its own store) until the provider is no longer pending, for at most
+ * `LOCATION_SEARCH_PENDING_MAX_MS` from when the text was first asked, and never while the
+ * search is failing.
  */
 export function useLocationSearch({
   providerId,
@@ -302,21 +317,37 @@ export function useLocationSearch({
   text: string;
 }) {
   const trimmed = text.trim();
+  // Which text has waited `LOCATION_SEARCH_PENDING_MAX_MS` since it was first asked.
+  const [waitedOut, setWaitedOut] = useState<string | null>(null);
+  useEffect(() => {
+    setWaitedOut(null);
+    const timer = setTimeout(() => setWaitedOut(trimmed), LOCATION_SEARCH_PENDING_MAX_MS);
+    return () => clearTimeout(timer);
+  }, [trimmed]);
+  const expired = waitedOut === trimmed;
+
   const query: CatalogQuery = {
     text: trimmed,
     providerIds: providerId ? [providerId] : [],
     limit: LOCATION_SEARCH_LIMIT,
     sort: 'relevance',
   };
-  return useQuery({
+  const search = useQuery({
     queryKey: queryKeys.catalog.search(query),
     queryFn: () => unwrap((api) => api.catalog.search(query)),
     placeholderData: keepPreviousData,
     staleTime: CATALOG_STALE_TIME_MS,
     enabled: Boolean(providerId) && trimmed.length >= LOCATION_SEARCH_MIN_CHARS,
     refetchInterval: (q) =>
-      q.state.data?.pending?.length ? LOCATION_SEARCH_PENDING_POLL_MS : false,
+      !expired && q.state.status !== 'error' && q.state.data?.pending?.length
+        ? LOCATION_SEARCH_PENDING_POLL_MS
+        : false,
   });
+  const waiting =
+    !expired &&
+    !search.isError &&
+    Boolean(providerId && search.data?.pending?.includes(providerId));
+  return { ...search, waiting };
 }
 
 // ---------------------------------------------------------------------------------------

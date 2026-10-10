@@ -34,9 +34,13 @@
  *     reuse a search, and an area inside one already searched in full is not asked again;
  *   - one search per area or text at a time (single flight), not repeated for the provider's
  *     `catalogTtlHours` (24 h by default; kept for this launch), and after a failure not
- *     for `searchErrorTtlMs` (60 s);
+ *     for `searchErrorTtlMs` (60 s); an area inside one being searched waits for that search;
  *   - an area search follows `nextCursor` for at most `AREA_SEARCH_MAX_PAGES` (5) pages, and
  *     a text search stores at most `TEXT_SEARCH_MAX_ITEMS` (100) places;
+ *   - an area the map has left is not finished: before each page after the first, a search
+ *     that is no longer one of the provider's `AREA_SEARCHES_KEPT` (2) newest stops, keeps
+ *     what it found, and is not repeated for `searchErrorTtlMs`; a page that fails after the
+ *     first keeps the pages before it too;
  *   - at most `maxConcurrentRequests` of the provider's search calls run at once, each with a
  *     `searchTimeoutMs` (20 s) deadline, and `stop()` aborts them all.
  *
@@ -48,15 +52,16 @@
  *   forgets which areas and texts were searched, so the next search asks again.
  */
 
-import type {
-  BoundingBox,
-  CatalogAvailabilityResult,
-  CatalogProviderStatus,
-  CatalogQuery,
-  CatalogSearchResult,
-  CatalogStatus,
-  LocationDetail,
-  LocationSummary,
+import {
+  CATALOG_MAX_LIMIT,
+  type BoundingBox,
+  type CatalogAvailabilityResult,
+  type CatalogProviderStatus,
+  type CatalogQuery,
+  type CatalogSearchResult,
+  type CatalogStatus,
+  type LocationDetail,
+  type LocationSummary,
 } from '@shared/types/catalog.types';
 import {
   providerLimits,
@@ -105,7 +110,14 @@ export const TEXT_SEARCH_MAX_ITEMS = 100;
 /** The shortest text (its words, joined by spaces) a provider is asked to search by name. */
 export const TEXT_SEARCH_MIN_CHARS = 3;
 /** The most area and text searches remembered at once; the oldest are forgotten first. */
-const SEARCH_MEMORY_SIZE = 500;
+export const SEARCH_MEMORY_SIZE = 500;
+/**
+ * How many of a provider's newest area searches go on to their next page: an older one is
+ * an area the map has left.
+ */
+export const AREA_SEARCHES_KEPT = 2;
+/** What `callForSearch` answers instead of calling the provider when told to skip. */
+const SKIPPED: unique symbol = Symbol('skipped');
 
 /** What `provider_state` keeps about a search-mode provider's searches. */
 export interface CatalogSearchState {
@@ -120,6 +132,7 @@ interface SearchRecord {
   providerId: ProviderId;
   /** Epoch ms it finished. */
   at: number;
+  /** It failed, or stopped early (the map moved on): remembered for `searchErrorTtlMs`. */
   failed: boolean;
   /** An area search: the area searched, and whether every page of it was read. */
   area?: { bbox: BoundingBox; complete: boolean };
@@ -130,6 +143,16 @@ interface SearchFind {
   items: LocationSummary[];
   /** An area search: true when the provider had no more pages. */
   complete: boolean;
+  /** It stopped before the end: the map moved on (`superseded`) or a later page failed. */
+  stopped?: { superseded: true } | { error: unknown };
+}
+
+/** An area search in flight. */
+interface AreaRun {
+  providerId: ProviderId;
+  bbox: BoundingBox;
+  /** Its place among the provider's area searches (`areaGenerations`). */
+  generation: number;
 }
 
 /** What `provider_state` keeps about a provider's catalogue sync. */
@@ -254,6 +277,12 @@ export class LocationCatalogService {
   private readonly searchMemory = new Map<string, SearchRecord>();
   /** Each search-mode provider's cap on its search calls in flight. */
   private readonly searchLimiters = new Map<ProviderId, Limiter>();
+  /** Area searches in flight, by `searchKey`. */
+  private readonly areaRuns = new Map<string, AreaRun>();
+  /** How many area searches each provider has started. */
+  private readonly areaGenerations = new Map<ProviderId, number>();
+  /** Whether a search has already warned that it matched more than a search returns. */
+  private warnedSearchCap = false;
 
   constructor(deps: LocationCatalogServiceDeps) {
     this.registry = deps.registry;
@@ -529,7 +558,8 @@ export class LocationCatalogService {
 
   /**
    * One area of a search-mode catalogue: up to `AREA_SEARCH_MAX_PAGES` pages of
-   * `catalog.searchArea` over the snapped area. True when a search for it is in flight.
+   * `catalog.searchArea` over the snapped area, stopping early once the map has moved on.
+   * True when a search for it (or for an area containing it) is in flight.
    */
   private searchArea(
     provider: AccommodationProvider,
@@ -539,15 +569,32 @@ export class LocationCatalogService {
   ): boolean {
     const id = provider.manifest.id;
     const key = searchKey(id, 'area', areaKey);
-    if (this.searchRuns.has(key)) return true;
+    if (this.searchRuns.has(key) || this.searchingAround(id, bbox)) return true;
     if (this.searchedRecently(provider, key) || this.searchedInFull(provider, bbox)) return false;
-    this.runSearch(provider, key, bbox, async () => {
+    const generation = (this.areaGenerations.get(id) ?? 0) + 1;
+    this.areaGenerations.set(id, generation);
+    this.areaRuns.set(key, { providerId: id, bbox, generation });
+    // Not one of the provider's newest area searches: the map has moved on.
+    const superseded = (): boolean =>
+      (this.areaGenerations.get(id) ?? 0) - generation >= AREA_SEARCHES_KEPT;
+    void this.runSearch(provider, key, bbox, async () => {
       const items: LocationSummary[] = [];
       let cursor: string | undefined;
       for (let page = 0; page < AREA_SEARCH_MAX_PAGES; page++) {
-        const result = await this.callForSearch(provider, (signal) =>
-          catalog.searchArea({ bbox, ...(cursor === undefined ? {} : { cursor }) }, signal)
-        );
+        let result: Awaited<ReturnType<SearchCatalogModule['searchArea']>> | typeof SKIPPED;
+        try {
+          result = await this.callForSearch(
+            provider,
+            (signal) =>
+              catalog.searchArea({ bbox, ...(cursor === undefined ? {} : { cursor }) }, signal),
+            page > 0 ? superseded : undefined
+          );
+        } catch (error) {
+          // The pages before a failing one are kept (not when quitting: nothing is written).
+          if (page === 0 || this.stopped) throw error;
+          return { items, complete: false, stopped: { error } };
+        }
+        if (result === SKIPPED) return { items, complete: false, stopped: { superseded: true } };
         if (!Array.isArray(result?.items)) throw new Error(`${id} did not answer an area search`);
         items.push(...result.items);
         const next = result.nextCursor;
@@ -557,8 +604,16 @@ export class LocationCatalogService {
         cursor = next;
       }
       return { items, complete: false };
-    });
+    }).finally(() => this.areaRuns.delete(key));
     return true;
+  }
+
+  /** Whether an area search in flight for the provider covers `bbox`. */
+  private searchingAround(id: ProviderId, bbox: BoundingBox): boolean {
+    for (const run of this.areaRuns.values()) {
+      if (run.providerId === id && bboxContains(run.bbox, bbox)) return true;
+    }
+    return false;
   }
 
   /** One text for a catalogue with `catalog.searchText`. True when a search for it is in flight. */
@@ -571,11 +626,13 @@ export class LocationCatalogService {
     const key = searchKey(id, 'text', text.toLocaleLowerCase('en-AU'));
     if (this.searchRuns.has(key)) return true;
     if (this.searchedRecently(provider, key)) return false;
-    this.runSearch(provider, key, undefined, async () => {
+    void this.runSearch(provider, key, undefined, async () => {
       const items = await this.callForSearch(provider, (signal) =>
         catalog.searchText!(text, signal)
       );
-      if (!Array.isArray(items)) throw new Error(`${id} did not answer a text search`);
+      if (items === SKIPPED || !Array.isArray(items)) {
+        throw new Error(`${id} did not answer a text search`);
+      }
       return { items: items.slice(0, TEXT_SEARCH_MAX_ITEMS), complete: true };
     });
     return true;
@@ -584,19 +641,20 @@ export class LocationCatalogService {
   /**
    * Runs one search in the background, single flight under `key`: stores what it finds,
    * remembers the outcome, records the provider's search state, and announces places that
-   * were not stored before. A failure is recorded, never thrown; after `stop()` nothing is
-   * written.
+   * were not stored before. A failure is recorded, never thrown (the promise always
+   * resolves); after `stop()` nothing is written. A search that stopped early stores what it
+   * found and is remembered for `searchErrorTtlMs` only, so the area is asked again later.
    */
   private runSearch(
     provider: AccommodationProvider,
     key: string,
     bbox: BoundingBox | undefined,
     find: () => Promise<SearchFind>
-  ): void {
+  ): Promise<void> {
     const id = provider.manifest.id;
     const run = (async (): Promise<void> => {
       try {
-        const { items, complete } = await find();
+        const { items, complete, stopped } = await find();
         if (this.stopped) return;
         const at = this.clock();
         const { stored, added } = this.locations.mergeMany(id, items, at);
@@ -604,11 +662,18 @@ export class LocationCatalogService {
         this.rememberSearch(key, {
           providerId: id,
           at: at.getTime(),
-          failed: false,
+          failed: stopped !== undefined,
           ...(bbox ? { area: { bbox, complete } } : {}),
         });
-        this.providerState.set(id, CATALOG_SEARCH_STATE_KEY, { searchedAt }, at);
-        this.logger.info(`Catalogue search of ${id} stored ${stored} locations (${added} new)`);
+        if (stopped && 'error' in stopped) {
+          this.recordSearchFailure(id, stopped.error, at);
+        } else {
+          this.providerState.set(id, CATALOG_SEARCH_STATE_KEY, { searchedAt }, at);
+        }
+        this.logger.info(
+          `Catalogue search of ${id} stored ${stored} locations (${added} new)` +
+            (stopped && 'superseded' in stopped ? '; stopped early, the map moved on' : '')
+        );
         if (added > 0) {
           this.events.emit('catalog:updated', {
             providerId: id,
@@ -621,32 +686,42 @@ export class LocationCatalogService {
         if (this.stopped) return;
         const at = this.clock();
         this.rememberSearch(key, { providerId: id, at: at.getTime(), failed: true });
-        this.logger.warn(`Catalogue search of ${id} failed`, error);
-        const lastError = errorMessage(error);
-        this.providerState.set(
-          id,
-          CATALOG_SEARCH_STATE_KEY,
-          { ...this.searchState(id), lastError },
-          at
-        );
+        this.recordSearchFailure(id, error, at);
       }
     })().finally(() => this.searchRuns.delete(key));
     this.searchRuns.set(key, run);
+    return run;
   }
 
-  /** A provider call for a search: within the provider's concurrency cap, with a deadline. */
+  private recordSearchFailure(id: ProviderId, error: unknown, at: Date): void {
+    this.logger.warn(`Catalogue search of ${id} failed`, error);
+    this.providerState.set(
+      id,
+      CATALOG_SEARCH_STATE_KEY,
+      { ...this.searchState(id), lastError: errorMessage(error) },
+      at
+    );
+  }
+
+  /**
+   * A provider call for a search: within the provider's concurrency cap, with a deadline.
+   * When its turn comes, `skip()` true answers `SKIPPED` without calling the provider.
+   */
   private callForSearch<T>(
     provider: AccommodationProvider,
-    task: (signal: AbortSignal) => Promise<T>
-  ): Promise<T> {
+    task: (signal: AbortSignal) => Promise<T>,
+    skip?: () => boolean
+  ): Promise<T | typeof SKIPPED> {
     const id = provider.manifest.id;
     let limiter = this.searchLimiters.get(id);
     if (!limiter) {
       limiter = createLimiter(providerLimits(provider.manifest).maxConcurrentRequests);
       this.searchLimiters.set(id, limiter);
     }
-    return limiter(() =>
-      withDeadline(id, this.timings.searchTimeoutMs, this.lifetime.signal, task)
+    return limiter<T | typeof SKIPPED>(() =>
+      skip?.()
+        ? Promise.resolve(SKIPPED)
+        : withDeadline(id, this.timings.searchTimeoutMs, this.lifetime.signal, task)
     );
   }
 
@@ -717,7 +792,24 @@ export class LocationCatalogService {
       query,
       providers.map((p) => p.manifest.id)
     );
+    this.warnIfCapped(query, result);
     return pending.length ? { ...result, pending } : result;
+  }
+
+  /**
+   * Warns once per launch when a search for everything (`limit` 5000, Explore's) matched more
+   * locations than it returns: Explore then leaves places out. Search-mode places are kept for
+   * good, so a busy search-mode provider can get there.
+   */
+  private warnIfCapped(query: CatalogQuery, result: CatalogSearchResult): void {
+    if (this.warnedSearchCap || query.offset) return;
+    if ((query.limit ?? CATALOG_MAX_LIMIT) < CATALOG_MAX_LIMIT) return;
+    if (result.total <= result.items.length) return;
+    this.warnedSearchCap = true;
+    this.logger.warn(
+      `A catalogue search matched ${result.total} locations, more than the ` +
+        `${CATALOG_MAX_LIMIT} a search returns: Explore leaves some places out`
+    );
   }
 
   /**

@@ -204,7 +204,11 @@ describe('LocationCombobox for a provider searched by map area', () => {
     );
   }
 
-  const searchCatalog = (search: jest.Mock, textSearch: boolean) => ({
+  const searchCatalog = (
+    search: jest.Mock,
+    textSearch: boolean,
+    { count = 2, syncing = false }: { count?: number; syncing?: boolean } = {}
+  ) => ({
     catalog: {
       search,
       status: jest.fn().mockResolvedValue(
@@ -212,15 +216,32 @@ describe('LocationCombobox for a provider searched by map area', () => {
           providers: [
             {
               providerId: 'search',
-              count: 2,
+              count,
               stale: false,
-              syncing: false,
+              syncing,
               search: { textSearch, searchedAt: '2026-10-10T00:00:00.000Z' },
             },
           ],
         })
       ),
     },
+  });
+
+  /** The polite live region's text as it is, repeat marker included. */
+  const politeRaw = () =>
+    document.querySelector('[aria-live="polite"][aria-atomic="true"]')?.textContent ?? '';
+
+  it('never says its places are "still loading": a searched catalogue does not arrive whole', async () => {
+    const { user } = renderWithProviders(<SearchPicker />, {
+      api: searchCatalog(results([]), false, { count: 0, syncing: true }),
+    });
+    await user.type(screen.getByRole('combobox', { name: 'Location' }), 'loft');
+    expect(
+      await screen.findByRole('option', {
+        name: 'Browse SearchStays places on the Explore map to find more',
+      })
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/are still loading/)).toBeNull();
   });
 
   it('without text search, a name that matches nothing suggests browsing it on the Explore map', async () => {
@@ -248,6 +269,7 @@ describe('LocationCombobox for a provider searched by map area', () => {
     const search = jest
       .fn()
       .mockResolvedValueOnce(ok({ items: [], total: 0, pending: ['search'] }))
+      .mockResolvedValueOnce(ok({ items: [], total: 0, pending: ['search'] }))
       .mockResolvedValue(ok({ items: [LOFT], total: 1 }));
     const { user, mock } = renderWithProviders(<SearchPicker />, {
       api: searchCatalog(search, true),
@@ -257,7 +279,11 @@ describe('LocationCombobox for a provider searched by map area', () => {
     expect(
       await screen.findByRole('option', { name: 'Searching SearchStays…' })
     ).toBeInTheDocument();
-    expect(politeAnnouncement()).not.toMatch(/No locations match/);
+    // Screen readers hear it too, once: the poll a second later says nothing new
+    await waitFor(() => expect(politeAnnouncement()).toBe('Searching SearchStays…'));
+    const said = politeRaw();
+    await waitFor(() => expect(search).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    expect(politeRaw()).toBe(said);
     mock.emit('catalog:updated', {
       providerId: 'search',
       count: 1,

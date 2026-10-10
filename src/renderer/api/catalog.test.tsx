@@ -17,8 +17,11 @@ import {
   useCatalogSearch,
   useCatalogStatus,
   useCatalogUpdates,
+  LOCATION_SEARCH_PENDING_MAX_MS,
+  LOCATION_SEARCH_PENDING_POLL_MS,
   useLocationCheck,
   useLocationDetail,
+  useLocationSearch,
 } from './catalog';
 
 /** Lets `ms` pass, with what it causes applied (inside act). */
@@ -156,6 +159,83 @@ describe('catalog hooks', () => {
       syncedAt: '2026-10-04T00:00:00Z',
     });
     await waitFor(() => expect(mock.api.catalog.search).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('useLocationSearch while a search-mode provider is pending', () => {
+  const pendingAnswer = ok({ items: [], total: 0, pending: ['search'] });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /** Lets `ms` of fake time pass, with what it causes applied. */
+  const advance = (ms: number) => act(() => jest.advanceTimersByTimeAsync(ms));
+
+  function renderSearch(search: jest.Mock, text = 'loft') {
+    jest.useFakeTimers();
+    window.api = createMockApi({ catalog: { search } }).api;
+    return renderHook(
+      (props: { text: string }) => useLocationSearch({ providerId: 'search', ...props }),
+      {
+        wrapper: wrapper(),
+        initialProps: { text },
+      }
+    );
+  }
+
+  it('asks again every second, and stops 60 s after the text was first asked', async () => {
+    const search = jest.fn().mockResolvedValue(pendingAnswer);
+    const { result } = renderSearch(search);
+
+    await advance(0);
+    expect(result.current.waiting).toBe(true);
+    await advance(10 * LOCATION_SEARCH_PENDING_POLL_MS);
+    expect(search.mock.calls.length).toBeGreaterThanOrEqual(10);
+
+    await advance(LOCATION_SEARCH_PENDING_MAX_MS);
+    const atCap = search.mock.calls.length;
+    expect(atCap).toBeLessThanOrEqual(
+      LOCATION_SEARCH_PENDING_MAX_MS / LOCATION_SEARCH_PENDING_POLL_MS + 2
+    );
+    expect(result.current.waiting).toBe(false);
+    await advance(30 * LOCATION_SEARCH_PENDING_POLL_MS);
+    expect(search).toHaveBeenCalledTimes(atCap);
+  });
+
+  it('starts the 60 s again for a new text', async () => {
+    const search = jest.fn().mockResolvedValue(pendingAnswer);
+    const { result, rerender } = renderSearch(search);
+    await advance(LOCATION_SEARCH_PENDING_MAX_MS + LOCATION_SEARCH_PENDING_POLL_MS);
+    expect(result.current.waiting).toBe(false);
+    const before = search.mock.calls.length;
+
+    rerender({ text: 'cabin' });
+    await advance(5 * LOCATION_SEARCH_PENDING_POLL_MS);
+
+    expect(result.current.waiting).toBe(true);
+    expect(search.mock.calls.length - before).toBeGreaterThanOrEqual(5);
+    expect(search).toHaveBeenLastCalledWith(expect.objectContaining({ text: 'cabin' }));
+  });
+
+  it('stops asking while the search fails, though the last answer listed the provider', async () => {
+    const search = jest
+      .fn()
+      .mockResolvedValueOnce(pendingAnswer)
+      .mockResolvedValue(fail('The catalogue is unavailable'));
+    const { result } = renderSearch(search);
+    await advance(0);
+    expect(result.current.waiting).toBe(true);
+
+    // A poll fails, and its one retry too
+    await advance(5 * LOCATION_SEARCH_PENDING_POLL_MS);
+    expect(result.current.isError).toBe(true);
+    expect(result.current.data?.pending).toEqual(['search']);
+    expect(result.current.waiting).toBe(false);
+    const failed = search.mock.calls.length;
+    await advance(30 * LOCATION_SEARCH_PENDING_POLL_MS);
+
+    expect(search).toHaveBeenCalledTimes(failed);
   });
 });
 
