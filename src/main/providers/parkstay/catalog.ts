@@ -22,14 +22,14 @@ import { addDays, todayIn } from '@shared/utils/calendar-date';
 import { makeLocationKey } from '@shared/utils/location-key';
 import type { ProviderContext, ProviderLogger } from '../sdk/context';
 import { ProviderError, ProviderParseError, throwIfAborted } from '../sdk/errors';
-import { sanitizeProviderHtml } from '../sdk/html';
 import type { CatalogModule, GetLocationOptions } from '../sdk/provider';
 import type { CampsiteViews } from './availability';
 import type { ParkStayClient } from './client';
 import { PARKSTAY_BASE_URL, PARKSTAY_PROVIDER_ID } from './constants';
+import { campgroundDescriptionHtml } from './description';
 import { parkstayLinks } from './links';
 import type { ParkStayReleasePolicy } from './release-policy';
-import { isClassListing, toClassUnitSummary } from './site-classes';
+import { isClassListing, toClassUnitSummary, unitFacts } from './site-classes';
 import type {
   RawCampgroundFeature,
   RawCampgroundMap,
@@ -202,18 +202,11 @@ export function toUnitSummary(
   classes: RawCampsiteAvailabilityView['classes']
 ): UnitSummary {
   const className = classes?.[String(site.class ?? null)];
-  const equipment = Object.entries(site.gearType ?? {})
-    .filter(([, on]) => on === true)
-    .map(([gear]) => gear);
-  const description = site.short_description?.trim();
   return {
     unitId: String(site.id),
     unitName: site.name,
     ...(className ? { unitType: className } : {}),
-    ...(Number.isFinite(site.max_people) ? { maxPeople: site.max_people } : {}),
-    ...(Number.isFinite(site.max_vehicles) ? { maxVehicles: site.max_vehicles } : {}),
-    equipment,
-    ...(description ? { description } : {}),
+    ...unitFacts(site),
   };
 }
 
@@ -319,11 +312,13 @@ export function createCatalog({ ctx, client, facts, views, release }: CatalogDep
       });
     }
     const detail: LocationDetail = { ...summary, units: [] };
+    // A stored summary may carry a link in an older form; the link is always today's.
+    if (summary.bookingMode === 'online') detail.bookingUrl = parkstayLinks.location(externalId)!;
     // Only online and offline campgrounds have an availability view (types 2 and 4 are 400).
     if (summary.bookingMode === 'online' || summary.bookingMode === 'offline') {
       const view = await views.fetch(externalId, probeStay(), signal);
       if (view.long_description) {
-        detail.descriptionHtml = sanitizeProviderHtml(view.long_description, PARKSTAY_BASE_URL);
+        detail.descriptionHtml = campgroundDescriptionHtml(view.long_description);
       }
       detail.units = isClassListing(view)
         ? view.sites.map(toClassUnitSummary)

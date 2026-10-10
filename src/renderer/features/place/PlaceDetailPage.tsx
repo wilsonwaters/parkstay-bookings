@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useHref, useLocation, useNavigate, useParams } from 'react-router';
 import { CircleAlert, MapPinOff } from 'lucide-react';
+import type { UnitSummary } from '../../../shared/types/catalog.types';
 import type { StayQuery } from '../../../shared/types/provider.types';
 import { todayIn } from '../../../shared/utils/calendar-date';
 import {
@@ -52,6 +53,7 @@ export const SLOW_CHECK_MS = 10_000;
 const FALLBACK_TIME_ZONE = 'Australia/Perth';
 /** Answers that mean there is no such place to show, however often it is asked. */
 const NOT_AVAILABLE_CODES = new Set(['NOT_FOUND', 'UNKNOWN_PROVIDER', 'VALIDATION']);
+const NO_UNITS: readonly UnitSummary[] = [];
 
 const PAGE = 'mx-auto w-full max-w-[1120px] px-6 pb-24 pt-6 lg:px-8';
 
@@ -198,8 +200,10 @@ export default function PlaceDetailPage() {
 
   // ---- Check availability ---------------------------------------------------------------
   // A provider may leave the units out altogether; that reads as none.
-  const units = loaded && Array.isArray(detail?.units) ? detail.units : [];
+  const units = loaded && Array.isArray(detail?.units) ? detail.units : NO_UNITS;
   const canCheck = Boolean(manifest?.capabilities.availability) && units.length > 0;
+  // The grid's units joined to the place's by unit id, for their limits and descriptions.
+  const unitDetails = useMemo(() => new Map(units.map((unit) => [unit.unitId, unit])), [units]);
   const [requested, setRequested] = useState<StayQuery | null>(null);
   const [datesError, setDatesError] = useState<string>();
   const check = useLocationCheck(canCheck ? key : null, requested);
@@ -413,6 +417,7 @@ export default function PlaceDetailPage() {
               source={shortName}
               timeZone={manifest?.timezone ?? FALLBACK_TIME_ZONE}
               summaryRef={summaryRef}
+              unitDetails={unitDetails}
             />
           )}
           {loaded && detail ? (

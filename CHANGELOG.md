@@ -13,7 +13,7 @@ Existing installs upgrade in place and keep their data (see Upgrade notes).
 
 ### Added
 - **Explore**, the new home screen: every place from every provider on a Mapbox map of WA and in a list, with search, filters (provider, type, region, facilities, online booking) and results that follow the map. Without a map token it works as a list (#32).
-- **Place pages**: photos, the provider's description and facilities, every site night by night with prices for your dates, and links to book or read more on the provider's site (#33).
+- **Place pages**: photos, the provider's description and facilities, every site night by night with prices for your dates (with each site's description and how many people and vehicles it takes), and links to book or read more on the provider's site (#33).
 - **Availability for your dates on Explore**: free-site counts on every pin and card, and an "Available only" filter (#34).
 - **Providers**: a provider SDK and registry, so new accommodation sources plug in without changing the rest of the app, including sites with no API through browser automation of the installed Edge or Chrome (#19, #25). ParkStay WA is the first provider, rebuilt on it (#21). A developer guide with a quick start and compiling examples, `docs/providers/adding-a-provider.md` (#41), and `npm run provider:new`, which generates a working provider to start from.
 - **Provider accounts**: sign in to ParkStay in the app, on ParkStay's own page, from Settings → Accounts; signing in is optional (#24, #38).

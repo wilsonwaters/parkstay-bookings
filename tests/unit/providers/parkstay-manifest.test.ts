@@ -100,7 +100,7 @@ describe('ParkStay provider manifest', () => {
     const provider = registry.register(parkstayFactory, createTestProviderContext);
 
     expect(provider.links.location('20')).toBe(
-      'https://parkstay.dbca.wa.gov.au/search-availability/campground/?site_id=20'
+      'https://parkstay.dbca.wa.gov.au/search-availability/information/?campground_id=20'
     );
     expect(Object.keys(provider).sort()).toEqual([
       'access',

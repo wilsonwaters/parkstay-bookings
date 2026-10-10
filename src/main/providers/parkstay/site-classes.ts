@@ -49,19 +49,44 @@ export function classIdOfUnit(unitId: string | undefined): string | undefined {
   return unitId ? CLASS_UNIT.exec(unitId)?.[1] : undefined;
 }
 
-/** A class entry as a `UnitSummary`: the class, never the one site the view named. */
-export function toClassUnitSummary(entry: RawCampsite): UnitSummary {
+const isCount = (value: unknown, least: number): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= least;
+
+/**
+ * What a site (or a class) entry says about itself, as ParkStay's site cards show it: the
+ * people it takes (`min_people` to `max_people`), the vehicles (`max_vehicles`), the gear and
+ * its paragraph. The paragraph is `short_description`, plain text (ParkStay's own page inserts
+ * it unescaped, so it is only ever shown as text); `description` is always the placeholder
+ * `"x"` and is never read. A class entry carries the class's values.
+ */
+export function unitFacts(
+  entry: RawCampsite
+): Pick<UnitSummary, 'minPeople' | 'maxPeople' | 'maxVehicles' | 'equipment' | 'description'> {
   const equipment = Object.entries(entry.gearType ?? {})
     .filter(([, on]) => on === true)
     .map(([gear]) => gear);
-  const description = entry.short_description?.trim();
+  const maxPeople = isCount(entry.max_people, 1) ? entry.max_people : undefined;
+  const minPeople =
+    isCount(entry.min_people, 1) && (maxPeople === undefined || entry.min_people <= maxPeople)
+      ? entry.min_people
+      : undefined;
+  const raw = entry.short_description as unknown;
+  const description = typeof raw === 'string' ? raw.trim() : '';
+  return {
+    ...(minPeople !== undefined ? { minPeople } : {}),
+    ...(maxPeople !== undefined ? { maxPeople } : {}),
+    ...(isCount(entry.max_vehicles, 0) ? { maxVehicles: entry.max_vehicles } : {}),
+    equipment,
+    ...(description ? { description } : {}),
+  };
+}
+
+/** A class entry as a `UnitSummary`: the class, never the one site the view named. */
+export function toClassUnitSummary(entry: RawCampsite): UnitSummary {
   return {
     unitId: classUnitId(entry) ?? String(entry.id),
     unitName: entry.name,
-    ...(Number.isFinite(entry.max_people) ? { maxPeople: entry.max_people } : {}),
-    ...(Number.isFinite(entry.max_vehicles) ? { maxVehicles: entry.max_vehicles } : {}),
-    equipment,
-    ...(description ? { description } : {}),
+    ...unitFacts(entry),
   };
 }
 

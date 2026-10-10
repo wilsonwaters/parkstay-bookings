@@ -156,7 +156,7 @@ describe('ParkStay availability', () => {
       const result = await parkstay.provider.availability.check('20', BUNGARRA_STAY);
       expect(result.release).toEqual({ open: true });
       expect(result.bookingUrl).toBe(
-        'https://parkstay.dbca.wa.gov.au/search-availability/campground/?site_id=20&arrival=2026/11/10&departure=2026/11/12&num_adult=1'
+        'https://parkstay.dbca.wa.gov.au/search-availability/information/?campground_id=20&arrival=2026/11/10&departure=2026/11/12'
       );
     });
 

@@ -102,6 +102,6 @@ export function availabilityFor(
     release: shape.release ?? { open: true },
     bookingUrl:
       shape.bookingUrl ??
-      `https://parkstay.dbca.wa.gov.au/search-availability/campground/?site_id=20&arrival=${stay.arrival.replace(/-/g, '/')}&departure=${stay.departure.replace(/-/g, '/')}&num_adult=${stay.adults}`,
+      `https://parkstay.dbca.wa.gov.au/search-availability/information/?campground_id=20&arrival=${stay.arrival.replace(/-/g, '/')}&departure=${stay.departure.replace(/-/g, '/')}`,
   };
 }

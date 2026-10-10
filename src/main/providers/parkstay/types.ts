@@ -86,8 +86,10 @@ export interface RawCampsite {
   min_people: number;
   max_people: number;
   max_vehicles: number;
+  /** Always the placeholder `"x"`: never shown. */
   description?: string;
-  short_description?: string;
+  /** The site card's paragraph: plain text, at most 310 characters, or null. */
+  short_description?: string | null;
   /**
    * Class listings, while no site is free for the whole stay: each site of the class by name,
    * with its nights in the order of `availability`. Empty otherwise.

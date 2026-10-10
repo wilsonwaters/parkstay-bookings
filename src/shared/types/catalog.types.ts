@@ -43,10 +43,13 @@ export interface UnitSummary {
   unitId: string;
   unitName: string;
   unitType?: string;
+  /** The fewest people the unit is booked for, when the provider says. */
+  minPeople?: number;
   maxPeople?: number;
   maxVehicles?: number;
   equipment?: string[];
   amenities?: string[];
+  /** Plain text, never HTML: shown as text. */
   description?: string;
 }
 
