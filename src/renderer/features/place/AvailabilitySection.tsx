@@ -1,5 +1,6 @@
 import type { Ref } from 'react';
 import { Clock } from 'lucide-react';
+import type { UnitSummary } from '../../../shared/types/catalog.types';
 import type { LocationAvailability } from '../../../shared/types/provider.types';
 import { stayRangeLabel, type UnitNoun } from '../../components/nightGridModel';
 import { NightGrid } from '../../components/NightGrid';
@@ -21,6 +22,8 @@ export interface AvailabilitySectionProps {
   /** The provider's time zone, for the release time. */
   timeZone: string;
   summaryRef: Ref<HTMLParagraphElement>;
+  /** The place's units, by unit id, for their limits and descriptions under their names. */
+  unitDetails?: ReadonlyMap<string, UnitSummary>;
 }
 
 /**
@@ -38,6 +41,7 @@ export function AvailabilitySection({
   source,
   timeZone,
   summaryRef,
+  unitDetails,
 }: AvailabilitySectionProps) {
   const range = stayRangeLabel(arrival, departure);
   const release = availability.release;
@@ -53,6 +57,7 @@ export function AvailabilitySection({
         source={source}
         caption={`Availability by night, ${range}`}
         summaryRef={summaryRef}
+        unitDetails={unitDetails}
       >
         {!current && (
           <Notice tone="info" title={`Results for ${range}`}>

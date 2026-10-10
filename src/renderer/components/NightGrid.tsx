@@ -1,14 +1,18 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
 import {
   ArrowLeftRight,
+  Car,
   Check,
   CircleQuestionMark,
   Clock,
   Minus,
+  Users,
   X,
   type LucideIcon,
 } from 'lucide-react';
+import type { UnitSummary } from '../../shared/types/catalog.types';
 import type { NightState, NightStatus, UnitAvailability } from '../../shared/types/provider.types';
+import { unitPeopleLabel, unitVehiclesLabel } from './locationFormat';
 import {
   DEFAULT_UNIT_NOUN,
   isFullyAvailable,
@@ -98,6 +102,40 @@ export interface NightGridProps {
    * free matter even without a whole stay, such as a result that found only some nights.
    */
   fullyAvailableOnly?: boolean;
+  /**
+   * What each unit is like, by unit id (the place's units): its people and vehicle limits and
+   * its description, shown under its name. Units without an entry show their name only.
+   */
+  unitDetails?: ReadonlyMap<string, UnitSummary>;
+}
+
+/** A unit's limits ("1–6 people", "3 vehicles") and description, under its name. Text only. */
+function UnitFacts({ unit }: { unit: UnitSummary }) {
+  const people = unitPeopleLabel(unit);
+  const vehicles = unitVehiclesLabel(unit);
+  const description = unit.description?.trim();
+  if (!people && !vehicles && !description) return null;
+  return (
+    <span className="mt-1 block max-w-60 font-normal">
+      {(people || vehicles) && (
+        <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-fg-secondary">
+          {people && (
+            <span className="inline-flex items-center gap-1 whitespace-nowrap">
+              <Users size={14} aria-hidden="true" className="shrink-0" />
+              {people}
+            </span>
+          )}
+          {vehicles && (
+            <span className="inline-flex items-center gap-1 whitespace-nowrap">
+              <Car size={14} aria-hidden="true" className="shrink-0" />
+              {vehicles}
+            </span>
+          )}
+        </span>
+      )}
+      {description && <span className="mt-0.5 block text-xs text-fg-muted">{description}</span>}
+    </span>
+  );
 }
 
 function NightCell({ kind, label, short }: { kind: CellKind; label: string; short?: string }) {
@@ -128,7 +166,8 @@ function NightCell({ kind, label, short }: { kind: CellKind; label: string; shor
  * source did not report, is never read as taken, and the summary says so when that is all
  * there is. The table scrolls sideways inside its own region (a tab stop only while it
  * overflows) with the unit names held in place, so a 30-night stay stays readable.
- * Domain-generic: Explore's place page and watch details use it.
+ * Given `unitDetails`, each unit's people and vehicle limits and description show under its
+ * name. Domain-generic: Explore's place page and watch details use it.
  */
 export function NightGrid({
   units,
@@ -141,6 +180,7 @@ export function NightGrid({
   summaryRef,
   children,
   fullyAvailableOnly = true,
+  unitDetails,
 }: NightGridProps) {
   const captionId = useId();
   const regionRef = useRef<HTMLDivElement>(null);
@@ -272,31 +312,38 @@ export function NightGrid({
                 </tr>
               </thead>
               <tbody>
-                {shown.map((unit) => (
-                  <tr key={unit.unitId} className="border-b border-border last:border-b-0">
-                    <th
-                      scope="row"
-                      className="sticky left-0 max-w-48 bg-surface px-3 py-1.5 text-left font-semibold text-fg"
-                    >
-                      <span className="block truncate">{unit.unitName}</span>
-                      {unit.unitType && (
-                        <span className="block truncate text-xs font-normal text-fg-muted">
-                          {unit.unitType}
-                        </span>
-                      )}
-                    </th>
-                    {nights.map((date) => {
-                      const night = nightOf(unit, date);
-                      return (
-                        <NightCell
-                          key={date}
-                          kind={cellKind(night)}
-                          {...nightCellText(night, currency, unitNoun)}
-                        />
-                      );
-                    })}
-                  </tr>
-                ))}
+                {shown.map((unit) => {
+                  const facts = unitDetails?.get(unit.unitId);
+                  return (
+                    <tr key={unit.unitId} className="border-b border-border last:border-b-0">
+                      <th
+                        scope="row"
+                        className={cx(
+                          'sticky left-0 bg-surface px-3 py-1.5 text-left font-semibold text-fg',
+                          facts ? 'max-w-60' : 'max-w-48'
+                        )}
+                      >
+                        <span className="block truncate">{unit.unitName}</span>
+                        {unit.unitType && (
+                          <span className="block truncate text-xs font-normal text-fg-muted">
+                            {unit.unitType}
+                          </span>
+                        )}
+                        {facts && <UnitFacts unit={facts} />}
+                      </th>
+                      {nights.map((date) => {
+                        const night = nightOf(unit, date);
+                        return (
+                          <NightCell
+                            key={date}
+                            kind={cellKind(night)}
+                            {...nightCellText(night, currency, unitNoun)}
+                          />
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

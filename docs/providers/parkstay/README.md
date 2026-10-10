@@ -56,7 +56,14 @@ Campground data and photos are fetched live from ParkStay's public endpoints and
 at runtime, and never redistributed. The catalogue is cached in the local database
 (`locations`) and synced at most once a day; a location's detail is cached for 6 hours.
 Provider HTML (`long_description`) is sanitised in the main process before it reaches the
-window, and links in it open in the system browser.
+window, and links in it open in the system browser. The sanitiser drops ParkStay's inline
+style, which strikes through what a campground lacks (`<span class="disable">`), so the module
+first adds "(not available)" to each such item ("Campfires permitted (not available)"). Each
+site's `short_description` is plain text and is only ever shown as text.
+
+"View on ParkStay" and "Book on ParkStay" open ParkStay's search page with the campground
+(and the dates) chosen, not its campground page, which refuses a browser that sends no
+`Referer` ([endpoints](endpoints.md#pages-wa-stay-opens-or-links-to)).
 
 ## DBCA's terms
 

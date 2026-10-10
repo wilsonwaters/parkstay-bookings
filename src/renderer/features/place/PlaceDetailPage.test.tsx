@@ -15,7 +15,8 @@ import { SLOW_CHECK_MS } from './PlaceDetailPage';
 configure({ asyncUtilTimeout: 4000 });
 
 const STAY = '?arrival=2099-11-06&departure=2099-11-08&adults=2';
-const SEARCH_PAGE = 'https://parkstay.dbca.wa.gov.au/search-availability/campground/?site_id=20';
+const SEARCH_PAGE =
+  'https://parkstay.dbca.wa.gov.au/search-availability/information/?campground_id=20';
 
 /** Renders the place page at `route` and waits for its detail. */
 async function renderPlace(route = `/places/parkstay/20${STAY}`, api = placeApi()) {
@@ -236,13 +237,53 @@ describe('Place detail page', () => {
     const book = within(card()).getByRole('link', {
       name: 'Book on ParkStay (opens in your browser)',
     });
-    expect(book).toHaveAttribute(
-      'href',
-      `${SEARCH_PAGE}&arrival=2099/11/06&departure=2099/11/08&num_adult=2`
-    );
+    expect(book).toHaveAttribute('href', `${SEARCH_PAGE}&arrival=2099/11/06&departure=2099/11/08`);
     // Checking the same dates again stays possible.
     expect(checkButton()).toBeEnabled();
     expect(checkButton()).not.toHaveAttribute('aria-busy');
+  });
+
+  it("shows each site's description and limits under its name, joined by unit id", async () => {
+    const { user, mock } = await renderPlace(
+      undefined,
+      placeApi({
+        detail: placeDetail({
+          units: [
+            {
+              unitId: '1',
+              unitName: 'CAMPSITE 01',
+              minPeople: 1,
+              maxPeople: 6,
+              maxVehicles: 3,
+              description: '12m x 7m reverse-in compacted gravel site.',
+            },
+            { unitId: 'class:117', unitName: 'One site - select on arrival', maxPeople: 8 },
+            { unitId: '3', unitName: 'CAMPSITE 03' },
+          ],
+        }),
+      })
+    );
+    const gets = jest.mocked(mock!.api.catalog.get).mock.calls.length;
+    await user.click(checkButton());
+    await findSummary('3 of 3 sites free for all 2 nights');
+    const grid = screen.getByRole('table', { name: 'Availability by night, 6–8 Nov' });
+
+    const site = within(grid).getByRole('rowheader', { name: /^CAMPSITE 01/ });
+    expect(within(site).getByText('1–6 people')).toBeInTheDocument();
+    expect(within(site).getByText('3 vehicles')).toBeInTheDocument();
+    expect(
+      within(site).getByText('12m x 7m reverse-in compacted gravel site.')
+    ).toBeInTheDocument();
+    // A class listing joins on its class unit id.
+    const siteClass = within(grid).getByRole('rowheader', { name: /^One site - select/ });
+    expect(siteClass).toHaveAccessibleName('One site - select on arrival Up to 8 people');
+    // A site without details shows its name only, as before.
+    expect(within(grid).getByRole('rowheader', { name: /^CAMPSITE 03/ })).toHaveTextContent(
+      /^CAMPSITE 03$/
+    );
+    // The details come with the place: nothing is asked for beyond the check.
+    expect(mock?.api.catalog.get).toHaveBeenCalledTimes(gets);
+    expect(mock?.api.catalog.checkLocation).toHaveBeenCalledTimes(1);
   });
 
   it('shows partly available sites once "Fully available only" is off', async () => {

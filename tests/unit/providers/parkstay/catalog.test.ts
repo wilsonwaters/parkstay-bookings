@@ -3,8 +3,13 @@
  * kind heuristic, and a campground's detail from `campsite_availablity_view`.
  */
 
-import { kindFromName, toLocationSummary } from '@main/providers/parkstay/catalog';
-import type { RawCampgroundFeature } from '@main/providers/parkstay/types';
+import { kindFromName, toLocationSummary, toUnitSummary } from '@main/providers/parkstay/catalog';
+import { toClassUnitSummary } from '@main/providers/parkstay/site-classes';
+import type {
+  RawCampgroundFeature,
+  RawCampsite,
+  RawCampsiteAvailabilityView,
+} from '@main/providers/parkstay/types';
 import { ProviderError } from '@main/providers/sdk';
 import type { LocationSummary } from '@shared/types/catalog.types';
 import { createMemoryLogger } from '@tests/utils/fake-provider';
@@ -60,7 +65,8 @@ describe('ParkStay catalogue', () => {
       amenities: ['Toilet', 'Road access for 2WD/SUV'],
       unitCount: 3,
       infoUrl: 'https://exploreparks.dbca.wa.gov.au/site/bungarra',
-      bookingUrl: 'https://parkstay.dbca.wa.gov.au/search-availability/campground/?site_id=20',
+      bookingUrl:
+        'https://parkstay.dbca.wa.gov.au/search-availability/information/?campground_id=20',
     });
     expect(byId.get('20')!.imageUrls[0]).toMatch(/^https:\/\/parkstay\.dbca\.wa\.gov\.au\/media\//);
     // The map's description is empty for every campground: no summary.
@@ -78,6 +84,16 @@ describe('ParkStay catalogue', () => {
   it('gives a booking link only to campgrounds bookable online', () => {
     expect(byId.get('18')!.bookingUrl).toBeDefined();
     for (const id of ['85', '5', '16', '182']) expect(byId.get(id)!.bookingUrl).toBeUndefined();
+  });
+
+  it('links every campground to the search page, never site_id on the campground page', () => {
+    const links = [...byId.values()].flatMap((l) => (l.bookingUrl ? [l.bookingUrl] : []));
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      expect(link).toMatch(
+        /^https:\/\/parkstay\.dbca\.wa\.gov\.au\/search-availability\/information\/\?campground_id=\d+$/
+      );
+    }
   });
 
   it('maps Woodman Point (5): an external holiday park with no booking link and no sites', () => {
@@ -109,10 +125,14 @@ describe('ParkStay catalogue', () => {
       expect(detail).toMatchObject({ ...byId.get('20'), fetchedAt: '2026-10-02T02:00:00.000Z' });
       expect(detail.descriptionHtml).toContain('This campground is in the Gascoyne Region');
       expect(detail.descriptionHtml).not.toMatch(/<style|style=|class=/);
+      // What Bungarra lacks reads as such, not as if it had it.
+      expect(detail.descriptionHtml).toContain('Campfires permitted (not available)');
+      expect(detail.descriptionHtml).toContain('Pets permitted (not available)');
       expect(detail.units).toHaveLength(5);
       expect(detail.units[0]).toEqual({
         unitId: '1',
         unitName: 'CAMPSITE 01',
+        minPeople: 1,
         maxPeople: 6,
         maxVehicles: 3,
         equipment: ['tent', 'campervan', 'caravan', 'vehicle', 'motorcycle', 'trailer'],
@@ -190,6 +210,18 @@ describe('ParkStay catalogue', () => {
       // Again in the same run: still no map.
       await fresh.provider.catalog.getLocation('20', undefined, { summary: byId.get('20') });
       expect(mapRequests() - before).toBe(0);
+    });
+
+    it('replaces a link a stored summary kept from before with today’s', async () => {
+      const fresh = createTestParkStay(server);
+      const stored = {
+        ...byId.get('20')!,
+        bookingUrl: 'https://parkstay.dbca.wa.gov.au/search-availability/campground/?site_id=20',
+      };
+      const detail = await fresh.provider.catalog.getLocation('20', undefined, { summary: stored });
+      expect(detail.bookingUrl).toBe(
+        'https://parkstay.dbca.wa.gov.au/search-availability/information/?campground_id=20'
+      );
     });
 
     it('asks nothing at all for a campground another operator books, given its summary', async () => {
@@ -294,5 +326,64 @@ describe('kindFromName (other operators)', () => {
     ['Hutt Lagoon', 'other'],
   ])('%s → %s', (name, kind) => {
     expect(kindFromName(name)).toBe(kind);
+  });
+});
+
+describe('unit details (what ParkStay’s site cards show)', () => {
+  const bungarra = parkStayFixture<RawCampsiteAvailabilityView>(
+    'campsite_availablity_view_20.json'
+  );
+  const luckyBay = parkStayFixture<RawCampsiteAvailabilityView>(
+    'campsite_availablity_view_43_classes.json'
+  );
+  const site = (overrides: Partial<RawCampsite>): RawCampsite => ({
+    ...bungarra.sites[0],
+    ...overrides,
+  });
+
+  it('maps a site’s paragraph, people and vehicles, never the "x" description', () => {
+    expect(bungarra.sites[0].description).toBe('x');
+    expect(toUnitSummary(bungarra.sites[0], bungarra.classes)).toMatchObject({
+      description: '12m x 7m reverse-in compacted gravel site.',
+      minPeople: 1,
+      maxPeople: 6,
+      maxVehicles: 3,
+    });
+  });
+
+  it('maps a class listing’s values, which are the class’s', () => {
+    expect(toClassUnitSummary(luckyBay.sites[0])).toMatchObject({
+      unitId: 'class:117',
+      description: '11m x 6m compacted crushed rock reverse-in site.',
+      minPeople: 1,
+      maxPeople: 8,
+      maxVehicles: 2,
+    });
+  });
+
+  it('leaves the description out when the paragraph is empty, blank or null', () => {
+    for (const short_description of [null, '', '   ', undefined]) {
+      const unit = toUnitSummary(site({ short_description }), bungarra.classes);
+      expect(unit).not.toHaveProperty('description');
+      expect(toClassUnitSummary(site({ short_description }))).not.toHaveProperty('description');
+    }
+    expect(toUnitSummary(site({ short_description: '  A shady site.  ' }), {}).description).toBe(
+      'A shady site.'
+    );
+  });
+
+  it('keeps only whole counts: people from 1, vehicles from 0, and a minimum no more than the maximum', () => {
+    const odd = toUnitSummary(site({ min_people: 0, max_people: 2.5, max_vehicles: -1 }), {});
+    expect([odd.minPeople, odd.maxPeople, odd.maxVehicles]).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    const walkIn = toUnitSummary(site({ min_people: 8, max_people: 4, max_vehicles: 0 }), {});
+    expect([walkIn.minPeople, walkIn.maxPeople, walkIn.maxVehicles]).toEqual([undefined, 4, 0]);
+    const unknown = toClassUnitSummary(
+      site({ min_people: undefined, max_people: 'six' as unknown as number })
+    );
+    expect([unknown.minPeople, unknown.maxPeople]).toEqual([undefined, undefined]);
   });
 });

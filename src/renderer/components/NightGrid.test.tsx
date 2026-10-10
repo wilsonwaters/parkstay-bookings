@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { availabilityFor } from '../../../tests/fixtures/catalog/place-detail';
 import { compileStylesheet } from '../../../tests/utils/tailwind';
+import type { UnitSummary } from '../../shared/types/catalog.types';
 import type { UnitAvailability } from '../../shared/types/provider.types';
 import { NightGrid } from './NightGrid';
 
@@ -286,5 +287,79 @@ describe('NightGrid layout (with the real stylesheet)', () => {
       const block = containingBlock(el);
       expect(block !== null && (block === region || region.contains(block))).toBe(true);
     }
+  });
+
+  describe('unit details', () => {
+    const units = () => availabilityFor(STAY, { fully: 3 }).units;
+    const details = (): ReadonlyMap<string, UnitSummary> => {
+      const [first, second] = units();
+      return new Map<string, UnitSummary>([
+        [
+          first.unitId,
+          {
+            unitId: first.unitId,
+            unitName: first.unitName,
+            minPeople: 1,
+            maxPeople: 6,
+            maxVehicles: 3,
+            description: '12m x 7m <b>reverse-in</b> compacted gravel site.',
+          },
+        ],
+        // Known to the place, but with nothing to add.
+        [second.unitId, { unitId: second.unitId, unitName: second.unitName }],
+      ]);
+    };
+
+    it('shows a unit’s people and vehicle limits and its description, in words, under its name', () => {
+      const [first] = units();
+      render(
+        <NightGrid
+          units={units()}
+          arrival={STAY.arrival}
+          departure={STAY.departure}
+          unitNoun={SITE}
+          unitDetails={details()}
+        />
+      );
+      const heading = screen.getByRole('rowheader', { name: new RegExp(`^${first.unitName}`) });
+      expect(within(heading).getByText('1–6 people')).toBeInTheDocument();
+      expect(within(heading).getByText('3 vehicles')).toBeInTheDocument();
+      // Plain text, never HTML.
+      expect(
+        within(heading).getByText('12m x 7m <b>reverse-in</b> compacted gravel site.')
+      ).toBeInTheDocument();
+      expect(heading.querySelector('b')).toBeNull();
+      // The icons are decoration: the words carry the meaning.
+      for (const icon of heading.querySelectorAll('svg')) {
+        expect(icon).toHaveAttribute('aria-hidden', 'true');
+      }
+      expect(heading).toHaveAccessibleName(
+        `${first.unitName} ${first.unitType} 1–6 people 3 vehicles 12m x 7m <b>reverse-in</b> compacted gravel site.`
+      );
+    });
+
+    it('shows a unit without details, or without an entry, as before', () => {
+      const [, second, third] = units();
+      render(
+        <NightGrid
+          units={units()}
+          arrival={STAY.arrival}
+          departure={STAY.departure}
+          unitNoun={SITE}
+          unitDetails={details()}
+        />
+      );
+      const before = renderUnits(units());
+      const plain = (name: string) =>
+        screen
+          .getAllByRole('rowheader', { name: new RegExp(`^${name} `) })
+          .map((cell) => cell.innerHTML);
+      // Each name now has two rows: the grid with details, and the one without.
+      for (const unit of [second, third]) {
+        const [withDetails, without] = plain(unit.unitName);
+        expect(withDetails).toBe(without);
+      }
+      before.unmount();
+    });
   });
 });

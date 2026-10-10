@@ -59,8 +59,10 @@ Click a place to open its page:
 - the provider, the type of place, the park and region, photos and the provider's description;
 - **Check your dates**: pick dates and guests and **Check availability** to see every site
   night by night, with prices ("3 of 5 sites free for all 2 nights"; **Fully available only**
-  narrows the table);
-- **Book on ParkStay** opens the provider's own booking page for your dates in your browser;
+  narrows the table), and under each site's name how many people and vehicles it takes and
+  the provider's description of it;
+- **Book on ParkStay** opens ParkStay in your browser with this place and your dates chosen;
+  its **See availability** takes you on to book;
 - **Watch for availability** starts a watch for this place and these dates;
 - **Snipe a site** starts a Site Sniper snipe;
 - **View on ParkStay** and **More information** open the provider's pages in your browser.

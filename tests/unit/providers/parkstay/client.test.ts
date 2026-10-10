@@ -236,19 +236,36 @@ describe('ParkStayClient against the fixture server', () => {
 });
 
 describe('ParkStay links', () => {
-  it('links a campground to its search page', () => {
-    expect(parkstayLinks.location('20')).toBe(
-      'https://parkstay.dbca.wa.gov.au/search-availability/campground/?site_id=20'
+  const INFO = 'https://parkstay.dbca.wa.gov.au/search-availability/information/';
+  const STAY = { arrival: '2026-11-10', departure: '2026-11-12', adults: 2 };
+
+  it('links a campground to the search page with it preselected', () => {
+    expect(parkstayLinks.location('20')).toBe(`${INFO}?campground_id=20`);
+    expect(parkstayLinks.booking('20')).toBe(parkstayLinks.location('20'));
+  });
+
+  it('adds a stay’s dates in ParkStay’s form, and never the guests the page ignores', () => {
+    expect(parkstayLinks.booking('20', STAY)).toBe(
+      `${INFO}?campground_id=20&arrival=2026/11/10&departure=2026/11/12`
+    );
+    expect(parkstayLinks.booking('20', { ...STAY, adults: 4, children: 2, infants: 1 })).toBe(
+      parkstayLinks.booking('20', STAY)
     );
   });
 
-  it('deep-links a stay with ParkStay dates and the party', () => {
-    expect(
-      parkstayLinks.booking('20', { arrival: '2026-11-10', departure: '2026-11-12', adults: 2 })
-    ).toBe(
-      'https://parkstay.dbca.wa.gov.au/search-availability/campground/?site_id=20&arrival=2026/11/10&departure=2026/11/12&num_adult=2'
-    );
-    expect(parkstayLinks.booking('20')).toBe(parkstayLinks.location('20'));
+  it('never sends site_id to the campground page, which refuses requests without its Referer', () => {
+    const links = [
+      parkstayLinks.location('20'),
+      parkstayLinks.location('43'),
+      parkstayLinks.booking('20'),
+      parkstayLinks.booking('43', STAY),
+    ];
+    for (const link of links) {
+      const url = new URL(link!);
+      expect(url.pathname).toBe('/search-availability/information/');
+      expect(url.searchParams.has('site_id')).toBe(false);
+      expect(link).not.toContain('/search-availability/campground/');
+    }
   });
 
   it('sends people to My Bookings to manage a booking', () => {
@@ -258,8 +275,6 @@ describe('ParkStay links', () => {
   });
 
   it('escapes the campground id', () => {
-    expect(parkstayLinks.location('a&b')).toBe(
-      'https://parkstay.dbca.wa.gov.au/search-availability/campground/?site_id=a%26b'
-    );
+    expect(parkstayLinks.location('a&b')).toBe(`${INFO}?campground_id=a%26b`);
   });
 });

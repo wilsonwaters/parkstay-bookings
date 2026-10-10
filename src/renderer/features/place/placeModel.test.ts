@@ -12,9 +12,10 @@ import {
 } from './placeModel';
 
 const WEBSITE = 'https://parkstay.dbca.wa.gov.au';
-const SEARCH_PAGE = 'https://parkstay.dbca.wa.gov.au/search-availability/campground/?site_id=20';
+const SEARCH_PAGE =
+  'https://parkstay.dbca.wa.gov.au/search-availability/information/?campground_id=20';
 const INFO = 'https://exploreparks.dbca.wa.gov.au/site/bungarra';
-const DEEP_LINK = `${SEARCH_PAGE}&arrival=2026/11/06&departure=2026/11/08&num_adult=2`;
+const DEEP_LINK = `${SEARCH_PAGE}&arrival=2026/11/06&departure=2026/11/08`;
 
 describe('placeKey', () => {
   it('joins the route params into a location key, keeping ":" and "/" in the external id', () => {
