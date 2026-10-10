@@ -131,9 +131,10 @@ test('Explore with dates shows each campground’s availability and narrows to "
   ).toBeVisible({ timeout: 20_000 });
   const card = (name: string) => results.getByRole('link', { name, exact: true });
   await expect(card('Bungarra')).toContainText('2 of 3 sites available');
-  await expect(card('Kurrajong (Cape Range)')).toContainText('Fully booked');
+  await expect(card('Kurrajong (Cape Range)')).toContainText('No site free every night');
   await expect(card('Temple Gorge')).toContainText('No sites open for these dates');
-  await expect(card('Lake Mason Homestead')).toContainText('Not bookable online');
+  await expect(card('Lake Mason Homestead')).toContainText('Info only');
+  await expect(card('Lake Mason Homestead')).not.toContainText('Not bookable online');
 
   // Available only: the three with a site free, most free first; kept in the URL.
   await availableOnly.click();

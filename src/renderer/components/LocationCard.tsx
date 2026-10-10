@@ -123,7 +123,13 @@ function Amenities({ amenities }: { amenities: string[] }) {
  */
 export type CardAvailability =
   | { status: 'loading' }
-  | { status: 'ready'; text: string; tone: Extract<BadgeTone, 'available' | 'neutral' | 'danger'> };
+  | {
+      status: 'ready';
+      text: string;
+      tone: Extract<BadgeTone, 'available' | 'neutral' | 'danger'>;
+      /** The text gives the unit total ("8 of 24 sites available"): the unit count is left out. */
+      statesTotal?: boolean;
+    };
 
 export interface LocationCardProps {
   location: LocationSummary;
@@ -223,14 +229,16 @@ export const LocationCard = memo(function LocationCard({
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-secondary">
             <ProviderBadge providerId={location.providerId} variant="compact" size="sm" />
             <span>{kindLabel(location.kind)}</span>
-            {location.unitCount !== undefined && location.unitCount > 0 && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span className="tabular-nums">
-                  {unitCountLabel(location.kind, location.unitCount)}
-                </span>
-              </>
-            )}
+            {location.unitCount !== undefined &&
+              location.unitCount > 0 &&
+              !(availability?.status === 'ready' && availability.statesTotal) && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span className="tabular-nums">
+                    {unitCountLabel(location.kind, location.unitCount)}
+                  </span>
+                </>
+              )}
           </p>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <Badge tone={location.bookingMode === 'online' ? 'brand' : 'neutral'}>

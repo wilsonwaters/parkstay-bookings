@@ -4,13 +4,13 @@ import { onlineManager, QueryClientProvider } from '@tanstack/react-query';
 import { createMockApi, fail, ok, PARKSTAY_MANIFEST } from '@tests/utils/renderer/createMockApi';
 import { catalogApi, placeApi, syncingStatus } from '@tests/utils/renderer/catalog';
 import { createQueryClient } from '../app/queryClient';
+import { stayKeyFor } from '../../shared/utils/stay-key';
 import { queryKeys } from './queryKeys';
 import {
   BULK_AVAILABILITY_GC_TIME_MS,
   BULK_AVAILABILITY_STALE_TIME_MS,
   CATALOG_STALE_TIME_MS,
   normaliseCatalogQuery,
-  stayKey,
   useBulkAvailability,
   useCatalogAll,
   useCatalogRefresh,
@@ -257,6 +257,9 @@ describe('useBulkAvailability', () => {
     capabilities: { ...PARKSTAY_MANIFEST.capabilities, bulkAvailability: false },
   };
   const PARKSTAY_ENTRY = { key: 'parkstay:20', availableUnits: 3, bookableUnits: 5 };
+  /** ParkStay's cache key for a stay: its bulk answer reads only the dates and the gear. */
+  const parkstayKey = (stay: typeof STAY_A) =>
+    stayKeyFor(stay, PARKSTAY_MANIFEST.bulkAvailabilityStayFields);
   const FAKE_ENTRY = { key: 'fake:1', availableUnits: 0, bookableUnits: 4 };
 
   /** `catalog.availability` as main answers, failing `failing` providers in `errors`. */
@@ -299,7 +302,7 @@ describe('useBulkAvailability', () => {
     );
     const query = client
       .getQueryCache()
-      .find({ queryKey: queryKeys.catalog.availability(stayKey(STAY_A), 'parkstay') });
+      .find({ queryKey: queryKeys.catalog.availability(parkstayKey(STAY_A), 'parkstay') });
     expect(query?.options).toMatchObject({
       staleTime: BULK_AVAILABILITY_STALE_TIME_MS,
       gcTime: BULK_AVAILABILITY_GC_TIME_MS,
@@ -387,8 +390,34 @@ describe('useBulkAvailability', () => {
     await act(async () => answerA());
     expect(result.current.byKey).toBe(shownForB);
     expect(
-      client.getQueryData(queryKeys.catalog.availability(stayKey(STAY_A), 'parkstay'))
+      client.getQueryData(queryKeys.catalog.availability(parkstayKey(STAY_A), 'parkstay'))
     ).toMatchObject({ entries: [PARKSTAY_ENTRY] });
+  });
+
+  it('shows the answer it has when only the guests change, for a provider that ignores them', async () => {
+    const PARTY = { ...PARKSTAY_MANIFEST, id: 'party', name: 'Party Stays', shortName: 'Party' };
+    delete (PARTY as Partial<typeof PARTY>).bulkAvailabilityStayFields; // reads every field
+    const { stub, client } = setup(availability(), [PARKSTAY_MANIFEST, PARTY]);
+    const { result, rerender } = renderHook(
+      ({ stay, settled }) => useBulkAvailability(stay, { settled }),
+      { wrapper: wrapper(client), initialProps: { stay: STAY_A, settled: true } }
+    );
+    await waitFor(() =>
+      expect(result.current.statusByProvider).toEqual({ parkstay: 'success', party: 'success' })
+    );
+    expect(stub).toHaveBeenCalledTimes(2);
+    stub.mockClear();
+
+    // 4 adults instead of 2, while the change settles: ParkStay's answer shows at once.
+    const moreGuests = { ...STAY_A, adults: 4 };
+    rerender({ stay: moreGuests, settled: false });
+    expect(result.current.statusByProvider).toEqual({ parkstay: 'success', party: 'loading' });
+    expect(result.current.byKey.get('parkstay:20')).toEqual(PARKSTAY_ENTRY);
+    rerender({ stay: moreGuests, settled: true });
+    await waitFor(() => expect(result.current.statusByProvider.party).toBe('success'));
+    // Only the provider that reads the party is asked again.
+    expect(stub).toHaveBeenCalledTimes(1);
+    expect(stub).toHaveBeenCalledWith(moreGuests, { providerIds: ['party'] });
   });
 
   it('asks nothing offline: providers with nothing cached are idle', async () => {

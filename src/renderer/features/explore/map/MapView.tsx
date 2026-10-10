@@ -83,26 +83,38 @@ function prefersReducedMotion(): boolean {
   );
 }
 
-/** The map key with dates: what each pill colour means, in words beside a swatch. */
-function MapLegend() {
+/** States drawn hollow with an ink ring: not checked in bulk, unknown, failed or checking. */
+const NOT_CHECKED = new Set(['check-dates', 'not-supported', 'unknown', 'error', 'loading']);
+
+/**
+ * The map key with dates: what each pin and pill colour means, in words beside a swatch drawn
+ * as the pins are. "Not bookable online" and "Not checked" show only when such places are on
+ * the map, so the key never names a mark that is not there.
+ */
+function MapLegend({ availability }: { availability: ReadonlyMap<string, PinAvailability> }) {
+  const states = new Set([...availability.values()].map((pin) => pin.state));
   const swatch = 'inline-block h-2.5 w-2.5 shrink-0 rounded-full';
+  const items: [string, string][] = [
+    ['Available', 'bg-available'],
+    ['None free or not open', 'bg-fg-muted'],
+  ];
+  if (states.has('offline-booking')) {
+    items.push(['Not bookable online', 'border border-fg-muted bg-surface']);
+  }
+  if ([...states].some((state) => NOT_CHECKED.has(state))) {
+    items.push(['Not checked', 'border border-fg bg-surface']);
+  }
   return (
     <ul
       aria-label="Map key"
       className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-surface px-3 py-1.5 text-xs text-fg-secondary shadow-pill"
     >
-      <li className="flex items-center gap-1.5">
-        <span aria-hidden="true" className={cx(swatch, 'bg-available')} />
-        Available
-      </li>
-      <li className="flex items-center gap-1.5">
-        <span aria-hidden="true" className={cx(swatch, 'bg-fg-muted')} />
-        Full or not open
-      </li>
-      <li className="flex items-center gap-1.5">
-        <span aria-hidden="true" className={cx(swatch, 'border border-fg bg-surface')} />
-        Not checked
-      </li>
+      {items.map(([label, look]) => (
+        <li key={label} className="flex items-center gap-1.5">
+          <span aria-hidden="true" className={cx(swatch, look)} />
+          {label}
+        </li>
+      ))}
     </ul>
   );
 }
@@ -146,13 +158,15 @@ export default function MapView({
   const latest = useRef({ onView, onSelect, onFailed, follow, lookup });
   latest.current = { onView, onSelect, onFailed, follow, lookup };
 
-  // ---- Create once (StrictMode's second mount gets a fresh one; cleanup destroys) --------
+  // ---- Create once (StrictMode's second mount gets a fresh one) -------------------------
+  // The map is destroyed by the last effect below, so every other effect's cleanup (the
+  // pulse, subscriptions) still reaches a live map.
   const initialCameraRef = useRef(initialCamera);
+  const createdRef = useRef<MapController | null>(null);
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return undefined;
     const abort = new AbortController();
-    let created: MapController | null = null;
     createMapboxController({
       container,
       token,
@@ -166,7 +180,7 @@ export default function MapView({
           instance.destroy();
           return;
         }
-        created = instance;
+        createdRef.current = instance;
         setController(instance);
         latest.current.onView(instance.getView());
       },
@@ -176,7 +190,6 @@ export default function MapView({
     );
     return () => {
       abort.abort();
-      created?.destroy();
       setController(null);
     };
   }, [token]);
@@ -322,6 +335,16 @@ export default function MapView({
   // Escape closes the preview (or the list), unless a popover above it takes Escape first.
   useOverlay({ open: popupOpen, modal: false, elementRef: popupRef, onEscape: closePopup });
 
+  // Last of the effects: React runs cleanups in the order effects are declared, so the map is
+  // removed only after every other cleanup above has run.
+  useEffect(
+    () => () => {
+      createdRef.current?.destroy();
+      createdRef.current = null;
+    },
+    [token]
+  );
+
   const spotPlaces = spot
     ? spot.keys.map((key) => lookup(key)).filter((p): p is LocationSummary => Boolean(p))
     : [];
@@ -349,7 +372,7 @@ export default function MapView({
               onChange={(event) => onFollowChange(event.target.checked)}
             />
           </div>
-          {availability && <MapLegend />}
+          {availability && <MapLegend availability={availability} />}
         </div>
         {!follow && areaChanged && controller && (
           <Button

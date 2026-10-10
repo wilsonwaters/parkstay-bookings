@@ -16,16 +16,20 @@
  * on `surface` and `fg-inverse` on `surface-inverse` in CONTRAST_PAIRS).
  *
  * With dates (`withAvailability`, E3) every pill shows its place's availability ("8
- * available", "Full", "Check dates", "–") at every unclustered zoom, so the text, not the
+ * available", "None free", "Check dates", "–") at every unclustered zoom, so the text, not the
  * colour, carries the state:
  * - available: eucalypt fill, white text (`fg-inverse` on `available`, 5.68:1);
- * - full or not open: sand-100 fill, muted text (`fg-muted` on `surface-subtle`, 5.19:1);
+ * - none free or not open: sand-100 fill, muted text (`fg-muted` on `surface-subtle`, 5.19:1);
+ * - not bookable online ("Info only"): quiet, only from zoom 8 (as names): white fill, muted
+ *   text (`fg-muted` on `surface`, 5.99:1), a sand-500 outline (`border-strong`, 3.67:1 on
+ *   the land);
  * - anything else: white fill, ink text, as without dates;
  * - hovered or selected: ink, as without dates.
- * Every pill keeps its ink outline. Pins are filled eucalypt, or muted (`fg-muted` on the
- * sand land, 5.60:1) for full and not open, with a white ring; the rest are hollow (white with
- * an ink ring). Clusters holding an available place turn eucalypt, and available pills win
- * collisions over the others.
+ * Pins are filled eucalypt, or muted (`fg-muted` on the sand land, 5.60:1) for none free and
+ * not open, with a white ring; not bookable online is hollow with a muted ring, the rest
+ * hollow with an ink ring. Clusters holding an available place turn eucalypt and say how
+ * many are free ("12 free"); available pills win collisions. Only checking pills ("···")
+ * pulse.
  */
 
 import type {
@@ -64,6 +68,8 @@ export const MAP_FONT_BOLD = ['DIN Pro Bold', 'Arial Unicode MS Bold'];
 const AVAIL: ExpressionSpecification = ['get', 'avail'];
 /** States whose pills and pins are muted. */
 const MUTED_STATES = ['full', 'none-open'];
+/** A cluster holds at least one available place (with dates). */
+const HAS_FREE: ExpressionSpecification = ['>', ['get', 'availableCount'], 0];
 
 export const SOURCE_SPEC: GeoJSONSourceSpecification = {
   type: 'geojson',
@@ -78,8 +84,11 @@ export const SOURCE_SPEC: GeoJSONSourceSpecification = {
   },
 };
 
-/** While availability loads, the pills' fill pulses between these opacities… */
-export const PULSE_OPACITY = { low: 0.55, high: 1 };
+/**
+ * While availability loads, the checking pills' fill pulses between these opacities, never so
+ * low that the base map's labels show through the pill's text…
+ */
+export const PULSE_OPACITY = { low: 0.8, high: 1 };
 /** …every 700 ms, fading over the same time. */
 export const PULSE_INTERVAL_MS = 700;
 
@@ -134,7 +143,15 @@ export function buildLayers(tokens: MapTokens, options: LayerOptions = {}): MapL
         : tokens.ink,
       'circle-stroke-color': tokens.white,
       'circle-stroke-width': 2,
-      'circle-radius': ['step', ['get', 'point_count'], 15, 10, 19, 50, 23],
+      // With dates a cluster with free places is at least 20 px across, for "12 / free".
+      'circle-radius': withAvailability
+        ? [
+            'case',
+            HAS_FREE,
+            ['step', ['get', 'point_count'], 20, 50, 23],
+            ['step', ['get', 'point_count'], 15, 10, 19, 50, 23],
+          ]
+        : ['step', ['get', 'point_count'], 15, 10, 19, 50, 23],
     },
   };
 
@@ -144,7 +161,24 @@ export function buildLayers(tokens: MapTokens, options: LayerOptions = {}): MapL
     source: SOURCE_ID,
     filter: CLUSTERED,
     layout: {
-      'text-field': ['get', 'point_count_abbreviated'],
+      // With dates a cluster with free places says how many ("12" over "free"), so green
+      // clusters still tell them apart when most places are free.
+      'text-field': withAvailability
+        ? [
+            'case',
+            HAS_FREE,
+            [
+              'format',
+              ['to-string', ['get', 'availableCount']],
+              {},
+              '\n',
+              {},
+              'free',
+              { 'font-scale': 0.8 },
+            ],
+            ['format', ['get', 'point_count_abbreviated'], {}],
+          ]
+        : ['get', 'point_count_abbreviated'],
       'text-font': MAP_FONT_BOLD,
       'text-size': 12,
       'text-allow-overlap': true,
@@ -183,7 +217,15 @@ export function buildLayers(tokens: MapTokens, options: LayerOptions = {}): MapL
         ? byState(tokens.eucalypt600, tokens.sand600, tokens.white)
         : tokens.ink,
       'circle-stroke-color': withAvailability
-        ? ['match', AVAIL, ['available', ...MUTED_STATES], tokens.white, tokens.ink]
+        ? [
+            'match',
+            AVAIL,
+            ['available', ...MUTED_STATES],
+            tokens.white,
+            'offline-booking',
+            tokens.sand600,
+            tokens.ink,
+          ]
         : tokens.white,
       'circle-stroke-width': ['case', ACTIVE, 3, 2],
       'circle-radius': ['case', ACTIVE, 9, 6],
@@ -194,8 +236,15 @@ export function buildLayers(tokens: MapTokens, options: LayerOptions = {}): MapL
     id: LAYER_IDS.pill,
     type: 'symbol',
     source: SOURCE_ID,
-    filter: UNCLUSTERED,
-    // With dates the state shows at every zoom a place is on its own; names from zoom 8.
+    // With dates the state shows at every zoom a place is on its own, except "Info only",
+    // which waits for zoom 8 like the names, so availability stands out at state zoom.
+    filter: withAvailability
+      ? [
+          'all',
+          UNCLUSTERED,
+          ['any', ['!=', AVAIL, 'offline-booking'], ['>=', ['zoom'], PILL_MIN_ZOOM]],
+        ]
+      : UNCLUSTERED,
     ...(withAvailability ? {} : { minzoom: PILL_MIN_ZOOM }),
     layout: {
       'text-field': withAvailability ? ['get', 'availLabel'] : ['get', 'label'],
@@ -220,15 +269,35 @@ export function buildLayers(tokens: MapTokens, options: LayerOptions = {}): MapL
         tokens.ink,
         withAvailability ? byState(tokens.eucalypt600, tokens.sand100, tokens.white) : tokens.white,
       ],
-      'icon-halo-color': tokens.ink,
+      'icon-halo-color': withAvailability
+        ? [
+            'case',
+            ACTIVE,
+            tokens.ink,
+            ['match', AVAIL, 'offline-booking', tokens.sand500, tokens.ink],
+          ]
+        : tokens.ink,
       'icon-halo-width': 1,
       'text-color': [
         'case',
         ACTIVE,
         tokens.white,
-        withAvailability ? byState(tokens.white, tokens.sand600, tokens.ink) : tokens.ink,
+        withAvailability
+          ? [
+              'match',
+              AVAIL,
+              'available',
+              tokens.white,
+              [...MUTED_STATES, 'offline-booking'],
+              tokens.sand600,
+              tokens.ink,
+            ]
+          : tokens.ink,
       ],
-      'icon-opacity': ['case', PREVIEWED, 0, pillOpacity],
+      // Only a pill still checking pulses; one with its answer stays solid.
+      'icon-opacity': withAvailability
+        ? ['case', PREVIEWED, 0, ['==', AVAIL, 'loading'], pillOpacity, 1]
+        : ['case', PREVIEWED, 0, pillOpacity],
       'text-opacity': ['case', PREVIEWED, 0, 1],
       ...(withAvailability
         ? { 'icon-opacity-transition': { duration: PULSE_INTERVAL_MS, delay: 0 } }

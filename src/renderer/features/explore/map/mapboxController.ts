@@ -68,11 +68,23 @@ function errorStatus(event: { error?: unknown }): number | undefined {
 
 const isAuthFailure = (status: number | undefined) => status === 401 || status === 403;
 
+/** `getView` of a map removed before it was ever asked: the first view of WA. */
+const REMOVED_VIEW: MapViewState = {
+  camera: {
+    lng: (WA_BOUNDS[0][0] + WA_BOUNDS[1][0]) / 2,
+    lat: (WA_BOUNDS[0][1] + WA_BOUNDS[1][1]) / 2,
+    zoom: 4,
+  },
+  bbox: [WA_BOUNDS[0][0], WA_BOUNDS[0][1], WA_BOUNDS[1][0], WA_BOUNDS[1][1]],
+  userInitiated: false,
+};
+
 /** The style setters `syncLayers` uses, typed loosely: the values come from `buildLayers`. */
 interface LayerStyle {
   setPaintProperty(layer: string, name: string, value: unknown): unknown;
   setLayoutProperty(layer: string, name: string, value: unknown): unknown;
   setLayerZoomRange(layer: string, minzoom: number, maxzoom: number): unknown;
+  setFilter(layer: string, filter: unknown): unknown;
 }
 
 /** Mapbox's widest zoom range for a layer. */
@@ -124,6 +136,8 @@ export const createMapboxController: CreateMapController = async ({
   let pointerKey: string | null = null;
   let insetTop = 0;
   let destroyed = false;
+  /** The view `getView` last gave, for calls after `destroy()`. */
+  let lastView: MapViewState | null = null;
 
   const moveListeners = new Set<(view: MapViewState) => void>();
   const hoverListeners = new Set<(key: string | null) => void>();
@@ -181,7 +195,7 @@ export const createMapboxController: CreateMapController = async ({
   /**
    * Brings the app's layers from the other mode in line with `layerOptions()`: only the paint
    * and layout properties whose value differs between the modes (a property only the other
-   * mode sets goes back to its default), and the zoom range when it differs. Feature state
+   * mode sets goes back to its default), and the filter and zoom range when they differ. Feature state
    * (hover, selection, preview) is kept.
    *
    * Untouched layers stay untouched: Mapbox GL 3 fails while redrawing a symbol layer with no
@@ -205,6 +219,7 @@ export const createMapboxController: CreateMapController = async ({
           else style.setLayoutProperty(layer.id, name, next[name]);
         }
       }
+      if (!same(layer.filter, old.filter)) style.setFilter(layer.id, layer.filter);
       if (layer.minzoom !== old.minzoom || layer.maxzoom !== old.maxzoom) {
         style.setLayerZoomRange(layer.id, layer.minzoom ?? 0, layer.maxzoom ?? MAX_LAYER_ZOOM);
       }
@@ -421,7 +436,7 @@ export const createMapboxController: CreateMapController = async ({
   });
 
   // ---- The controller --------------------------------------------------------------------
-  const controller: MapController = {
+  const live: MapController = {
     setData(next, nextAvailability = null) {
       const modeChanged = (availability === null) !== (nextAvailability === null);
       items = next;
@@ -513,7 +528,7 @@ export const createMapboxController: CreateMapController = async ({
     setOverlayInsets({ top }) {
       insetTop = Math.max(0, top);
     },
-    getView: () => view(false),
+    getView: () => (lastView = view(false)),
     resize() {
       map.resize();
     },
@@ -527,6 +542,35 @@ export const createMapboxController: CreateMapController = async ({
       marker.remove();
       map.remove();
     },
+  };
+
+  /**
+   * After `destroy()` the map is gone, and Mapbox throws on any call to a removed map. React
+   * cleanups and late events can still reach the controller, so every call is then a no-op:
+   * a subscription returns a no-op unsubscribe, and `getView` the last view it gave.
+   */
+  const ifAlive =
+    <A extends unknown[], R>(call: (...args: A) => R, removed: (...args: A) => R) =>
+    (...args: A): R =>
+      destroyed ? removed(...args) : call(...args);
+  const nothing = () => undefined;
+  const noUnsubscribe = () => () => undefined;
+  const controller: MapController = {
+    setData: ifAlive(live.setData, nothing),
+    setPillOpacity: ifAlive(live.setPillOpacity, nothing),
+    setHovered: ifAlive(live.setHovered, nothing),
+    setSelected: ifAlive(live.setSelected, nothing),
+    fitBounds: ifAlive(live.fitBounds, nothing),
+    flyTo: ifAlive(live.flyTo, nothing),
+    onMoveEnd: ifAlive(live.onMoveEnd, noUnsubscribe),
+    onFeatureHover: ifAlive(live.onFeatureHover, noUnsubscribe),
+    onFeatureClick: ifAlive(live.onFeatureClick, noUnsubscribe),
+    showPopup: ifAlive(live.showPopup, nothing),
+    hidePopup: ifAlive(live.hidePopup, nothing),
+    setOverlayInsets: ifAlive(live.setOverlayInsets, nothing),
+    getView: ifAlive(live.getView, () => lastView ?? REMOVED_VIEW),
+    resize: ifAlive(live.resize, nothing),
+    destroy: live.destroy,
   };
   return controller;
 };

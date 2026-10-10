@@ -45,10 +45,13 @@ interface Setup {
 
 let current: Setup | undefined;
 
-function setup(timings: Partial<CatalogTimings> = {}): Setup {
+function setup(
+  timings: Partial<CatalogTimings> = {},
+  fakeOptions: Parameters<typeof createFakeProvider>[0] = {}
+): Setup {
   const db = openDatabase(':memory:');
   const registry = new ProviderRegistry();
-  const fake = createFakeProvider();
+  const fake = createFakeProvider(fakeOptions);
   const fake2 = createFakeProvider({
     id: 'fake2',
     locations: [
@@ -290,6 +293,40 @@ describe('stay changes', () => {
     const again = await s.catalog.availability(newStay, { providerIds: ['fake'] });
     expect(again).toEqual(fresh);
     expect(again.entries).toContainEqual({ key: 'fake:1', availableUnits: 1, bookableUnits: 2 });
+    expect(search).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('bulk cache key', () => {
+  it('reuses an answer when only stay fields the provider ignores change (the guests)', async () => {
+    const s = setup(
+      {},
+      { bulkAvailabilityStayFields: ['arrival', 'departure', 'params.gearType'] }
+    );
+    await s.catalog.sync('fake');
+    const search = jest.spyOn(s.fake.availability!, 'search');
+    const first = await s.catalog.availability(STAY, { providerIds: ['fake'] });
+    const moreGuests = await s.catalog.availability(
+      { ...STAY, adults: 4, children: 2, infants: 1 },
+      { providerIds: ['fake'] }
+    );
+    expect(moreGuests).toEqual(first);
+    expect(search).toHaveBeenCalledTimes(1);
+    // A field it reads asks again.
+    await s.catalog.availability(
+      { ...STAY, params: { gearType: 'caravan' } },
+      { providerIds: ['fake'] }
+    );
+    await s.catalog.availability({ ...STAY, departure: '2026-11-14' }, { providerIds: ['fake'] });
+    expect(search).toHaveBeenCalledTimes(3);
+  });
+
+  it('keys by every stay field when the provider declares none', async () => {
+    const s = setup();
+    await s.catalog.sync('fake');
+    const search = jest.spyOn(s.fake.availability!, 'search');
+    await s.catalog.availability(STAY, { providerIds: ['fake'] });
+    await s.catalog.availability({ ...STAY, adults: 4 }, { providerIds: ['fake'] });
     expect(search).toHaveBeenCalledTimes(2);
   });
 });

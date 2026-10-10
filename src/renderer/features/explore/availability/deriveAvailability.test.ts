@@ -143,23 +143,35 @@ describe('availabilityLabel', () => {
   const label = (availability: PlaceAvailability, kind = 'campground') =>
     availabilityLabel(availability, kind, 'ParkStay');
 
-  it.each<[PlaceAvailability, string, string, string | null]>([
-    [
-      { state: 'available', availableUnits: 8, bookableUnits: 24 },
-      '8 available',
-      '8 of 24 sites available',
-      'available',
-    ],
-    [{ state: 'full', bookableUnits: 24 }, 'Full', 'Fully booked', 'neutral'],
+  it.each<[PlaceAvailability, string, string | null, string | null]>([
+    [{ state: 'full', bookableUnits: 24 }, 'None free', 'No site free every night', 'neutral'],
     [{ state: 'none-open' }, 'Not open', 'No sites open for these dates', 'neutral'],
     [{ state: 'check-dates' }, 'Check dates', 'Check dates on the place page', 'neutral'],
-    [{ state: 'offline-booking' }, 'Info only', 'Not bookable online', 'neutral'],
+    // The card already says "Info only": no second badge.
+    [{ state: 'offline-booking' }, 'Info only', null, 'neutral'],
     [{ state: 'not-supported' }, '–', 'Availability not shared by ParkStay', 'neutral'],
     [{ state: 'unknown' }, '–', 'Availability unknown', 'neutral'],
     [{ state: 'error', queue: false }, '–', "Couldn't check ParkStay", 'danger'],
     [{ state: 'loading' }, '···', '', null],
   ])('%j reads "%s" on the pill and "%s" on the card', (availability, pill, card, tone) => {
     expect(label(availability)).toEqual({ pill, card, tone });
+  });
+
+  it('says how many of the total are free, so the card need not repeat the total', () => {
+    expect(label({ state: 'available', availableUnits: 8, bookableUnits: 24 })).toEqual({
+      pill: '8 available',
+      card: '8 of 24 sites available',
+      tone: 'available',
+      statesTotal: true,
+    });
+  });
+
+  it('never says "booked" when none is free every night: it may be split, closed or unreleased', () => {
+    const full = label({ state: 'full', bookableUnits: 24 });
+    expect(`${full?.pill} ${full?.card}`).not.toMatch(/booked/i);
+    expect(label({ state: 'full', bookableUnits: 6 }, 'cabin')?.card).toBe(
+      'No cabin free every night'
+    );
   });
 
   it('shows nothing without dates', () => {
@@ -186,9 +198,11 @@ describe('availabilityLabel', () => {
   });
 
   it('says only what is free when a provider reports fewer bookable than free', () => {
-    expect(label({ state: 'available', availableUnits: 5, bookableUnits: 3 }).card).toBe(
-      '5 sites available'
-    );
+    expect(label({ state: 'available', availableUnits: 5, bookableUnits: 3 })).toEqual({
+      pill: '5 available',
+      card: '5 sites available',
+      tone: 'available',
+    });
   });
 });
 

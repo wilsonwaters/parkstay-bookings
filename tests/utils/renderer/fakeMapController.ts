@@ -77,11 +77,13 @@ export class FakeMapController implements MapController {
     items: readonly LocationSummary[],
     availability: ReadonlyMap<string, PinAvailability> | null = null
   ) {
+    this.alive('setData');
     this.data = [...items];
     this.availability = availability;
     this.setDataCalls += 1;
   }
   setPillOpacity(opacity: number) {
+    this.alive('setPillOpacity');
     this.pillOpacities.push(opacity);
   }
   /**
@@ -96,26 +98,33 @@ export class FakeMapController implements MapController {
     return this.features().features.find((f) => f.properties.key === key)?.properties;
   }
   setHovered(key: string | null) {
+    this.alive('setHovered');
     this.hovered = key;
   }
   setSelected(key: string | null) {
+    this.alive('setSelected');
     this.selected = key;
   }
   fitBounds(bbox: BoundingBox, options: { maxZoom?: number; animate?: boolean } = {}) {
+    this.alive('fitBounds');
     this.fits.push({ bbox, maxZoom: options.maxZoom, animate: options.animate });
   }
   flyTo(target: { lng: number; lat: number; zoom?: number }) {
+    this.alive('flyTo');
     this.flights.push(target);
   }
   onMoveEnd(listener: (view: MapViewState) => void) {
+    this.alive('onMoveEnd');
     this.moveListeners.add(listener);
     return () => this.moveListeners.delete(listener);
   }
   onFeatureHover(listener: (key: string | null) => void) {
+    this.alive('onFeatureHover');
     this.hoverListeners.add(listener);
     return () => this.hoverListeners.delete(listener);
   }
   onFeatureClick(listener: (click: MapClick) => void) {
+    this.alive('onFeatureClick');
     this.clickListeners.add(listener);
     return () => this.clickListeners.delete(listener);
   }
@@ -124,23 +133,36 @@ export class FakeMapController implements MapController {
     content: HTMLElement,
     options: { place?: string } = {}
   ) {
+    this.alive('showPopup');
     this.popupAt = at;
     this.popupPlace = options.place ?? null;
     if (content.parentElement !== this.popupHost) this.popupHost.replaceChildren(content);
   }
   hidePopup() {
+    this.alive('hidePopup');
     this.popupAt = null;
     this.popupPlace = null;
     this.popupHost.replaceChildren();
   }
   setOverlayInsets(insets: { top: number }) {
+    this.alive('setOverlayInsets');
     this.overlayInsets = insets;
   }
   getView() {
+    this.alive('getView');
     return this.view;
   }
   resize() {
+    this.alive('resize');
     this.resizes += 1;
+  }
+  /**
+   * Like Mapbox on a removed map, a destroyed controller fails on every call, so a test fails
+   * when Explore uses the map after tearing it down (the real controller ignores such calls,
+   * but Explore must not rely on that).
+   */
+  private alive(method: string) {
+    if (this.destroyed) throw new Error(`FakeMapController.${method} called after destroy()`);
   }
   destroy() {
     this.destroyed = true;

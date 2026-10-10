@@ -108,6 +108,9 @@ export const parkstayManifest: ProviderManifest = {
       appliesTo: ['snipe', 'hold'],
     },
   ],
+  // The bulk view reads only the dates and the gear type (`campground_availabilty_view`); the
+  // party is ignored, so changing guests reuses the answer.
+  bulkAvailabilityStayFields: ['arrival', 'departure', 'equipment', 'params.gearType'],
   releaseModes: [
     {
       id: SnipeReleaseMode.DAILY_ROLLOVER,

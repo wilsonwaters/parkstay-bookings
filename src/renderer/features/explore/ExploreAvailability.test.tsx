@@ -56,6 +56,8 @@ const KINGSTOWN: LocationSummary = {
   amenities: [],
 };
 const PLACES = [YARDIE, BUNGARRA, LUCKY, ONE_K, COALMINE, KINGSTOWN];
+/** ParkStay as a provider whose bulk answer reads every stay field (no declaration). */
+const READS_PARTY = { ...PARKSTAY_MANIFEST, bulkAvailabilityStayFields: undefined };
 const NAMES = PLACES.map((p) => p.name);
 
 const STAY = 'arrival=2099-11-06&departure=2099-11-08&adults=2';
@@ -179,7 +181,8 @@ function watchHeading() {
 
 describe('Explore with dates: asking', () => {
   it('asks each bulk provider once, 400 ms after the dates settle; a run of guest steps asks once', async () => {
-    const { stubs, availability } = api();
+    // A provider whose bulk answer reads every stay field, the party included.
+    const { stubs, availability } = api(undefined, [READS_PARTY, SINGLE]);
     const calledAt: number[] = [];
     availability.mockImplementation(async (stay, options) => {
       calledAt.push(Date.now());
@@ -231,6 +234,25 @@ describe('Explore with dates: asking', () => {
     );
     await pause(STAY_DEBOUNCE_MS + 100);
     expect(availability).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks ParkStay nothing when only the guests change: its bulk answer ignores the party', async () => {
+    const { stubs, availability } = api();
+    const { user } = await renderExplore(`/?${STAY}`, stubs);
+    expect(availability).toHaveBeenCalledTimes(1);
+    const headings = watchHeading();
+    await user.click(screen.getByRole('button', { name: /^Who/ }));
+    for (let i = 0; i < 2; i += 1) {
+      await user.click(screen.getByRole('button', { name: 'Increase adults' }));
+    }
+    await user.click(screen.getByRole('button', { name: 'Increase children' }));
+    await pause(STAY_DEBOUNCE_MS + 100);
+    headings.stop();
+    expect(currentRoute()).toContain('adults=4&children=1');
+    expect(availability).toHaveBeenCalledTimes(1);
+    // The states stay on screen throughout: nothing to check again.
+    expect(headings.seen).toEqual(['6 places · 2 available for 6–8 Nov']);
+    expect(within(card('Bungarra')).getByText('3 of 5 sites available')).toBeInTheDocument();
   });
 
   it('asks nothing without dates, or for a URL-edited stay of more than 30 nights', async () => {
@@ -292,9 +314,8 @@ describe('Explore with dates: cards (list only)', () => {
     const expected: [LocationSummary, string][] = [
       [YARDIE, '9 of 10 sites available'],
       [BUNGARRA, '3 of 5 sites available'],
-      [LUCKY, 'Fully booked'],
+      [LUCKY, 'No site free every night'],
       [ONE_K, 'No sites open for these dates'],
-      [COALMINE, 'Not bookable online'],
       [KINGSTOWN, 'Check dates on the place page'],
     ];
     for (const [place, text] of expected) {
@@ -302,6 +323,12 @@ describe('Explore with dates: cards (list only)', () => {
       // Part of the link's description, so it is read with the name.
       expect(card(place.name)).toHaveAccessibleDescription(expect.stringContaining(text));
     }
+    // Said once: "3 of 5 sites available" without "5 sites" again, and "Info only" without
+    // "Not bookable online" beside it.
+    expect(within(card('Bungarra')).queryByText('5 sites')).toBeNull();
+    expect(within(card('Lucky Bay (Cape Le Grand)')).getByText('56 sites')).toBeInTheDocument();
+    expect(within(card(COALMINE.name)).getByText('Info only')).toBeInTheDocument();
+    expect(within(card(COALMINE.name)).queryByText(/Not bookable online|Checking/)).toBeNull();
   });
 
   it('puts available places first, most free first, then full, not open, check dates, info only', async () => {
@@ -325,7 +352,7 @@ describe('Explore with dates: cards (list only)', () => {
     await waitFor(() => expect(heading()).toHaveTextContent(/^6 places$/));
     expect(cardNames()).toEqual([...NAMES].sort((x, y) => x.localeCompare(y)));
     expect(
-      within(results()).queryByText(/sites available|Fully booked|Check dates|No sites open/)
+      within(results()).queryByText(/sites available|No site free|Check dates|No sites open/)
     ).toBeNull();
   });
 
@@ -337,10 +364,11 @@ describe('Explore with dates: cards (list only)', () => {
     );
     await renderExplore(`/?${STAY}`, api(availability).stubs, /checking availability…$/);
     expect(within(card('Bungarra')).getByText('Checking availability')).toBeInTheDocument();
-    // Places that need no answer show theirs at once.
+    // Places that need no answer are not checking.
     expect(
-      within(card('Coalmine Beach Holiday Park')).getByText('Not bookable online')
+      within(card('Kingstown Barracks')).getByText('Check dates on the place page')
     ).toBeInTheDocument();
+    expect(within(card(COALMINE.name)).queryByText('Checking availability')).toBeNull();
     await waitFor(() => expect(availability).toHaveBeenCalled());
     await act(async () => answer());
     await waitFor(() => expect(heading()).toHaveTextContent(SETTLED));
@@ -464,9 +492,9 @@ describe('Explore with dates: providers that fail or are slow', () => {
     expect(within(card('Fake Cove')).getByText('2 of 4 sites available')).toBeInTheDocument();
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent("Couldn't check availability on ParkStay.");
-    await waitFor(() =>
-      expect(assertiveLive()?.textContent?.trim()).toBe("Couldn't check availability on ParkStay")
-    );
+    // Announced once, by the alert itself, not again through the live region.
+    expect(assertiveLive()?.textContent?.trim() ?? '').toBe('');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
 
     availability.mockClear();
     parkstayFails = false;
@@ -552,7 +580,7 @@ describe('Explore with dates: the map', () => {
     expect(pins).toEqual({
       'Yardie Creek': ['available', '9 available'],
       Bungarra: ['available', '3 available'],
-      'Lucky Bay (Cape Le Grand)': ['full', 'Full'],
+      'Lucky Bay (Cape Le Grand)': ['full', 'None free'],
       'One K': ['none-open', 'Not open'],
       'Coalmine Beach Holiday Park': ['offline-booking', 'Info only'],
       'Kingstown Barracks': ['check-dates', 'Check dates'],
@@ -562,7 +590,7 @@ describe('Explore with dates: the map', () => {
       within(legend)
         .getAllByRole('listitem')
         .map((item) => item.textContent)
-    ).toEqual(['Available', 'Full or not open', 'Not checked']);
+    ).toEqual(['Available', 'None free or not open', 'Not bookable online', 'Not checked']);
 
     const calls = map.setDataCalls;
     map.emitHover(BUNGARRA.key);
@@ -599,7 +627,7 @@ describe('Explore with dates: the map', () => {
     const { unmount } = await renderExplore(`/?${STAY}`, api(pending()).stubs, /checking/);
     const map = maps.current;
     await waitFor(() => expect(map.pin(BUNGARRA.key)?.availLabel).toBe('···'));
-    await waitFor(() => expect(map.pillOpacities).toContain(0.55));
+    await waitFor(() => expect(map.pillOpacities).toContain(0.8));
     await act(async () => answer());
     await waitFor(() => expect(map.pin(BUNGARRA.key)?.availLabel).toBe('3 available'));
     expect(map.pillOpacities[map.pillOpacities.length - 1]).toBe(1);
@@ -625,6 +653,20 @@ describe('Explore with dates: the map', () => {
       })
     ).toBeInTheDocument();
     expect(cardNames()).toEqual(['Yardie Creek', 'Bungarra', 'One K']);
+  });
+
+  it('leaves Explore while the pills pulse without an error, removing the map last', async () => {
+    const availability: AvailabilityStub = jest.fn(() => new Promise(() => undefined));
+    const { user } = await renderExplore(`/?${STAY}`, api(availability).stubs, /checking/);
+    const map = maps.current;
+    await waitFor(() => expect(map.pillOpacities).toContain(0.8));
+    // Open a place mid-check: Explore and its map unmount while the pulse runs.
+    await user.click(card('Bungarra'));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Bungarra' })).toBeInTheDocument();
+    expect(map.destroyed).toBe(true);
+    expect(screen.queryByText(/hit a problem/)).toBeNull();
+    // The pulse was reset on the live map, before it was removed.
+    expect(map.pillOpacities[map.pillOpacities.length - 1]).toBe(1);
   });
 
   it('opens an available place from its card with the same stay', async () => {

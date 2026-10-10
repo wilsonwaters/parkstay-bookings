@@ -120,6 +120,8 @@ export interface FakeProviderOptions {
   delayMs?: number;
   /** Per-module delays, instead of `delayMs`. */
   delays?: Partial<Record<FakeModule, number>>;
+  /** The manifest's `bulkAvailabilityStayFields` (every stay field when absent). */
+  bulkAvailabilityStayFields?: ProviderManifest['bulkAvailabilityStayFields'];
 }
 
 export interface FakeProvider extends AccommodationProvider {
@@ -224,6 +226,9 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
     currency: 'AUD',
     capabilities,
     limits: { minWatchIntervalMinutes: 5, maxConcurrentRequests: 2, catalogTtlHours: 1 },
+    ...(options.bulkAvailabilityStayFields
+      ? { bulkAvailabilityStayFields: options.bulkAvailabilityStayFields }
+      : {}),
     stayFields: [
       {
         key: 'gearType',

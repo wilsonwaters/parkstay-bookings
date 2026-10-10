@@ -15,6 +15,9 @@ describe('renderer test manifests', () => {
     expect(PARKSTAY_MANIFEST.limits).toEqual(parkstayManifest.limits);
     expect(PARKSTAY_MANIFEST.timezone).toBe(parkstayManifest.timezone);
     expect(PARKSTAY_MANIFEST.currency).toBe(parkstayManifest.currency);
+    expect(PARKSTAY_MANIFEST.bulkAvailabilityStayFields).toEqual(
+      parkstayManifest.bulkAvailabilityStayFields
+    );
   });
 
   it('are all valid manifests', () => {

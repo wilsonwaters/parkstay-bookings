@@ -22,6 +22,7 @@ import type {
   StayQuery,
 } from '../../shared/types/provider.types';
 import { parseLocationKey } from '../../shared/utils/location-key';
+import { stayKeyFor } from '../../shared/utils/stay-key';
 import { ApiError, toApiError, unwrap } from './client';
 import { useApiEvent } from './events';
 import { useProvidersWith } from './providers';
@@ -342,8 +343,8 @@ const EMPTY_ENTRIES: ReadonlyMap<string, BulkAvailabilityEntry> = new Map();
 /**
  * Bulk availability for `stay` (null: no stay) from every catalogue provider with
  * `bulkAvailability`: one query per provider, so one failing or slow provider never holds up
- * another. Keyed by stay and provider: a stay keeps its answers for 15 minutes, and an answer
- * is only ever shown for the stay it was asked for. Nothing is retried or refetched by itself
+ * another. Keyed by provider and the stay fields it reads: a stay keeps its answers for 15
+ * minutes, and an answer is only ever shown for a stay it answers. Nothing is retried or refetched by itself
  * (no retry, no refetch on reconnect or focus): a failed provider is asked again by `refetch`,
  * and a stale stay when it is applied again.
  */
@@ -353,27 +354,31 @@ export function useBulkAvailability(
 ): BulkAvailability {
   const { settled = true, online = true } = options;
   const providersQuery = useProvidersWith('bulkAvailability');
-  const providerIds = useMemo(
-    () => (providersQuery.data ?? []).filter((p) => p.capabilities.catalog).map((p) => p.id),
+  const providers = useMemo(
+    () => (providersQuery.data ?? []).filter((p) => p.capabilities.catalog),
     [providersQuery.data]
   );
-  const key = stay ? stayKey(stay) : null;
+  const providerIds = useMemo(() => providers.map((p) => p.id), [providers]);
+  // Each provider's answer is keyed by the stay fields it reads (its manifest's
+  // `bulkAvailabilityStayFields`), so a change it ignores (the guests, for ParkStay) shows the
+  // answer already in the cache and asks nothing.
+  const keys = stay ? providers.map((p) => stayKeyFor(stay, p.bulkAvailabilityStayFields)) : [];
+  const key = keys.join('\n');
   const enabled = Boolean(stay) && settled && online;
 
   const results = useQueries({
-    queries:
-      stay && key
-        ? providerIds.map((providerId) => ({
-            queryKey: queryKeys.catalog.availability(key, providerId),
-            queryFn: () => providerBulkAvailability(stay, providerId),
-            enabled,
-            staleTime: BULK_AVAILABILITY_STALE_TIME_MS,
-            gcTime: BULK_AVAILABILITY_GC_TIME_MS,
-            retry: false,
-            refetchOnReconnect: false,
-            refetchOnWindowFocus: false,
-          }))
-        : [],
+    queries: stay
+      ? providers.map((provider, i) => ({
+          queryKey: queryKeys.catalog.availability(keys[i], provider.id),
+          queryFn: () => providerBulkAvailability(stay, provider.id),
+          enabled,
+          staleTime: BULK_AVAILABILITY_STALE_TIME_MS,
+          gcTime: BULK_AVAILABILITY_GC_TIME_MS,
+          retry: false,
+          refetchOnReconnect: false,
+          refetchOnWindowFocus: false,
+        }))
+      : [],
   });
   const latest = useRef(results);
   latest.current = results;

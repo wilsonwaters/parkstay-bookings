@@ -206,6 +206,14 @@ describe('ProviderManifestSchema', () => {
     expect(issuesAt(ProviderManifestSchema.safeParse(manifest))).toEqual([]);
   });
 
+  it('accepts the stay fields bulk availability depends on, provider params included', () => {
+    const bulk = {
+      ...manifest,
+      bulkAvailabilityStayFields: ['arrival', 'departure', 'equipment', 'params.gearType'],
+    };
+    expect(issuesAt(ProviderManifestSchema.safeParse(bulk))).toEqual([]);
+  });
+
   it.each<[string, (m: ProviderManifest) => void, string]>([
     ['an http website', (m) => (m.website = 'http://parkstay.dbca.wa.gov.au'), 'website'],
     ['a named colour', (m) => (m.brand.color = 'green'), 'brand.color'],
@@ -214,6 +222,16 @@ describe('ProviderManifestSchema', () => {
     ['an unknown time zone', (m) => (m.timezone = 'Mars/Olympus'), 'timezone'],
     ['no currency', (m) => delete (m as Partial<ProviderManifest>).currency, 'currency'],
     ['a lower-case currency', (m) => (m.currency = 'aud'), 'currency'],
+    [
+      'bulk availability without both dates',
+      (m) => (m.bulkAvailabilityStayFields = ['arrival', 'adults']),
+      'bulkAvailabilityStayFields',
+    ],
+    [
+      'an unknown bulk availability stay field',
+      (m) => (m.bulkAvailabilityStayFields = ['arrival', 'departure', 'party' as 'adults']),
+      'bulkAvailabilityStayFields.2',
+    ],
     ['a currency symbol', (m) => (m.currency = '$'), 'currency'],
     [
       'an unknown catalogue mode',

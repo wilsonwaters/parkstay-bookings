@@ -27,12 +27,21 @@ class FakeMap {
   rendered: unknown[] = [];
   canvas = document.createElement('canvas');
   touchZoomRotate = { disableRotation: jest.fn() };
-  fitBounds = jest.fn();
-  flyTo = jest.fn();
-  easeTo = jest.fn();
-  panBy = jest.fn();
-  resize = jest.fn();
-  remove = jest.fn();
+  fitBounds = jest.fn(() => this.alive());
+  flyTo = jest.fn(() => this.alive());
+  easeTo = jest.fn(() => this.alive());
+  panBy = jest.fn(() => this.alive());
+  resize = jest.fn(() => this.alive());
+  /** Removed (`map.remove()`): like Mapbox, every later call fails. */
+  removed = false;
+  remove = jest.fn(() => {
+    this.removed = true;
+  });
+  private alive() {
+    // Mapbox's own message for a call to a removed map.
+    if (this.removed)
+      throw new TypeError("Cannot read properties of undefined (reading 'getOwnLayer')");
+  }
   zoom = 5;
   moving = false;
   container = document.createElement('div');
@@ -75,9 +84,11 @@ class FakeMap {
     return this.container;
   }
   isMoving() {
+    this.alive();
     return this.moving;
   }
   getSource(id: string) {
+    this.alive();
     return this.sources.get(id);
   }
   addSource(id: string) {
@@ -88,9 +99,11 @@ class FakeMap {
     });
   }
   getLayer(id: string) {
+    this.alive();
     return this.layers.get(id);
   }
   addLayer(layer: { id: string }) {
+    this.alive();
     this.layers.set(layer.id, layer);
   }
   hasImage(id: string) {
@@ -115,38 +128,53 @@ class FakeMap {
   /** The layers each restyle touched, in order. */
   restyled: string[] = [];
   setPaintProperty(id: string, name: string, value: unknown) {
+    this.alive();
     this.styleChanges += 1;
     this.restyled.push(id);
     this.setProperty(id, 'paint', name, value);
     return this;
   }
   setLayoutProperty(id: string, name: string, value: unknown) {
+    this.alive();
     this.styleChanges += 1;
     this.restyled.push(id);
     this.setProperty(id, 'layout', name, value);
     return this;
   }
+  setFilter(id: string, filter: unknown) {
+    this.alive();
+    this.restyled.push(id);
+    const layer = this.layers.get(id) as Record<string, unknown> | undefined;
+    if (layer) layer.filter = filter;
+  }
   setLayerZoomRange(id: string, minzoom: number, maxzoom: number) {
+    this.alive();
     const layer = this.layers.get(id) as Record<string, unknown> | undefined;
     if (layer) Object.assign(layer, { minzoom, maxzoom });
   }
   setFeatureState({ id }: { id: string }, state: Record<string, boolean>) {
+    this.alive();
     this.featureState.set(id, { ...this.featureState.get(id), ...state });
   }
   queryRenderedFeatures() {
+    this.alive();
     return this.rendered;
   }
   getCenter() {
+    this.alive();
     return { lng: 121, lat: -25 };
   }
   getZoom() {
+    this.alive();
     return this.zoom;
   }
   getBounds() {
+    this.alive();
     return { getWest: () => 112, getSouth: () => -36, getEast: () => 130, getNorth: () => -13 };
   }
   /** A flat 0.01° per pixel from 110°E, 10°S, for the canvas-corner area. */
   unproject([x, y]: [number, number]) {
+    this.alive();
     return { lng: 110 + x * 0.01, lat: -10 - y * 0.01 };
   }
 }
@@ -398,14 +426,26 @@ describe('createMapboxController', () => {
     expect(head(dot().paint['circle-color'])).toBe('match');
     expect(head(clusters().paint['circle-color'])).toBe('case');
     expect(map.featureState.get(PLACE.key)).toEqual({ hover: true });
-    // Only what differs is restyled: the cluster counts and halos are left alone.
+    // Only what differs is restyled: the halos are left alone, and the cluster counts only
+    // change their text ("12 free").
     expect(new Set(map.restyled)).toEqual(
-      new Set([LAYER_IDS.clusters, LAYER_IDS.dot, LAYER_IDS.pill])
+      new Set([LAYER_IDS.clusters, LAYER_IDS.clusterCount, LAYER_IDS.dot, LAYER_IDS.pill])
     );
+    expect(head(layer(LAYER_IDS.clusterCount).layout['text-field'])).toBe('case');
+    expect(layer(LAYER_IDS.clusterCount).paint['text-color']).toEqual([
+      'case',
+      [
+        'any',
+        ['boolean', ['feature-state', 'hover'], false],
+        ['boolean', ['feature-state', 'selected'], false],
+      ],
+      TOKENS.white,
+      TOKENS.white,
+    ]);
 
     // New availability for the same dates only replaces the data.
     const changes = map.styleChanges;
-    controller.setData([PLACE], new Map([[PLACE.key, { state: 'full', pill: 'Full' }]]));
+    controller.setData([PLACE], new Map([[PLACE.key, { state: 'full', pill: 'None free' }]]));
     expect(map.styleChanges).toBe(changes);
 
     // Dates cleared: names from zoom 8 again, ink and white only.
@@ -419,24 +459,41 @@ describe('createMapboxController', () => {
     expect(source.setData.mock.lastCall[0].features[0].properties).not.toHaveProperty('avail');
   });
 
+  it('ignores every call once destroyed, never touching the removed map', async () => {
+    const { controller, map } = await loaded();
+    controller.setData([PLACE], new Map([[PLACE.key, { state: 'loading', pill: '···' }]]));
+    const view = controller.getView();
+    controller.destroy();
+    expect(map.remove).toHaveBeenCalledTimes(1);
+    expect(() => map.getLayer(LAYER_IDS.pill)).toThrow(); // the fake models a removed map
+    // A pulse's last step, or a late cleanup, after the map went:
+    expect(() => {
+      controller.setPillOpacity(1);
+      controller.setData([PLACE], null);
+      controller.setHovered(PLACE.key);
+      controller.setSelected(PLACE.key);
+      controller.fitBounds([112, -36, 130, -13]);
+      controller.flyTo({ lng: 115, lat: -32 });
+      controller.showPopup({ lng: 115, lat: -32 }, document.createElement('div'));
+      controller.hidePopup();
+      controller.resize();
+      controller.onMoveEnd(() => undefined)();
+      controller.destroy();
+    }).not.toThrow();
+    expect(controller.getView()).toEqual(view);
+    expect(map.remove).toHaveBeenCalledTimes(1);
+  });
+
   it('sets the pills fill opacity for the loading pulse, hidden still while previewed', async () => {
     const { controller, map } = await loaded();
     controller.setData([PLACE], new Map([[PLACE.key, { state: 'loading', pill: '···' }]]));
     const pill = () => map.layers.get(LAYER_IDS.pill) as { paint: Record<string, unknown> };
-    controller.setPillOpacity(0.55);
-    expect(pill().paint['icon-opacity']).toEqual([
-      'case',
-      ['boolean', ['feature-state', 'previewed'], false],
-      0,
-      0.55,
-    ]);
+    const previewed = ['boolean', ['feature-state', 'previewed'], false];
+    const checking = ['==', ['get', 'avail'], 'loading'];
+    controller.setPillOpacity(0.8);
+    expect(pill().paint['icon-opacity']).toEqual(['case', previewed, 0, checking, 0.8, 1]);
     controller.setPillOpacity(1);
-    expect(pill().paint['icon-opacity']).toEqual([
-      'case',
-      ['boolean', ['feature-state', 'previewed'], false],
-      0,
-      1,
-    ]);
+    expect(pill().paint['icon-opacity']).toEqual(['case', previewed, 0, checking, 1, 1]);
   });
 
   it('sets the GeoJSON data, and marks the hovered and selected places', async () => {

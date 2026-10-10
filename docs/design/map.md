@@ -76,17 +76,20 @@ Once dates are set in the search pill, every pill says how its place stands for 
 | State | Pill | Pill fill and text | Pin |
 | --- | --- | --- | --- |
 | A unit free every night | "8 available" | eucalypt-600, white (`fg-inverse`/`available`, 5.68:1) | filled eucalypt, white ring (`available`/`canvas`, 5.31:1) |
-| Full, or nothing open for the dates | "Full", "Not open" | sand-100, sand-600 (`fg-muted`/`surface-subtle`, 5.19:1) | filled sand-600, white ring (`fg-muted`/`canvas`, 5.60:1) |
-| Checked one place at a time, not bookable online, not shared, unknown or failed | "Check dates", "Info only", "–" | white, ink | hollow: white, ink ring |
+| No unit free every night, or nothing open for the dates | "None free", "Not open" | sand-100, sand-600 (`fg-muted`/`surface-subtle`, 5.19:1) | filled sand-600, white ring (`fg-muted`/`canvas`, 5.60:1) |
+| Not bookable online | "Info only", only from zoom 8 | white, sand-600 (`fg-muted`/`surface`, 5.99:1), sand-500 outline (`border-strong`/`canvas`, 3.67:1) | hollow: white, sand-600 ring |
+| Checked one place at a time, not shared, unknown or failed | "Check dates", "–" | white, ink | hollow: white, ink ring |
 | Checking | "···" | white, ink, its fill pulsing | hollow: white, ink ring |
 
-- Every pill keeps its 1 px ink outline, and hovered or selected pills still turn ink with white text. Available pills are placed first where pills collide (`symbol-sort-key`), so a free place is never hidden behind a full one.
-- Clusters holding an available place turn eucalypt (the source's `clusterProperties.availableCount`), with the same white count.
-- While a provider is checking, the pills' fill opacity steps between 0.55 and 1 every 700 ms (`icon-opacity` with a 700 ms `icon-opacity-transition`), from one interval in `MapView` that stops when every provider has answered and when the map goes. Under reduced motion it does not pulse.
-- A small key sits under "Search as I move the map", only with dates: "Available" (a eucalypt dot), "Full or not open" (a muted dot), "Not checked" (a hollow dot), as the pins are drawn (a list named "Map key").
+- "None free", not "Full": a provider's "no unit free for the whole stay" (ParkStay's `total_bookable` 0) also covers nights free on different units, closed nights and nights not released yet. Cards say "No site free every night".
+- Pills keep a 1 px outline (ink, or sand-500 for "Info only"), and hovered or selected pills still turn ink with white text. Available pills are placed first where pills collide (`symbol-sort-key`), so a free place is never hidden behind another. "Info only" pills wait for zoom 8, like the names, so at state zoom only their quiet hollow pins show and availability stands out.
+- Clusters holding an available place turn eucalypt (the source's `clusterProperties.availableCount`) and say how many places are free ("12" over "free", 20 px across at least), so green clusters still tell apart when most places are free. Other clusters keep their place count.
+- While a provider is checking, the fill of each checking pill ("···") steps between 0.8 and 1 every 700 ms (`icon-opacity` with a 700 ms `icon-opacity-transition`), never so faint that the base map's labels show through its text. Pills with their answer stay solid. One interval in `MapView` drives it; it stops when every provider has answered and when the map goes. Under reduced motion it does not pulse.
+- A small key sits under "Search as I move the map", only with dates, drawn as the pins are (a list named "Map key"): "Available" (a eucalypt dot), "None free or not open" (a muted dot), and, only when such places are on the map, "Not bookable online" (a hollow muted dot) and "Not checked" (a hollow ink dot).
 - `cluster-count`'s white text is written as a feature-state expression (`['case', ACTIVE, white, white]`). Mapbox GL 3 redraws every symbol layer of a tile when another one's paint changes or transitions (the pulse, dates set or cleared), and while places have feature state it throws on a symbol layer that is not state dependent.
-- `setData` replaces the source's data once per change of places or availability, never per hover. Switching between names and availability restyles the pill, pin and cluster layers in place (`syncLayers`); feature state is kept.
-- Availability is one bulk call per provider for the whole catalogue (`catalog.availability`), asked 400 ms after the stay settles. Panning, zooming and "Search this area" ask nothing.
+- `setData` replaces the source's data once per change of places or availability, never per hover. Switching between names and availability restyles the pill, pin and cluster layers in place (`syncLayers`: only the properties, filters and zoom ranges that differ); feature state is kept.
+- **Teardown.** After `destroy()` every controller call is a no-op (Mapbox throws on a removed map), and `MapView` removes the map in its last effect, so every other cleanup, the pulse's last step included, still reaches a live map. Leaving Explore mid-check is safe.
+- Availability is one bulk call per provider for the whole catalogue (`catalog.availability`), asked 400 ms after the stay settles, and cached by the stay fields the provider reads (`bulkAvailabilityStayFields`; ParkStay: the dates and gear type), so changing guests asks ParkStay nothing. Panning, zooming and "Search this area" ask nothing.
 
 The pill image is a signed distance field drawn in code (`pillImage()`): alpha 0.75 on the edge, falling 1/8 per pixel outwards at the image's pixel ratio, which is what Mapbox's SDF shader expects. That lets one image be recoloured and outlined per feature.
 

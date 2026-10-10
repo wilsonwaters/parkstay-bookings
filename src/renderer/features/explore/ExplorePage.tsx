@@ -304,11 +304,14 @@ export default function ExplorePage() {
       const shortName = manifests.get(item.providerId)?.shortName ?? item.providerId;
       const label = availabilityLabel(availability, item.kind, shortName);
       if (!label) continue;
+      pins.set(item.key, { state: availability.state, pill: label.pill });
+      if (label.card === null) continue;
       cards.set(
         item.key,
-        label.tone ? { status: 'ready', text: label.card, tone: label.tone } : { status: 'loading' }
+        label.tone
+          ? { status: 'ready', text: label.card, tone: label.tone, statesTotal: label.statesTotal }
+          : { status: 'loading' }
       );
-      pins.set(item.key, { state: availability.state, pill: label.pill });
     }
     return { cardAvailability: cards, pinAvailability: pins };
   }, [placeAvailability, results, manifests]);
@@ -568,15 +571,8 @@ export default function ExplorePage() {
     announce(settledMessage);
   }, [settledMessage, currentStayKey, announce]);
 
-  const announcedErrors = useRef(new WeakSet<object>());
-  useEffect(() => {
-    for (const manifest of bulkProviders) {
-      const error = bulk.errors[manifest.id];
-      if (!error || announcedErrors.current.has(error)) continue;
-      announcedErrors.current.add(error);
-      announce(`Couldn't check availability on ${manifest.shortName}`, 'assertive');
-    }
-  }, [bulk.errors, bulkProviders, announce]);
+  // A provider that fails is announced once, by its notice (`role="alert"`, or `status` for a
+  // waiting queue), not again through the live region.
 
   const slowLoads = useSlowLoads(
     stay

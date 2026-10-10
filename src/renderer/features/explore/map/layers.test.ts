@@ -131,18 +131,46 @@ describe('map source and layers', () => {
       });
     });
 
-    it('turns a cluster eucalypt when it holds an available place, keeping its white count', () => {
+    const HAS_FREE = ['>', ['get', 'availableCount'], 0];
+
+    it('turns a cluster with a free place eucalypt, saying how many are free', () => {
       expect(clusters.paint?.['circle-color']).toEqual([
         'case',
-        ['>', ['get', 'availableCount'], 0],
+        HAS_FREE,
         TOKENS.eucalypt600,
         TOKENS.ink,
+      ]);
+      // "12" over "free", in a cluster at least 20 px across; the others keep their count.
+      expect(count.layout?.['text-field']).toEqual([
+        'case',
+        HAS_FREE,
+        [
+          'format',
+          ['to-string', ['get', 'availableCount']],
+          {},
+          '\n',
+          {},
+          'free',
+          { 'font-scale': 0.8 },
+        ],
+        ['format', ['get', 'point_count_abbreviated'], {}],
+      ]);
+      expect(clusters.paint?.['circle-radius']).toEqual([
+        'case',
+        HAS_FREE,
+        ['step', ['get', 'point_count'], 20, 50, 23],
+        ['step', ['get', 'point_count'], 15, 10, 19, 50, 23],
       ]);
       expect(count.paint).toEqual({ 'text-color': ['case', ACTIVE, TOKENS.white, TOKENS.white] });
     });
 
-    it('shows the state on every pill at every zoom, available pills placed first', () => {
+    it('shows the state on every pill at every zoom (Info only from zoom 8), available placed first', () => {
       expect(pill.minzoom).toBeUndefined();
+      expect(pill.filter).toEqual([
+        'all',
+        ['!', ['has', 'point_count']],
+        ['any', ['!=', AVAIL, 'offline-booking'], ['>=', ['zoom'], 8]],
+      ]);
       expect(pill.layout).toMatchObject({
         'text-field': ['get', 'availLabel'],
         'icon-image': PILL_IMAGE_ID,
@@ -150,7 +178,7 @@ describe('map source and layers', () => {
       });
     });
 
-    it('fills available pills eucalypt with white text, full and not open sand with muted text, others white; ink while active', () => {
+    it('fills available pills eucalypt, none free and not open sand, keeps Info only quiet; ink while active', () => {
       expect(pill.paint).toMatchObject({
         'icon-color': [
           'case',
@@ -175,17 +203,21 @@ describe('map source and layers', () => {
             AVAIL,
             'available',
             TOKENS.white,
-            ['full', 'none-open'],
+            ['full', 'none-open', 'offline-booking'],
             TOKENS.sand600,
             TOKENS.ink,
           ],
         ],
-        // Every pill keeps its ink outline.
-        'icon-halo-color': TOKENS.ink,
+        'icon-halo-color': [
+          'case',
+          ACTIVE,
+          TOKENS.ink,
+          ['match', AVAIL, 'offline-booking', TOKENS.sand500, TOKENS.ink],
+        ],
       });
     });
 
-    it('fills available and muted pins, with a white ring, and leaves the others hollow', () => {
+    it('fills available and muted pins with a white ring; Info only hollow and muted, the rest hollow', () => {
       expect(dot.paint).toMatchObject({
         'circle-color': [
           'match',
@@ -201,20 +233,22 @@ describe('map source and layers', () => {
           AVAIL,
           ['available', 'full', 'none-open'],
           TOKENS.white,
+          'offline-booking',
+          TOKENS.sand600,
           TOKENS.ink,
         ],
         'circle-radius': ['case', ACTIVE, 9, 6],
       });
     });
 
-    it('pulses the pill fill while loading: the opacity it is given, fading over 700 ms', () => {
+    it('pulses only checking pills, between 0.8 and 1, fading over 700 ms', () => {
       const dimmed = buildLayers(TOKENS, {
         withAvailability: true,
         pillOpacity: PULSE_OPACITY.low,
       });
-      expect(PULSE_OPACITY).toEqual({ low: 0.55, high: 1 });
+      expect(PULSE_OPACITY).toEqual({ low: 0.8, high: 1 });
       expect(dimmed[4].paint).toMatchObject({
-        'icon-opacity': ['case', PREVIEWED, 0, 0.55],
+        'icon-opacity': ['case', PREVIEWED, 0, ['==', AVAIL, 'loading'], 0.8, 1],
         'icon-opacity-transition': { duration: PULSE_INTERVAL_MS, delay: 0 },
         // The text stays solid.
         'text-opacity': ['case', PREVIEWED, 0, 1],
@@ -222,9 +256,16 @@ describe('map source and layers', () => {
       expect(PULSE_INTERVAL_MS).toBe(700);
     });
 
-    it('adds only the available and muted colours to ink and white', () => {
+    it('adds only the available and muted colours (and a quiet outline) to ink and white', () => {
       expect(coloursOf(layers)).toEqual(
-        [TOKENS.ink, TOKENS.white, TOKENS.eucalypt600, TOKENS.sand100, TOKENS.sand600].sort()
+        [
+          TOKENS.ink,
+          TOKENS.white,
+          TOKENS.eucalypt600,
+          TOKENS.sand100,
+          TOKENS.sand500,
+          TOKENS.sand600,
+        ].sort()
       );
     });
   });

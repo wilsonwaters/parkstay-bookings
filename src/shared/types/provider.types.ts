@@ -180,6 +180,21 @@ export interface ReleaseModeDescriptor {
   fields?: StayFieldDescriptor[];
 }
 
+/**
+ * The stay fields an availability answer can depend on, for cache keys. `params.<key>` names
+ * one of the provider's own stay fields (§12.1).
+ */
+export const STAY_KEY_FIELDS = [
+  'arrival',
+  'departure',
+  'adults',
+  'children',
+  'infants',
+  'concessions',
+  'equipment',
+] as const;
+export type StayKeyField = (typeof STAY_KEY_FIELDS)[number] | `params.${string}`;
+
 export interface ProviderManifest {
   /** `parkstay` */
   id: ProviderId;
@@ -206,6 +221,13 @@ export interface ProviderManifest {
   stayFields?: StayFieldDescriptor[];
   /** §12.3, present when `capabilities.snipes`. */
   releaseModes?: ReleaseModeDescriptor[];
+  /**
+   * The stay fields the provider's bulk availability depends on (E3), always with both dates.
+   * Bulk answers are cached by these alone, so a change to anything else (the party, for a
+   * provider that ignores it) reuses the answer instead of asking again. Every field when
+   * absent.
+   */
+  bulkAvailabilityStayFields?: StayKeyField[];
 }
 
 /** Values for a provider's `stayFields`, keyed by `StayFieldDescriptor.key`. */
@@ -459,6 +481,14 @@ export const ProviderCapabilitiesSchema = z.object({
 assertTypeEquals<z.input<typeof ProviderCapabilitiesSchema>, ProviderCapabilities>(true);
 assertTypeEquals<z.output<typeof ProviderCapabilitiesSchema>, ProviderCapabilities>(true);
 
+const StayKeyFieldSchema = z.union([
+  z.enum(STAY_KEY_FIELDS),
+  z.custom<`params.${string}`>(
+    (value) => typeof value === 'string' && /^params\.[A-Za-z][A-Za-z0-9_]*$/.test(value),
+    'A stay field is a StayQuery field or params.<key>'
+  ),
+]);
+
 export const ProviderManifestSchema = z.object({
   id: ProviderIdSchema,
   name: nonEmpty,
@@ -490,6 +520,13 @@ export const ProviderManifestSchema = z.object({
     .refine(
       uniqueBy((m) => m.id),
       'Release mode ids must be unique'
+    )
+    .optional(),
+  bulkAvailabilityStayFields: z
+    .array(StayKeyFieldSchema)
+    .refine(
+      (fields) => fields.includes('arrival') && fields.includes('departure'),
+      'Bulk availability always depends on both dates'
     )
     .optional(),
 });

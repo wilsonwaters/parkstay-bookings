@@ -68,8 +68,8 @@ function units(value: unknown): number {
  * The place's availability state. Precedence, first match wins: `no-dates` (no stay),
  * `offline-booking` (not bookable online), `check-dates` (the provider checks one place at a
  * time but not in bulk), `not-supported` (no availability at all), `error`, `loading`, then
- * from the provider's entry `available` (a unit free every night), `full` (none free, some
- * bookable) or `none-open` (none bookable: not released, closed or too far ahead), and
+ * from the provider's entry `available` (a unit free every night), `full` (no unit free every
+ * night, some bookable) or `none-open` (none bookable: not released, closed or too far ahead), and
  * `unknown` when the provider answered without this place.
  */
 export function deriveAvailability(
@@ -113,10 +113,15 @@ export type AvailabilityTone = 'available' | 'neutral' | 'danger';
 export interface AvailabilityLabel {
   /** The map pill's text. */
   pill: string;
-  /** The card's badge text; empty while loading (the card shows a skeleton line). */
-  card: string;
+  /**
+   * The card's badge text; empty while loading (the card shows a skeleton line), and null when
+   * the card already says it ("Info only").
+   */
+  card: string | null;
   /** The badge tone; null while loading. */
   tone: AvailabilityTone | null;
+  /** The badge gives the unit total ("8 of 24 sites available"), so the card need not repeat it. */
+  statesTotal?: boolean;
 }
 
 /** Shown on a pill whose place says nothing more useful. */
@@ -140,20 +145,31 @@ export function availabilityLabel(
     case 'available': {
       const { availableUnits: free, bookableUnits: total } = availability;
       // A provider total below the free count would read "8 of 3": say only what is free.
-      const card =
-        total >= free
-          ? `${free} of ${total} ${total === 1 ? noun.one : noun.many} available`
-          : `${free} ${free === 1 ? noun.one : noun.many} available`;
-      return { pill: `${free} available`, card, tone: 'available' };
+      if (total >= free) {
+        return {
+          pill: `${free} available`,
+          card: `${free} of ${total} ${total === 1 ? noun.one : noun.many} available`,
+          tone: 'available',
+          statesTotal: true,
+        };
+      }
+      return {
+        pill: `${free} available`,
+        card: `${free} ${free === 1 ? noun.one : noun.many} available`,
+        tone: 'available',
+      };
     }
     case 'full':
-      return { pill: 'Full', card: 'Fully booked', tone: 'neutral' };
+      // Not "Fully booked": a provider's "none free for the stay" also covers nights free on
+      // different units, closed nights and nights not released yet.
+      return { pill: 'None free', card: `No ${noun.one} free every night`, tone: 'neutral' };
     case 'none-open':
       return { pill: 'Not open', card: `No ${noun.many} open for these dates`, tone: 'neutral' };
     case 'check-dates':
       return { pill: 'Check dates', card: 'Check dates on the place page', tone: 'neutral' };
     case 'offline-booking':
-      return { pill: 'Info only', card: 'Not bookable online', tone: 'neutral' };
+      // The card already says "Info only".
+      return { pill: 'Info only', card: null, tone: 'neutral' };
     case 'not-supported':
       return {
         pill: NO_STATE_PILL,

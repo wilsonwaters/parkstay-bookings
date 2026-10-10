@@ -46,6 +46,7 @@ import {
 } from '@shared/types/provider.types';
 import type { EventSink } from '@shared/contracts/events';
 import { makeLocationKey, parseLocationKey } from '@shared/utils/location-key';
+import { stayKeyFor } from '@shared/utils/stay-key';
 import type { LocationRepository } from '../../database/repositories/location.repository';
 import type { ProviderStateRepository } from '../../database/repositories/provider-state.repository';
 import type { ProviderRegistry } from '../../providers/registry';
@@ -483,8 +484,9 @@ export class LocationCatalogService {
    * Bulk availability for `stay` from every `bulkAvailability` provider (or those in
    * `providerIds`; unknown ids are ignored), in parallel. Entries are limited to locations in
    * the catalogue, and to `bbox` when given. A provider that fails is listed in `errors`
-   * while the others still answer. Each provider's answer is reused for 5 minutes per stay,
-   * and its `access-gate` or `timeout` error for 60 s.
+   * while the others still answer. Each provider's answer is reused for 5 minutes per stay
+   * (keyed by the stay fields its manifest says the answer depends on), and its `access-gate`
+   * or `timeout` error for 60 s.
    */
   async availability(
     stay: StayQuery,
@@ -494,11 +496,15 @@ export class LocationCatalogService {
     const providers = this.registry
       .withCapability('bulkAvailability')
       .filter((p) => !wanted || wanted.has(p.manifest.id));
-    const stayKey = stayCacheKey(stay);
-
+    // Each provider's answer is keyed by the stay fields it reads, so a change it ignores (the
+    // party, for ParkStay) reuses the answer.
     const settled = await Promise.allSettled(
       providers.map((p) =>
-        this.bulkFor(p.manifest.id, (signal) => p.availability.search(stay, signal), stayKey)
+        this.bulkFor(
+          p.manifest.id,
+          (signal) => p.availability.search(stay, signal),
+          stayKeyFor(stay, p.manifest.bulkAvailabilityStayFields)
+        )
       )
     );
 

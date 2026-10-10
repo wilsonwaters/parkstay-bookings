@@ -30,6 +30,7 @@ export const PARKSTAY_MANIFEST: ProviderManifest = {
     account: 'optional',
   },
   limits: { minWatchIntervalMinutes: 15, maxConcurrentRequests: 4, catalogTtlHours: 24 },
+  bulkAvailabilityStayFields: ['arrival', 'departure', 'equipment', 'params.gearType'],
   stayFields: [
     {
       key: 'gearType',
