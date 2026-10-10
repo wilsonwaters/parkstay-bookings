@@ -1,7 +1,7 @@
 /**
  * Tailwind 4 runs as a PostCSS plugin. Its configuration is CSS-first, in
- * src/renderer/styles/index.css. (@tailwindcss/vite is ESM-only, which this CommonJS
- * vite.config.ts cannot load on Vite 5.)
+ * src/renderer/styles/index.css. The tests compile the stylesheet through this same plugin
+ * (tests/utils/tailwind.ts), so the build and the CSS tests cannot drift apart.
  */
 module.exports = {
   plugins: {

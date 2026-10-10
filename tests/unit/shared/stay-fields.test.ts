@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { stayFieldProblem } from '@shared/utils/stay-fields';
 import type { StayFieldDescriptor } from '@shared/types/provider.types';
 
@@ -59,9 +61,8 @@ describe('stayFieldProblem (shared by main and the renderer)', () => {
   });
 
   it('has no node or electron imports, so the renderer can use it', () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const source: string = require('fs').readFileSync(
-      require('path').resolve(__dirname, '../../../src/shared/utils/stay-fields.ts'),
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../../../src/shared/utils/stay-fields.ts'),
       'utf8'
     );
     expect(source).not.toMatch(/from '(?:node:)?(?:fs|path|electron|os)'/);

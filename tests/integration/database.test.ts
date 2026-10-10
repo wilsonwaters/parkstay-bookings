@@ -170,7 +170,7 @@ describe('Database Integration', () => {
         db.transaction(() => {
           insertUser(db, mockUserInput.email); // Duplicate email
         })();
-      } catch (error) {
+      } catch {
         // Expected to fail
       }
 

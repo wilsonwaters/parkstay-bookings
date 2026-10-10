@@ -156,6 +156,7 @@ async function forceOnline(window: Page): Promise<void> {
 }
 
 function stripAnsi(text: string): string {
+  // eslint-disable-next-line no-control-regex -- colour codes start with ESC
   return text.replace(/\u001b\[[0-9;]*m/g, '');
 }
 

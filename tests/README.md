@@ -40,6 +40,8 @@ npm run test:electron
 
 - Test files are named `*.test.ts` / `*.test.tsx`.
 - `npm test -- <path>` runs only the project whose files match the path.
+- Dependencies that ship only ES modules (`ESM_ONLY_DEPENDENCIES`: htmlparser2 and its packages for sanitize-html, React Router 8 and its dependencies) are compiled to CommonJS by esbuild (`tests/utils/esm-to-cjs-transform.js`): Jest 30 loads ES modules from `require` only under `--experimental-vm-modules`. The patterns accept `/` and `\`, so they match on Windows too (`tests/unit/build/jest-config.test.ts`). Both projects add the `development` export condition, so React Router loads its development build, with its warnings, as `npm run dev` does.
+- ESLint 10 loads `eslint.config.js` with `import()`, which Jest does not allow: a test that runs ESLint passes the config object itself (`tests/unit/lint/no-console.test.ts`).
 - Coverage (`collectCoverageFrom`, `coverageThreshold`, `coverageReporters`) is configured once at the root. It is aggregated across both projects and the threshold (branches 85, functions 90, lines 93, statements 92: a ratchet a few points below the measured coverage, raised as it grows) is evaluated once, globally.
 
 ### Writing tests for the `main` project

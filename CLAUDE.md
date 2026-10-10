@@ -16,8 +16,8 @@ WA Stay is an Electron + React + TypeScript desktop app (Windows first) for find
 | Component | Technology |
 | --- | --- |
 | Desktop Framework | Electron 44 (its own Node 24); development and CI on Node 24 (`.nvmrc`) |
-| UI Framework | React 19, React Router 7 (`react-router`, HashRouter), React Query, react-hook-form |
-| Language | TypeScript 5 |
+| UI Framework | React 19, React Router 8 (`react-router`, ES modules only, HashRouter), React Query, react-hook-form |
+| Language | TypeScript 6 (the latest 6.x, not 7: `typescript-eslint` supports `<6.1.0`, `ts-jest` `<7`, and `tests/unit/shared/type-equality.test.ts` uses the compiler API) |
 | Database | SQLite via better-sqlite3 (`<userData>/wa-stay.db`) |
 | Map | Mapbox GL JS 3 (token at build time; Explore is list-only without one) |
 | Scheduling | Chained `setTimeout` timers (`src/main/scheduler/`) |
@@ -27,8 +27,9 @@ WA Stay is an Electron + React + TypeScript desktop app (Windows first) for find
 | Email | nodemailer (SMTP) |
 | Validation | Zod 4 |
 | Styling | Tailwind CSS 4 (CSS-first config in `src/renderer/styles/index.css`, via `@tailwindcss/postcss`) with design tokens, lucide-react icons, Figtree and Fraunces (`@fontsource-variable`) |
-| Build | Vite 5 (renderer), tsc + tsc-alias (main), esbuild (preload), Electron Builder 26 (with Electron fuses) |
-| Testing | Jest 29 + Playwright (`_electron`) |
+| Build | Vite 8 (renderer), tsc + tsc-alias (main), esbuild (preload), Electron Builder 26 (with Electron fuses) |
+| Lint and format | ESLint 10 (flat config, `eslint.config.js`: typescript-eslint, React, React Hooks), Prettier 3 |
+| Testing | Jest 30 + Playwright (`_electron`) |
 | Logging | Winston |
 
 ## Build & Run Commands
@@ -44,7 +45,7 @@ npm run test:e2e     # Electron smoke tests on the built app (tests/e2e/; xvfb-r
 npm run test:electron # Live Electron tests (tests/electron/; xvfb on Linux; not in npm test)
 npm run smoke:packaged # Starts the packaged Linux app (after electron-builder --linux dir) and checks it quits cleanly
 npm run docs:screenshots # Rebuilds and retakes docs/images/*.png (tests/docs/)
-npm run lint         # ESLint
+npm run lint         # ESLint (src, tests, scripts and the root configs)
 npm run type-check   # TypeScript type checking (main, renderer, tests/e2e, tests/docs)
 npm run dist:win     # Package Windows installer
 ```
@@ -218,8 +219,8 @@ Full guide: `docs/providers/adding-a-provider.md` (with compiling API and browse
 
 ## Testing
 
-- **Framework:** Jest 29 (unit/integration), Playwright (Electron E2E)
-- **Config:** `jest.config.js` — two projects: `main` (Node: `tests/unit`, `tests/integration`, `tests/scripts`, `src/main`, `src/shared`) and `renderer` (jsdom: `src/renderer`, `tests/integration/renderer`); coverage thresholds (a ratchet just below actual coverage): branches 85%, functions 90%, lines 93%, statements 92%
+- **Framework:** Jest 30 (unit/integration), Playwright (Electron E2E)
+- **Config:** `jest.config.js` — two projects: `main` (Node: `tests/unit`, `tests/integration`, `tests/scripts`, `src/main`, `src/shared`) and `renderer` (jsdom: `src/renderer`, `tests/integration/renderer`); coverage thresholds (a ratchet just below actual coverage): branches 85%, functions 90%, lines 93%, statements 92%; dependencies that ship only ES modules (htmlparser2 and its packages, React Router 8) are compiled to CommonJS by esbuild (`ESM_ONLY_DEPENDENCIES`, `tests/utils/esm-to-cjs-transform.js`), with patterns that accept `/` and `\` (`tests/unit/build/jest-config.test.ts`)
 - **Test locations:** `tests/unit/`, `tests/integration/`, `tests/e2e/`, `tests/electron/`, `tests/docs/`, plus co-located `*.test.tsx` in `src/`
 - **Fixtures:** `tests/fixtures/` (users, bookings, watches, site-sniper, `parkstay/` trimmed live samples, `providers/` the provider guide's example providers, and `db/` schema dumps for migration tests)
 - **Helpers:** `tests/utils/` (database-helper, test-helpers, core-harness, fake-provider, provider-contract, ipc-harness, parkstay-fixture-server, fake-playwright, fake-safe-storage, `tests/utils/tailwind.ts` (the real stylesheet compiled through Tailwind, for CSS tests), `renderer/` render helpers and a strict mock `window.api`)

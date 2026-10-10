@@ -152,7 +152,7 @@ does), not on Linux or macOS. Releasing: [release process](release-process.md).
 | `npm run test:electron` | Live Electron tests of the HTTP transport, the ParkStay module and the provider windows (`tests/electron`), against loopback servers |
 | `npm run smoke:packaged` | Starts the packaged Linux app and checks it opens and quits cleanly, with the test hooks ignored |
 | `npm run docs:screenshots` | Rebuilds and retakes the screenshots in `docs/images/` |
-| `npm run lint` / `lint:fix` | ESLint on `src/` |
+| `npm run lint` / `lint:fix` | ESLint on `src/`, `tests/`, `scripts/` and the root configs (`eslint.config.js`) |
 | `npm run format` / `format:check` | Prettier on `src/`, `tests/` and `scripts/` |
 | `npm run type-check` | TypeScript: main, renderer, the e2e and docs-screenshot projects |
 | `npm run icons` | Regenerates the icons from the brand sources |
@@ -166,6 +166,8 @@ does), not on Linux or macOS. Releasing: [release process](release-process.md).
 `tests/integration/renderer`). Shared helpers are in `tests/utils/` (fake providers, a fake
 `safeStorage`, an IPC harness, the ParkStay fixture server) and recorded data in
 `tests/fixtures/`, including SQL dumps of real v5 and v6 databases for the migration tests.
+Dependencies that ship only ES modules (htmlparser2, React Router 8) are compiled to CommonJS
+for Jest by esbuild (`ESM_ONLY_DEPENDENCIES` in `jest.config.js`).
 [tests/README.md](../tests/README.md) has the details.
 
 `npm run test:tz` runs the timestamp tests with the host in Perth (UTC+8), where an unzoned

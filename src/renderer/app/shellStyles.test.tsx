@@ -15,6 +15,18 @@ beforeAll(async () => {
 
 afterAll(() => style.remove());
 
+/**
+ * Focuses `el` and returns its computed style. jsdom 26 caches computed styles until the DOM
+ * changes, and focus is not a DOM change; role queries have already computed (and cached) the
+ * unfocused style. An attribute change after focusing clears the cache, as a browser restyles.
+ */
+function focusedStyle(el: HTMLElement): CSSStyleDeclaration {
+  el.focus();
+  el.setAttribute('data-restyle', '');
+  el.removeAttribute('data-restyle');
+  return getComputedStyle(el);
+}
+
 describe('focus ring', () => {
   it('is not drawn on a heading that took focus from code (tabindex -1)', () => {
     render(
@@ -24,9 +36,9 @@ describe('focus ring', () => {
       </>
     );
     for (const heading of screen.getAllByRole('heading')) {
-      heading.focus();
+      const outline = focusedStyle(heading).outline;
       expect(heading).toHaveFocus();
-      expect(getComputedStyle(heading).outline).toBe('none');
+      expect(outline).toBe('none');
     }
   });
 
@@ -38,8 +50,7 @@ describe('focus ring', () => {
       </>
     );
     for (const el of [screen.getByRole('button'), screen.getByRole('link')]) {
-      el.focus();
-      expect(getComputedStyle(el).outline).toMatch(/^2px solid rgb\(var\(--ws-focus\)\)/);
+      expect(focusedStyle(el).outline).toMatch(/^2px solid rgb\(var\(--ws-focus\)\)/);
     }
   });
 });

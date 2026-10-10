@@ -3,6 +3,8 @@
  * through PostCSS and Tailwind 4 (postcss.config.js), with the classes the renderer's sources
  * use. `classes` adds more, for a test that checks a class no source uses yet.
  */
+// First: Tailwind must not register a module hook in Jest's sandbox (see the module).
+import './no-module-hooks';
 import fs from 'fs';
 import path from 'path';
 import postcss, { type Plugin } from 'postcss';

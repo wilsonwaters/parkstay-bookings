@@ -19,7 +19,7 @@ function compile(source: string): string[] {
     skipLibCheck: true,
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.CommonJS,
-    moduleResolution: ts.ModuleResolutionKind.Node10,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
     esModuleInterop: true,
     types: [],
   };

@@ -74,7 +74,7 @@ async function handleMacOSPostPack(appOutDir, appInfo) {
     const { execSync } = require('child_process');
     execSync(`codesign -dv "${appPath}" 2>&1`, { stdio: 'pipe' });
     console.log('   ✅ App is code signed');
-  } catch (error) {
+  } catch {
     console.warn('   ⚠️  App is not code signed');
   }
 
@@ -106,7 +106,7 @@ async function handleWindowsPostPack(appOutDir, appInfo) {
     // Try to find signtool
     execSync(`signtool verify /pa "${exePath}" 2>&1`, { stdio: 'pipe' });
     console.log('   ✅ Executable is code signed');
-  } catch (error) {
+  } catch {
     console.warn('   ⚠️  Executable is not code signed');
   }
 
@@ -130,7 +130,7 @@ async function handleLinuxPostPack(appOutDir, appInfo) {
   try {
     fs.chmodSync(executablePath, '755');
     console.log('   ✅ Executable permissions set');
-  } catch (error) {
+  } catch {
     console.warn('   ⚠️  Failed to set executable permissions');
   }
 

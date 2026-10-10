@@ -15,7 +15,6 @@
 
 const { execSync } = require('child_process');
 const fs = require('fs');
-const path = require('path');
 
 exports.default = async function (configuration) {
   // Check if we have a certificate configured
@@ -94,7 +93,7 @@ exports.default = async function (configuration) {
       windowsHide: true,
     });
     console.log('✅ Signature verification passed\n');
-  } catch (error) {
+  } catch {
     console.error('⚠️  Warning: Signature verification failed');
   }
 };

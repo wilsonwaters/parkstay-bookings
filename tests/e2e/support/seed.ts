@@ -11,6 +11,7 @@ import path from 'path';
 import { REPO_ROOT } from './paths';
 
 /** Outside Electron, the `electron` package resolves to the path of its binary. */
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- its types describe the Electron API
 const ELECTRON_BINARY = require('electron') as unknown as string;
 const SEED_SCRIPT = path.join(__dirname, 'seed-db.js');
 
@@ -33,7 +34,8 @@ function runSeed<T>(job: Record<string, unknown>): T {
       const failure = error as { stderr?: Buffer; message: string };
       throw new Error(
         `Seeding (${String(job.op)}) failed: ${failure.stderr?.toString() || failure.message}\n` +
-          'If it says NODE_MODULE_VERSION, node_modules predates better-sqlite3 13: run `npm ci`.'
+          'If it says NODE_MODULE_VERSION, node_modules predates better-sqlite3 13: run `npm ci`.',
+        { cause: error }
       );
     }
     return JSON.parse(fs.readFileSync(out, 'utf8')) as T;

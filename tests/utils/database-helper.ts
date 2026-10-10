@@ -93,7 +93,7 @@ export class TestDatabaseHelper {
     for (const table of tables) {
       try {
         this.db.prepare(`DELETE FROM ${table}`).run();
-      } catch (error) {
+      } catch {
         // Table might not exist, ignore
       }
     }
@@ -126,7 +126,7 @@ export class TestDatabaseHelper {
         const filePath = path.join(testDbDir, file);
         try {
           fs.unlinkSync(filePath);
-        } catch (error) {
+        } catch {
           // Ignore errors
         }
       }

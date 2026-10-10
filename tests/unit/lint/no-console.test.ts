@@ -36,7 +36,10 @@ describe('no console in the main process and preload', () => {
   });
 
   it('ESLint fails a new console call in src/main and src/preload, not in the renderer', async () => {
-    const eslint = new ESLint({ cwd: ROOT });
+    // ESLint loads eslint.config.js with import(), which Jest allows only under
+    // --experimental-vm-modules, so the test passes ESLint the same config itself.
+    const config = require(path.join(ROOT, 'eslint.config.js'));
+    const eslint = new ESLint({ cwd: ROOT, overrideConfigFile: true, overrideConfig: config });
     const code = "export function probe(): void {\n  console.log('probe');\n}\n";
     const ruleIds = async (file: string): Promise<Array<[string | null, number]>> => {
       const [result] = await eslint.lintText(code, { filePath: path.join(ROOT, file) });

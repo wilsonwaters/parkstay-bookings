@@ -168,10 +168,9 @@ describe('IPC through the container', () => {
         if (n <= 2) notifications.markAsRead(created.id);
       }
 
-      await expect(call('notifications:list', { limit: 20 })).resolves.toMatchObject({
-        success: true,
-        data: expect.objectContaining({ length: 20 }),
-      });
+      const firstPage = await call<unknown[]>('notifications:list', { limit: 20 });
+      expect(firstPage.success).toBe(true);
+      expect(firstPage.data).toHaveLength(20);
       await expect(call('notifications:unread-count')).resolves.toEqual({
         success: true,
         data: 23,

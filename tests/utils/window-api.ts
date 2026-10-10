@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/triple-slash-reference -- a global declaration: window.api
 /// <reference path="../../src/preload/window.d.ts" />
 /**
  * Mock `window.api` for renderer tests.

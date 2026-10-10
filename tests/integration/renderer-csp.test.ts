@@ -11,6 +11,16 @@ import { buildCsp } from '@main/app/csp';
 
 const ROOT = path.resolve(__dirname, '../..');
 
+/** An attribute value as the HTML parser reads it: Vite writes `'` as `&#39;`. */
+function decodeAttribute(value: string): string {
+  const named: Record<string, string> = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>' };
+  return value.replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (entity, dec, hex, name) => {
+    if (dec) return String.fromCodePoint(Number(dec));
+    if (hex) return String.fromCodePoint(parseInt(hex, 16));
+    return named[name.toLowerCase()] ?? entity;
+  });
+}
+
 describe('built renderer index.html', () => {
   let outDir: string;
 
@@ -36,11 +46,13 @@ describe('built renderer index.html', () => {
   it('has the production CSP meta as the first child of <head>', () => {
     const html = fs.readFileSync(path.join(outDir, 'index.html'), 'utf8');
     const head = /<head>([\s\S]*?)<\/head>/.exec(html)?.[1] ?? '';
-    const firstElement = /<[a-z][^>]*>/i.exec(head)?.[0];
-
-    expect(firstElement).toBe(
-      `<meta http-equiv="Content-Security-Policy" content="${buildCsp({ dev: false })}">`
+    const firstElement = /<[a-z][^>]*>/i.exec(head)?.[0] ?? '';
+    const meta = /^<meta http-equiv="Content-Security-Policy" content="([^"]*)">$/.exec(
+      firstElement
     );
+
+    expect(meta).not.toBeNull();
+    expect(decodeAttribute(meta?.[1] ?? '')).toBe(buildCsp({ dev: false }));
     // Exactly one policy, and no inline scripts for it to allow
     expect(html.match(/Content-Security-Policy/g)).toHaveLength(1);
     expect(html).not.toMatch(/<script(?![^>]*\ssrc=)[^>]*>/);

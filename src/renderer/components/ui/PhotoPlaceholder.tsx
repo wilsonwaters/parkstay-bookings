@@ -43,6 +43,7 @@ export function PhotoPlaceholder({
     >
       <span className={['relative block', hero ? 'h-24 w-32' : 'h-14 w-20'].join(' ')}>
         <Brushstroke variant="dab" tone="ocean-soft" className="absolute inset-0 h-full w-full" />
+        {/* eslint-disable-next-line react-hooks/static-components -- kindIcon returns module-level icons */}
         <Icon
           className="absolute -translate-x-1/2 -translate-y-1/2"
           style={ON_DAB_PAINT}

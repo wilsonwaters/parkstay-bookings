@@ -56,7 +56,6 @@ function loadLegacyConnection(sha: string): LegacyConnection {
     id === 'electron' ? { app: undefined } : baseRequire(id);
   const module = { exports: {} as Record<string, unknown> };
   const filename = path.join(REPO_ROOT, 'src/main/database', `connection.${sha.slice(0, 7)}.js`);
-  // eslint-disable-next-line @typescript-eslint/no-implied-eval
   const wrapper = new Function(
     'exports',
     'require',

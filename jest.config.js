@@ -13,9 +13,12 @@
 const TEST_FILE = '*.test.[jt]s?(x)';
 
 /**
- * Dependencies that ship only ES modules: sanitize-html's parser, htmlparser2, with its dom*
- * packages and entities. The app's Node (Electron 44, Node 24) loads them with `require(esm)`;
- * Jest 29's module system cannot, so ts-jest compiles them to CommonJS for the tests.
+ * Dependencies that ship only ES modules:
+ * - sanitize-html's parser, htmlparser2, with its dom* packages and entities (main process);
+ * - React Router 8 and its own dependencies, route-pattern and cookie-es (renderer).
+ * The app loads them natively (Electron 44's Node 24 with `require(esm)`, and Vite). Jest 30
+ * loads ES modules from `require` only under `--experimental-vm-modules`, so esbuild compiles
+ * them to CommonJS for the tests instead (tests/utils/esm-to-cjs-transform.js).
  */
 const ESM_ONLY_DEPENDENCIES = [
   'htmlparser2',
@@ -24,11 +27,21 @@ const ESM_ONLY_DEPENDENCIES = [
   'dom-serializer',
   'domelementtype',
   'entities',
+  'react-router',
+  '@remix-run/route-pattern',
+  'cookie-es',
 ];
 /** A path separator: Jest matches these patterns against native paths (`\\` on Windows). */
 const SEP = '[/\\\\]';
-const ESM_ONLY_NAMES = `(?:${ESM_ONLY_DEPENDENCIES.join('|')})${SEP}`;
+const ESM_ONLY_NAMES = `(?:${ESM_ONLY_DEPENDENCIES.map((name) => name.split('/').join(SEP)).join('|')})${SEP}`;
 const ESM_ONLY = `node_modules${SEP}${ESM_ONLY_NAMES}`;
+
+/**
+ * Each test environment's own export conditions plus `development`: React Router 8, the only
+ * dependency that declares it, then loads its development build (with its warnings), as
+ * `npm run dev` does.
+ */
+const DEVELOPMENT = 'development';
 
 const base = {
   roots: ['<rootDir>/src', '<rootDir>/tests'],
@@ -47,10 +60,7 @@ const base = {
         },
       },
     ],
-    [`${ESM_ONLY}.+\\.js$`]: [
-      'ts-jest',
-      { tsconfig: { allowJs: true, esModuleInterop: true, isolatedModules: true } },
-    ],
+    [`${ESM_ONLY}.+\\.m?js$`]: '<rootDir>/tests/utils/esm-to-cjs-transform.js',
   },
   transformIgnorePatterns: [`${SEP}node_modules${SEP}(?!${ESM_ONLY_NAMES})`],
   moduleNameMapper: {
@@ -80,6 +90,7 @@ module.exports = {
       ...base,
       displayName: 'main',
       testEnvironment: 'node',
+      testEnvironmentOptions: { customExportConditions: ['node', 'node-addons', DEVELOPMENT] },
       testMatch: [
         `<rootDir>/tests/unit/**/${TEST_FILE}`,
         `<rootDir>/tests/integration/**/${TEST_FILE}`,
@@ -95,6 +106,7 @@ module.exports = {
       ...base,
       displayName: 'renderer',
       testEnvironment: 'jsdom',
+      testEnvironmentOptions: { customExportConditions: ['browser', DEVELOPMENT] },
       testMatch: [
         `<rootDir>/src/renderer/**/${TEST_FILE}`,
         `<rootDir>/tests/renderer/**/${TEST_FILE}`,

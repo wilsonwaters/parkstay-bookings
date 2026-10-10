@@ -1,6 +1,6 @@
 # Architecture overview
 
-WA Stay is an Electron 44 desktop app: React 19 and TypeScript 5 in the window, Node in the
+WA Stay is an Electron 44 desktop app: React 19 and TypeScript 6 in the window, Node in the
 main process, SQLite (better-sqlite3) on disk. This page is the map; the binding decisions
 behind it are in `ai-state/architecture-notes.md`, and the conventions for working in the code
 are in [CLAUDE.md](../../CLAUDE.md).

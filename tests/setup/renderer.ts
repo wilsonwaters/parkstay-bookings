@@ -8,7 +8,7 @@ import '@testing-library/jest-dom';
 import { TextDecoder, TextEncoder } from 'util';
 import { createMockWindowApi } from '../utils/window-api';
 
-// React Router 7 creates a TextEncoder when it loads; jest-environment-jsdom 29 (jsdom 20) has
+// React Router creates a TextEncoder when it loads; jest-environment-jsdom 30 (jsdom 26) has
 // none. Node's are the same WHATWG classes.
 if (typeof globalThis.TextEncoder === 'undefined') {
   Object.assign(globalThis, { TextEncoder, TextDecoder });

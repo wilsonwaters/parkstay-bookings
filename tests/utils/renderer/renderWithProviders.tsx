@@ -49,5 +49,5 @@ export function renderWithProviders(
 /** What the app's polite announcer (`useAnnounce`) last said, without its repeat marker. */
 export function politeAnnouncement(): string {
   const region = document.querySelector('[aria-live="polite"][aria-atomic="true"]');
-  return (region?.textContent ?? '').replace(/ /g, '').trim();
+  return (region?.textContent ?? '').replace(/\u00a0/g, '').trim();
 }

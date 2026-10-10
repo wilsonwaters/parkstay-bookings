@@ -62,7 +62,7 @@ function checkXml(text) {
   const tag =
     /<(\/?)([A-Za-z][\w:.-]*)((?:\s+[\w:.-]+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>|<!--[\s\S]*?-->|</g;
   let m;
-  let last = 0;
+  let last;
   while ((m = tag.exec(body))) {
     if (m[0] === '<') throw new Error(`malformed tag at offset ${m.index}`);
     last = m.index + m[0].length;
@@ -87,7 +87,7 @@ async function readSvg(file) {
     checkXml(text);
     await sharp(Buffer.from(text)).metadata();
   } catch (error) {
-    throw new Error(`Invalid SVG ${rel(file)}: ${error.message}`);
+    throw new Error(`Invalid SVG ${rel(file)}: ${error.message}`, { cause: error });
   }
   return text;
 }
@@ -411,7 +411,7 @@ async function run() {
     try {
       checkXml(svg);
     } catch (error) {
-      throw new Error(`Invalid installer ${name} artboard: ${error.message}`);
+      throw new Error(`Invalid installer ${name} artboard: ${error.message}`, { cause: error });
     }
   }
   const header = await bmp(boards.header, 150, 57, palette['sand-0']);

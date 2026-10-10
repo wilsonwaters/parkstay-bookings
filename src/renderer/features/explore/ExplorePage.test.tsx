@@ -241,7 +241,6 @@ describe('Explore (list-only)', () => {
     await user.click(option);
     await waitFor(() => expect(resultsHeading()).toHaveTextContent(/^39 places$/));
     expect(currentRoute()).toBe('/?regions=Pilbara');
-    // eslint-disable-next-line no-console
     expect(chip('Region, 1 selected')).toBeInTheDocument();
     expect(where()).toHaveValue('');
   });

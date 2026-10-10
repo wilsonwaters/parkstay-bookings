@@ -11,7 +11,7 @@ const path = require('path');
 exports.default = async function (context) {
   console.log('\n🔧 Running pre-build checks...\n');
 
-  const { electronPlatformName, arch, targets } = context;
+  const { electronPlatformName, arch } = context;
 
   // Log build information
   console.log('📦 Build Information:');
