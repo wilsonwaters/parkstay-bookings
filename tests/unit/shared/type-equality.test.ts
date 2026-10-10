@@ -25,12 +25,14 @@ function compile(source: string): string[] {
   };
   const host = ts.createCompilerHost(options);
   const { getSourceFile, fileExists, readFile } = host;
+  // TypeScript hands back forward-slash paths; on Windows PROBE has backslashes.
+  const isProbe = (name: string) => path.normalize(name) === PROBE;
   host.getSourceFile = (name, version, ...rest) =>
-    name === PROBE
+    isProbe(name)
       ? ts.createSourceFile(name, source, version)
       : getSourceFile.call(host, name, version, ...rest);
-  host.fileExists = (name) => name === PROBE || fileExists.call(host, name);
-  host.readFile = (name) => (name === PROBE ? source : readFile.call(host, name));
+  host.fileExists = (name) => isProbe(name) || fileExists.call(host, name);
+  host.readFile = (name) => (isProbe(name) ? source : readFile.call(host, name));
   const program = ts.createProgram([PROBE], options, host);
   return ts
     .getPreEmitDiagnostics(program)

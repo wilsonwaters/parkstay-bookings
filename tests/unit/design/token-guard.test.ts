@@ -68,7 +68,7 @@ const HEX_LITERAL = /(?<![&\w])#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})\b/gi;
 /** `rgb(0 0 0)`, `rgba(255,0,0,.5)`, `hsl(210 50% 40%)`; `rgb(var(--ws-x))` is fine. */
 const COLOUR_FUNCTION = /(?<![\w-])(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch)\(\s*[-+.\d][^)\n]*\)?/gi;
 /** Candidates; `isEmoji` decides. A pictograph optionally forced to emoji style (U+FE0F). */
-const PICTOGRAPH = /\p{Extended_Pictographic}\uFE0F?|\p{Emoji_Presentation}|\u20E3/gu;
+const PICTOGRAPH = /\p{Extended_Pictographic}\uFE0F?|\p{Emoji_Presentation}|\p{S}\uFE0F|\u20E3/gu;
 
 /**
  * Only real emoji: characters shown as emoji by default, pictographs from the emoji planes,

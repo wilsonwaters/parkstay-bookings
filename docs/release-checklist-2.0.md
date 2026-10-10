@@ -26,8 +26,6 @@ tag builds it, and no installed copy sees a draft until you press Publish.
   [the release process](release-process.md#repository-description-and-topics).
 - [ ] **Add the `MAPBOX_ACCESS_TOKEN` repository secret** (Settings → Secrets and variables →
   Actions), a public `pk.` token.
-- [ ] **Decide the LICENSE copyright holder.** `LICENSE` still names "WA ParkStay Bookings";
-  change it (for example to your own name) before the release if you want.
 - [ ] **The release commit is green in CI** (the `CI` workflow: format, lint, tests, `e2e` and
   `packaged-smoke`): the tag's own pipeline runs only type-check, lint, format and the unit tests.
 - [ ] **Delete the merged `wip/*` backup branches** on GitHub (the git proxy could not):
