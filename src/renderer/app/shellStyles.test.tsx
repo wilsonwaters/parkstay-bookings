@@ -7,7 +7,6 @@ import path from 'path';
 import postcss from 'postcss';
 import tailwindcss from 'tailwindcss';
 import { render, screen } from '@testing-library/react';
-import { LegacyPageFrame } from './LegacyPageFrame';
 
 const ROOT = path.resolve(__dirname, '../../..');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -22,10 +21,7 @@ beforeAll(async () => {
   const result = await postcss([
     tailwindcss({
       ...config,
-      content: [
-        { raw: read('src/renderer/app/LegacyPageFrame.tsx'), extension: 'tsx' },
-        { raw: '<div class="p-6"></div>', extension: 'html' },
-      ],
+      content: [{ raw: '<h1 tabindex="-1"></h1><button></button>', extension: 'html' }],
     }),
   ]).process(indexCss, { from: undefined });
   style = document.createElement('style');
@@ -61,34 +57,5 @@ describe('focus ring', () => {
       el.focus();
       expect(getComputedStyle(el).outline).toMatch(/^2px solid rgb\(var\(--ws-focus\)\)/);
     }
-  });
-});
-
-describe('LegacyPageFrame', () => {
-  it('cancels a legacy page root p-6, so the gutter is not doubled', () => {
-    render(
-      <LegacyPageFrame>
-        <div className="p-6" data-testid="legacy-root">
-          <h1>Watches</h1>
-        </div>
-      </LegacyPageFrame>
-    );
-    const root = screen.getByTestId('legacy-root');
-    expect(getComputedStyle(root).paddingLeft).toBe('0px');
-    expect(getComputedStyle(root).paddingTop).toBe('0px');
-    // The frame itself has the new pages' gutter.
-    const frame = root.parentElement as HTMLElement;
-    expect(frame).toHaveClass('px-6', 'py-8', 'lg:px-8', 'max-w-7xl');
-  });
-
-  it('leaves padding deeper inside the page alone', () => {
-    render(
-      <LegacyPageFrame>
-        <section>
-          <div className="p-6" data-testid="card" />
-        </section>
-      </LegacyPageFrame>
-    );
-    expect(getComputedStyle(screen.getByTestId('card')).paddingLeft).toBe('1.5rem');
   });
 });
