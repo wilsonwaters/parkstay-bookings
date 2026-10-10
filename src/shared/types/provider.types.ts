@@ -293,9 +293,24 @@ export interface LocationAvailability {
   bookingUrl?: string;
 }
 
+/**
+ * One place's availability for a stay, from a provider's bulk `availability.search`: counts of
+ * units, not nights. Explore shows "2 of 5 sites available" (`availableUnits` above 0), "No site
+ * free every night" (none free, some bookable) or "No sites open for these dates" (none
+ * bookable). A place the provider has no answer for gets no entry, and reads as unknown.
+ */
 export interface BulkAvailabilityEntry {
+  /** The place's location key, `makeLocationKey(providerId, externalId)`. */
   key: string;
+  /**
+   * How many units are free on every night of the stay: the smaller number. A unit free on
+   * some nights only does not count.
+   */
   availableUnits: number;
+  /**
+   * How many units can be booked online for the stay's dates at all, free or not: the place's
+   * total, or 0 when none can be (not released yet, closed, or past the booking window).
+   */
   bookableUnits: number;
 }
 

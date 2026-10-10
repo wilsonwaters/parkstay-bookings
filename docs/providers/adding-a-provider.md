@@ -87,8 +87,10 @@ policy, holds, payment and sign-in. See [the ParkStay provider](parkstay/README.
    a few of the provider's public responses, without signing in, trim them, and put them in
    `tests/fixtures/providers/acme-parks/` with their routes in its `manifest.json`
    ([recorded responses](#recorded-responses-fixturehttpclient)); copy the ones the app needs
-   into `tests/e2e/fixtures/http/acme-parks/`. Update the expectations in the generated test to
-   match. A browser provider gets a trimmed copy of the site's markup in `site.ts` instead.
+   into `tests/e2e/fixtures/http/acme-parks/`, with a signed-out answer for the signed-in check
+   if it has an account ([the Electron smoke tests](#the-electron-smoke-tests)). Update the
+   expectations in the generated test to match. A browser provider gets a trimmed copy of the
+   site's markup in `site.ts` instead.
 
 3. **Run its tests**: the contract suite and the mapping.
 
@@ -105,8 +107,11 @@ policy, holds, payment and sign-in. See [the ParkStay provider](parkstay/README.
    ```
 
    On Linux without a display, put `xvfb-run -a` in front of the second command. It checks that
-   Explore lists the provider's places, opens one, and visits Settings → Accounts, with a
-   screenshot of each in the report (`npx playwright show-report`).
+   Explore lists the provider's places; with dates (tomorrow, for two nights), that Explore
+   shows its free counts (with `bulkAvailability`) and that a place's "Check availability"
+   answers; and that Settings → Accounts shows it, with a screenshot of each in the report
+   (`npx playwright show-report`). A browser provider is previewed by hand instead
+   ([browser providers](browser-providers.md#preview-in-the-app)).
 
 5. **Register it and run everything.** The scaffold has added it to `BUILT_IN_PROVIDERS`
    ([register it](#10-register-it)). Before you call it done, the whole gate passes:
@@ -251,7 +256,7 @@ export const exampleApiManifest: ProviderManifest = {
 | `website` | An https URL. |
 | `integration` | `api`, `browser` or `hybrid` ([choosing](browser-providers.md#choosing-api-browser-or-hybrid)). |
 | `brand` | `color` as `#RRGGBB` and a `monogram` of 1–3 capitals or digits: the `ProviderBadge`. Never a third-party logo. Check that white text on the colour passes WCAG AA. |
-| `locationKinds` | The `LocationKind`s your locations can have, at least one. Every location's `kind` must be one of them. |
+| `locationKinds` | The `LocationKind`s your locations can have, at least one ([the list](#location-kinds)). Every location's `kind` must be one of them. |
 | `timezone` | The IANA zone the provider's dates and release times are in. The context gives it to you as `ctx.timezone`. |
 | `currency` | ISO 4217, e.g. `AUD`. Prices in `NightStatus.price` are in it. |
 | `capabilities` | What the provider can do ([below](#capabilities)). |
@@ -259,6 +264,27 @@ export const exampleApiManifest: ProviderManifest = {
 | `stayFields` | Provider-specific stay inputs ([below](#stay-fields)). |
 | `releaseModes` | Site Sniper's release modes, when `capabilities.snipes` ([below](#release-modes)). |
 | `bulkAvailabilityStayFields` | What bulk availability depends on ([below](#bulk-availability-stay-fields)). |
+
+### Location kinds
+
+`locationKinds` comes from a fixed list (`LOCATION_KINDS` in `src/shared/types/provider.types.ts`).
+A place's kind sets its label and what its units are called on Explore's cards and the place
+page ("2 of 6 cabins available"):
+
+| Kind | Shown as | Its units are called |
+| --- | --- | --- |
+| `campground` | Campground | sites |
+| `caravan-park` | Caravan park | sites |
+| `holiday-park` | Holiday park | sites |
+| `cabin` | Cabin | cabins |
+| `hut` | Hut | bunks |
+| `glamping` | Glamping | tents |
+| `farm-stay` | Farm stay | rooms |
+| `home` | Home | rooms |
+| `other` | Place to stay | units |
+
+Map the provider's own words to these with an explicit table, and a word you do not know to
+`other` (so keep `other` in `locationKinds`).
 
 ### Capabilities
 
@@ -295,7 +321,7 @@ context gives the effective values as `ctx.limits`.
 | Limit | What reads it |
 | --- | --- |
 | `minWatchIntervalMinutes` | The watch form offers no shorter interval, and the scheduler runs a shorter stored one at this interval (`core/watches/next-check.ts`). |
-| `maxConcurrentRequests` | The watch loop runs at most `min(2, maxConcurrentRequests)` checks at once for the provider, and a `search` catalogue's area searches stay within it. **Your module enforces it for its own requests**, with `createLimiter` from the SDK, as Example Parks and the scaffold do. |
+| `maxConcurrentRequests` | The watch loop runs at most `min(2, maxConcurrentRequests)` checks at once for the provider, and a `search` catalogue's area searches stay within it. **Your module enforces it for every request it sends**, with `createLimiter` from the SDK: Example Parks sends its catalogue, availability, hold and sign-in check requests through one limiter, reading each answer inside it, and the scaffold's API provider limits its requests the same way. A browser provider's `withPage` calls already run one at a time. |
 | `catalogTtlHours` | How long a synced catalogue stays fresh before the catalogue service syncs it again; for a `search` catalogue, how long an area or text search is not repeated. |
 
 A browser provider should use `maxConcurrentRequests: 1` and generous intervals.
@@ -307,6 +333,16 @@ postcode. The renderer draws them generically (`components/stay/ProviderStayFiel
 values travel in `StayQuery.params` and are stored in `stay_params`. Main validates them
 against the descriptor (type, options, `min`/`max`, `pattern`, `required`) and fills defaults
 (`core/stay-params.ts`); an invalid value is a `VALIDATION` error on `stayParams.<key>`.
+
+| `type` | Drawn as | Its value in `params` | Checked against |
+| --- | --- | --- | --- |
+| `select` | A select of its `options` (at least one, each `{ value, label }`) | The chosen option's `value`, a string | `options` |
+| `number` | A stepper | A number | `min` and `max` |
+| `text` | A text field | A string | `pattern`, a regular expression the whole value must match |
+| `boolean` | A checkbox | `true` or `false` | |
+
+A `default` must be a value of the field's type, or the manifest is refused; `required` makes
+a form that shows the field refuse it empty.
 
 `appliesTo` says which forms show the field:
 
@@ -637,8 +673,15 @@ export function createExampleApiFactory({
           }));
         },
       },
-      holds: createExampleHolds({ providerId: ctx.id, http, apiUrl: baseUrl, siteUrl: SITE }),
-      auth: createExampleAuth({ apiUrl: baseUrl, siteUrl: SITE }),
+      // Holds and the sign-in check take their turn with every other request.
+      holds: createExampleHolds({
+        providerId: ctx.id,
+        http,
+        limit,
+        apiUrl: baseUrl,
+        siteUrl: SITE,
+      }),
+      auth: createExampleAuth({ apiUrl: baseUrl, siteUrl: SITE, limit }),
     };
   });
 }
@@ -668,6 +711,35 @@ The rules the normalised types carry (`src/shared/types/provider.types.ts`,
 - **Errors** are `ProviderError`s (`src/main/providers/sdk/errors.ts`): an unknown location
   rejects (the HTTP 404 does it here), it never returns an empty result. Let an `AbortError`
   propagate.
+- **Bulk availability** ([below](#bulk-availability-entries)): `search` returns a count of free
+  and bookable units per place, not nights.
+
+### Bulk availability entries
+
+With `bulkAvailability`, `availability.search(stay)` answers every place at once, for Explore's
+cards and pins and its "Available only" filter. It returns one `BulkAvailabilityEntry` per place
+it has an answer for:
+
+| Field | Meaning |
+| --- | --- |
+| `key` | The place's location key, `makeLocationKey(ctx.id, externalId)`. Main keeps only entries for places of this provider that are in the stored catalogue (and in the area Explore shows). |
+| `availableUnits` | How many units are free on **every** night of the stay. A unit free on some nights only does not count. |
+| `bookableUnits` | How many units can be booked online for these dates at all, free or not: the place's total, or 0 when none can be booked (not released yet, closed, or past the provider's booking window). |
+
+The names invite a swap: `availableUnits` is the smaller number, the free ones, and
+`bookableUnits` the total. Explore reads them as:
+
+| Entry | The card says |
+| --- | --- |
+| `availableUnits` above 0 | "2 of 5 sites available" (only "2 sites available" if `bookableUnits` is smaller) |
+| `availableUnits` 0, `bookableUnits` above 0 | "No site free every night" |
+| Both 0 | "No sites open for these dates" |
+| No entry for the place | "Availability unknown" |
+
+So leave out a place you have no answer for rather than send zeros, which would read as full or
+not open. ParkStay's own names read the other way round (its `total_available` is a
+campground's site count, `total_bookable` the sites free every night): map a provider's numbers
+by what they mean, not by their names.
 
 ## 5. A browser provider
 
@@ -972,7 +1044,7 @@ sign-in in one is visible to the other.
 A hold is a temporary reservation the person then pays for on the provider's own site
 (`capabilities.holds`). The app places one when a watch with "Hold a site automatically" finds
 a match, or a snipe fires; the person pays in a payment window on your session partition.
-Example Parks places a hold with `POST /api/holds`:
+Example Parks places a hold with `POST /api/holds`, through its limiter like every request:
 
 <!-- region: tests/fixtures/providers/example-api/holds.ts#holds -->
 
@@ -984,6 +1056,7 @@ import {
   type HoldResult,
   type HoldsModule,
   type HttpClient,
+  type Limiter,
 } from '@main/providers/sdk';
 import type { ProviderId } from '@shared/types/provider.types';
 
@@ -1004,6 +1077,8 @@ const REFUSALS: Record<number, HoldFailureReason> = {
 export interface ExampleHoldsOptions {
   providerId: ProviderId;
   http: HttpClient;
+  /** The provider's limiter: a hold waits its turn with every other request. */
+  limit: Limiter;
   /** The API, for `POST /api/holds`. */
   apiUrl: string;
   /** The website, whose checkout the payment window opens. */
@@ -1011,34 +1086,39 @@ export interface ExampleHoldsOptions {
 }
 
 export function createExampleHolds(options: ExampleHoldsOptions): HoldsModule {
-  const { providerId, http, apiUrl, siteUrl } = options;
+  const { providerId, http, limit, apiUrl, siteUrl } = options;
   const checkout = (reference: string): string =>
     `${siteUrl}/checkout/${encodeURIComponent(reference)}`;
 
   return {
     async create({ externalId, unitId, stay }, signal): Promise<HoldResult> {
       const url = `${apiUrl}/api/holds`;
-      // An abort or a failed request rejects (the core logs it); a refusal is a result.
-      const response = await http.request('POST', url, {
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-          parkId: externalId,
-          // No unit: Example Parks picks a free site for the stay.
-          siteId: unitId ?? null,
-          arrival: stay.arrival,
-          departure: stay.departure,
-          guests: stay.adults + (stay.children ?? 0),
-        }),
-        signal,
+      // Through the limiter, like every request, with the answer read inside it. An abort or
+      // a failed request rejects (the core logs it); a refusal is a result.
+      const answer = await limit(async () => {
+        const response = await http.request('POST', url, {
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            parkId: externalId,
+            // No unit: Example Parks picks a free site for the stay.
+            siteId: unitId ?? null,
+            arrival: stay.arrival,
+            departure: stay.departure,
+            guests: stay.adults + (stay.children ?? 0),
+          }),
+          signal,
+        });
+        const created = response.status === 201;
+        return { status: response.status, body: created ? await response.json() : undefined };
       });
-      if (response.status !== 201) {
+      if (answer.status !== 201) {
         return {
           ok: false,
-          reason: REFUSALS[response.status] ?? 'error',
-          message: `Example Parks did not hold the site (HTTP ${response.status})`,
+          reason: REFUSALS[answer.status] ?? 'error',
+          message: `Example Parks did not hold the site (HTTP ${answer.status})`,
         };
       }
-      const parsed = RawHold.safeParse(await response.json());
+      const parsed = RawHold.safeParse(answer.body);
       if (!parsed.success) {
         throw new ProviderParseError({ providerId, url, message: 'Unexpected /api/holds answer' });
       }
@@ -1098,6 +1178,7 @@ import {
   ProviderTimeoutError,
   type BrowserSessionAuth,
   type HttpClient,
+  type Limiter,
 } from '@main/providers/sdk';
 import type { AccountStatus } from '@shared/types/provider.types';
 
@@ -1109,8 +1190,10 @@ const unknown = (reason: string): AccountStatus => ({ state: 'unknown', reason }
 export function createExampleAuth(options: {
   apiUrl: string;
   siteUrl: string;
+  /** The provider's limiter: the check waits its turn with every other request. */
+  limit: Limiter;
 }): BrowserSessionAuth {
-  const { apiUrl, siteUrl } = options;
+  const { apiUrl, siteUrl, limit } = options;
   return {
     kind: 'browser-session',
     // Where the sign-in window opens. It runs on the provider's session partition, so the
@@ -1126,14 +1209,19 @@ export function createExampleAuth(options: {
     // last definite answer.
     async isSignedIn(http: HttpClient, signal?: AbortSignal): Promise<AccountStatus> {
       try {
-        const response = await http.request('GET', `${apiUrl}/api/me`, {
-          headers: { Accept: 'application/json' },
-          timeoutMs: 15_000,
-          signal,
+        // Through the limiter, like every request, with the answer read inside it.
+        const answer = await limit(async () => {
+          const response = await http.request('GET', `${apiUrl}/api/me`, {
+            headers: { Accept: 'application/json' },
+            timeoutMs: 15_000,
+            signal,
+          });
+          const found = response.status === 200;
+          return { status: response.status, body: found ? await response.json() : undefined };
         });
-        if (response.status === 401 || response.status === 403) return { state: 'signed-out' };
-        if (response.status !== 200) return unknown(`http ${response.status}`);
-        const me = RawMe.safeParse(await response.json());
+        if (answer.status === 401 || answer.status === 403) return { state: 'signed-out' };
+        if (answer.status !== 200) return unknown(`http ${answer.status}`);
+        const me = RawMe.safeParse(answer.body);
         if (!me.success) return unknown('parse');
         const { email, name } = me.data;
         return { state: 'signed-in', email, ...(name ? { displayName: name } : {}) };
@@ -1269,8 +1357,8 @@ never for a time.
 
 ## 10. Register it
 
-Add the factory to `BUILT_IN_PROVIDERS` in `src/main/providers/index.ts`: one line and its
-import. The scaffold does it for you (`--no-register` prints the lines instead).
+Add the factory to `src/main/providers/index.ts`: an import, and an entry in
+`BUILT_IN_PROVIDERS`. The scaffold does both for you (`--no-register` prints the lines instead).
 
 <!-- region: tests/fixtures/providers/example-api/index.ts#api-register -->
 
@@ -1357,9 +1445,25 @@ provider sent the right parameters (Example Parks' availability route answers on
 `describeProviderContract` (`tests/utils/provider-contract.ts`) is the conformance suite every
 provider runs: a valid manifest, a module behind every capability, keys that round-trip, every
 module honouring `AbortSignal`, `ProviderError`s for failures, https links, and registration in
-a `ProviderRegistry`. Modules the provider lacks are skipped. A `search` catalogue is also
-checked over `searchBbox`: items inside the box, cursor paging that ends, an abort honoured on
-every page.
+a `ProviderRegistry`. Modules the provider lacks are skipped. It checks the shape of what each
+module answers, not whether it is right for your provider: that is what your mapping tests are
+for. What it calls, module by module (`sample` is the subject's place and stay, by default the
+first listed place and a two-night stay 30 days ahead):
+
+| Module | What the suite calls | What it checks |
+| --- | --- | --- |
+| The manifest | Nothing | It passes `ProviderManifestSchema`; every capability has its module and the flags agree (`providerViolations`); a three-letter currency; limits, if any, of at least 1 (`catalogTtlHours` above 0); every release mode passes `release.supports()`, and a provider with `snipes` describes at least one; it registers in a fresh `ProviderRegistry` under its id, modules unchanged. |
+| `links` | `location` and `booking` (with and without the stay) for `sample`, and `manageBooking('REF-1')` | Each is an absolute https URL or `null`. |
+| `catalog` | `listLocations()`, or every `searchArea` page over `searchBbox` (default: the whole world); `getLocation` for `sample` and for `unknownExternalId` | At least one place; unique keys that round-trip and name the provider; kinds from `locationKinds`; a detail with the same key and a `units` array; an unknown place rejects with a `ProviderError`; every call rejects with an `AbortError` for a signal aborted before it and one aborted during it. |
+| `search` catalogue | `searchArea` page after page over `searchBbox`; `searchText(searchText)` if there is one | Items inside the box (to 0.01°); a `nextCursor` that is a non-empty string, changes, and ends within 100 pages; an abort honoured on the first and the next page; `searchText` finds places of this provider, and honours an abort. |
+| `availability` | `check` for `sample` and for `unknownExternalId`; `search(stay)` if there is one | Nights only inside the stay, under the location key, with a `checkedAt` date; an unknown place rejects with a `ProviderError`; `search`'s keys name the provider; both honour an abort. |
+| `access` | `status()`, `onStatus()` and its unsubscribe, `holdOpen()` released twice, `ensure()` | The status names the provider; `ensure` honours an abort. |
+| `release` | `computeReleaseAt` for every release mode | A `Date` or `null`; `pollFloorMs` above 0; an abort honoured. |
+| `holds` | `create({ externalId, stay })`, only with a signal aborted before the call or at once after it starts | It rejects with an `AbortError`. Nothing about a hold's answer is checked, and no hold is placed: test refusals, the answer's shape and `bookedReference` yourself, on recorded responses or a loopback server, as the example does. |
+| `auth` | Nothing: `isSignedIn` is never called | `isSignedIn` is a function; a `browser-session` sign-in has an https `signInUrl` and https `allowedOrigins`. Test `isSignedIn`'s answers yourself. |
+| `bookings`, `dispose` | Nothing | Nothing. |
+
+For a browser provider, pass `openPages`: after every test its browser must have no page open.
 
 Register the provider as the app does, in a fresh registry, on recorded responses:
 
@@ -1440,6 +1544,22 @@ provider with no folder there answers every request with an error. The journeys 
 ParkStay, so a new provider changes none of them; a journey written for your provider launches
 with `launchWaStay({ providers: ['parkstay', '<id>'] })` ([tests/README.md](../../tests/README.md)).
 
+**A provider with an account** (any `account` but `none`) needs a route there for its
+signed-in check too: the request `isSignedIn` sends (Example Parks' `GET /api/me`), answered as
+for a person who is signed out, such as a 401 with a small JSON body written by hand (ParkStay's
+is `profile-signed-out.json`). The app checks every account 5 s after launch and whenever
+Settings → Accounts opens. Without the route the request is refused and logged
+(`<userData>/e2e-unexpected-requests.log`), the account reads as unknown, and the preview spec
+fails, naming the request.
+
+**Two fixture manifests.** The scaffold writes `tests/fixtures/providers/<id>/manifest.json` for
+Jest and `tests/e2e/fixtures/http/<id>/manifest.json` for the app, and they differ on purpose.
+The Jest one also answers an unknown place with a 404 (`not-found.json`), which the contract
+suite and the mapping test ask for, and a `search` catalogue's name search answers only
+`text=Banksia`, so a test proves the provider sends the text. The app never asks for that
+unknown place, and a person types any name, so the e2e one has no 404 routes and its name search
+answers any text.
+
 Fixture mode serves `ctx.http` only. `ctx.browser` is the real browser automation, so a browser
 provider must not be registered in a journey unless its pages are local.
 
@@ -1449,20 +1569,29 @@ See the provider in the running app before you call it done.
 
 **The preview spec** (API providers). `tests/e2e/preview-provider.spec.ts` launches the built
 app as the smoke tests do (fixture mode, a temp profile, no network) with only your provider
-registered, and checks that Explore lists its places, that the first place's page opens, and
-that Settings → Accounts shows it:
+registered, and checks that:
+
+- Explore lists its places;
+- with dates (tomorrow in the provider's time zone, for two nights, set through Explore's
+  address), Explore shows its free counts without an error, when it has `bulkAvailability`;
+- the first place's page opens with those dates, and "Check availability" answers with the
+  night grid (every unit's nights) or "No sites were listed for these dates", not an error;
+- Settings → Accounts shows it;
+- fixture mode refused no request (the photos it never loads aside), and the window logged no
+  errors.
 
 ```bash
 npm run build:e2e
 npx cross-env PREVIEW_PROVIDER=acme-parks playwright test preview-provider
-npx playwright show-report        # the screenshots: Explore, the place page, Accounts
+npx playwright show-report        # Explore, Explore with dates, the place page, Accounts
 ```
 
-On Linux without a display, run the second command under `xvfb-run -a`. If Explore shows none
-of its places, the failure quotes what the app logged about the provider, such as "Acme Parks
-is not set up yet: set ACME_PARKS_API_URL …" or "no fixture for GET …; add a route to
-tests/e2e/fixtures/http/acme-parks/manifest.json". Without `PREVIEW_PROVIDER` the spec is
-skipped, so the suite and CI never run it.
+On Linux without a display, run the second command under `xvfb-run -a`. A step that fails
+quotes what the app logged about the provider, such as "Acme Parks is not set up yet: set
+ACME_PARKS_API_URL …" or "no fixture for GET …; add a route to
+tests/e2e/fixtures/http/acme-parks/manifest.json", and a refused request names the route to
+add. The first place must list units for its availability to be checked. Without
+`PREVIEW_PROVIDER` the spec is skipped, so the suite and CI never run it.
 
 **By hand, from source.** The same test hooks work for a build you click through yourself. They
 are honoured only when the app runs from source, never in a packaged build:
@@ -1478,11 +1607,21 @@ WA Stay data (`tmp/` is ignored by git; delete the folder to start again). On Li
 in a container, add `--no-sandbox` after `electron .`.
 
 **Browser providers.** Fixture mode does not cover `ctx.browser`: in the app, a browser provider
-drives the installed Edge or Chrome against whatever address its code names. Keep its tests on
-the fake browser, and preview it only once those pass: point it at a local copy of its pages
-for a network-free look, or let it read the live site by hand, read-only and briefly, as a
-person browsing would. A generated browser provider fails before it starts a browser until you
-set its address, so registering it as generated is safe.
+drives a real browser against whatever address its code names, so the preview spec cannot run
+it. Keep its tests on the fake browser, and once they pass, preview it by hand against its
+made-up site served on your own computer ([the steps and why they are safe](browser-providers.md#preview-in-the-app)):
+
+```bash
+node scripts/serve-provider-site.mjs acme-parks   # serves tests/fixtures/providers/acme-parks/site.ts at http://127.0.0.1:8123
+# set ACME_PARKS_SITE_URL to 'http://127.0.0.1:8123' for now, then:
+npm run build:e2e
+npx cross-env WA_STAY_E2E_FIXTURES_DIR=tests/e2e/fixtures/http WA_STAY_PROVIDERS=acme-parks WA_STAY_USER_DATA_DIR=tmp/preview-profile electron .
+```
+
+On Linux without Edge or Chrome, give the app a Chromium build with `WA_STAY_BROWSER_PATH`. Set
+the address back before you run the tests. You may also let it read the live site by hand,
+read-only and briefly, as a person browsing would. A generated browser provider fails before it
+starts a browser until you set its address, so registering it as generated is safe.
 
 ## What the app does with it
 
@@ -1519,9 +1658,10 @@ What a finished provider looks like. (The steps to get there are in
 - [ ] Every module honours its `AbortSignal`, stays inside the core's timeouts, and fails with
       a `ProviderError`; no retry loops.
 - [ ] Holds: refusals are results; `bookedReference` accepts only this hold's confirmation.
-- [ ] Sign-in: `isSignedIn` answers `unknown`, never `signed-out`, when it cannot tell.
+- [ ] Sign-in: `isSignedIn` answers `unknown`, never `signed-out`, when it cannot tell, and
+      `tests/e2e/fixtures/http/<id>/` answers its request as signed out.
 - [ ] No cookies, tokens or personal details in logs, fixtures or errors.
 - [ ] No `TODO` left from the scaffold; no placeholder address.
 - [ ] Factory in `BUILT_IN_PROVIDERS`; its tests, the full `npm test` and the e2e suite pass;
-      the preview shows it on Explore.
+      the preview shows it on Explore and answers its availability for dates.
 - [ ] No real hold, booking or payment, and no live site, in any test or trial run.

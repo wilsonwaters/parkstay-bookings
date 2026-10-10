@@ -20,6 +20,7 @@ import {
   ProviderTimeoutError,
   type BrowserSessionAuth,
   type HttpClient,
+  type Limiter,
 } from '@main/providers/sdk';
 import type { AccountStatus } from '@shared/types/provider.types';
 
@@ -31,8 +32,10 @@ const unknown = (reason: string): AccountStatus => ({ state: 'unknown', reason }
 export function createExampleAuth(options: {
   apiUrl: string;
   siteUrl: string;
+  /** The provider's limiter: the check waits its turn with every other request. */
+  limit: Limiter;
 }): BrowserSessionAuth {
-  const { apiUrl, siteUrl } = options;
+  const { apiUrl, siteUrl, limit } = options;
   return {
     kind: 'browser-session',
     // Where the sign-in window opens. It runs on the provider's session partition, so the
@@ -48,14 +51,19 @@ export function createExampleAuth(options: {
     // last definite answer.
     async isSignedIn(http: HttpClient, signal?: AbortSignal): Promise<AccountStatus> {
       try {
-        const response = await http.request('GET', `${apiUrl}/api/me`, {
-          headers: { Accept: 'application/json' },
-          timeoutMs: 15_000,
-          signal,
+        // Through the limiter, like every request, with the answer read inside it.
+        const answer = await limit(async () => {
+          const response = await http.request('GET', `${apiUrl}/api/me`, {
+            headers: { Accept: 'application/json' },
+            timeoutMs: 15_000,
+            signal,
+          });
+          const found = response.status === 200;
+          return { status: response.status, body: found ? await response.json() : undefined };
         });
-        if (response.status === 401 || response.status === 403) return { state: 'signed-out' };
-        if (response.status !== 200) return unknown(`http ${response.status}`);
-        const me = RawMe.safeParse(await response.json());
+        if (answer.status === 401 || answer.status === 403) return { state: 'signed-out' };
+        if (answer.status !== 200) return unknown(`http ${answer.status}`);
+        const me = RawMe.safeParse(answer.body);
         if (!me.success) return unknown('parse');
         const { email, name } = me.data;
         return { state: 'signed-in', email, ...(name ? { displayName: name } : {}) };

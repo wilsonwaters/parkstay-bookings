@@ -270,8 +270,15 @@ export function createExampleApiFactory({
           }));
         },
       },
-      holds: createExampleHolds({ providerId: ctx.id, http, apiUrl: baseUrl, siteUrl: SITE }),
-      auth: createExampleAuth({ apiUrl: baseUrl, siteUrl: SITE }),
+      // Holds and the sign-in check take their turn with every other request.
+      holds: createExampleHolds({
+        providerId: ctx.id,
+        http,
+        limit,
+        apiUrl: baseUrl,
+        siteUrl: SITE,
+      }),
+      auth: createExampleAuth({ apiUrl: baseUrl, siteUrl: SITE, limit }),
     };
   });
 }

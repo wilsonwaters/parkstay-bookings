@@ -22,6 +22,7 @@ import os from 'os';
 import path from 'path';
 import ts from 'typescript';
 import {
+  createLimiter,
   isAbortError,
   NodeHttpClient,
   ProviderHttpError,
@@ -290,6 +291,49 @@ describe('example API provider', () => {
       await slow.close();
     }
   });
+
+  it('sends holds and the sign-in check through the same limiter as everything else', async () => {
+    const seen: string[] = [];
+    let inFlight = 0;
+    let peak = 0;
+    const answers: Record<string, [status: number, file: string]> = {
+      '/api/availability': [200, 'bulk.json'],
+      '/api/holds': [201, 'hold-created.json'],
+    };
+    const slow = await serve((request, response) => {
+      const route = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
+      seen.push(route);
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      request.resume();
+      setTimeout(() => {
+        inFlight--;
+        const [status, file] = answers[route] ?? [401, 'not-found.json'];
+        response.writeHead(status, { 'Content-Type': 'application/json' });
+        response.end(fs.readFileSync(path.join(API_FIXTURES, file)));
+      }, 30);
+    });
+    try {
+      const registry = new ProviderRegistry();
+      const http = new NodeHttpClient({ providerId: 'example-api' });
+      registry.register(createExampleApiFactory({ baseUrl: slow.baseUrl }), (manifest) =>
+        createTestProviderContext(manifest, { http })
+      );
+      const provider = registry.require('example-api', 'holds');
+      await Promise.all([
+        ...Array.from({ length: 3 }, () => provider.availability!.search!(STAY)),
+        ...Array.from({ length: 3 }, () =>
+          provider.holds.create({ externalId: '101', unitId: 's1', stay: STAY })
+        ),
+        ...Array.from({ length: 3 }, () => provider.auth!.isSignedIn(http)),
+      ]);
+      expect([...new Set(seen)].sort()).toEqual(['/api/availability', '/api/holds', '/api/me']);
+      expect(seen).toHaveLength(9);
+      expect(peak).toBe(exampleApiManifest.limits!.maxConcurrentRequests);
+    } finally {
+      await slow.close();
+    }
+  });
 });
 
 describe("example API provider's holds", () => {
@@ -308,6 +352,7 @@ describe("example API provider's holds", () => {
     const holds: HoldsModule = createExampleHolds({
       providerId: 'example-api',
       http: new NodeHttpClient({ providerId: 'example-api' }),
+      limit: createLimiter(1),
       apiUrl: server.baseUrl,
       siteUrl: SITE,
     });
@@ -416,7 +461,8 @@ describe("example API provider's sign-in", () => {
   });
   afterAll(() => server.close());
 
-  const auth = () => createExampleAuth({ apiUrl: server.baseUrl, siteUrl: SITE });
+  const auth = () =>
+    createExampleAuth({ apiUrl: server.baseUrl, siteUrl: SITE, limit: createLimiter(1) });
 
   it('is a browser session on the provider’s own pages, which the registry accepts', () => {
     const provider = createExampleApiFactory()(fixtureContext(exampleApiManifest));
@@ -446,7 +492,11 @@ describe("example API provider's sign-in", () => {
   });
 
   it('is unknown, not signed out, when the provider does not answer', async () => {
-    const gone = createExampleAuth({ apiUrl: 'http://127.0.0.1:1', siteUrl: SITE });
+    const gone = createExampleAuth({
+      apiUrl: 'http://127.0.0.1:1',
+      siteUrl: SITE,
+      limit: createLimiter(1),
+    });
     await expect(gone.isSignedIn(client)).resolves.toEqual({ state: 'unknown', reason: 'network' });
   });
 

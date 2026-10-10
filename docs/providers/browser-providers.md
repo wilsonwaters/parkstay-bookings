@@ -22,6 +22,7 @@ The worked example is the guide's **Example Holiday Parks** (`tests/fixtures/pro
 - [Headed mode for human steps](#headed-mode-for-human-steps)
 - [Testing with the fake browser](#testing-with-the-fake-browser)
 - [The real-browser smoke test](#the-real-browser-smoke-test)
+- [Preview in the app](#preview-in-the-app)
 - [The browser profile and privacy](#the-browser-profile-and-privacy)
 - [Errors people see](#errors-people-see)
 
@@ -285,7 +286,7 @@ describeProviderContract('example-browser', () => {
 - **The pages run in jsdom, scripts and all.** Inline scripts and same-origin `<script src>` run; a form submit, a link click or a script navigation loads the next page from the site; a page script's `fetch` is answered by the site; nothing reaches the network.
 - **Your real page code runs**: `goto`, locators (`getByRole`, `getByLabel`, `getByText`, `getByTestId`, `locator`, `filter`), `fill`, `click`, `selectOption`, `check`, `waitFor`, `$$eval`, `evaluate`, `waitForURL` and more, with Playwright's strictness, waits and timeouts. Anything it does not support throws "not supported by the fake browser: <name>" rather than returning nothing; the list is at the top of the file.
 - **Assert on what happened**: `visits` (every page loaded), `requests` (pages, scripts and the page's `fetch` calls, with their status), `pageErrors` and `openPages()`. Pass `openPages` to the contract suite, as above, so it checks that no call leaves a page open.
-- **Fixture mode in the app does not cover `ctx.browser`.** The Electron smoke tests serve only `ctx.http` from fixtures, so a browser provider is tested in Jest on the fake browser, and is not registered in a journey unless its pages are local ([preview in the app](adding-a-provider.md#12-preview-in-the-app)).
+- **Fixture mode in the app does not cover `ctx.browser`.** The Electron smoke tests serve only `ctx.http` from fixtures, so a browser provider is tested in Jest on the fake browser, and is not registered in a journey unless its pages are local ([preview in the app](#preview-in-the-app)).
 
 Tests of the browser runtime itself (launch failures, crashes, a locked profile, a browser that will not close) mock `playwright-core` with `tests/utils/fake-playwright.ts` instead: see `tests/unit/providers/browser-automation.test.ts`. A provider does not need it.
 
@@ -307,7 +308,34 @@ WA_STAY_BROWSER_E2E=1 npx jest tests/integration/browser-automation.smoke.test.t
 
 - **`WA_STAY_BROWSER_PATH` is for development only.** The running app also honours it, but only when it runs from source (unpackaged and not loaded from an asar archive, `src/main/app/app-source.ts`); a packaged build always detects Edge or Chrome itself. A browser started from this path runs without Chromium's sandbox (Playwright's default), so it can run as root in CI; Edge and Chrome found by detection always run sandboxed.
 
-Copy this test for your provider and point it at a local fixture site, never at the live site.
+Copy this test for your provider and point it at a local fixture site, never at the live site: `serveFakeSite(site)` (`tests/utils/fake-site.ts`) serves your `site.ts` on loopback HTTP, answering as the fake browser does.
+
+## Preview in the app
+
+The preview spec (`PREVIEW_PROVIDER`, [adding a provider](adding-a-provider.md#12-preview-in-the-app)) cannot run a browser provider: fixture mode serves `ctx.http` only, and in the app `ctx.browser` drives a real browser at whatever address the provider names. Preview it by hand instead, against the made-up site its tests use, served on your own computer. Nothing reaches the provider's site, no certificate is involved, and nothing about TLS, the proxy or name resolution changes.
+
+1. **Serve the site** (`tests/fixtures/providers/<id>/site.ts`) on loopback, in a terminal of its own:
+
+   ```bash
+   node scripts/serve-provider-site.mjs acme-parks     # http://127.0.0.1:8123; --port <n> for another port
+   ```
+
+   It answers exactly as the fake browser does (`serveFakeSite` in `tests/utils/fake-site.ts`), to this computer only, and prints each request the browser makes. Ctrl+C stops it. It serves the site's default export, or its `render…Site` function as the scaffold names it; `--export <name>` picks another.
+2. **Point the provider at it, for now.** Set `ACME_PARKS_SITE_URL` in `src/main/providers/acme-parks/index.ts` to `'http://127.0.0.1:8123'`. The browser module opens whatever address the provider gives `page.goto`, a plain `http:` loopback address included (only `ctx.http` insists on https), and Chromium treats loopback as a secure origin. The provider's links point at your copy too while it is set.
+3. **A browser to drive.**
+   - On Windows and macOS, and on Linux with Chrome or Edge installed, the app finds the installed browser and runs it with Chromium's sandbox on, as it does for a person: nothing to set.
+   - On Linux without either, download Playwright's Chromium (`npx playwright install chromium`, from Playwright's own download site; it says where it put it) and give its `chrome` executable to the app as `WA_STAY_BROWSER_PATH` in the next step. Like every `WA_STAY_BROWSER_PATH` browser it runs without Chromium's sandbox ([the real-browser smoke test](#the-real-browser-smoke-test)), so point it only at your loopback copy.
+4. **Start the app** from source, in fixture mode, with only your provider:
+
+   ```bash
+   npm run build:e2e
+   npx cross-env WA_STAY_E2E_FIXTURES_DIR=tests/e2e/fixtures/http WA_STAY_PROVIDERS=acme-parks WA_STAY_USER_DATA_DIR=tmp/preview-profile electron .
+   ```
+
+   On Linux without Chrome or Edge, add `WA_STAY_BROWSER_PATH=/path/to/chrome` after `cross-env`. Fixture mode keeps every request but the browser's off the network, and the browser visits only the address you set. Explore lists the site's places once the catalogue is read, 5 s after the window opens (a `search` catalogue is asked for the map's area: all of WA in a build without a map). A place's page, and its "Check availability" for Explore's dates, run in the real browser, the site's own scripts included. The site's terminal shows every page the browser asked for, and the app's log says `Browser launched`.
+5. **Set the address back** (to `''`, or the provider's real https address) before you run the tests or commit. The generated test fails while the address is not https, so a loopback address cannot ship by accident.
+
+A browser provider with an account still checks its sign-in through `ctx.http`, so in fixture mode that request needs a route in `tests/e2e/fixtures/http/<id>/` ([the Electron smoke tests](adding-a-provider.md#the-electron-smoke-tests)).
 
 ## The browser profile and privacy
 

@@ -355,13 +355,19 @@ function nextSteps(options, tokens, registered) {
     kind === 'api'
       ? `npm run build:e2e
      npx cross-env PREVIEW_PROVIDER=${id} playwright test preview-provider   (Linux: xvfb-run -a npx ...)`
-      : `Fixture mode serves ctx.http only, so the app would drive the installed browser against
-     the real site: keep a browser provider on the fake browser in tests, and see
-     "Preview in the app" in docs/providers/adding-a-provider.md before you try it in the app.`;
+      : `Fixture mode serves ctx.http only, so preview it by hand against its made-up site on
+     loopback: node scripts/serve-provider-site.mjs ${id}, then set ${tokens.CONST}_SITE_URL to
+     the address it prints, for the preview only ("Preview in the app" in
+     docs/providers/browser-providers.md).`;
+  // The scaffold writes `account: 'none'`; a sign-in added later is checked through ctx.http.
+  const account = `If you add a sign-in (an account other than 'none'), give its signed-in check a
+     signed-out answer in tests/e2e/fixtures/http/${id}/manifest.json, or the app's check is
+     refused and the preview fails.`;
   return `
 Next steps (CLAUDE.md, "Adding a provider", is the checklist):
   1. Read the provider's terms of use: no automated access means links only.
   2. ${fill}
+     ${account}
   3. Run its tests (the contract suite and the mapping):
      npx jest tests/integration/${id}-provider.test.ts
   4. Preview it in the app:

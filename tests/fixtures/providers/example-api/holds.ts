@@ -20,6 +20,7 @@ import {
   type HoldResult,
   type HoldsModule,
   type HttpClient,
+  type Limiter,
 } from '@main/providers/sdk';
 import type { ProviderId } from '@shared/types/provider.types';
 
@@ -40,6 +41,8 @@ const REFUSALS: Record<number, HoldFailureReason> = {
 export interface ExampleHoldsOptions {
   providerId: ProviderId;
   http: HttpClient;
+  /** The provider's limiter: a hold waits its turn with every other request. */
+  limit: Limiter;
   /** The API, for `POST /api/holds`. */
   apiUrl: string;
   /** The website, whose checkout the payment window opens. */
@@ -47,34 +50,39 @@ export interface ExampleHoldsOptions {
 }
 
 export function createExampleHolds(options: ExampleHoldsOptions): HoldsModule {
-  const { providerId, http, apiUrl, siteUrl } = options;
+  const { providerId, http, limit, apiUrl, siteUrl } = options;
   const checkout = (reference: string): string =>
     `${siteUrl}/checkout/${encodeURIComponent(reference)}`;
 
   return {
     async create({ externalId, unitId, stay }, signal): Promise<HoldResult> {
       const url = `${apiUrl}/api/holds`;
-      // An abort or a failed request rejects (the core logs it); a refusal is a result.
-      const response = await http.request('POST', url, {
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({
-          parkId: externalId,
-          // No unit: Example Parks picks a free site for the stay.
-          siteId: unitId ?? null,
-          arrival: stay.arrival,
-          departure: stay.departure,
-          guests: stay.adults + (stay.children ?? 0),
-        }),
-        signal,
+      // Through the limiter, like every request, with the answer read inside it. An abort or
+      // a failed request rejects (the core logs it); a refusal is a result.
+      const answer = await limit(async () => {
+        const response = await http.request('POST', url, {
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            parkId: externalId,
+            // No unit: Example Parks picks a free site for the stay.
+            siteId: unitId ?? null,
+            arrival: stay.arrival,
+            departure: stay.departure,
+            guests: stay.adults + (stay.children ?? 0),
+          }),
+          signal,
+        });
+        const created = response.status === 201;
+        return { status: response.status, body: created ? await response.json() : undefined };
       });
-      if (response.status !== 201) {
+      if (answer.status !== 201) {
         return {
           ok: false,
-          reason: REFUSALS[response.status] ?? 'error',
-          message: `Example Parks did not hold the site (HTTP ${response.status})`,
+          reason: REFUSALS[answer.status] ?? 'error',
+          message: `Example Parks did not hold the site (HTTP ${answer.status})`,
         };
       }
-      const parsed = RawHold.safeParse(await response.json());
+      const parsed = RawHold.safeParse(answer.body);
       if (!parsed.success) {
         throw new ProviderParseError({ providerId, url, message: 'Unexpected /api/holds answer' });
       }

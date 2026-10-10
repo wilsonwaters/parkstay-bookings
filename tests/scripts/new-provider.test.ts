@@ -134,6 +134,15 @@ describe('scripts/new-provider.mjs: generated providers work as generated', () =
       expect(stdout).toContain(`npx jest tests/integration/${variant.id}-provider.test.ts`);
       expect(stdout).toContain('npm run test:e2e');
       expect(stdout).toMatch(/CLAUDE\.md, "Adding a provider"/);
+      // A sign-in added later needs a route for its check; a browser provider is previewed by hand.
+      expect(stdout).toContain(
+        `signed-out answer in tests/e2e/fixtures/http/${variant.id}/manifest.json`
+      );
+      expect(stdout).toContain(
+        variant.kind === 'api'
+          ? `PREVIEW_PROVIDER=${variant.id}`
+          : `node scripts/serve-provider-site.mjs ${variant.id}`
+      );
     }
     // ParkStay stays first, and registered.
     expect(index).toMatch(

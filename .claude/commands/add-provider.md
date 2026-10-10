@@ -36,8 +36,8 @@ Work through every `TODO` the scaffold left, in `src/main/providers/<id>/` and i
 ### Step 5: Test and preview
 
 1. `npx jest tests/integration/<id>-provider.test.ts` until it passes.
-2. API providers: `npm run build:e2e`, then `npx cross-env PREVIEW_PROVIDER=<id> playwright test preview-provider` (`xvfb-run -a` in front on Linux without a display). Look at the screenshots in the report: the provider's places on Explore, a place page, Settings → Accounts. If it fails, the message quotes what the app logged about the provider.
-3. Browser providers: fixture mode does not serve `ctx.browser`. Follow "Preview in the app" in the guide; never point a test at the live site.
+2. API providers: `npm run build:e2e`, then `npx cross-env PREVIEW_PROVIDER=<id> playwright test preview-provider` (`xvfb-run -a` in front on Linux without a display). Look at the screenshots in the report: the provider's places on Explore, Explore with dates, a place page with its availability, Settings → Accounts. If it fails, the message quotes what the app logged about the provider, or names the request that needs a route (a provider with an account needs one for its signed-in check).
+3. Browser providers: fixture mode does not serve `ctx.browser`. Follow "Preview in the app" in `docs/providers/browser-providers.md`: serve the made-up site on loopback (`node scripts/serve-provider-site.mjs <id>`), point the address at it for the preview, and set it back afterwards. Never point the app or a test at the live site.
 
 ### Step 6: Gate
 

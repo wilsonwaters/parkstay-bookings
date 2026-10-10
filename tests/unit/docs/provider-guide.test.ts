@@ -7,6 +7,9 @@
  * - the guide's core timeouts are the code's (`DEFAULT_CATALOG_TIMINGS`, the sign-in check's
  *   `DEFAULT_ACCOUNT_TIMINGS`, the HTTP and page timeouts), and so are the search-mode limits
  *   the guides describe;
+ * - the guide's lists of location kinds (with how each reads) and stay-field types are the
+ *   types' own (`src/shared/types/provider.types.ts`), and so are the fields of a bulk
+ *   availability entry, each documented on the type too;
  * - the guide's quick start and the scaffold agree on the flags;
  * - the agents' checklist (CLAUDE.md, "Adding a provider") names the scaffold, the gate and the
  *   rules, and AGENTS.md and the `/add-provider` command point to it rather than copy it.
@@ -14,6 +17,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import ts from 'typescript';
 import { DEFAULT_ACCOUNT_TIMINGS } from '@main/core/accounts/provider-account.service';
 import {
   AREA_SEARCH_MAX_PAGES,
@@ -24,6 +28,8 @@ import {
   TEXT_SEARCH_MIN_CHARS,
 } from '@main/core/catalog/location-catalog.service';
 import { DEFAULT_PAGE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS } from '@main/providers/sdk';
+import { KIND_LABELS, unitNoun } from '@renderer/components/locationFormat';
+import { LOCATION_KINDS, StayFieldDescriptorSchema } from '@shared/types/provider.types';
 import { docFiles, readDoc, ROOT } from './markdown';
 
 const GUIDE = 'docs/providers/adding-a-provider.md';
@@ -145,6 +151,70 @@ describe('how the docs say a search-mode catalogue is searched', () => {
     ]) {
       expect([text, browserGuide.includes(text)]).toEqual([text, true]);
     }
+  });
+});
+
+/** The cells of each body row of the table in `text` whose header row starts with `header`. */
+function tableRows(text: string, header: string): string[][] {
+  const lines = text.split('\n');
+  const start = lines.findIndex((line) => line.startsWith(header));
+  if (start < 0) return [];
+  const rows: string[][] = [];
+  for (const line of lines.slice(start + 2)) {
+    if (!line.startsWith('|')) break;
+    rows.push(
+      line
+        .slice(1, -1)
+        .split('|')
+        .map((cell) => cell.trim())
+    );
+  }
+  return rows;
+}
+
+const unquote = (cell: string): string => cell.replace(/^`|`$/g, '');
+
+describe("the guide's location kinds, stay-field types and bulk availability entries", () => {
+  const guide = readDoc(GUIDE);
+
+  it('lists every location kind, in order, with how it reads and what its units are called', () => {
+    const rows = tableRows(section(guide, '### Location kinds'), '| Kind |');
+    expect(rows.map(([kind]) => unquote(kind))).toEqual([...LOCATION_KINDS]);
+    for (const [cell, label, units] of rows) {
+      const kind = unquote(cell) as (typeof LOCATION_KINDS)[number];
+      expect([kind, label, units]).toEqual([kind, KIND_LABELS[kind], unitNoun(kind).many]);
+    }
+  });
+
+  it('lists every stay-field type the manifest schema accepts', () => {
+    const rows = tableRows(section(guide, '### Stay fields'), '| `type` |');
+    expect(rows.map(([type]) => unquote(type))).toEqual(
+      StayFieldDescriptorSchema.shape.type.options
+    );
+  });
+
+  it('documents every field of BulkAvailabilityEntry, in the guide and on the type', () => {
+    const file = path.join(ROOT, 'src/shared/types/provider.types.ts');
+    const source = ts.createSourceFile(
+      file,
+      fs.readFileSync(file, 'utf8'),
+      ts.ScriptTarget.ES2022,
+      true
+    );
+    const entry = source.statements.find(
+      (node): node is ts.InterfaceDeclaration =>
+        ts.isInterfaceDeclaration(node) && node.name.text === 'BulkAvailabilityEntry'
+    );
+    expect(entry).toBeDefined();
+    const documented = (node: ts.Node): boolean =>
+      ts.getJSDocCommentsAndTags(node).some((doc) => ts.isJSDoc(doc) && Boolean(doc.comment));
+    expect(documented(entry!)).toBe(true);
+    const fields = entry!.members.map((member) => {
+      expect([member.name?.getText(), documented(member)]).toEqual([member.name?.getText(), true]);
+      return member.name!.getText();
+    });
+    const rows = tableRows(section(guide, '### Bulk availability entries'), '| Field |');
+    expect(rows.map(([field]) => unquote(field))).toEqual(fields);
   });
 });
 

@@ -24,6 +24,19 @@ A provider with no folder, or no routes, answers every request with an error.
 `npm run provider:new -- <id>` writes a sample folder for a new API provider, to replace with
 its recorded responses ([adding a provider](../../../../docs/providers/adding-a-provider.md#quick-start)).
 
+**This manifest and the Jest one differ on purpose.** The scaffold also writes
+`tests/fixtures/providers/<id>/manifest.json` for the provider's Jest tests. That one answers an
+unknown place with a 404 (`not-found.json`), which the contract suite and the mapping test ask
+for, and a `search` catalogue's name search there answers only `text=Banksia`, so a test proves
+the provider sends the text. The app never asks for that unknown place, and a person types any
+name, so the folder here has no 404 routes and its name search answers any text.
+
+**A provider with an account** (any `account` but `none`) needs a route for its signed-in check
+(the request its `isSignedIn` sends), answered as for a person who is signed out: ParkStay's is
+`profile-signed-out.json`. The app checks every account 5 s after launch and whenever Settings →
+Accounts opens; without the route the request is refused and logged, and the preview spec
+(`tests/e2e/preview-provider.spec.ts`) fails, naming it.
+
 ## Manifest
 
 ```json
@@ -75,7 +88,8 @@ test attaches that log as `unexpected-requests`, which lists exactly the routes 
   Warren), each with its images and features, and at most 3 campsites.
   `campground_availabilty_view.json` answers Explore's bulk availability (E3) for any dates, in
   ParkStay's shape (`api.py`: `total_available` is a campground's site count, `total_bookable`
-  the sites free every night, both 0 past the 180-day horizon), sized to those 3 campsites:
+  the sites free every night, both 0 past the 180-day horizon; the provider maps them the other
+  way round, to WA Stay's `bookableUnits` and `availableUnits`), sized to those 3 campsites:
   Bungarra 2 free, Lucky Bay 3, Workmans Pool 1, Kurrajong full, Temple Gorge not open, and no
   totals for the campgrounds not bookable online.
 - **ParkStay, E2 and U1**: `campsite_availablity_view_20.json` is the Jest fixture
