@@ -23,8 +23,9 @@ import {
   withWatchFilters,
   type WatchFilters as Filters,
 } from './list/listFilters';
-import { useCatalogPlaces } from './shared/WatchPhoto';
-import { providerToday, watchStateOf } from './shared/watchState';
+import { watchStateOf } from './shared/watchState';
+import { providerToday } from '../../components/stay/providerToday';
+import { useCatalogPlaces } from '../../api';
 
 const watchesLabel = (n: number) => `${n} ${n === 1 ? 'watch' : 'watches'}`;
 

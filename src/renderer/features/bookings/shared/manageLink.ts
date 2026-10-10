@@ -12,12 +12,11 @@ export interface ManageLink {
   label: string;
 }
 
-/** Only web addresses: anything else (`javascript:`, `file:`) is never offered as a link. */
+/** Only secure web addresses: `http:`, `javascript:` or `file:` is never offered as a link. */
 function webAddress(value: string | undefined): string | undefined {
   if (!value) return undefined;
   try {
-    const { protocol } = new URL(value);
-    return protocol === 'https:' || protocol === 'http:' ? value : undefined;
+    return new URL(value).protocol === 'https:' ? value : undefined;
   } catch {
     return undefined;
   }

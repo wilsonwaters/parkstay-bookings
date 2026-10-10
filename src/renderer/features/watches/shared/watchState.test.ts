@@ -1,14 +1,7 @@
 import { WatchResult } from '../../../../shared/types/common.types';
 import { FAKE_MANIFEST, PARKSTAY_MANIFEST } from '@tests/utils/renderer/manifests';
 import { makeWatch } from '@tests/fixtures/renderer/watches';
-import {
-  autoHoldLabel,
-  providerToday,
-  statusPillFor,
-  unitNameOf,
-  unitNounFor,
-  watchStateOf,
-} from './watchState';
+import { autoHoldLabel, statusPillFor, unitNameOf, unitNounFor, watchStateOf } from './watchState';
 
 const now = new Date('2099-12-01T02:00:00Z');
 const today = '2099-12-01';
@@ -47,11 +40,6 @@ describe('watchStateOf', () => {
 });
 
 describe('watch state helpers', () => {
-  it('uses the provider’s time zone for today', () => {
-    const at = new Date('2099-12-01T17:00:00Z'); // 1 am on the 2nd in Perth
-    expect(providerToday(PARKSTAY_MANIFEST, at)).toBe('2099-12-02');
-  });
-
   it('gives each state its pill', () => {
     expect(statusPillFor('active').label).toBe('Watching');
     expect(statusPillFor('paused').label).toBe('Paused');

@@ -14,7 +14,6 @@ import {
   useAnnounce,
 } from '../../components/ui';
 import { useNow } from '../../hooks/useNow';
-import { useCatalogPlaces } from '../watches/shared/WatchPhoto';
 import { AddBookingDialog } from './add/AddBookingDialog';
 import { ImportBookingDialog } from './add/ImportBookingDialog';
 import { BookingFilters } from './list/BookingFilters';
@@ -29,6 +28,7 @@ import {
 } from './list/listParams';
 import { rowsForTab, tabCounts, tripRows } from './list/tripBuckets';
 import { RemoveBookingDialog } from './shared/RemoveBookingDialog';
+import { useCatalogPlaces } from '../../api';
 
 const PAGE = 'mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-8 lg:px-8';
 const tripsLabel = (n: number) => `${n} ${n === 1 ? 'trip' : 'trips'}`;

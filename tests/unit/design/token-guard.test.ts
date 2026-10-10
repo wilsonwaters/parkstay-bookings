@@ -31,6 +31,7 @@ const SCAN_FILE_PREFIXES = [
   'components/ComingSoonBanner',
   'components/LocationCard',
   'components/LocationCombobox',
+  'components/PlacePhoto',
   'components/StepFlow',
   'components/locationFormat',
   'components/timeFormat',

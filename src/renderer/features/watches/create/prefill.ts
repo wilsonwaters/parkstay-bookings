@@ -8,7 +8,7 @@
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
 import { parseCreatePrefill } from '../../../app/routes';
 import { clampStayParams, EMPTY_STAY_PARAMS } from '../../../app/stayParams';
-import { providerToday } from '../shared/watchState';
+import { providerToday } from '../../../components/stay/providerToday';
 
 export interface WatchPrefill {
   providerId?: string;

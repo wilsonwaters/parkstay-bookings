@@ -32,7 +32,8 @@ import { fromWatch, toWatchUpdate } from '../form/watchFormMapping';
 import { watchFormSchema, type WatchFormValues } from '../form/watchFormSchema';
 import { DeleteWatchDialog } from '../shared/DeleteWatchDialog';
 import { useWatchActions } from '../shared/useWatchActions';
-import { providerToday, unitNounFor } from '../shared/watchState';
+import { unitNounFor } from '../shared/watchState';
+import { providerToday } from '../../../components/stay/providerToday';
 
 const PAGE = 'mx-auto flex w-full max-w-3xl flex-col gap-8 px-6 py-8 lg:px-8';
 

@@ -2,6 +2,7 @@ import { useId } from 'react';
 import { Link } from 'react-router-dom';
 import { Ellipsis, Trash2 } from 'lucide-react';
 import type { Booking } from '../../../../shared/types/booking.types';
+import { BookingStatus } from '../../../../shared/types/common.types';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
 import { ROUTES } from '../../../app/routes';
 import { partyLabel } from '../../../components/stay/stayFormat';
@@ -15,10 +16,9 @@ import {
   StatusPill,
   statusPresets,
 } from '../../../components/ui';
-// U1's photo-led card pattern: the place's photo from the local catalogue, never a request.
-import { WatchPhoto, type WatchPlace } from '../../watches/shared/WatchPhoto';
 import { tripDatesLabel, tripNightsLabel, unitLabel } from '../shared/bookingFormat';
 import { isHappeningNow } from './tripBuckets';
+import { PlacePhoto, type PhotoPlace } from '../../../components/PlacePhoto';
 
 export interface BookingCardProps {
   booking: Booking;
@@ -26,7 +26,7 @@ export interface BookingCardProps {
   /** Today in the provider's time zone. */
   today: string;
   /** The catalogue's record of the place, for its photo; undefined when it has none. */
-  place?: WatchPlace;
+  place?: PhotoPlace;
   /** The catalogue is still answering. */
   placeLoading?: boolean;
   /** Opens the "Remove from WA Stay" confirmation. */
@@ -58,7 +58,7 @@ export function BookingCard({
       padding="none"
       className="flex flex-col gap-3 p-3 sm:flex-row sm:gap-4"
     >
-      <WatchPhoto
+      <PlacePhoto
         name={location.name}
         place={place}
         loading={placeLoading}
@@ -76,7 +76,10 @@ export function BookingCard({
           </h2>
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
             {now && <Badge tone="sun">Happening now</Badge>}
-            <StatusPill {...statusPresets.booking[booking.status]} />
+            {/* Confirmed is the norm: only a pending or cancelled booking says so. */}
+            {booking.status !== BookingStatus.CONFIRMED && (
+              <StatusPill {...statusPresets.booking[booking.status]} />
+            )}
           </div>
         </div>
         <p className="flex min-w-0 items-center gap-2 text-sm text-fg-secondary">

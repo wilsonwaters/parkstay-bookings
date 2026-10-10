@@ -19,6 +19,7 @@ import {
 import { mockUserInput } from '@tests/fixtures/users';
 import { BookingStatus } from '@shared/types';
 import { expectAsyncThrow } from '@tests/utils/test-helpers';
+import { logger } from '@main/utils/logger';
 
 // Fixed calendar dates far from today. BookingRepository.findUpcoming/findPast compare with
 // SQLite date('now'), which Jest fake timers cannot pin, so the dates sit decades either
@@ -111,13 +112,21 @@ describe('BookingService', () => {
       expect(other.bookingReference).toBe(mockBookingInput.bookingReference);
     });
 
-    it('should throw error for duplicate booking reference', async () => {
+    it('refuses a duplicate reference with CONFLICT, logged as a warning without a stack', async () => {
       await bookingService.createBooking(testUserId, mockBookingInput);
+      const warn = jest.spyOn(logger, 'warn');
+      const error = jest.spyOn(logger, 'error');
 
-      await expectAsyncThrow(
-        () => bookingService.createBooking(testUserId, mockBookingInput),
-        'already exists'
-      );
+      await expect(
+        bookingService.createBooking(testUserId, mockBookingInput)
+      ).rejects.toMatchObject({
+        code: 'CONFLICT',
+        message: 'This booking is already in your bookings',
+      });
+      expect(warn).toHaveBeenCalledWith('Booking not created: CONFLICT');
+      expect(error).not.toHaveBeenCalled();
+      warn.mockRestore();
+      error.mockRestore();
     });
 
     it('should validate booking input', async () => {

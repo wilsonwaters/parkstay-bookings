@@ -5,12 +5,12 @@ import { kindLabel, unitCountLabel } from '../../../../components/locationFormat
 import { Card } from '../../../../components/ui';
 import { useSetWatchField } from '../../form/useSetWatchField';
 import type { WatchFormValues } from '../../form/watchFormSchema';
-import { WatchPhoto, type WatchPlace } from '../../shared/WatchPhoto';
+import { PlacePhoto, type PhotoPlace } from '../../../../components/PlacePhoto';
 
 export interface LocationStepProps {
   manifest: ProviderManifest;
   /** The chosen place as the catalogue has it, for its photo. */
-  place?: WatchPlace;
+  place?: PhotoPlace;
   placeLoading?: boolean;
 }
 
@@ -34,7 +34,7 @@ export function LocationStep({ manifest, place, placeLoading }: LocationStepProp
       />
       {location && (
         <Card padding="none" className="flex items-center gap-4 p-3">
-          <WatchPhoto
+          <PlacePhoto
             name={location.name}
             place={place}
             loading={placeLoading}

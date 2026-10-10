@@ -23,11 +23,12 @@ import { useNow } from '../../../hooks/useNow';
 import { DeleteWatchDialog } from '../shared/DeleteWatchDialog';
 import { useWatchActions } from '../shared/useWatchActions';
 import { WatchActionsBar } from '../shared/WatchActionsBar';
-import { WatchPhoto } from '../shared/WatchPhoto';
-import { providerToday, watchStateOf } from '../shared/watchState';
+import { watchStateOf } from '../shared/watchState';
 import { HoldNotice } from './HoldNotice';
 import { WatchAvailability } from './WatchAvailability';
 import { WatchSummary } from './WatchSummary';
+import { PlacePhoto } from '../../../components/PlacePhoto';
+import { providerToday } from '../../../components/stay/providerToday';
 
 const PAGE = 'mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-8 lg:px-8';
 const BACK = { label: 'Watches', href: `#${ROUTES.watches()}` };
@@ -57,7 +58,7 @@ function WatchDetailView({ watch, manifest, updating }: ViewProps) {
         title={watch.name}
         back={BACK}
         media={
-          <WatchPhoto
+          <PlacePhoto
             name={location.name}
             place={place.data}
             loading={place.isLoading}

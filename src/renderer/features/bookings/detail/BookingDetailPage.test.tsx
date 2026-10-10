@@ -51,9 +51,9 @@ describe('BookingDetailPage', () => {
     );
     expect(section('Stay')).toHaveTextContent('Check-inFri 11 Dec 2099');
     expect(section('Stay')).toHaveTextContent('Check-outSun 13 Dec 2099');
-    expect(section('Stay')).toHaveTextContent('Length2 nights');
+    expect(section('Stay')).toHaveTextContent('2 nights');
     await waitFor(() => expect(section('Unit')).toHaveTextContent('Site 12'));
-    expect(section('Unit')).toHaveTextContent('Camping withTent');
+    expect(section('Unit')).toHaveTextContent('Camping with: Tent');
     expect(section('Guests')).toHaveTextContent('2 adults');
     expect(section('Cost')).toHaveTextContent('$105.00');
     expect(section('Reference')).toHaveTextContent('PB123456');
@@ -144,6 +144,22 @@ describe('BookingDetailPage', () => {
     expect(screen.getByRole('button', { name: 'Copy reference PB123456' })).toBeInTheDocument();
   });
 
+  it('shows no hero when the catalogue has no photo of the place', async () => {
+    const get = catalogGet(makeLocationDetail({ imageUrls: [] }));
+    renderWithApp({
+      route: '/bookings/1',
+      api: {
+        providers: { list: jest.fn().mockResolvedValue(ok([PARKSTAY_MANIFEST])) },
+        catalog: { get },
+        bookings: { get: jest.fn().mockResolvedValue(ok(OSPREY)) },
+      },
+    });
+    await page();
+    await waitFor(() => expect(get).toHaveBeenCalledWith('parkstay:20'));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole('img', { name: /Osprey Bay/ })).toBeNull();
+  });
+
   it('leaves out Cost when it is unknown', async () => {
     setup(makeBooking({ id: 1 }));
     await page();
@@ -160,11 +176,10 @@ describe('BookingDetailPage', () => {
     const { catalogGetMock } = setup(makeLegacyBooking({ id: 1 }));
     await screen.findByRole('heading', { level: 1, name: 'Dales Campground' });
     expect(screen.getByText('· Karijini National Park')).toBeInTheDocument();
-    expect(
-      screen.getByRole('img', { name: 'No photo available for Dales Campground' })
-    ).toBeInTheDocument();
+    // No location id, so no photo can ever be found: no hero, rather than an empty one.
+    expect(screen.queryByRole('img', { name: /Dales Campground/ })).toBeNull();
     expect(screen.queryByRole('link', { name: /^About/ })).toBeNull();
-    expect(section('Unit')).toHaveTextContent('Site typeUnpowered');
+    expect(section('Unit')).toHaveTextContent('Site type: Unpowered');
     expect(catalogGetMock).not.toHaveBeenCalled();
   });
 

@@ -25,7 +25,7 @@ import {
   watchStayFields,
   type WatchFormValues,
 } from '../../form/watchFormSchema';
-import { WatchPhoto, type WatchPlace } from '../../shared/WatchPhoto';
+import { PlacePhoto, type PhotoPlace } from '../../../../components/PlacePhoto';
 
 export type FlowStepId = 'provider' | 'location' | 'stay' | 'alerts' | 'review';
 
@@ -34,7 +34,7 @@ export interface ReviewStepProps {
   today: string;
   noun: UnitNoun;
   /** The chosen place as the catalogue has it, for its photo. */
-  place?: WatchPlace;
+  place?: PhotoPlace;
   placeLoading?: boolean;
   onChangeStep: (step: FlowStepId) => void;
   /** Why the last attempt to create the watch failed. */
@@ -127,7 +127,7 @@ export function ReviewStep({
           onChange={() => onChangeStep('location')}
         >
           <div className="flex items-center gap-4">
-            <WatchPhoto
+            <PlacePhoto
               name={v.location?.name ?? 'The place'}
               place={place}
               loading={placeLoading}

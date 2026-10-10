@@ -19,10 +19,18 @@ export interface PageHeaderProps {
    * narrow screens. The picture sets its own size.
    */
   media?: ReactNode;
+  /**
+   * A wide picture between the back link and the title, such as a booking's place photo
+   * (Airbnb's trip page). It sets its own size. Use `media` or `hero`, not both.
+   */
+  hero?: ReactNode;
   className?: string;
 }
 
-/** The top of a page: its one `h1`, a line of description, actions and an optional back link. */
+/**
+ * The top of a page: its one `h1`, a line of description, actions, an optional back link, and
+ * optionally a picture beside the title (`media`) or above it (`hero`).
+ */
 export function PageHeader({
   title,
   description,
@@ -30,6 +38,7 @@ export function PageHeader({
   back,
   headingLevel = 1,
   media,
+  hero,
   className,
 }: PageHeaderProps) {
   const Heading = `h${headingLevel}` as const;
@@ -50,6 +59,7 @@ export function PageHeader({
           {back.label}
         </a>
       )}
+      {hero && <div className="mb-3">{hero}</div>}
       <div className="flex flex-wrap items-start justify-between gap-4">
         {media ? (
           <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:items-center">

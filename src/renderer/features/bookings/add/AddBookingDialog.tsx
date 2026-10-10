@@ -93,7 +93,16 @@ function AddBookingFlow({ onClose, bookings, onAdded }: Omit<AddBookingDialogPro
       onAdded(booking);
       return true;
     } catch (error) {
-      setSubmitError(toApiError(error).message);
+      const apiError = toApiError(error);
+      if (apiError.code !== 'CONFLICT') {
+        setSubmitError(apiError.message);
+        return false;
+      }
+      // Added meanwhile (another window, a paid hold): say so at the reference, with a link
+      // when the list already has it.
+      const stored = existingBooking(bookings, values.providerId, values.reference);
+      if (stored) setDuplicate(stored);
+      else setErrors((current) => ({ ...current, reference: apiError.message }));
       return false;
     }
   };

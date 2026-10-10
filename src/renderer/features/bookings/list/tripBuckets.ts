@@ -5,8 +5,7 @@
 import type { Booking } from '../../../../shared/types/booking.types';
 import { BookingStatus } from '../../../../shared/types/common.types';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
-// U1's rule for "today" in a provider's time zone (shared with Watches, not forked).
-import { providerToday } from '../../watches/shared/watchState';
+import { providerToday } from '../../../components/stay/providerToday';
 
 export type TripTab = 'upcoming' | 'past' | 'cancelled';
 

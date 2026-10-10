@@ -47,6 +47,7 @@ export {
   stayKey,
   useBulkAvailability,
   useCatalogAll,
+  useCatalogPlaces,
   useCatalogRefresh,
   useCatalogSearch,
   useCatalogStatus,

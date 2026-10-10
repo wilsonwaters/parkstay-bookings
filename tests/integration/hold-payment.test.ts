@@ -13,7 +13,9 @@
  * - one payment window per provider: the same hold focuses it, another is `VALIDATION`;
  * - `/success/` with the hold's `checkouthash`, showing "Your booking PB<ref> is completed",
  *   marks the snipe BOOKED (`PB` + reference, also from EXPIRED) or the watch booked, records
- *   one confirmed ParkStay booking, and emits `snipe:updated`/`watch:updated` then
+ *   one confirmed ParkStay booking (its unit by name: a site's or a class's, from the watch's
+ *   last check or the place's cached units, never ParkStay's id), and emits
+ *   `snipe:updated`/`watch:updated` then
  *   `booking:updated`; a reload changes nothing; another hold's `/success/`, DBCA's
  *   `success-error.html` at the right URL, or an error status is ignored;
  * - the window allows DBCA's hosts and ParkStay's sign-in origins, and keeps other hosts out
@@ -29,6 +31,7 @@ import { registerIpcHandlers } from '@main/ipc';
 import type { ElectronSessionHttpClient } from '@main/providers/sdk/http-electron';
 import { BookingStatus, SnipeStatus, WatchResult } from '@shared/types/common.types';
 import type { APIResponse, Booking, Notification } from '@shared/types';
+import type { LocationSummary, UnitSummary } from '@shared/types/catalog.types';
 import { createMockSiteSnipeInput } from '@tests/fixtures/site-sniper';
 import { createMockWatchInput } from '@tests/fixtures/watches';
 import type { FakeBrowserWindow } from '@tests/utils/electron-mocks';
@@ -106,19 +109,45 @@ describe('hold payment over IPC', () => {
     for (let turn = 0; turn < 5; turn++) await settle();
   }
 
-  /** A ParkStay snipe holding site 136 until `expiresAt` (a seeded row: no live hold). */
-  function heldSnipe(reference = SNIPE_HOLD, expiresAt = new Date(Date.now() + 20 * MINUTE)) {
+  /**
+   * A ParkStay snipe at Osprey Bay (34) holding `unitId` (site 136 by default) until
+   * `expiresAt` (a seeded row: no live hold).
+   */
+  function heldSnipe(
+    reference = SNIPE_HOLD,
+    expiresAt = new Date(Date.now() + 20 * MINUTE),
+    unitId = '136'
+  ) {
     const snipe = snipes().create(
       userId,
       createMockSiteSnipeInput({
         stay: { arrival: dateIn(40), departure: dateIn(42), adults: 2 },
       })
     );
-    snipes().markHeld(snipe.id, reference, expiresAt, `${SITE}/booking/`, '136');
+    snipes().markHeld(snipe.id, reference, expiresAt, `${SITE}/booking/`, unitId);
     return snipes().findById(snipe.id)!;
   }
 
-  /** A ParkStay watch whose auto-hold holds site 3 until `expiresAt`. */
+  /** Caches Osprey Bay's (34) detail in the catalogue with these units, as catalog.get does. */
+  function cacheOspreyUnits(units: UnitSummary[]) {
+    const place: LocationSummary = {
+      key: 'parkstay:34',
+      providerId: 'parkstay',
+      externalId: '34',
+      name: 'Osprey Bay',
+      kind: 'campground',
+      bookingMode: 'online',
+      lat: -22.2,
+      lng: 113.8,
+      imageUrls: [],
+      amenities: [],
+    };
+    const locations = container.repositories.locations;
+    locations.upsertMany('parkstay', [place], new Date());
+    expect(locations.setDetail('parkstay', '34', { ...place, units }, new Date())).toBe(true);
+  }
+
+  /** A ParkStay watch whose auto-hold holds site 3 ("CAMPSITE 03" in its last check). */
   function heldWatch(reference = WATCH_HOLD, expiresAt = new Date(Date.now() + 20 * MINUTE)) {
     const watch = watches().create(
       userId,
@@ -127,6 +156,16 @@ describe('hold payment over IPC', () => {
         stay: { arrival: dateIn(50), departure: dateIn(53), adults: 2 },
       })
     );
+    watches().recordRun(watch.id, {
+      result: WatchResult.FOUND,
+      found: true,
+      checkedAt: new Date(),
+      nextCheckAt: new Date(Date.now() + 60 * MINUTE),
+      availability: [
+        { unitId: '3', unitName: 'CAMPSITE 03', nights: [], fullyAvailable: true },
+        { unitId: '4', unitName: 'CAMPSITE 04', nights: [], fullyAvailable: false },
+      ],
+    });
     watches().markHeld(watch.id, {
       reference,
       expiresAt,
@@ -273,6 +312,7 @@ describe('hold payment over IPC', () => {
     });
 
     it('/success/ with the hold’s checkouthash marks it BOOKED (PB + reference), records one booking, and emits snipe:updated then booking:updated', async () => {
+      cacheOspreyUnits([{ unitId: '136', unitName: 'CAMPSITE 07' }]);
       const snipe = heldSnipe();
       await pay('snipes:open-payment', snipe.id);
       renderer.sent.length = 0;
@@ -291,7 +331,8 @@ describe('hold payment over IPC', () => {
           status: BookingStatus.CONFIRMED,
           location: { externalId: '34', name: 'Osprey Bay' },
           stay: expect.objectContaining({ arrival: dateIn(40), departure: dateIn(42) }),
-          unitIds: ['136'],
+          // The site's name, not ParkStay's global campsite id 136
+          unitIds: ['CAMPSITE 07'],
           stayParams: snipe.stayParams,
         }),
       ]);
@@ -316,6 +357,24 @@ describe('hold payment over IPC', () => {
       await confirmation(SNIPE_HOLD);
       expect(bookings()).toHaveLength(1);
       expect(sentNames()).toEqual([]);
+    });
+
+    it('a class hold records the class name; a hold nothing names records no unit', async () => {
+      cacheOspreyUnits([{ unitId: 'class:117', unitName: 'One site - select on arrival' }]);
+      const classHold = heldSnipe(SNIPE_HOLD, undefined, 'class:117');
+      await pay('snipes:open-payment', classHold.id);
+      await confirmation(SNIPE_HOLD);
+      lastWindow().close();
+
+      const unnamed = heldSnipe('2072999', undefined, '9999');
+      await pay('snipes:open-payment', unnamed.id);
+      await confirmation('2072999');
+
+      const byRef = Object.fromEntries(bookings().map((b) => [b.bookingReference, b.unitIds]));
+      expect(byRef).toEqual({
+        PB2072968: ['One site - select on arrival'],
+        PB2072999: [],
+      });
     });
 
     it('success after the hold timer expired the snipe still books it (the confirmation page indicates payment)', async () => {
@@ -465,7 +524,8 @@ describe('hold payment over IPC', () => {
           providerId: 'parkstay',
           bookingReference: 'PB2072970',
           status: BookingStatus.CONFIRMED,
-          unitIds: ['3'],
+          // Named from the watch's last check
+          unitIds: ['CAMPSITE 03'],
           stay: expect.objectContaining({ arrival: dateIn(50), departure: dateIn(53) }),
         }),
       ]);

@@ -5,6 +5,9 @@ import { unitNoun } from '../../../components/locationFormat';
 import { DateRangeField, Field, GuestsField, TextField, Textarea } from '../../../components/ui';
 import type { AddBookingErrors, AddBookingValues } from './addBookingForm';
 
+/** Two fields side by side from `sm`, one above the other when narrow. */
+const PAIR = 'grid items-start gap-6 sm:grid-cols-2';
+
 export interface BookingDetailsFieldsProps {
   manifest: ProviderManifest;
   values: AddBookingValues;
@@ -63,45 +66,50 @@ export function BookingDetailsFields({
           onChange={(event) => onChange({ areaName: event.target.value })}
         />
       </Field>
-      <DateRangeField
-        label="Dates"
-        value={{ arrival: values.arrival || undefined, departure: values.departure || undefined }}
-        onChange={(range) =>
-          onChange({ arrival: range.arrival ?? '', departure: range.departure ?? '' })
-        }
-        error={errors.dates}
-      />
-      <GuestsField
-        label="Guests"
-        value={{ adults: values.adults, children: values.children, infants: values.infants }}
-        onChange={(guests) => onChange(guests)}
-        error={errors.adults}
-      />
-      <Field
-        label={Noun}
-        optional
-        hint={`As your confirmation names it, e.g. ${Noun} 12.`}
-        error={errors.unit}
-      >
-        <TextField
-          autoComplete="off"
-          value={values.unit}
-          onChange={(event) => onChange({ unit: event.target.value })}
+      {/* Paired on wide windows: when and who, then what the confirmation says. */}
+      <div className={PAIR}>
+        <DateRangeField
+          label="Dates"
+          value={{ arrival: values.arrival || undefined, departure: values.departure || undefined }}
+          onChange={(range) =>
+            onChange({ arrival: range.arrival ?? '', departure: range.departure ?? '' })
+          }
+          error={errors.dates}
         />
-      </Field>
-      <Field
-        label="Booking reference"
-        hint={`As shown in your ${manifest.shortName} confirmation.`}
-        error={referenceError ?? errors.reference}
-        required
-      >
-        <TextField
-          autoComplete="off"
-          spellCheck={false}
-          value={values.reference}
-          onChange={(event) => onChange({ reference: event.target.value })}
+        <GuestsField
+          label="Guests"
+          value={{ adults: values.adults, children: values.children, infants: values.infants }}
+          onChange={(guests) => onChange(guests)}
+          error={errors.adults}
         />
-      </Field>
+      </div>
+      <div className={PAIR}>
+        <Field
+          label={Noun}
+          optional
+          hint={`As on your confirmation, e.g. ${Noun} 12.`}
+          error={errors.unit}
+        >
+          <TextField
+            autoComplete="off"
+            value={values.unit}
+            onChange={(event) => onChange({ unit: event.target.value })}
+          />
+        </Field>
+        <Field
+          label="Booking reference"
+          hint={`From your ${manifest.shortName} confirmation.`}
+          error={referenceError ?? errors.reference}
+          required
+        >
+          <TextField
+            autoComplete="off"
+            spellCheck={false}
+            value={values.reference}
+            onChange={(event) => onChange({ reference: event.target.value })}
+          />
+        </Field>
+      </div>
       <Field label="Total cost" optional hint={`In ${currency}.`} error={errors.totalCost}>
         <TextField
           inputMode="decimal"

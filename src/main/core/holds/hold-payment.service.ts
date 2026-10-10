@@ -23,7 +23,9 @@
  *   this hold's confirmation (ParkStay: `/success/` with the hold's own `checkouthash`, showing
  *   its booking number) indicates payment. It marks the snipe BOOKED (from HELD, or EXPIRED:
  *   the hold timer may fire while the person pays) or the watch booked, and records the
- *   confirmed booking, in one transaction. Then `snipe:updated` or `watch:updated`,
+ *   confirmed booking, in one transaction. The booking names the held unit as the person's
+ *   confirmation does (the watch's last check, else the place's cached units), never by the
+ *   provider's id; with no name found it keeps no unit. Then `snipe:updated` or `watch:updated`,
  *   `booking:updated`, and a notification. A repeat (the page reloaded) changes nothing; a
  *   write that failed is tried again on the next confirmation page.
  * - **Closed** before paying: nothing changes; payment can open again until the hold expires.
@@ -35,7 +37,11 @@ import type { EventSink } from '@shared/contracts/events';
 import type { BookingInput, SiteSnipe, Watch } from '@shared/types';
 import { SnipeStatus, WatchResult } from '@shared/types/common.types';
 import type { ProviderId } from '@shared/types/provider.types';
-import type { SiteSniperRepository, WatchRepository } from '../../database/repositories';
+import type {
+  LocationRepository,
+  SiteSniperRepository,
+  WatchRepository,
+} from '../../database/repositories';
 import type { ProviderRegistry, ProviderWith } from '../../providers/registry';
 import type { ProviderLogger } from '../../providers/sdk/context';
 import { ProviderError, toApiError } from '../../providers/sdk/errors';
@@ -71,6 +77,11 @@ export interface HoldPaymentDeps {
   transaction<T>(fn: () => T): T;
   /** A payment window of the provider closed (not on quit). */
   onWindowClosed?(providerId: ProviderId): void;
+  /**
+   * The catalogue's cached place details, to name a held unit the row's own last check does
+   * not (a snipe keeps none): the booking stores the unit's name, never a provider's id.
+   */
+  locations?: Pick<LocationRepository, 'getDetail'>;
   logger: ProviderLogger;
   clock?: () => Date;
   timings?: Partial<HoldPaymentTimings>;
@@ -336,7 +347,7 @@ export class HoldPaymentService {
       this.deps.snipes.setBooked(snipe.id, reference);
       const booking = this.deps.bookings.recordConfirmed(
         snipe.userId,
-        bookingInput(snipe, reference, snipe.holdUnitId)
+        bookingInput(snipe, reference, this.unitName(snipe, snipe.holdUnitId))
       );
       return { snipe: this.deps.snipes.findById(snipe.id)!, booking };
     });
@@ -366,7 +377,7 @@ export class HoldPaymentService {
       this.deps.watches.setBooked(watch.id);
       const booking = this.deps.bookings.recordConfirmed(
         watch.userId,
-        bookingInput(watch, reference, watch.hold?.unitId)
+        bookingInput(watch, reference, this.unitName(watch, watch.hold?.unitId))
       );
       return { watch: this.deps.watches.findById(watch.id)!, booking };
     });
@@ -378,6 +389,29 @@ export class HoldPaymentService {
     this.deps.notifications.notifyBookingConfirmed(booking).catch((error: unknown) => {
       this.log.error(`Watch ${subject.id}: booked but not notified`, error);
     });
+  }
+
+  /**
+   * What the confirmation calls the held unit ("CAMPSITE 07", a class's "One site - select on
+   * arrival"): its name in the watch's last check, else in the place's cached units. A
+   * provider's unit id (ParkStay: a global campsite id, or `class:<id>`) means nothing to the
+   * person, so with no name found the booking keeps no unit.
+   */
+  private unitName(row: SiteSnipe | Watch, unitId: string | undefined): string | undefined {
+    if (!unitId) return undefined;
+    const checked = 'lastAvailability' in row ? row.lastAvailability : undefined;
+    const fromCheck = checked?.find(
+      (unit) => unit.unitId === unitId || unit.aliases?.includes(unitId)
+    )?.unitName;
+    if (fromCheck) return fromCheck;
+    try {
+      const cached = this.deps.locations?.getDetail(row.providerId, row.location.externalId);
+      return cached?.detail.units?.find((unit) => unit.unitId === unitId)?.unitName;
+    } catch (error) {
+      // The name is a nicety; the payment is recorded without it.
+      this.log.warn(`The held unit's name could not be read (${String(error)})`);
+      return undefined;
+    }
   }
 
   /**
@@ -411,11 +445,11 @@ function paymentWindowOrigins(
   return [...new Set([...(paymentOrigins ?? own), ...signIn])];
 }
 
-/** The confirmed booking for a paid hold. */
+/** The confirmed booking for a paid hold, with the held unit by its name (or none). */
 function bookingInput(
   row: SiteSnipe | Watch,
   reference: string,
-  unitId: string | undefined
+  unitName: string | undefined
 ): BookingInput {
   const { location } = row;
   return {
@@ -427,7 +461,7 @@ function bookingInput(
       ...(location.areaName ? { areaName: location.areaName } : {}),
     },
     stay: row.stay,
-    unitIds: unitId ? [unitId] : [],
+    unitIds: unitName ? [unitName] : [],
     stayParams: row.stayParams,
   };
 }

@@ -179,6 +179,21 @@ describe('watches / snipes / bookings over IPC', () => {
     );
   });
 
+  it('a duplicate bookings.create is CONFLICT with a friendly message', async () => {
+    const input = {
+      providerId: 'parkstay',
+      bookingReference: 'PB77',
+      location: { name: 'Bungarra' },
+      stay: { arrival: '2099-11-10', departure: '2099-11-12', adults: 2 },
+    };
+    await expect(call('bookings:create', input)).resolves.toMatchObject({ success: true });
+    await expect(call('bookings:create', input)).resolves.toEqual({
+      success: false,
+      code: 'CONFLICT',
+      error: 'This booking is already in your bookings',
+    });
+  });
+
   it('the placeholder bookings:sync channels are gone', () => {
     expect(ipc.registrations.filter((c) => c.startsWith('bookings:sync'))).toEqual([]);
   });

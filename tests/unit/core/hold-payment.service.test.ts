@@ -13,13 +13,16 @@
  * - the BOOKED status and the booking are one transaction (a failed booking write leaves the
  *   snipe HELD), and a failed write is tried again when the confirmation loads again; a
  *   deleted snipe records nothing;
+ * - the booking names the held unit (the watch's last check, else the place's cached units),
+ *   never a provider's unit id; with no name it keeps no unit;
  * - closing the window calls `onWindowClosed` once; after `dispose`, pages and closes do
  *   nothing.
  */
 
 import { BookingService } from '@main/core/bookings/booking.service';
 import { HoldPaymentService } from '@main/core/holds/hold-payment.service';
-import { BookingRepository } from '@main/database/repositories';
+import { BookingRepository, LocationRepository } from '@main/database/repositories';
+import type { LocationSummary } from '@shared/types/catalog.types';
 import { toApiError } from '@main/providers/sdk/errors';
 import { SnipeStatus, WatchResult } from '@shared/types/common.types';
 import { createCoreHarness, type CoreHarness } from '@tests/utils/core-harness';
@@ -46,6 +49,7 @@ describe('HoldPaymentService', () => {
   let onWindowClosed: jest.Mock;
   let logger: ReturnType<typeof createMemoryLogger>;
   let service: HoldPaymentService;
+  let locations: LocationRepository;
 
   function setUp(provider = createFakeProvider()): void {
     h = createCoreHarness({ providers: [provider] });
@@ -61,6 +65,7 @@ describe('HoldPaymentService', () => {
     };
     onWindowClosed = jest.fn();
     logger = createMemoryLogger();
+    locations = new LocationRepository(h.db);
     service = new HoldPaymentService({
       providers: h.registry,
       snipes: h.snipeRepo,
@@ -71,6 +76,7 @@ describe('HoldPaymentService', () => {
       events: h.events,
       transaction: (fn) => h.db.transaction(fn)(),
       onWindowClosed,
+      locations,
       logger,
       timings: { accessGateWaitMs: 5_000, firstPageWaitMs: 5_000 },
     });
@@ -92,6 +98,24 @@ describe('HoldPaymentService', () => {
       'u1'
     );
     return h.snipeRepo.findById(snipe.id)!;
+  }
+
+  /** Caches the detail of `fake` location 1 (the harness's place) with these units. */
+  function cachePlaceUnits(units: { unitId: string; unitName: string }[]) {
+    const place: LocationSummary = {
+      key: 'fake:1',
+      providerId: 'fake',
+      externalId: '1',
+      name: 'Banksia Camp',
+      kind: 'campground',
+      bookingMode: 'online',
+      lat: -32,
+      lng: 116,
+      imageUrls: [],
+      amenities: [],
+    };
+    locations.upsertMany('fake', [place], new Date());
+    expect(locations.setDetail('fake', '1', { ...place, units }, new Date())).toBe(true);
   }
 
   /** The fake provider's confirmation page for `reference`: its URL and its booking number. */
@@ -231,6 +255,7 @@ describe('HoldPaymentService', () => {
   describe('the confirmation page', () => {
     it("the provider's bookedReference decides: its paid page showing the booking books the snipe as BK-FAKE-1", async () => {
       setUp();
+      cachePlaceUnits([{ unitId: 'u1', unitName: 'Site 01' }]);
       const snipe = heldSnipe();
       await service.openForSnipe(snipe.id);
       h.events.emit.mockClear();
@@ -248,7 +273,8 @@ describe('HoldPaymentService', () => {
         expect.objectContaining({
           providerId: 'fake',
           bookingReference: 'BK-FAKE-1',
-          unitIds: ['u1'],
+          // The unit's name from the place's cached units, not the provider's id `u1`
+          unitIds: ['Site 01'],
         }),
       ]);
       expect(emitted()).toEqual(['snipe:updated', 'booking:updated']);
@@ -326,6 +352,13 @@ describe('HoldPaymentService', () => {
     it('a watch hold on the fake provider books the watch', async () => {
       setUp();
       const watch = h.watchRepo.create(h.userId, h.watchInput({ autoHold: true }));
+      h.watchRepo.recordRun(watch.id, {
+        result: WatchResult.FOUND,
+        found: true,
+        checkedAt: new Date(),
+        nextCheckAt: new Date(Date.now() + 60 * MINUTE),
+        availability: [{ unitId: 'u2', unitName: 'Cabin 2', nights: [], fullyAvailable: true }],
+      });
       h.watchRepo.markHeld(watch.id, {
         reference: 'FAKE-7',
         expiresAt: new Date(Date.now() + 20 * MINUTE),
@@ -337,7 +370,8 @@ describe('HoldPaymentService', () => {
       await paid('FAKE-7');
       expect(h.watchRepo.findById(watch.id)?.lastResult).toBe(WatchResult.BOOKED);
       const [booking] = allBookings();
-      expect(booking).toMatchObject({ bookingReference: 'BK-FAKE-7', unitIds: ['u2'] });
+      // Named from the watch's last check
+      expect(booking).toMatchObject({ bookingReference: 'BK-FAKE-7', unitIds: ['Cabin 2'] });
       expect(notifications.notifyBookingConfirmed).toHaveBeenCalledWith(
         expect.objectContaining({
           id: booking.id,
@@ -347,6 +381,44 @@ describe('HoldPaymentService', () => {
           location: booking.location,
         })
       );
+    });
+  });
+
+  describe("the booking's unit", () => {
+    /** A snipe holding `unitId`, paid for: the booking it recorded. */
+    async function paySnipeHolding(unitId: string) {
+      const snipe = h.snipeRepo.create(h.userId, h.snipeInput());
+      h.snipeRepo.markHeld(
+        snipe.id,
+        'FAKE-9',
+        new Date(Date.now() + 20 * MINUTE),
+        'https://fake.example/pay/FAKE-9',
+        unitId
+      );
+      await service.openForSnipe(snipe.id);
+      await paid('FAKE-9');
+      return allBookings()[0];
+    }
+
+    it('a class hold stores the class name from the place’s cached units', async () => {
+      setUp();
+      cachePlaceUnits([{ unitId: 'class:117', unitName: 'One site - select on arrival' }]);
+      expect((await paySnipeHolding('class:117')).unitIds).toEqual([
+        'One site - select on arrival',
+      ]);
+    });
+
+    it('a site hold stores the site name, never the provider’s global id', async () => {
+      setUp();
+      cachePlaceUnits([{ unitId: '2341', unitName: 'CAMPSITE 07' }]);
+      expect((await paySnipeHolding('2341')).unitIds).toEqual(['CAMPSITE 07']);
+    });
+
+    it('stores no unit when nothing names it', async () => {
+      setUp();
+      const booking = await paySnipeHolding('2341');
+      expect(booking.bookingReference).toBe('BK-FAKE-9');
+      expect(booking.unitIds).toEqual([]);
     });
   });
 

@@ -19,13 +19,14 @@ import {
   type WatchFieldName,
   type WatchFormValues,
 } from '../form/watchFormSchema';
-import { providerToday, unitNounFor } from '../shared/watchState';
+import { unitNounFor } from '../shared/watchState';
 import { issueField } from './issueField';
 import { AlertsStep } from './steps/AlertsStep';
 import { LocationStep } from './steps/LocationStep';
 import { ProviderStep } from './steps/ProviderStep';
 import { ReviewStep, type FlowStepId } from './steps/ReviewStep';
 import { StayStep } from './steps/StayStep';
+import { providerToday } from '../../../components/stay/providerToday';
 
 const STEPS: (FlowStep & { id: FlowStepId })[] = [
   { id: 'provider', title: 'Provider' },

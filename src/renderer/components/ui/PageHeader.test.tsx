@@ -36,6 +36,21 @@ describe('PageHeader', () => {
     ).toBeTruthy();
   });
 
+  it('puts a hero picture between the back link and the title', () => {
+    render(
+      <PageHeader
+        title="Kurrajong"
+        back={{ label: 'Bookings', href: '#/bookings' }}
+        hero={<img src="https://example.org/k.jpg" alt="Kurrajong" />}
+      />
+    );
+    const photo = screen.getByRole('img', { name: 'Kurrajong' });
+    const back = screen.getByRole('link', { name: 'Bookings' });
+    const heading = screen.getByRole('heading', { level: 1, name: 'Kurrajong' });
+    expect(back.compareDocumentPosition(photo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(photo.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('has no back link unless asked', () => {
     render(<PageHeader title="Settings" />);
     expect(screen.queryByRole('link')).not.toBeInTheDocument();

@@ -28,6 +28,9 @@ function partySize(stay: StayInput): number {
   return stay.adults + (stay.children ?? 0) + (stay.infants ?? 0) + (stay.concessions ?? 0);
 }
 
+/** `CONFLICT`'s message for a reference the provider's bookings already have here. */
+export const DUPLICATE_BOOKING_MESSAGE = 'This booking is already in your bookings';
+
 const IMPORTED_STATUS: Record<ExternalBooking['status'], BookingStatus> = {
   confirmed: BookingStatus.CONFIRMED,
   pending: BookingStatus.PENDING,
@@ -87,7 +90,7 @@ export class BookingService {
         input.bookingReference
       );
       if (existing) {
-        throw new Error(`Booking with reference ${input.bookingReference} already exists`);
+        throw new AppError('CONFLICT', DUPLICATE_BOOKING_MESSAGE);
       }
 
       // Create booking
@@ -96,7 +99,12 @@ export class BookingService {
       logger.info(`Booking created: ${booking.id}`);
       return this.changed(booking);
     } catch (error) {
-      logger.error('Error creating booking:', error);
+      // An expected refusal (a duplicate) is a warning with its code, never a stack.
+      if (error instanceof AppError && error.code !== 'INTERNAL') {
+        logger.warn(`Booking not created: ${error.code}`);
+      } else {
+        logger.error('Error creating booking:', error);
+      }
       throw error;
     }
   }

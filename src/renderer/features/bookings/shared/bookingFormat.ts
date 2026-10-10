@@ -54,14 +54,17 @@ export function formatCost(amount: number, currency: string | undefined): string
   }
 }
 
-/** A provider's internal unit id (`class:12`), which means nothing to a person. */
-const INTERNAL_ID = /^[a-z][\w-]*:/i;
+/**
+ * ParkStay's class unit id (`class:117`), which bookings recorded from a paid hold kept before
+ * they stored the unit's name. It means nothing to a person.
+ */
+const CLASS_UNIT_ID = /^class:\d+$/;
 
 /**
  * The booked units as a person reads them. A booking keeps what its confirmation calls the
- * unit (the type's "site number"): "Site 12" for a bare number, the text as entered otherwise.
- * A provider-internal id (`class:12`) is named from the place's units when the detail page
- * has them, and left out when it cannot be named. Undefined when nothing is left to show.
+ * unit: "Site 12" for a bare number, the text as stored otherwise ("CAMPSITE 07", "Site: 12").
+ * An older paid hold's class id is named from the place's units when the detail page has
+ * them, and left out when it cannot be. Undefined when nothing is left to show.
  */
 export function unitLabel(
   booking: Pick<Booking, 'unitIds'>,
@@ -71,7 +74,7 @@ export function unitLabel(
   const noun = unitNoun(manifest?.locationKinds[0]).one;
   const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
   const names = booking.unitIds.flatMap((id) => {
-    if (INTERNAL_ID.test(id)) {
+    if (CLASS_UNIT_ID.test(id)) {
       const known = units?.find((unit) => unit.unitId === id)?.unitName;
       return known ? [known] : [];
     }

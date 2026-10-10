@@ -301,6 +301,7 @@ export function createContainer({
     transaction: (fn) => db.transaction(fn)(),
     // The person may have signed in on the payment page: check the account once
     onWindowClosed: (providerId) => void accounts.recheck(providerId),
+    locations: repositories.locations,
     logger,
   });
   const gmailService = new GmailOTPService(new OAuth2Handler({ vault, filePath: gmailStorePath }));

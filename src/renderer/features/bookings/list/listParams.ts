@@ -60,7 +60,7 @@ export function matchesSearch(booking: Booking, q: string): boolean {
 
 /**
  * "All", then every registered provider (adding a booking by hand needs no capability), then
- * any other provider a booking belongs to (one no longer installed). U1's visibility rule:
+ * any other provider a booking belongs to (one no longer installed: "Other provider (id)"). U1's visibility rule:
  * shown once the providers are known, even when there is only one (§12.9).
  */
 export function providerFilterOptions(
@@ -76,7 +76,7 @@ export function providerFilterOptions(
   for (const booking of bookings) {
     if (seen.has(booking.providerId)) continue;
     seen.add(booking.providerId);
-    options.push({ value: booking.providerId, label: `Unknown provider (${booking.providerId})` });
+    options.push({ value: booking.providerId, label: `Other provider (${booking.providerId})` });
   }
   return options;
 }

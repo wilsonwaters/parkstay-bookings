@@ -12,6 +12,7 @@ import type { Booking } from '../../../../shared/types/booking.types';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
 import { ROUTES } from '../../../app/routes';
 import { ExternalLink } from '../../../components/ExternalLink';
+import { photoUrl } from '../../../components/LocationCard';
 import {
   Badge,
   Button,
@@ -27,11 +28,11 @@ import {
   statusPresets,
 } from '../../../components/ui';
 import { useNow } from '../../../hooks/useNow';
-import { WatchPhoto } from '../../watches/shared/WatchPhoto';
 import { isHappeningNow, tripRows } from '../list/tripBuckets';
 import { manageLinkFor } from '../shared/manageLink';
 import { RemoveBookingDialog } from '../shared/RemoveBookingDialog';
 import { BookingFacts } from './BookingFacts';
+import { PlacePhoto } from '../../../components/PlacePhoto';
 
 const PAGE = 'mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-8 lg:px-8';
 const BACK = { label: 'Bookings', href: `#${ROUTES.bookings()}` };
@@ -50,7 +51,8 @@ function BookingDetailView({ booking, manifest, updating }: ViewProps) {
   const { location } = booking;
   const today = tripRows([booking], manifest ? [manifest] : [], now)[0].today;
   const manage = manageLinkFor(booking, manifest);
-  // The place from the catalogue (main's 6-hour detail cache): its photo and unit names.
+  // The place from the catalogue (main's 6-hour detail cache): its photo, and the names of
+  // its class units. A booking with no location key (a v1 row) has no photo to show.
   const place = useLocationDetail(booking.locationKey ?? null);
 
   return (
@@ -58,13 +60,17 @@ function BookingDetailView({ booking, manifest, updating }: ViewProps) {
       <PageHeader
         title={location.name}
         back={BACK}
-        media={
-          <WatchPhoto
-            name={location.name}
-            place={place.data}
-            loading={Boolean(booking.locationKey) && place.isLoading}
-            className="aspect-[16/9] w-full rounded-lg sm:aspect-[4/3] sm:w-44"
-          />
+        hero={
+          // While the catalogue answers, and when it has a photo: never an empty banner.
+          booking.locationKey &&
+          (place.isLoading || photoUrl(place.data?.imageUrls ?? [])) && (
+            <PlacePhoto
+              name={location.name}
+              place={place.data}
+              loading={place.isLoading}
+              className="aspect-[16/9] w-full rounded-xl sm:aspect-[5/2]"
+            />
+          )
         }
         description={
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1.5">

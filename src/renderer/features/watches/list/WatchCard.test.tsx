@@ -4,8 +4,9 @@ import type { Watch, WatchExecutionResult } from '../../../../shared/types/watch
 import { PARKSTAY_MANIFEST, fail, ok } from '@tests/utils/renderer/createMockApi';
 import { makeUnit, makeWatch } from '@tests/fixtures/renderer/watches';
 import { renderWithProviders } from '@tests/utils/renderer/renderWithProviders';
-import { providerToday, watchStateOf } from '../shared/watchState';
+import { watchStateOf } from '../shared/watchState';
 import { WatchCard, type WatchCardProps } from './WatchCard';
+import { providerToday } from '../../../components/stay/providerToday';
 
 const NOW = new Date();
 const NIGHTS = ['2099-12-11', '2099-12-12'];

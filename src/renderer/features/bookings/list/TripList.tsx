@@ -1,8 +1,8 @@
 import type { Booking } from '../../../../shared/types/booking.types';
 import { Button, EmptyState } from '../../../components/ui';
-import type { WatchPlace } from '../../watches/shared/WatchPhoto';
 import { BookingCard } from './BookingCard';
 import type { TripRow, TripTab } from './tripBuckets';
+import type { PhotoPlace } from '../../../components/PlacePhoto';
 
 export interface TripListProps {
   tab: TripTab;
@@ -11,7 +11,7 @@ export interface TripListProps {
   /** The trimmed search text ('' for none). */
   query: string;
   /** The local catalogue's places by location key, for the photos. */
-  places: { byKey: Map<string, WatchPlace>; loading: boolean };
+  places: { byKey: Map<string, PhotoPlace>; loading: boolean };
   onClearSearch: () => void;
   onRemove: (booking: Booking) => void;
 }

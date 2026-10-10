@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { screen, waitFor, within } from '@testing-library/react';
 import type { Booking, BookingInput } from '../../../../shared/types/booking.types';
-import { FAKE_MANIFEST, PARKSTAY_MANIFEST, ok } from '@tests/utils/renderer/createMockApi';
+import { FAKE_MANIFEST, PARKSTAY_MANIFEST, fail, ok } from '@tests/utils/renderer/createMockApi';
 import { freezeDateAt, makeBooking } from '@tests/fixtures/renderer/bookings';
 import { makeLocation } from '@tests/fixtures/renderer/watches';
 import { renderWithProviders } from '@tests/utils/renderer/renderWithProviders';
@@ -31,11 +31,17 @@ function Harness({ bookings, onAdded }: { bookings: Booking[]; onAdded: jest.Moc
   );
 }
 
-function setup({ manifests = [PARKSTAY_MANIFEST], bookings = [] as Booking[] } = {}) {
+function setup({
+  manifests = [PARKSTAY_MANIFEST],
+  bookings = [] as Booking[],
+  conflict = false,
+} = {}) {
   const create = jest.fn((input: BookingInput) =>
-    Promise.resolve(
-      ok(makeBooking({ id: 30, ...input, stay: { ...makeBooking().stay, ...input.stay } }))
-    )
+    conflict
+      ? Promise.resolve(fail('This booking is already in your bookings', 'CONFLICT'))
+      : Promise.resolve(
+          ok(makeBooking({ id: 30, ...input, stay: { ...makeBooking().stay, ...input.stay } }))
+        )
   );
   const onAdded = jest.fn();
   const result = renderWithProviders(<Harness bookings={bookings} onAdded={onAdded} />, {
@@ -149,6 +155,28 @@ describe('AddBookingDialog', () => {
     expect(input.stay.departure).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     await waitFor(() => expect(onAdded).toHaveBeenCalledWith(expect.objectContaining({ id: 30 })));
     expect(screen.queryByRole('dialog', { name: 'Add booking' })).toBeNull();
+  });
+
+  it('shows main’s CONFLICT at the reference when the booking was added meanwhile', async () => {
+    const { user, create } = setup({ manifests: [NO_CATALOG], conflict: true });
+    await open(user);
+    await waitFor(() =>
+      expect(screen.getByRole('radio', { name: 'Fake Stay Holidays' })).toBeChecked()
+    );
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.type(await screen.findByRole('textbox', { name: 'Location' }), 'Lucky Bay');
+    await pickTwoNights(user);
+    await user.type(screen.getByRole('textbox', { name: 'Booking reference' }), 'lb-1');
+    await user.click(screen.getByRole('button', { name: 'Add booking' }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const reference = screen.getByRole('textbox', { name: 'Booking reference' });
+    expect(reference).toHaveAccessibleDescription(
+      expect.stringContaining('This booking is already in your bookings')
+    );
+    expect(reference).toHaveFocus();
+    expect(screen.queryByText("The booking couldn't be added")).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Add booking' })).toBeInTheDocument();
   });
 
   it('says a reference is already in your bookings, with a link to it', async () => {

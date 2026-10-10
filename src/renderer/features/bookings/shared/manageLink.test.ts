@@ -30,5 +30,12 @@ describe('manageLinkFor', () => {
     expect(manageLinkFor({ manageUrl: 'file:///C:/x' }, PARKSTAY_MANIFEST)?.href).toBe(
       'https://parkstay.dbca.wa.gov.au'
     );
+    // https only: a plain-http address falls back to the website, or to nothing.
+    expect(manageLinkFor({ manageUrl: 'http://parkstay.example/b' }, PARKSTAY_MANIFEST)?.href).toBe(
+      'https://parkstay.dbca.wa.gov.au'
+    );
+    expect(
+      manageLinkFor({}, { ...PARKSTAY_MANIFEST, website: 'http://parkstay.example' })
+    ).toBeNull();
   });
 });

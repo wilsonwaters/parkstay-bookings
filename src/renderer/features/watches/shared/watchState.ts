@@ -5,18 +5,11 @@
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
 import { WatchResult } from '../../../../shared/types/common.types';
 import type { Watch } from '../../../../shared/types/watch.types';
-import { todayIn } from '../../../../shared/utils/calendar-date';
 import { unitNoun } from '../../../components/locationFormat';
 import type { UnitNoun } from '../../../components/stay/UnitPicker';
 import { statusPresets, type StatusPreset } from '../../../components/ui';
 
 export type WatchState = 'active' | 'paused' | 'ended' | 'held' | 'hold-expired' | 'booked';
-
-/** "Today" where the provider is (its manifest's zone), else on this computer. */
-export function providerToday(manifest: ProviderManifest | undefined, now: Date): string {
-  const zone = manifest?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return todayIn(zone, now);
-}
 
 /**
  * - booked: its hold was paid for;

@@ -3,13 +3,14 @@ import { ApiError } from '../api';
 
 /**
  * Failures that come out the same however often they are retried: a rejected payload, a
- * provider without the capability, a missing record, a feature this build does not have yet,
- * or no `window.api` at all.
+ * provider without the capability, a missing or already existing record, a feature this build
+ * does not have yet, or no `window.api` at all.
  */
 const NO_RETRY_CODES = new Set([
   'VALIDATION',
   'CAPABILITY',
   'NOT_FOUND',
+  'CONFLICT',
   'NOT_IMPLEMENTED',
   'API_UNAVAILABLE',
   // Asking again at once is what a rate limit asks us not to do.

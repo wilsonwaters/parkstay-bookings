@@ -14,6 +14,7 @@ import {
   type CatalogSearchResult,
   type CatalogStatus,
   type LocationDetail,
+  type LocationSummary,
 } from '../../shared/types/catalog.types';
 import type {
   BulkAvailabilityEntry,
@@ -93,6 +94,26 @@ export function useCatalogSearch(query: CatalogQuery, options: { enabled?: boole
 /** The whole catalogue, unfiltered: what the filter options and "Where" suggestions come from. */
 export function useCatalogAll(options: { enabled?: boolean } = {}) {
   return useCatalogSearch({}, options);
+}
+
+/**
+ * Every catalogued place by key, for a list's photos (watches, snipes, bookings): one
+ * `catalog.search` answered by main from its local catalogue (the unfiltered search Explore
+ * caches too), never a request per row, refreshed when a provider's catalogue syncs. A place
+ * of a provider without a catalogue is simply absent.
+ */
+export function useCatalogPlaces(enabled: boolean): {
+  byKey: Map<string, LocationSummary>;
+  loading: boolean;
+} {
+  // A first sync (a new profile) can finish after the list opened: the photos follow it.
+  useCatalogUpdates();
+  const all = useCatalogAll({ enabled });
+  const byKey = useMemo(
+    () => new Map((all.data?.items ?? []).map((place) => [place.key, place])),
+    [all.data]
+  );
+  return { byKey, loading: all.isLoading };
 }
 
 /**

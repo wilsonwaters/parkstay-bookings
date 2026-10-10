@@ -31,7 +31,7 @@ function renderCard(booking = OSPREY, place?: { imageUrls: string[] }) {
 }
 
 describe('BookingCard', () => {
-  it('shows the provider, the place, the dates, the party, the unit, the reference and status', async () => {
+  it('shows the provider, the place, the dates, the party, the unit and the reference', async () => {
     renderCard(OSPREY, { imageUrls: [PHOTO] });
     const card = screen.getByRole('article', { name: 'Osprey Bay' });
     expect(await within(card).findByRole('img', { name: 'ParkStay WA' })).toBeInTheDocument();
@@ -44,7 +44,8 @@ describe('BookingCard', () => {
       within(card).getByText('Sat 12 – Mon 14 Dec · 2 nights · 2 adults, 1 child')
     ).toBeVisible();
     expect(card).toHaveTextContent('Site 12 · Ref PB123456');
-    expect(within(card).getByText('Confirmed')).toBeInTheDocument();
+    // Confirmed is the norm and goes unsaid; a trip under way says so.
+    expect(within(card).queryByText('Confirmed')).toBeNull();
     expect(within(card).getByText('Happening now')).toBeInTheDocument();
     expect(within(card).getByRole('img', { name: 'Osprey Bay' })).toHaveAttribute('src', PHOTO);
   });

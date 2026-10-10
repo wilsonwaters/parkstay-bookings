@@ -6,6 +6,7 @@
  * - FORBIDDEN: the sender is not the app's own top-level renderer frame.
  * - NO_PROFILE: there is no local profile row to act for.
  * - NOT_FOUND: the record the request names does not exist.
+ * - CONFLICT: the record already exists (a booking reference already stored for that provider).
  * - INTERNAL: anything else; `error` carries the thrown message.
  *
  * Provider errors (`main/providers/sdk/errors.ts` `toApiError`):
@@ -22,6 +23,8 @@ export type ApiErrorCode =
   | 'FORBIDDEN'
   | 'NO_PROFILE'
   | 'NOT_FOUND'
+  /** The record already exists, e.g. a booking with that provider's reference. */
+  | 'CONFLICT'
   | 'INTERNAL'
   | 'CAPABILITY'
   | 'UNKNOWN_PROVIDER'

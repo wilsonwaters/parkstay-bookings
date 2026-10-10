@@ -11,7 +11,7 @@ import { resultSummary } from '../shared/resultSummary';
 import { useWatchActions } from '../shared/useWatchActions';
 import { WatchActionsBar } from '../shared/WatchActionsBar';
 import { statusPillFor, unitNameOf, unitNounFor, type WatchState } from '../shared/watchState';
-import { WatchPhoto, type WatchPlace } from '../shared/WatchPhoto';
+import { PlacePhoto, type PhotoPlace } from '../../../components/PlacePhoto';
 
 export interface WatchCardProps {
   watch: Watch;
@@ -20,7 +20,7 @@ export interface WatchCardProps {
   now: Date;
   today: string;
   /** The catalogue's record of the place, for its photo; undefined when it has none. */
-  place?: WatchPlace;
+  place?: PhotoPlace;
   /** The catalogue is still answering. */
   placeLoading?: boolean;
 }
@@ -97,7 +97,7 @@ export function WatchCard({
       padding="none"
       className="flex flex-col gap-3 p-3 sm:flex-row sm:gap-4"
     >
-      <WatchPhoto
+      <PlacePhoto
         name={location.name}
         place={place}
         loading={placeLoading}

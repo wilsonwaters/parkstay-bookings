@@ -57,6 +57,11 @@ describe('units', () => {
       'Cabin 4, lakeside'
     );
     expect(unitLabel(makeBooking({ unitIds: [] }), PARKSTAY_MANIFEST)).toBeUndefined();
+    // Text that merely contains a colon is the person's, and shows as typed.
+    expect(unitLabel(makeBooking({ unitIds: ['Site: 12'] }), FAKE_MANIFEST)).toBe('Site: 12');
+    expect(unitLabel(makeBooking({ unitIds: ['CAMPSITE 07'] }), PARKSTAY_MANIFEST)).toBe(
+      'CAMPSITE 07'
+    );
   });
 
   it('names internal ids from the place’s units, never renaming a site number', () => {
