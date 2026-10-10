@@ -138,13 +138,15 @@ tests/
 │   ├── docs/                # The docs: links, the provider guide's examples, ParkStay endpoints
 │   └── …                    # app, ipc, security, scheduler, renderer guards, brand, design
 ├── integration/             # Integration tests (main project)
-├── scripts/                 # Tests for Node scripts in scripts/ (main project)
+├── scripts/                 # Tests for Node scripts in scripts/ (main project), new-provider.test.ts
+│                            # generates each kind of provider into a temp copy of the project
 ├── e2e/                     # Electron smoke tests on the built app (Playwright _electron, not Jest)
 ├── docs/                    # The documentation screenshots (npm run docs:screenshots, not Jest)
 ├── electron/                # Live tests that run inside Electron (npm run test:electron, not Jest)
 ├── manual/                  # Scripts run by hand against live services (not Jest)
 ├── fixtures/                # Test data (users, bookings, watches, site-sniper), parkstay/ (trimmed
-│                            # live samples), providers/ (the provider guide's examples), db/ (schema dumps)
+│                            # live samples), providers/ (the provider guide's examples, and each provider's
+│                            # recorded responses or made-up site), db/ (schema dumps)
 ├── setup/
 │   ├── main.ts              # setupFiles for the main project
 │   └── renderer.ts          # setupFilesAfterEnv for the renderer project
@@ -266,6 +268,13 @@ npx playwright show-report        # the HTML report of the last run
   (space-separated switches, e.g. `--proxy-server=host:port`). It checks that resizing the
   window leaves the results and `map=` alone, and that a zoom button still counts as a move.
   Without `E2E_MAP` it is skipped.
+- **A provider preview (opt-in).** `preview-provider.spec.ts` launches the app with only the
+  provider `PREVIEW_PROVIDER` names (`npx cross-env PREVIEW_PROVIDER=<id> playwright test
+  preview-provider`), checks that Explore lists its places, opens one and visits Settings →
+  Accounts, and attaches a screenshot of each; when Explore shows none, the failure quotes what
+  the app logged about the provider
+  ([preview in the app](../docs/providers/adding-a-provider.md#12-preview-in-the-app)). Without
+  `PREVIEW_PROVIDER` it is skipped.
 
 ### What every launch gets (`support/wa-stay.ts`)
 

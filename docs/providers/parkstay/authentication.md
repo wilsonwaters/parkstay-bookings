@@ -1,11 +1,11 @@
 # ParkStay sign-in
 
-How WA Stay signs a person in to ParkStay, as built in V6 (#24): an in-app window on
-ParkStay's own pages. WA Stay never sees or stores a ParkStay password or code.
+How WA Stay signs a person in to ParkStay: an in-app window on ParkStay's own pages (a
+`browser-session` sign-in). WA Stay never sees or stores a ParkStay password or code.
 
 ## The account is optional
 
-ParkStay's manifest declares `capabilities.account: 'optional'` (architecture-notes §12.32):
+ParkStay's manifest declares `capabilities.account: 'optional'`:
 
 - DBCA's `create_booking` needs no sign-in (`api.py:2938-2947`), so Site Sniper and a watch's
   automatic hold work signed out.

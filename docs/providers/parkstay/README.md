@@ -53,7 +53,7 @@ and the registry ([provider guide](../adding-a-provider.md)).
 ## Data and images
 
 Campground data and photos are fetched live from ParkStay's public endpoints and image URLs
-at runtime, and never redistributed (brief O8). The catalogue is cached in the local database
+at runtime, and never redistributed. The catalogue is cached in the local database
 (`locations`) and synced at most once a day; a location's detail is cached for 6 hours.
 Provider HTML (`long_description`) is sanitised in the main process before it reaches the
 window, and links in it open in the system browser.
@@ -81,5 +81,5 @@ WA Stay follows DBCA's booking terms, and so must its users:
   still against the loopback server.
 - The Electron smoke tests (`tests/e2e`) use recorded responses in `tests/e2e/fixtures/http/parkstay/`.
 
-No test or agent run ever places a real hold, booking or payment on ParkStay (architecture-notes
-§12.33); live checks are anonymous, read-only and a handful of requests.
+No test or agent run ever places a real hold, booking or payment on ParkStay; live checks
+are anonymous, read-only and a handful of requests.

@@ -4,7 +4,7 @@
  * the root configs.
  *
  * TypeScript and React code gets the recommended rules of ESLint, typescript-eslint, React and
- * React Hooks; the Node scripts (CommonJS) get ESLint's. Prettier owns formatting
+ * React Hooks; the Node scripts (CommonJS, and ES modules as `.mjs`) get ESLint's. Prettier owns formatting
  * (eslint-config-prettier, last). The main process and the preload log through Winston only.
  *
  * eslint-plugin-react 7.37.5, its latest release, declares ESLint 9 at most as its peer;
@@ -96,6 +96,19 @@ module.exports = defineConfig([
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'commonjs',
+      globals: globals.node,
+    },
+    rules: {
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    // Node scripts written as ES modules (`scripts/new-provider.mjs`).
+    files: ['**/*.mjs'],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      ecmaVersion: 2024,
+      sourceType: 'module',
       globals: globals.node,
     },
     rules: {

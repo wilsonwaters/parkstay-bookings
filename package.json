@@ -54,6 +54,7 @@
     "test:e2e:debug": "playwright test --debug",
     "smoke:packaged": "node scripts/packaged-smoke.js",
     "docs:screenshots": "node scripts/docs-screenshots.js",
+    "provider:new": "node scripts/new-provider.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,md,json}\" \"tests/**/*.{ts,tsx}\" \"scripts/**/*.{js,mjs}\"",

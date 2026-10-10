@@ -35,8 +35,10 @@ ones with no API, but none is planned in this release.
 
 ## Guides
 
-- [Adding a provider](adding-a-provider.md): from an empty folder to a registered, tested
-  provider, with an API example and a browser example that compile.
+- [Adding a provider](adding-a-provider.md): the quick start (`npm run provider:new -- <id>`
+  generates a working provider; fill it in, test it, preview it in the app), then the
+  reference, with an API example (holds and sign-in included) and a browser example that
+  compile. AI agents follow the checklist in [CLAUDE.md](../../CLAUDE.md#adding-a-provider).
 - [Browser providers](browser-providers.md): providers with no API, read through Playwright.
 - [ParkStay WA](parkstay/README.md): the reference provider, its [endpoints](parkstay/endpoints.md)
   and its [sign-in](parkstay/authentication.md).

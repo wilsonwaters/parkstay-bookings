@@ -5,8 +5,11 @@
  * (`tests/fixtures/providers/example-{api,browser}`) are real providers: they compile under the
  * main process's tsconfig, register in a fresh `ProviderRegistry`, pass the provider contract
  * suite, list normalised `LocationSummary`s and answer availability as `NightStatus`es with
- * `YYYY-MM-DD` dates. The API example runs on `NodeHttpClient` against a loopback server; the
- * browser example on the fake browser (`tests/utils/fake-browser.ts`) over the example site.
+ * `YYYY-MM-DD` dates. The API example answers from the recorded responses its `manifest.json`
+ * lists (a FixtureHttpClient: nothing is sent), and from loopback servers where a test needs
+ * answers of its own; its holds and its sign-in are tested here too. The browser example runs
+ * on the fake browser (`tests/utils/fake-browser.ts`) over the example site, whose search form
+ * script runs.
  *
  * The regions marked `// #region docs:<name>` are code blocks of the guide
  * (`tests/unit/docs/docs-sync.test.ts`).
@@ -15,11 +18,24 @@
 import fs from 'fs';
 import http from 'http';
 import type { AddressInfo } from 'net';
+import os from 'os';
 import path from 'path';
 import ts from 'typescript';
-import { isAbortError, ProviderHttpError, ProviderParseError } from '@main/providers/sdk';
+import {
+  isAbortError,
+  NodeHttpClient,
+  ProviderHttpError,
+  ProviderParseError,
+  type HoldsModule,
+  type PaymentPage,
+} from '@main/providers/sdk';
 import { ProviderRegistry, type ProviderWith } from '@main/providers/registry';
-import { isCalendarDate, type StayQuery } from '@shared/types/provider.types';
+import { FixtureHttpClient } from '@main/testing/fixture-http-client';
+import {
+  isCalendarDate,
+  type ProviderManifest,
+  type StayQuery,
+} from '@shared/types/provider.types';
 import { createFakeBrowser } from '@tests/utils/fake-browser';
 import { createTestProviderContext } from '@tests/utils/fake-provider';
 import { describeProviderContract } from '@tests/utils/provider-contract';
@@ -28,6 +44,8 @@ import {
   exampleApiFactory,
   exampleApiManifest,
 } from '@tests/fixtures/providers/example-api';
+import { createExampleAuth } from '@tests/fixtures/providers/example-api/auth';
+import { createExampleHolds } from '@tests/fixtures/providers/example-api/holds';
 import {
   createExampleBrowserFactory,
   exampleBrowserFactory,
@@ -38,35 +56,34 @@ import { renderExampleSite } from '@tests/fixtures/providers/example-browser/sit
 const ROOT = path.resolve(__dirname, '../../..');
 const API_FIXTURES = path.join(ROOT, 'tests/fixtures/providers/example-api/fixtures');
 const STAY: StayQuery = { arrival: '2026-11-10', departure: '2026-11-12', adults: 2 };
+const SITE = 'https://www.example-parks.test';
+/** Where a FixtureHttpClient logs a request no route answers (it fails, and is never sent). */
+const UNEXPECTED_LOG = path.join(os.tmpdir(), `example-api-unexpected-${process.pid}.log`);
 
-// ---------------------------------------------------------------------------------------
-// The API example's loopback server
-// ---------------------------------------------------------------------------------------
+afterAll(() => fs.rmSync(UNEXPECTED_LOG, { force: true }));
 
-interface FixtureServer {
-  baseUrl: string;
-  /** Path and query of every request, in order. */
-  requests: string[];
-  close(): Promise<void>;
+// #region docs:test-fixtures
+/**
+ * A test context (in-memory state, a fake vault, a fixed clock) whose HTTP answers from the
+ * recorded responses `tests/fixtures/providers/<id>/manifest.json` lists, by method and path.
+ * The host is not compared, and a request no route answers fails without being sent.
+ */
+function fixtureContext(manifest: ProviderManifest) {
+  return createTestProviderContext(manifest, {
+    http: new FixtureHttpClient({
+      providerId: manifest.id,
+      fixturesDir: path.join(ROOT, 'tests/fixtures/providers'),
+      logFile: UNEXPECTED_LOG,
+    }),
+  });
 }
-
-/** The fixture file for a request path, or undefined (a 404). */
-function fixtureFor(pathname: string): string | undefined {
-  const routes: Array<[RegExp, (m: RegExpExecArray) => string]> = [
-    [/^\/api\/parks$/, () => 'parks.json'],
-    [/^\/api\/parks\/(\w+)$/, (m) => `park-${m[1]}.json`],
-    [/^\/api\/parks\/(\w+)\/availability$/, (m) => `availability-${m[1]}.json`],
-    [/^\/api\/availability$/, () => 'bulk.json'],
-  ];
-  for (const [pattern, file] of routes) {
-    const match = pattern.exec(pathname);
-    if (match && fs.existsSync(path.join(API_FIXTURES, file(match)))) return file(match);
-  }
-  return undefined;
-}
+// #endregion
 
 /** A loopback HTTP server running `handler`. */
-async function serve(handler: http.RequestListener): Promise<Omit<FixtureServer, 'requests'>> {
+async function serve(handler: http.RequestListener): Promise<{
+  baseUrl: string;
+  close(): Promise<void>;
+}> {
   const server = http.createServer(handler);
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
@@ -76,17 +93,9 @@ async function serve(handler: http.RequestListener): Promise<Omit<FixtureServer,
   };
 }
 
-/** Serves the API example's fixtures: `/api/parks`, `/api/parks/<id>`, its availability, bulk. */
-async function startFixtureServer(): Promise<FixtureServer> {
-  const requests: string[] = [];
-  const server = await serve((request, response) => {
-    const url = new URL(request.url ?? '/', 'http://127.0.0.1');
-    requests.push(`${url.pathname}${url.search}`);
-    const file = fixtureFor(url.pathname);
-    response.writeHead(file ? 200 : 404, { 'Content-Type': 'application/json' });
-    response.end(file ? fs.readFileSync(path.join(API_FIXTURES, file)) : '{"error":"not found"}');
-  });
-  return { ...server, requests };
+/** A payment window page, as `bookedReference` sees it. */
+function paymentPage(url: string, text: string): PaymentPage {
+  return { url, hasText: async (wanted) => text.includes(wanted) };
 }
 
 // ---------------------------------------------------------------------------------------
@@ -94,12 +103,15 @@ async function startFixtureServer(): Promise<FixtureServer> {
 // ---------------------------------------------------------------------------------------
 
 describe('the guide examples compile under the main tsconfig', () => {
-  it('has no type errors in either example provider', () => {
+  it('has no type errors in either example provider, its holds or its sign-in', () => {
     const tsconfig = ts.readConfigFile(path.join(ROOT, 'tsconfig.json'), ts.sys.readFile);
     const { options } = ts.parseJsonConfigFileContent(tsconfig.config, ts.sys, ROOT);
-    const files = ['example-api/index.ts', 'example-browser/index.ts'].map((file) =>
-      path.join(ROOT, 'tests/fixtures/providers', file)
-    );
+    const files = [
+      'example-api/index.ts',
+      'example-api/holds.ts',
+      'example-api/auth.ts',
+      'example-browser/index.ts',
+    ].map((file) => path.join(ROOT, 'tests/fixtures/providers', file));
     const program = ts.createProgram(files, { ...options, noEmit: true, types: ['node'] });
     const errors = ts
       .getPreEmitDiagnostics(program)
@@ -113,22 +125,18 @@ describe('the guide examples compile under the main tsconfig', () => {
 // ---------------------------------------------------------------------------------------
 
 describe('example API provider', () => {
-  let server: FixtureServer;
   let provider: ProviderWith<'bulkAvailability'>;
 
-  beforeAll(async () => {
-    server = await startFixtureServer();
+  beforeAll(() => {
     // #region docs:test-api
-    // A fresh registry, a test context (NodeHttpClient, in-memory state, a fixed clock) and
-    // the provider pointed at the loopback server that serves the JSON fixtures.
+    // A fresh registry, as the app has, and the provider on recorded responses: any https
+    // host does, because a FixtureHttpClient answers by path and never sends a request.
     const registry = new ProviderRegistry();
-    const factory = createExampleApiFactory({ baseUrl: server.baseUrl });
-    registry.register(factory, (manifest) => createTestProviderContext(manifest));
+    const factory = createExampleApiFactory({ baseUrl: 'https://api.example-parks.test' });
+    registry.register(factory, fixtureContext);
     provider = registry.require('example-api', 'bulkAvailability');
     // #endregion
   });
-
-  afterAll(() => server.close());
 
   it('registers under its id with its manifest, and is the factory the guide registers', () => {
     const registry = new ProviderRegistry();
@@ -136,6 +144,7 @@ describe('example API provider', () => {
     expect(registry.list().map((m) => m.id)).toEqual(['example-api']);
     expect(registry.get('example-api').manifest).toEqual(exampleApiManifest);
     expect(registry.withCapability('watches').map((p) => p.manifest.id)).toEqual(['example-api']);
+    expect(registry.withCapability('holds').map((p) => p.manifest.id)).toEqual(['example-api']);
   });
 
   it('lists normalised LocationSummary[]: keys, kinds, https-only photos, area', async () => {
@@ -177,6 +186,7 @@ describe('example API provider', () => {
   });
 
   it('answers availability as NightStatus with YYYY-MM-DD dates, only the stay nights', async () => {
+    // The fixture route answers only this query: the provider sent the stay and its site type.
     const result = await provider.availability.check('101', {
       ...STAY,
       params: { siteType: 'powered' },
@@ -221,12 +231,10 @@ describe('example API provider', () => {
     for (const night of result.units.flatMap((u) => u.nights)) {
       expect(isCalendarDate(night.date)).toBe(true);
     }
-    expect(server.requests).toContain(
-      '/api/parks/101/availability?arrival=2026-11-10&departure=2026-11-12&guests=2&siteType=powered'
-    );
   });
 
-  it('keeps only the units asked for', async () => {
+  it("falls back to a stay field's default when the stay has none, and keeps the units asked for", async () => {
+    // No params, as the place page sends: siteType=any (the fixture route answers only that).
     const result = await provider.availability.check('101', STAY, { unitIds: ['s2'] });
     expect(result.units.map((u) => u.unitId)).toEqual(['s2']);
   });
@@ -284,15 +292,185 @@ describe('example API provider', () => {
   });
 });
 
+describe("example API provider's holds", () => {
+  /** A loopback API whose `POST /api/holds` answers `status`; it records each body. */
+  async function holdsApi(status: number, body = '{}') {
+    const bodies: unknown[] = [];
+    const server = await serve((request, response) => {
+      let text = '';
+      request.on('data', (chunk) => (text += chunk));
+      request.on('end', () => {
+        bodies.push(JSON.parse(text || 'null'));
+        response.writeHead(status, { 'Content-Type': 'application/json' });
+        response.end(body);
+      });
+    });
+    const holds: HoldsModule = createExampleHolds({
+      providerId: 'example-api',
+      http: new NodeHttpClient({ providerId: 'example-api' }),
+      apiUrl: server.baseUrl,
+      siteUrl: SITE,
+    });
+    return { holds, bodies, close: server.close };
+  }
+
+  it('places a hold: its reference, expiry and site, from the recorded 201', async () => {
+    const provider = createExampleApiFactory()(fixtureContext(exampleApiManifest));
+    await expect(
+      provider.holds!.create({ externalId: '101', unitId: 's1', stay: STAY })
+    ).resolves.toEqual({
+      ok: true,
+      reference: 'EP-H4821',
+      expiresAt: new Date('2026-11-01T02:20:00.000Z'),
+      unitId: 's1',
+    });
+  });
+
+  it('sends the park, the site (or none, for any free one) and the stay', async () => {
+    const api = await holdsApi(
+      201,
+      fs.readFileSync(path.join(API_FIXTURES, 'hold-created.json'), 'utf8')
+    );
+    try {
+      await api.holds.create({ externalId: '101', unitId: 's1', stay: STAY });
+      await api.holds.create({ externalId: '101', stay: { ...STAY, children: 1 } });
+      expect(api.bodies).toEqual([
+        { parkId: '101', siteId: 's1', arrival: '2026-11-10', departure: '2026-11-12', guests: 2 },
+        { parkId: '101', siteId: null, arrival: '2026-11-10', departure: '2026-11-12', guests: 3 },
+      ]);
+    } finally {
+      await api.close();
+    }
+  });
+
+  it.each([
+    [409, 'taken'],
+    [401, 'auth-required'],
+    [403, 'auth-required'],
+    [422, 'invalid'],
+    [423, 'in-progress'],
+    [503, 'error'],
+  ] as const)(
+    'turns a %i refusal into a HoldFailure (%s), not a rejection',
+    async (status, reason) => {
+      const api = await holdsApi(status);
+      try {
+        await expect(api.holds.create({ externalId: '101', stay: STAY })).resolves.toEqual({
+          ok: false,
+          reason,
+          message: `Example Parks did not hold the site (HTTP ${status})`,
+        });
+      } finally {
+        await api.close();
+      }
+    }
+  );
+
+  it('rejects an answer of the wrong shape with a ProviderParseError', async () => {
+    const api = await holdsApi(201, '{"hold":{"reference":""}}');
+    try {
+      await expect(api.holds.create({ externalId: '101', stay: STAY })).rejects.toBeInstanceOf(
+        ProviderParseError
+      );
+    } finally {
+      await api.close();
+    }
+  });
+
+  it('pays on its checkout page, and only that hold’s confirmation page means it is paid', async () => {
+    const provider = createExampleApiFactory()(fixtureContext(exampleApiManifest));
+    const holds = provider.holds!;
+    const hold = { reference: 'EP-H4821' };
+    expect(holds.paymentUrl({ ok: true, ...hold, expiresAt: new Date() })).toBe(
+      `${SITE}/checkout/EP-H4821`
+    );
+    const confirmed = `${SITE}/checkout/EP-H4821/confirmed`;
+    const shown = 'Booking EP-H4821 confirmed. Thank you!';
+    await expect(
+      holds.bookedReference!(hold, paymentPage(`${confirmed}?ref=1`, shown))
+    ).resolves.toBe('EP-H4821');
+    // Another hold's page, the checkout itself, or the page without the reference: not paid.
+    await expect(
+      holds.bookedReference!(hold, paymentPage(`${SITE}/checkout/EP-H9999/confirmed`, shown))
+    ).resolves.toBeNull();
+    await expect(
+      holds.bookedReference!(hold, paymentPage(`${SITE}/checkout/EP-H4821`, shown))
+    ).resolves.toBeNull();
+    await expect(
+      holds.bookedReference!(hold, paymentPage(confirmed, 'Payment failed'))
+    ).resolves.toBeNull();
+  });
+});
+
+describe("example API provider's sign-in", () => {
+  let answer: { status: number; body: string };
+  let server: Awaited<ReturnType<typeof serve>>;
+  const client = new NodeHttpClient({ providerId: 'example-api' });
+
+  beforeAll(async () => {
+    server = await serve((request, response) => {
+      const found = request.url === '/api/me';
+      response.writeHead(found ? answer.status : 404, { 'Content-Type': 'application/json' });
+      response.end(found ? answer.body : '{}');
+    });
+  });
+  afterAll(() => server.close());
+
+  const auth = () => createExampleAuth({ apiUrl: server.baseUrl, siteUrl: SITE });
+
+  it('is a browser session on the provider’s own pages, which the registry accepts', () => {
+    const provider = createExampleApiFactory()(fixtureContext(exampleApiManifest));
+    expect(provider.auth).toMatchObject({
+      kind: 'browser-session',
+      signInUrl: `${SITE}/account/sign-in`,
+      allowedOrigins: [SITE, 'https://login.example-parks.test'],
+      completionUrlPatterns: [`${SITE}/account/welcome*`],
+    });
+  });
+
+  it.each([
+    [
+      200,
+      '{"email":"sam@example.com","name":"Sam Smith"}',
+      { state: 'signed-in', email: 'sam@example.com', displayName: 'Sam Smith' },
+    ],
+    [200, '{"email":"sam@example.com"}', { state: 'signed-in', email: 'sam@example.com' }],
+    [401, '{"error":"sign in"}', { state: 'signed-out' }],
+    [403, '{}', { state: 'signed-out' }],
+    [503, '{}', { state: 'unknown', reason: 'http 503' }],
+    [200, '{"name":"no email"}', { state: 'unknown', reason: 'parse' }],
+    [200, 'not json', { state: 'unknown', reason: 'parse' }],
+  ] as const)('reads a %i %s as %o', async (status, body, expected) => {
+    answer = { status, body };
+    await expect(auth().isSignedIn(client)).resolves.toEqual(expected);
+  });
+
+  it('is unknown, not signed out, when the provider does not answer', async () => {
+    const gone = createExampleAuth({ apiUrl: 'http://127.0.0.1:1', siteUrl: SITE });
+    await expect(gone.isSignedIn(client)).resolves.toEqual({ state: 'unknown', reason: 'network' });
+  });
+
+  it('rejects with an AbortError when the caller aborts', async () => {
+    answer = { status: 200, body: '{"email":"sam@example.com"}' };
+    const controller = new AbortController();
+    controller.abort();
+    const error = await auth()
+      .isSignedIn(client, controller.signal)
+      .then(
+        () => 'resolved',
+        (rejection: unknown) => rejection
+      );
+    expect(isAbortError(error)).toBe(true);
+  });
+});
+
 // #region docs:test-contract
-describeProviderContract('example-api', async () => {
-  const server = await startFixtureServer();
-  const factory = createExampleApiFactory({ baseUrl: server.baseUrl });
+describeProviderContract('example-api', () => {
+  const factory = createExampleApiFactory({ baseUrl: 'https://api.example-parks.test' });
   return {
-    provider: factory(createTestProviderContext(factory.manifest)),
+    provider: factory(fixtureContext(factory.manifest)),
     sample: { externalId: '101', stay: STAY },
     unknownExternalId: '999',
-    cleanup: () => server.close(),
   };
 });
 // #endregion
@@ -342,7 +520,7 @@ describe('example browser provider', () => {
     expect(fake.visits).toContain('https://www.example-holiday.test/parks');
   });
 
-  it('answers availability as NightStatus with YYYY-MM-DD dates, only the stay nights', async () => {
+  it("answers availability through the park page's search form, only the stay nights", async () => {
     const result = await provider.availability.check('sunset-bay', STAY);
     expect(result.key).toBe('example-browser:sunset-bay');
     expect(result.units).toEqual([
@@ -368,6 +546,15 @@ describe('example browser provider', () => {
     for (const night of result.units.flatMap((u) => u.nights)) {
       expect(isCalendarDate(night.date)).toBe(true);
     }
+    // The form's own script fetched the stay: the site's code ran in the page.
+    expect(fake.requests).toContainEqual(
+      expect.objectContaining({
+        resourceType: 'fetch',
+        url: 'https://www.example-holiday.test/api/availability?park=sunset-bay&arrival=2026-11-10&departure=2026-11-12&guests=2',
+        status: 200,
+      })
+    );
+    expect(fake.pageErrors).toEqual([]);
   });
 
   it('turns a missing page into a ProviderHttpError and closes it', async () => {
@@ -391,7 +578,8 @@ describe('example browser provider', () => {
 
 // #region docs:test-fake-browser
 describeProviderContract('example-browser', () => {
-  // Pages come from the example site, in jsdom: the provider's own page code runs.
+  // Pages come from the example site, in jsdom, its scripts running: the provider's own
+  // page code runs against them.
   const fake = createFakeBrowser(renderExampleSite);
   const factory = createExampleBrowserFactory();
   return {

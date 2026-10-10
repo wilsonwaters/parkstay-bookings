@@ -2,8 +2,10 @@
  * Example API provider: the worked example in docs/providers/adding-a-provider.md.
  *
  * "Example Parks" is a fictional JSON booking API. The provider reads it through `ctx.http`
- * and maps what it gets to the normalised SDK types. Tests point it at a loopback server that
- * serves `fixtures/*.json` (`tests/unit/docs/example-providers.test.ts`).
+ * and maps what it gets to the normalised SDK types; it places holds (`holds.ts`) and has an
+ * optional account with a `browser-session` sign-in (`auth.ts`). Tests answer its requests from
+ * the recorded responses `manifest.json` lists (a FixtureHttpClient), or from a loopback server
+ * (`tests/unit/docs/example-providers.test.ts`).
  *
  * Each region between `// #region docs:<name>` and `// #endregion` is a code block of the
  * guide, word for word; `tests/unit/docs/docs-sync.test.ts` keeps the two in step.
@@ -32,6 +34,8 @@ import type {
 } from '@shared/types/provider.types';
 import { eachNight } from '@shared/utils/calendar-date';
 import { makeLocationKey } from '@shared/utils/location-key';
+import { createExampleAuth } from './auth';
+import { createExampleHolds } from './holds';
 // #endregion
 
 // #region docs:api-manifest
@@ -54,10 +58,11 @@ export const exampleApiManifest: ProviderManifest = {
     bulkAvailability: true,
     watches: true,
     snipes: false,
-    holds: false,
+    // Holds (holds.ts), and an account that helps but is never needed (auth.ts).
+    holds: true,
     bookingImport: false,
     accessGate: false,
-    account: 'none',
+    account: 'optional',
   },
   limits: { minWatchIntervalMinutes: 30, maxConcurrentRequests: 2, catalogTtlHours: 24 },
   stayFields: [
@@ -137,9 +142,12 @@ function toNights(stay: StayQuery, raw: { date: string; status: string; price: n
 // #endregion
 
 export interface ExampleApiOptions {
-  /** Where the API is. Tests pass their loopback server. */
+  /** Where the API is. Tests pass a fixture host or their loopback server. */
   baseUrl?: string;
 }
+
+/** Example Parks' website: its pages, sign-in and checkout. */
+const SITE = 'https://www.example-parks.test';
 
 // #region docs:api-factory
 export function createExampleApiFactory({
@@ -150,10 +158,15 @@ export function createExampleApiFactory({
     const http = ctx.http.withDefaults({ headers: { Accept: 'application/json' } });
     const limit = createLimiter(ctx.limits.maxConcurrentRequests);
 
-    async function get<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+    async function get<T>(
+      path: string,
+      schema: z.ZodType<T>,
+      { query, signal }: { query?: Record<string, string | number>; signal?: AbortSignal } = {}
+    ): Promise<T> {
       const url = new URL(path, baseUrl).href;
-      // A non-2xx answer is a ProviderHttpError, a non-JSON body a ProviderParseError.
-      const body = await limit(() => http.getJson<unknown>(url, { signal }));
+      // `query` is encoded for you. A non-2xx answer is a ProviderHttpError, a body that is
+      // not JSON a ProviderParseError.
+      const body = await limit(() => http.getJson<unknown>(url, { query, signal }));
       const parsed = schema.safeParse(body);
       if (!parsed.success) {
         throw new ProviderParseError({ providerId: ctx.id, url, message: `Unexpected ${path}` });
@@ -162,11 +175,13 @@ export function createExampleApiFactory({
     }
 
     const links: ProviderLinks = {
-      location: (externalId) => `https://www.example-parks.test/parks/${externalId}`,
-      booking: (externalId, stay) =>
-        stay
-          ? `https://www.example-parks.test/book/${externalId}?from=${stay.arrival}&to=${stay.departure}`
-          : `https://www.example-parks.test/book/${externalId}`,
+      location: (externalId) => `${SITE}/parks/${encodeURIComponent(externalId)}`,
+      booking: (externalId, stay) => {
+        const page = `${SITE}/book/${encodeURIComponent(externalId)}`;
+        return stay
+          ? `${page}?${new URLSearchParams({ from: stay.arrival, to: stay.departure })}`
+          : page;
+      },
     };
 
     function toSummary(raw: RawPark): LocationSummary {
@@ -193,15 +208,13 @@ export function createExampleApiFactory({
       links,
       catalog: {
         async listLocations(signal) {
-          const { parks } = await get('/api/parks', RawParkList, signal);
+          const { parks } = await get('/api/parks', RawParkList, { signal });
           return parks.map(toSummary);
         },
         async getLocation(externalId, signal): Promise<LocationDetail> {
-          const park = await get(
-            `/api/parks/${encodeURIComponent(externalId)}`,
-            RawParkDetail,
-            signal
-          );
+          const park = await get(`/api/parks/${encodeURIComponent(externalId)}`, RawParkDetail, {
+            signal,
+          });
           return {
             ...toSummary(park),
             // Raw provider HTML: main sanitises it before it crosses IPC.
@@ -218,10 +231,17 @@ export function createExampleApiFactory({
       },
       availability: {
         async check(externalId, stay, options = {}): Promise<LocationAvailability> {
+          // A stay field the person did not set (or a caller that sends none, such as the
+          // place page) falls back to the field's default.
           const siteType = stay.params?.siteType ?? 'any';
-          const query = `arrival=${stay.arrival}&departure=${stay.departure}&guests=${stay.adults}&siteType=${siteType}`;
-          const path = `/api/parks/${encodeURIComponent(externalId)}/availability?${query}`;
-          const { sites } = await get(path, RawAvailability, options.signal);
+          const query = {
+            arrival: stay.arrival,
+            departure: stay.departure,
+            guests: stay.adults + (stay.children ?? 0),
+            siteType: String(siteType),
+          };
+          const path = `/api/parks/${encodeURIComponent(externalId)}/availability`;
+          const { sites } = await get(path, RawAvailability, { query, signal: options.signal });
           const wanted = options.unitIds?.length ? new Set(options.unitIds) : undefined;
           const units = sites
             .filter((site) => !wanted || wanted.has(site.id))
@@ -241,8 +261,8 @@ export function createExampleApiFactory({
           };
         },
         async search(stay, signal): Promise<BulkAvailabilityEntry[]> {
-          const path = `/api/availability?arrival=${stay.arrival}&departure=${stay.departure}`;
-          const { parks } = await get(path, RawBulk, signal);
+          const query = { arrival: stay.arrival, departure: stay.departure };
+          const { parks } = await get('/api/availability', RawBulk, { query, signal });
           return parks.map((park) => ({
             key: makeLocationKey(ctx.id, String(park.id)),
             availableUnits: park.free,
@@ -250,6 +270,8 @@ export function createExampleApiFactory({
           }));
         },
       },
+      holds: createExampleHolds({ providerId: ctx.id, http, apiUrl: baseUrl, siteUrl: SITE }),
+      auth: createExampleAuth({ apiUrl: baseUrl, siteUrl: SITE }),
     };
   });
 }

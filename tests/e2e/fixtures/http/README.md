@@ -21,6 +21,8 @@ http/
 ```
 
 A provider with no folder, or no routes, answers every request with an error.
+`npm run provider:new -- <id>` writes a sample folder for a new API provider, to replace with
+its recorded responses ([adding a provider](../../../../docs/providers/adding-a-provider.md#quick-start)).
 
 ## Manifest
 

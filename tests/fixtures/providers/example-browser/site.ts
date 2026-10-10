@@ -1,12 +1,17 @@
 /**
  * The fictional Example Holiday Parks website the example browser provider reads
- * (`tests/fixtures/providers/example-browser/index.ts`): `renderExampleSite(url)` answers a page
- * navigation with a status and HTML, using the attributes and words a real site would.
+ * (`tests/fixtures/providers/example-browser/index.ts`), for the fake browser
+ * (`tests/utils/fake-browser.ts`). `renderExampleSite(url)` answers each request with a status
+ * and a body, using the attributes and words a real site would: the park list, each park's page
+ * with its availability search form, and the JSON that form's script fetches before it draws
+ * the availability table.
  */
 
 export interface ExampleSitePage {
   status: number;
+  /** The body: a page's HTML, or JSON for the form's script. */
   html: string;
+  headers?: Record<string, string>;
 }
 
 interface Park {
@@ -68,28 +73,72 @@ function parkHeading(park: Park): string {
   return `<h2 data-testid="name">${park.name}</h2><span data-testid="town">${park.town}</span>`;
 }
 
+/** The park page's script: on submit it fetches the stay's nights and draws the table. */
+const SEARCH_SCRIPT = `
+  const form = document.querySelector('form[data-search]');
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const query = new URLSearchParams(new FormData(form));
+    const { cabins } = await (await fetch('/api/availability?' + query)).json();
+    const table = document.querySelector('table[data-results]');
+    table.tBodies[0].innerHTML = cabins
+      .map((cabin) =>
+        '<tr data-unit="' + cabin.id + '" data-unit-name="' + cabin.name + '">' +
+        cabin.nights
+          .map((n) => '<td data-night="' + n.date + '" data-status="' + n.status + '">' + n.label + '</td>')
+          .join('') +
+        '</tr>'
+      )
+      .join('');
+    table.hidden = false;
+  });
+`;
+
+function searchForm(park: Park): string {
+  return `<form data-search>
+    <input type="hidden" name="park" value="${park.id}">
+    <label>Arrival <input type="date" name="arrival" required></label>
+    <label>Departure <input type="date" name="departure" required></label>
+    <label>Guests <input type="number" name="guests" min="1" value="2"></label>
+    <button type="submit">Check availability</button>
+  </form>
+  <table data-results aria-label="Availability" hidden><tbody></tbody></table>
+  <script>${SEARCH_SCRIPT}</script>`;
+}
+
+/** What the search form's script fetches: the whole week, whatever the stay. */
+function availability(parkId: string | null): ExampleSitePage {
+  const park = PARKS.find((p) => p.id === parkId);
+  const json = (status: number, body: unknown): ExampleSitePage => ({
+    status,
+    html: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+  });
+  if (!park) return json(404, { error: 'no such park' });
+  const cabins = park.cabins.map((cabin) => ({
+    id: cabin.id,
+    name: cabin.name,
+    nights: Object.entries(cabin.nights).map(([date, [status, label]]) => ({
+      date,
+      status,
+      label,
+    })),
+  }));
+  return json(200, { cabins });
+}
+
 export function renderExampleSite(url: URL): ExampleSitePage {
   if (url.pathname === '/parks') {
     const items = PARKS.map((park) => `<li ${parkAttributes(park)}>${parkHeading(park)}</li>`);
     return page(`<ul class="css-1x2y3z">${items.join('')}</ul>`);
   }
-  const match = /^\/parks\/([^/]+)(\/availability)?$/.exec(url.pathname);
+  if (url.pathname === '/api/availability') return availability(url.searchParams.get('park'));
+  const match = /^\/parks\/([^/]+)$/.exec(url.pathname);
   const park = match && PARKS.find((p) => p.id === decodeURIComponent(match[1]));
   if (!park) return page('<h1>Page not found</h1>', 404);
 
-  if (!match[2]) {
-    const units = park.cabins.map((cabin) => `<li data-unit="${cabin.id}">${cabin.name}</li>`);
-    return page(
-      `<main ${parkAttributes(park)}>${parkHeading(park)}<ul>${units.join('')}</ul></main>`
-    );
-  }
-
-  // The availability grid shows the whole week, whatever the stay.
-  const rows = park.cabins.map((cabin) => {
-    const cells = Object.entries(cabin.nights).map(
-      ([date, [status, label]]) => `<td data-night="${date}" data-status="${status}">${label}</td>`
-    );
-    return `<tr data-unit="${cabin.id}" data-unit-name="${cabin.name}">${cells.join('')}</tr>`;
-  });
-  return page(`<table>${rows.join('')}</table>`);
+  const units = park.cabins.map((cabin) => `<li data-unit="${cabin.id}">${cabin.name}</li>`);
+  return page(
+    `<main ${parkAttributes(park)}>${parkHeading(park)}<ul>${units.join('')}</ul>${searchForm(park)}</main>`
+  );
 }

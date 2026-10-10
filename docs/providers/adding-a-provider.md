@@ -2,47 +2,127 @@
 
 A **provider** is a module that brings one accommodation source into WA Stay: ParkStay WA
 today, RAC Parks & Resorts next, perhaps Hipcamp or a holiday-park chain later. This guide
-takes you from an empty folder to a provider that shows up on Explore, in the create flows
-and in Settings, with tests. You change nothing in the core services, the IPC contract or the
+takes you from nothing to a provider that shows up on Explore, in the create flows and in
+Settings, with tests. You change nothing in the core services, the IPC contract or the
 renderer: they find providers through the registry and read what each one can do from its
 manifest.
+
+Start with the [quick start](#quick-start): one command generates a working provider to fill
+in. The rest of the guide is the reference. If you are an AI agent, follow the checklist in
+[CLAUDE.md, "Adding a provider"](../../CLAUDE.md#adding-a-provider) (the `/add-provider`
+command walks you through it), and use this guide for the detail.
 
 Two worked examples run through the guide. Both are real, compiling providers in the test
 tree:
 
-- **Example Parks** (`tests/fixtures/providers/example-api/index.ts`), an **API provider**:
-  JSON over `ctx.http`.
-- **Example Holiday Parks** (`tests/fixtures/providers/example-browser/index.ts`), a
-  **browser provider**: a website with no API, read through `ctx.browser`.
+- **Example Parks** (`tests/fixtures/providers/example-api/`), an **API provider**: JSON over
+  `ctx.http`, with holds (`holds.ts`) and a sign-in (`auth.ts`).
+- **Example Holiday Parks** (`tests/fixtures/providers/example-browser/`), a **browser
+  provider**: a website with no API whose availability appears only after a search form's
+  script runs, read through `ctx.browser`.
 
 Every code block marked as coming from one of those files is a word-for-word copy of a region
 of it. `tests/unit/docs/docs-sync.test.ts` fails if they drift, and
-`tests/unit/docs/example-providers.test.ts` compiles both examples under the main process's
-`tsconfig.json`, registers them in a fresh `ProviderRegistry`, and runs the provider contract
-suite on them.
+`tests/unit/docs/example-providers.test.ts` compiles the examples under the main process's
+`tsconfig.json`, registers them in a fresh `ProviderRegistry`, runs the provider contract suite
+on them, and tests their mapping, holds and sign-in.
 
-ParkStay (`src/main/providers/parkstay/`) is the full reference: an access gate, a release
+ParkStay (`src/main/providers/parkstay/`) is the full-size reference: an access gate, a release
 policy, holds, payment and sign-in. See [the ParkStay provider](parkstay/README.md).
 
 ## Contents
 
+- [Quick start](#quick-start)
 - [Words](#words)
 - [Before you start](#before-you-start)
 - [How a provider plugs in](#how-a-provider-plugs-in)
-- [1. Create the folder](#1-create-the-folder)
-- [2. Write the manifest](#2-write-the-manifest)
-- [3. Use the provider context](#3-use-the-provider-context)
-- [4. Build the modules: an API provider](#4-build-the-modules-an-api-provider)
+- [1. The folder](#1-the-folder)
+- [2. The manifest](#2-the-manifest)
+- [3. The provider context](#3-the-provider-context)
+- [4. An API provider](#4-an-api-provider)
 - [5. A browser provider](#5-a-browser-provider)
-- [6. Optional modules](#6-optional-modules)
-- [7. Register it](#7-register-it)
-- [8. Test it](#8-test-it)
+- [6. Holds](#6-holds)
+- [7. Sign-in](#7-sign-in)
+- [8. Other optional modules](#8-other-optional-modules)
+- [9. Timeouts, failures and retries](#9-timeouts-failures-and-retries)
+- [10. Register it](#10-register-it)
+- [11. Test it](#11-test-it)
+- [12. Preview in the app](#12-preview-in-the-app)
 - [What the app does with it](#what-the-app-does-with-it)
 - [Checklist](#checklist)
 
+## Quick start
+
+1. **Generate the provider.** Pick an id: 2–32 lower-case letters, digits or hyphens, starting
+   with a letter. It is stored in every watch and booking, so it never changes.
+
+   ```bash
+   npm run provider:new -- acme-parks              # an API provider: JSON over ctx.http (the default)
+   npm run provider:new -- acme-parks --browser    # a website with no API, read in a browser
+   npm run provider:new -- acme-parks --search     # a catalogue too big to list: searched by map area and name
+   npm run provider:new -- acme-parks --name "Acme Parks & Resorts"   # a display name of your own
+   ```
+
+   It writes these files, adds the provider to `BUILT_IN_PROVIDERS` (`--no-register` prints
+   the lines instead), and prints the next steps:
+
+   | File                                               | What it is                                                                                                       |
+   | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+   | `src/main/providers/acme-parks/manifest.ts`        | The manifest, every capability spelled out and commented                                                         |
+   | `src/main/providers/acme-parks/index.ts`           | The factory and the modules: catalogue, availability, links                                                      |
+   | `src/main/providers/acme-parks/mapping.ts` (API)   | The API's raw shapes (zod) and their mapping to the SDK's types                                                  |
+   | `src/main/providers/acme-parks/pages.ts` (browser) | The site's paths, selectors and labels, the page functions and their mapping                                     |
+   | `tests/integration/acme-parks-provider.test.ts`    | The [contract suite](#the-contract-suite) and mapping tests                                                      |
+   | `tests/fixtures/providers/acme-parks/`             | Sample responses for Jest (API), or a made-up site for the [fake browser](#a-browser-provider-without-a-browser) |
+   | `tests/e2e/fixtures/http/acme-parks/` (API)        | The responses the app answers from in [fixture mode](#the-electron-smoke-tests)                                  |
+
+   As generated, it passes lint, format, type-check, `npm test` and the e2e suite, and it
+   never contacts a real site: its addresses start empty, and until you set them every call
+   fails with a `ProviderError` such as "Acme Parks is not set up yet: set ACME_PARKS_API_URL
+   in src/main/providers/acme-parks/index.ts". The sample data uses `.invalid` and `.test`
+   hosts, which never resolve.
+
+2. **Fill in the API calls.** Work through every `TODO`: the addresses, the request paths and
+   parameters, the raw shapes and the provider's words (kinds of place, night states). Record
+   a few of the provider's public responses, without signing in, trim them, and put them in
+   `tests/fixtures/providers/acme-parks/` with their routes in its `manifest.json`
+   ([recorded responses](#recorded-responses-fixturehttpclient)); copy the ones the app needs
+   into `tests/e2e/fixtures/http/acme-parks/`. Update the expectations in the generated test to
+   match. A browser provider gets a trimmed copy of the site's markup in `site.ts` instead.
+
+3. **Run its tests**: the contract suite and the mapping.
+
+   ```bash
+   npx jest tests/integration/acme-parks-provider.test.ts
+   ```
+
+4. **Preview it in the app**, network-free, on its recorded responses
+   ([preview in the app](#12-preview-in-the-app)):
+
+   ```bash
+   npm run build:e2e
+   npx cross-env PREVIEW_PROVIDER=acme-parks playwright test preview-provider
+   ```
+
+   On Linux without a display, put `xvfb-run -a` in front of the second command. It checks that
+   Explore lists the provider's places, opens one, and visits Settings → Accounts, with a
+   screenshot of each in the report (`npx playwright show-report`).
+
+5. **Register it and run everything.** The scaffold has added it to `BUILT_IN_PROVIDERS`
+   ([register it](#10-register-it)). Before you call it done, the whole gate passes:
+
+   ```bash
+   npm run lint && npm run format:check && npm run type-check && npm test && npm run test:tz
+   npm run build:e2e && npm run test:e2e        # Linux: xvfb-run -a npm run test:e2e
+   ```
+
+   **Done** means: the provider's own tests and the full suite pass, it shows on Explore in the
+   preview, no `TODO` is left, its terms of use allow what it does, and no test or trial run
+   placed a real hold, booking or payment or reached the live site.
+
 ## Words
 
-The same words are used in code, the database and the UI (architecture-notes §2):
+The same words are used in code, the database and the UI:
 
 | Word | Meaning | ParkStay |
 | --- | --- | --- |
@@ -68,6 +148,9 @@ The same words are used in code, the database and the UI (architecture-notes §2
   booking per night, holds only in their own name, payment always by the person on the
   provider's site. Your module must keep to that.
 - **Be polite.** Ask for what the person's action needs, at the pace one careful person would.
+- **Never place a real hold, booking or payment** in a test or a trial run, and never point a
+  test at the live site. Tests run on recorded responses or a made-up site; a live check is
+  anonymous, read-only and a handful of requests at most.
 
 ## How a provider plugs in
 
@@ -85,25 +168,28 @@ The same words are used in code, the database and the UI (architecture-notes §2
 
 A provider that fails to register is logged and skipped; the app starts with the others.
 
-## 1. Create the folder
+## 1. The folder
 
 Everything specific to your provider lives in `src/main/providers/<id>/`, never in `core/`,
-`shared/` or the renderer. ParkStay's layout is a good model:
+`shared/` or the renderer. The scaffold starts you with `manifest.ts`, `index.ts` and
+`mapping.ts` (API) or `pages.ts` (browser). As it grows, ParkStay's layout is a good model:
 
 ```text
 src/main/providers/<id>/
-├── index.ts      # the manifest and the factory (defineProvider)
-├── client.ts     # every request: headers, dates in the provider's format, error mapping
-├── catalog.ts    # locations → LocationSummary / LocationDetail
+├── index.ts         # the factory (defineProvider)
+├── manifest.ts      # the manifest
+├── client.ts        # every request: headers, dates in the provider's format, error mapping
+├── catalog.ts       # locations → LocationSummary / LocationDetail
 ├── availability.ts  # nights → NightStatus
-├── links.ts      # the provider's own pages
-└── types.ts      # raw response shapes; never exported to shared/
+├── holds.ts, auth.ts
+├── links.ts         # the provider's own pages
+└── types.ts         # raw response shapes; never exported to shared/
 ```
 
-Inside `src/main/providers/<id>/` you can import the SDK as `../sdk`, as ParkStay does. The
+Inside `src/main/providers/<id>/` you import the SDK as `../sdk`, as ParkStay does. The
 examples live in the test tree, so they use the `@main` alias, which works in both places.
 
-## 2. Write the manifest
+## 2. The manifest
 
 The manifest says who the provider is and what it can do. It is plain data, it crosses IPC to
 the renderer, and the registry validates it with `ProviderManifestSchema`
@@ -131,10 +217,11 @@ export const exampleApiManifest: ProviderManifest = {
     bulkAvailability: true,
     watches: true,
     snipes: false,
-    holds: false,
+    // Holds (holds.ts), and an account that helps but is never needed (auth.ts).
+    holds: true,
     bookingImport: false,
     accessGate: false,
-    account: 'none',
+    account: 'optional',
   },
   limits: { minWatchIntervalMinutes: 30, maxConcurrentRequests: 2, catalogTtlHours: 24 },
   stayFields: [
@@ -181,22 +268,22 @@ behind it (`CONSISTENCY_RULES` and `MANIFEST_RULES` in `src/main/providers/regis
 | Capability | Needs | Turns on |
 | --- | --- | --- |
 | `catalog` | `catalog.getLocation`, and `listLocations` or `searchArea` per `catalogMode` | Explore's map and list, a location's detail page |
-| `catalogMode` | `full`: `catalog.listLocations`; `search`: `catalog.searchArea` (and optionally `catalog.searchText`) | `full` catalogues are synced (every `catalogTtlHours`) and searched offline. `search` is for marketplaces too big to list: the catalogue service asks `searchArea` for the area Explore's map shows (all of WA without a map), at most 5 pages per area, and `searchText` for a name typed in Explore's "Where" or a location step. What it finds is stored and then works like a synced place (search, filters, the place page, availability, watches); each area or text is asked once per `catalogTtlHours`. See [Search-mode catalogues](browser-providers.md#search-mode-catalogues-catalogmode-search). |
+| `catalogMode` | `full`: `catalog.listLocations`; `search`: `catalog.searchArea` (and optionally `catalog.searchText`) | `full`: the whole catalogue is synced every `catalogTtlHours` and searched offline. `search`, for a marketplace too big to list: the app asks `searchArea` for the area Explore's map shows (all of WA when there is no map), at most 5 pages an area, and `searchText` for a name typed in Explore's "Where" or a watch's location step; what it finds is stored and works like a synced place, and each area or text is asked at most once per `catalogTtlHours` ([how the app uses it](browser-providers.md#search-mode-catalogues-catalogmode-search)). |
 | `availability` | `availability.check` | "Check availability" on a location's page |
 | `bulkAvailability` | `availability.search` | Free-unit counts on Explore's pins and cards, "Available only" |
 | `watches` | `availability.check` | The provider in Watches |
-| `holds` | `holds.create` and `holds.paymentUrl` | "Hold a site automatically when found" on watches, and the payment window |
+| `holds` | `holds.create` and `holds.paymentUrl` | "Hold a site automatically when found" on watches, and the payment window ([holds](#6-holds)) |
 | `snipes` | `availability`, `holds` and `release`, plus at least one release mode that `release.supports()` accepts | The provider in Site Sniper |
 | `bookingImport` | `bookings.get` | "Import booking" on the Bookings page |
 | `accessGate` | `access` | Queue handling and the access-status chip; required by any release mode with `usesAccessGate` |
-| `account` | `auth` unless `none` | A row in Settings → Accounts ([auth kinds](#auth)) |
+| `account` | `auth` unless `none` | A row in Settings → Accounts ([sign-in](#7-sign-in)) |
 
 `account` says how much the provider needs the person signed in:
 
 | `account` | Meaning |
 | --- | --- |
 | `none` | No account. Settings shows "No account needed". |
-| `optional` | Signing in helps (a quicker checkout) but nothing waits on it. ParkStay is `optional`, because its holds need no sign-in. |
+| `optional` | Signing in helps (a quicker checkout) but nothing waits on it. ParkStay and Example Parks are `optional`: their holds need no sign-in. |
 | `required-for-holds` | Holds need it: a snipe created signed out stays paused, and a hold attempt is refused with `AUTH_REQUIRED` until the person connects. |
 | `required` | Everything needs it. |
 
@@ -208,7 +295,7 @@ context gives the effective values as `ctx.limits`.
 | Limit | What reads it |
 | --- | --- |
 | `minWatchIntervalMinutes` | The watch form offers no shorter interval, and the scheduler runs a shorter stored one at this interval (`core/watches/next-check.ts`). |
-| `maxConcurrentRequests` | The watch loop runs at most `min(2, maxConcurrentRequests)` checks at once for the provider. **Your module enforces it for its own requests**, with `createLimiter` from the SDK, as both examples do. |
+| `maxConcurrentRequests` | The watch loop runs at most `min(2, maxConcurrentRequests)` checks at once for the provider, and a `search` catalogue's area searches stay within it. **Your module enforces it for its own requests**, with `createLimiter` from the SDK, as Example Parks and the scaffold do. |
 | `catalogTtlHours` | How long a synced catalogue stays fresh before the catalogue service syncs it again; for a `search` catalogue, how long an area or text search is not repeated. |
 
 A browser provider should use `maxConcurrentRequests: 1` and generous intervals.
@@ -221,9 +308,19 @@ values travel in `StayQuery.params` and are stored in `stay_params`. Main valida
 against the descriptor (type, options, `min`/`max`, `pattern`, `required`) and fills defaults
 (`core/stay-params.ts`); an invalid value is a `VALIDATION` error on `stayParams.<key>`.
 
-`appliesTo` says where the field shows: `availability` (a location's page), `watch`, `snipe`,
-`hold`. Example Parks' `siteType` shows on the place page and in Watches, and its `check`
-passes it on as a query parameter.
+`appliesTo` says which forms show the field:
+
+| `appliesTo` | Where the field shows |
+| --- | --- |
+| `watch` | The watch form. |
+| `hold` | A watch's "Hold a site automatically" section, and Site Sniper's stay step. |
+| `snipe` | Site Sniper's stay step. |
+| `availability` | Nowhere yet. The place page's "Check availability" and Explore's bulk availability send no stay fields at all. |
+
+So `availability.check` and `availability.search` must work without `stay.params`: fall back to
+the field's default, as Example Parks' `check` does with `siteType` (it shows in Watches, and
+the place page's check asks for "any"). Fields the watch form saved reach `check` when the
+watch runs.
 
 ### Release modes
 
@@ -251,7 +348,7 @@ the cached answer instead of asking the provider again. Example Parks reads only
 ParkStay reads the dates and the gear type, so changing the number of guests on Explore costs
 no request.
 
-## 3. Use the provider context
+## 3. The provider context
 
 `create(ctx)` receives a `ProviderContext` (`src/main/providers/sdk/context.ts`), built from
 your validated manifest. It is everything the provider gets from the app; a provider never
@@ -269,34 +366,43 @@ reaches for globals, never imports `electron`, an HTTP library, the database or 
 
 ### The HttpClient
 
-`ctx.http` has two implementations behind one interface (`src/main/providers/sdk/http.ts`):
+`ctx.http` has one interface (`src/main/providers/sdk/http.ts`) and three implementations:
 
 - **In the app**, `ElectronSessionHttpClient`: Chromium's network stack on your session
   partition `persist:provider-<id>`. Your sign-in and payment windows use the same partition,
   so their cookies are your requests' cookies.
-- **In tests**, `NodeHttpClient`: Node's `fetch` with an in-memory cookie jar.
+- **In fixture mode and in tests**, `FixtureHttpClient`
+  (`src/main/testing/fixture-http-client.ts`): recorded responses, by method and path; nothing
+  is sent ([recorded responses](#recorded-responses-fixturehttpclient)).
+- **In tests against a loopback server**, `NodeHttpClient`: Node's `fetch` with an in-memory
+  cookie jar.
 
-Both behave the same:
+They all behave the same:
 
-- `request(method, url, options)`, `getJson(url)` (expects 2xx JSON) and `postForm(url, form)`
-  (form-encoded, expects 2xx JSON); `withDefaults({ headers })` returns a client that adds
-  headers to every request, on the same cookies.
+- `request(method, url, options)`, `getJson(url, options)` (expects 2xx JSON) and
+  `postForm(url, form)` (form-encoded, expects 2xx JSON); `withDefaults({ headers })` returns a
+  client that adds headers to every request, on the same cookies. There is no JSON `POST`
+  helper: use `request('POST', url, { headers, body: JSON.stringify(…) })`, as Example Parks'
+  holds do.
+- **`options.query`** is appended to the URL, encoded; `null` and `undefined` values are left
+  out. Never build a query string by hand.
 - **https only** (plain http only to a loopback host, for tests). Anything else is refused
   before it is sent.
 - **Cookies** come only from the client's cookie store (`http.cookies`); a `Cookie` header you
   set is ignored.
 - **Redirects** are followed (at most 5) and the final URL reported; `redirect: 'manual'`
   returns the 3xx, `'error'` rejects.
-- **Every request has a timeout** (30 s by default) and honours your `AbortSignal`.
+- **Every request has a timeout** (30 s by default, `timeoutMs` to change it) and honours your
+  `AbortSignal`.
 - **Errors:** a non-2xx answer from `getJson`/`postForm` is a `ProviderHttpError` (with
   `status`), a body that is not JSON a `ProviderParseError`, a timeout a `ProviderTimeoutError`,
-  no response a `ProviderHttpError` with status 0, an abort an `AbortError`. A 429 reaches the
-  person as `RATE_LIMITED` and is never retried at once.
+  no response a `ProviderHttpError` with status 0, an abort an `AbortError`. `request` itself
+  resolves for any status: check `response.status`.
 
 If the provider blocks library user agents, send a browser one (ParkStay's `headers.ts`). In
 the app, the partition's user agent already matches Electron's Chromium.
 
-## 4. Build the modules: an API provider
+## 4. An API provider
 
 `create(ctx)` returns the provider's modules: `links` always, and a module for each capability.
 An API provider talks to the provider only through `ctx.http` ([the HttpClient](#the-httpclient)).
@@ -331,6 +437,8 @@ import type {
 } from '@shared/types/provider.types';
 import { eachNight } from '@shared/utils/calendar-date';
 import { makeLocationKey } from '@shared/utils/location-key';
+import { createExampleAuth } from './auth';
+import { createExampleHolds } from './holds';
 ```
 
 **Validate what the provider returns.** Its JSON is not a contract; a zod schema turns a
@@ -403,7 +511,8 @@ function toNights(stay: StayQuery, raw: { date: string; status: string; price: n
 ```
 
 **The factory.** `defineProvider` pairs the manifest with `create`, which builds the modules
-for one context:
+for one context. Requests go through one helper, which encodes the query, keeps no more in
+flight than the limit, and validates the answer:
 
 <!-- region: tests/fixtures/providers/example-api/index.ts#api-factory -->
 
@@ -416,10 +525,15 @@ export function createExampleApiFactory({
     const http = ctx.http.withDefaults({ headers: { Accept: 'application/json' } });
     const limit = createLimiter(ctx.limits.maxConcurrentRequests);
 
-    async function get<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+    async function get<T>(
+      path: string,
+      schema: z.ZodType<T>,
+      { query, signal }: { query?: Record<string, string | number>; signal?: AbortSignal } = {}
+    ): Promise<T> {
       const url = new URL(path, baseUrl).href;
-      // A non-2xx answer is a ProviderHttpError, a non-JSON body a ProviderParseError.
-      const body = await limit(() => http.getJson<unknown>(url, { signal }));
+      // `query` is encoded for you. A non-2xx answer is a ProviderHttpError, a body that is
+      // not JSON a ProviderParseError.
+      const body = await limit(() => http.getJson<unknown>(url, { query, signal }));
       const parsed = schema.safeParse(body);
       if (!parsed.success) {
         throw new ProviderParseError({ providerId: ctx.id, url, message: `Unexpected ${path}` });
@@ -428,11 +542,13 @@ export function createExampleApiFactory({
     }
 
     const links: ProviderLinks = {
-      location: (externalId) => `https://www.example-parks.test/parks/${externalId}`,
-      booking: (externalId, stay) =>
-        stay
-          ? `https://www.example-parks.test/book/${externalId}?from=${stay.arrival}&to=${stay.departure}`
-          : `https://www.example-parks.test/book/${externalId}`,
+      location: (externalId) => `${SITE}/parks/${encodeURIComponent(externalId)}`,
+      booking: (externalId, stay) => {
+        const page = `${SITE}/book/${encodeURIComponent(externalId)}`;
+        return stay
+          ? `${page}?${new URLSearchParams({ from: stay.arrival, to: stay.departure })}`
+          : page;
+      },
     };
 
     function toSummary(raw: RawPark): LocationSummary {
@@ -459,15 +575,13 @@ export function createExampleApiFactory({
       links,
       catalog: {
         async listLocations(signal) {
-          const { parks } = await get('/api/parks', RawParkList, signal);
+          const { parks } = await get('/api/parks', RawParkList, { signal });
           return parks.map(toSummary);
         },
         async getLocation(externalId, signal): Promise<LocationDetail> {
-          const park = await get(
-            `/api/parks/${encodeURIComponent(externalId)}`,
-            RawParkDetail,
-            signal
-          );
+          const park = await get(`/api/parks/${encodeURIComponent(externalId)}`, RawParkDetail, {
+            signal,
+          });
           return {
             ...toSummary(park),
             // Raw provider HTML: main sanitises it before it crosses IPC.
@@ -484,10 +598,17 @@ export function createExampleApiFactory({
       },
       availability: {
         async check(externalId, stay, options = {}): Promise<LocationAvailability> {
+          // A stay field the person did not set (or a caller that sends none, such as the
+          // place page) falls back to the field's default.
           const siteType = stay.params?.siteType ?? 'any';
-          const query = `arrival=${stay.arrival}&departure=${stay.departure}&guests=${stay.adults}&siteType=${siteType}`;
-          const path = `/api/parks/${encodeURIComponent(externalId)}/availability?${query}`;
-          const { sites } = await get(path, RawAvailability, options.signal);
+          const query = {
+            arrival: stay.arrival,
+            departure: stay.departure,
+            guests: stay.adults + (stay.children ?? 0),
+            siteType: String(siteType),
+          };
+          const path = `/api/parks/${encodeURIComponent(externalId)}/availability`;
+          const { sites } = await get(path, RawAvailability, { query, signal: options.signal });
           const wanted = options.unitIds?.length ? new Set(options.unitIds) : undefined;
           const units = sites
             .filter((site) => !wanted || wanted.has(site.id))
@@ -507,8 +628,8 @@ export function createExampleApiFactory({
           };
         },
         async search(stay, signal): Promise<BulkAvailabilityEntry[]> {
-          const path = `/api/availability?arrival=${stay.arrival}&departure=${stay.departure}`;
-          const { parks } = await get(path, RawBulk, signal);
+          const query = { arrival: stay.arrival, departure: stay.departure };
+          const { parks } = await get('/api/availability', RawBulk, { query, signal });
           return parks.map((park) => ({
             key: makeLocationKey(ctx.id, String(park.id)),
             availableUnits: park.free,
@@ -516,6 +637,8 @@ export function createExampleApiFactory({
           }));
         },
       },
+      holds: createExampleHolds({ providerId: ctx.id, http, apiUrl: baseUrl, siteUrl: SITE }),
+      auth: createExampleAuth({ apiUrl: baseUrl, siteUrl: SITE }),
     };
   });
 }
@@ -549,8 +672,10 @@ The rules the normalised types carry (`src/shared/types/provider.types.ts`,
 ## 5. A browser provider
 
 Example Holiday Parks has no API, so it reads the site's pages in the person's installed Edge
-or Chrome. [Browser providers](browser-providers.md) has the full detail (selectors, waiting,
-politeness, bot walls, testing); here is what you need to start.
+or Chrome. Its availability appears only after the park page's search form runs: the site's
+script fetches the nights and draws a table. [Browser providers](browser-providers.md) has the
+full detail (the runtime, selectors, waiting, politeness, bot walls, search-mode catalogues);
+here is what you need to start.
 
 ### When to choose browser automation
 
@@ -564,34 +689,16 @@ And never when the provider's terms forbid automated access.
 
 ### The automation runtime
 
-`ctx.browser` is a `PlaywrightBrowserAutomation` (`src/main/providers/sdk/browser-automation.ts`,
-V7 #25) with one method you use, `withPage(fn, { headed?, timeoutMs?, signal? })`:
+`ctx.browser` is a `PlaywrightBrowserAutomation` (`src/main/providers/sdk/browser-automation.ts`)
+with one method you use, `withPage(fn, { headed?, timeoutMs?, signal? })`. It loads
+`playwright-core` on first use, drives the installed Edge or Chrome (WA Stay bundles and
+downloads no browser) with Chromium's sandbox on, keeps one persistent profile per provider at
+`<userData>/providers/<id>/browser`, and runs a provider's calls one at a time. The browser
+closes after 5 minutes without a call, and on quit. [Browser providers](browser-providers.md#the-withpage-lifecycle)
+has the details.
 
-- **Lazy.** `playwright-core` is imported on the first `withPage`, so start-up, and providers that
-  never automate, pay nothing for it. WA Stay bundles and downloads no browser.
-- **The installed Edge or Chrome.** Channels are tried in platform order: `msedge` then `chrome`
-  on Windows (Edge is on every Windows 10 and 11 machine), `chrome` then `msedge` elsewhere. The
-  channel that worked is remembered in the provider's state (`browser.channel`) and tried first
-  next time. Neither installed is a `BrowserUnavailableError` (`no-browser`), which the person
-  sees as "WA Stay needs Microsoft Edge or Google Chrome installed to use {provider}".
-- **Sandboxed.** Playwright would start Chromium with `--no-sandbox`; WA Stay always launches the
-  person's browser with `chromiumSandbox: true`, because it visits third-party sites. Only a
-  development `WA_STAY_BROWSER_PATH` (honoured only when the app runs from source) keeps
-  Playwright's default, for CI and containers that run as root.
-- **One persistent profile per provider**, at `<userData>/providers/<id>/browser`, so the
-  provider's own cookies and sign-in survive between runs. It is not the person's own browser
-  profile, and providers never share one. Chromium locks a profile, so a provider's `withPage`
-  calls run one at a time.
-- **Headless by default.** `headed: true` shows a window, for a step a person must do; the
-  browser relaunches when the mode changes.
-- **Lifecycle.** The browser closes after 5 minutes without a call. On quit, the quit hold
-  (`src/main/app/quit-hold.ts`) hides the windows and waits up to 6 s while the registry closes
-  every provider's browser (`close()` gives it 5 s, then kills it), so a profile is flushed
-  rather than cut off. A `withPage` during the shutdown rejects (`closing`).
-- **Sign-in by automation** would be `auth.kind: 'automation'` (`signIn(browser, signal)`). It is
-  declared and validated (§12.30) but **not implemented**: the account service supports only
-  `browser-session`. Until it is, a browser provider that needs an account cannot use Settings →
-  Accounts' Connect.
+Sign-in by browser automation (`auth.kind: 'automation'`) is declared and validated but **not
+implemented**: the account service supports only `browser-session` ([sign-in](#7-sign-in)).
 
 ### The example
 
@@ -740,7 +847,8 @@ function parsePrice(label: string): number | undefined {
 ```
 
 **One unit of work per `withPage` call**, the signal passed through so an abort closes the
-page, and an error page turned into an error:
+page, an error page turned into an error, and the site's own form filled in and sent, waiting
+for its result rather than for a time:
 
 <!-- region: tests/fixtures/providers/example-browser/index.ts#browser-factory -->
 
@@ -800,7 +908,7 @@ export function createExampleBrowserFactory({
             async (page): Promise<LocationDetail> => {
               await open(page, parkPath(externalId));
               const [park] = await page.$$eval('main[data-park]', readParks);
-              const units = await page.$$eval('[data-unit]', (items) =>
+              const units = await page.$$eval('li[data-unit]', (items) =>
                 items.map((item) => ({
                   unitId: item.getAttribute('data-unit') ?? '',
                   unitName: item.textContent?.trim() ?? '',
@@ -815,8 +923,14 @@ export function createExampleBrowserFactory({
         check: (externalId, stay, options = {}) =>
           ctx.browser.withPage(
             async (page): Promise<LocationAvailability> => {
-              const query = `arrival=${stay.arrival}&departure=${stay.departure}&guests=${stay.adults}`;
-              await open(page, `${parkPath(externalId)}/availability?${query}`);
+              await open(page, parkPath(externalId));
+              // The park page's own search form: the site's script fetches the nights and
+              // draws the table. Locators wait for each field; wait for the table, not a time.
+              await page.getByLabel('Arrival').fill(stay.arrival);
+              await page.getByLabel('Departure').fill(stay.departure);
+              await page.getByLabel('Guests').fill(String(stay.adults + (stay.children ?? 0)));
+              await page.getByRole('button', { name: 'Check availability' }).click();
+              await page.getByRole('table', { name: 'Availability' }).waitFor();
               const rows = await page.$$eval('tr[data-unit]', readUnits);
               const wanted = options.unitIds?.length ? new Set(options.unitIds) : undefined;
               const units = rows
@@ -849,11 +963,213 @@ export function createExampleBrowserFactory({
 }
 ```
 
-The browser profile (`<userData>/providers/<id>/browser`) keeps the provider's own cookies and
-sign-in between runs. It is a different cookie jar from `ctx.http`'s session partition: a
-`hybrid` provider must not assume a sign-in in one is visible to the other.
+The browser profile keeps the provider's own cookies and sign-in between runs. It is a
+different cookie jar from `ctx.http`'s session partition: a `hybrid` provider must not assume a
+sign-in in one is visible to the other.
 
-## 6. Optional modules
+## 6. Holds
+
+A hold is a temporary reservation the person then pays for on the provider's own site
+(`capabilities.holds`). The app places one when a watch with "Hold a site automatically" finds
+a match, or a snipe fires; the person pays in a payment window on your session partition.
+Example Parks places a hold with `POST /api/holds`:
+
+<!-- region: tests/fixtures/providers/example-api/holds.ts#holds -->
+
+```ts
+import { z } from 'zod';
+import {
+  ProviderParseError,
+  type HoldFailureReason,
+  type HoldResult,
+  type HoldsModule,
+  type HttpClient,
+} from '@main/providers/sdk';
+import type { ProviderId } from '@shared/types/provider.types';
+
+/** What `POST /api/holds` answers with a 201. */
+const RawHold = z.object({
+  hold: z.object({ reference: z.string().min(1), expiresAt: z.iso.datetime(), siteId: z.string() }),
+});
+
+/** The statuses Example Parks refuses a hold with, and what each means. */
+const REFUSALS: Record<number, HoldFailureReason> = {
+  401: 'auth-required',
+  403: 'auth-required',
+  409: 'taken',
+  422: 'invalid',
+  423: 'in-progress',
+};
+
+export interface ExampleHoldsOptions {
+  providerId: ProviderId;
+  http: HttpClient;
+  /** The API, for `POST /api/holds`. */
+  apiUrl: string;
+  /** The website, whose checkout the payment window opens. */
+  siteUrl: string;
+}
+
+export function createExampleHolds(options: ExampleHoldsOptions): HoldsModule {
+  const { providerId, http, apiUrl, siteUrl } = options;
+  const checkout = (reference: string): string =>
+    `${siteUrl}/checkout/${encodeURIComponent(reference)}`;
+
+  return {
+    async create({ externalId, unitId, stay }, signal): Promise<HoldResult> {
+      const url = `${apiUrl}/api/holds`;
+      // An abort or a failed request rejects (the core logs it); a refusal is a result.
+      const response = await http.request('POST', url, {
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          parkId: externalId,
+          // No unit: Example Parks picks a free site for the stay.
+          siteId: unitId ?? null,
+          arrival: stay.arrival,
+          departure: stay.departure,
+          guests: stay.adults + (stay.children ?? 0),
+        }),
+        signal,
+      });
+      if (response.status !== 201) {
+        return {
+          ok: false,
+          reason: REFUSALS[response.status] ?? 'error',
+          message: `Example Parks did not hold the site (HTTP ${response.status})`,
+        };
+      }
+      const parsed = RawHold.safeParse(await response.json());
+      if (!parsed.success) {
+        throw new ProviderParseError({ providerId, url, message: 'Unexpected /api/holds answer' });
+      }
+      const { reference, expiresAt, siteId } = parsed.data.hold;
+      return { ok: true, reference, expiresAt: new Date(expiresAt), unitId: siteId };
+    },
+
+    // The payment window opens here, on the provider's session partition.
+    paymentUrl: (hold) => checkout(hold.reference),
+    // The top-level origins it may visit: the checkout and the card payment page.
+    paymentOrigins: [siteUrl, 'https://pay.example-parks.test'],
+
+    // Strict: only this hold's own confirmation page, showing its reference, means it is paid.
+    async bookedReference(hold, page) {
+      if (page.url.split(/[?#]/)[0] !== `${checkout(hold.reference)}/confirmed`) return null;
+      return (await page.hasText(`Booking ${hold.reference} confirmed`)) ? hold.reference : null;
+    },
+  };
+}
+```
+
+- **`create({ externalId, unitId?, unitGroupId?, stay }, signal)`** returns a `HoldSuccess`
+  (`reference`, `expiresAt`, `unitId`) or a `HoldFailure` with a reason: `taken`,
+  `in-progress`, `auth-required`, `closed`, `invalid` or `error`. **A refusal is a result, not
+  a rejection**: the core tells the person why and carries on. Reject only for an abort or a
+  request that failed (it is logged, and the attempt reported as failed). `unitId` may be
+  missing: hold any free unit for the stay, or refuse with `invalid`. The core's night guard
+  has already made sure the person holds nothing else for those nights.
+- **`paymentUrl(hold)`** is where the person pays; the app opens it in a payment window on
+  your partition, after `access.ensure()` when you have an access gate.
+- **`paymentOrigins`** are the top-level https origins the payment window may visit
+  (sub-frames are not restricted, for card and 3-D Secure frames).
+- **`bookedReference(hold, page)`** decides whether a page the payment window loaded is
+  **this** hold's confirmation, using only `page.url` and `page.hasText(text)` (the browser's
+  find-in-page; nothing runs in the page). Return the booking reference to record, or `null`.
+  Without it the app cannot tell when a payment completes. Be strict: Example Parks wants its
+  own confirmation path with this hold's reference, and the reference on the page; ParkStay
+  wants its `/success/` page with this hold's hash and its booking number.
+- **Never place a real hold** in a test or a trial run. Example Parks' holds are tested on a
+  recorded 201 and a loopback server (`tests/unit/docs/example-providers.test.ts`).
+
+## 7. Sign-in
+
+Required unless `capabilities.account` is `none`. The only sign-in the app implements is
+**`browser-session`**: the person signs in on the provider's own pages, in an app window on
+your session partition, so the cookies they get are the ones `ctx.http`, holds and the payment
+window use. Example Parks' account is `optional`:
+
+<!-- region: tests/fixtures/providers/example-api/auth.ts#auth -->
+
+```ts
+import { z } from 'zod';
+import {
+  isAbortError,
+  ProviderHttpError,
+  ProviderParseError,
+  ProviderTimeoutError,
+  type BrowserSessionAuth,
+  type HttpClient,
+} from '@main/providers/sdk';
+import type { AccountStatus } from '@shared/types/provider.types';
+
+/** What `GET /api/me` answers for a signed-in session. Only the email and name are read. */
+const RawMe = z.object({ email: z.string().min(1), name: z.string().optional() });
+
+const unknown = (reason: string): AccountStatus => ({ state: 'unknown', reason });
+
+export function createExampleAuth(options: {
+  apiUrl: string;
+  siteUrl: string;
+}): BrowserSessionAuth {
+  const { apiUrl, siteUrl } = options;
+  return {
+    kind: 'browser-session',
+    // Where the sign-in window opens. It runs on the provider's session partition, so the
+    // cookies the person gets there are the ones ctx.http sends.
+    signInUrl: `${siteUrl}/account/sign-in`,
+    // Every top-level https origin the sign-in flow visits, the identity provider included.
+    allowedOrigins: [siteUrl, 'https://login.example-parks.test'],
+    // Pages that mean "probably signed in": the app then asks isSignedIn to be sure.
+    completionUrlPatterns: [`${siteUrl}/account/welcome*`],
+
+    // Asks the provider with the partition's cookies (`http`). Only a definite answer is
+    // signed in or signed out; anything else is `unknown` with a reason, and the app keeps the
+    // last definite answer.
+    async isSignedIn(http: HttpClient, signal?: AbortSignal): Promise<AccountStatus> {
+      try {
+        const response = await http.request('GET', `${apiUrl}/api/me`, {
+          headers: { Accept: 'application/json' },
+          timeoutMs: 15_000,
+          signal,
+        });
+        if (response.status === 401 || response.status === 403) return { state: 'signed-out' };
+        if (response.status !== 200) return unknown(`http ${response.status}`);
+        const me = RawMe.safeParse(await response.json());
+        if (!me.success) return unknown('parse');
+        const { email, name } = me.data;
+        return { state: 'signed-in', email, ...(name ? { displayName: name } : {}) };
+      } catch (error) {
+        if (isAbortError(error)) throw error;
+        if (error instanceof ProviderTimeoutError) return unknown('timeout');
+        if (error instanceof ProviderParseError) return unknown('parse');
+        if (error instanceof ProviderHttpError) {
+          return unknown(error.status === 0 ? 'network' : `http ${error.status}`);
+        }
+        throw error;
+      }
+    },
+  };
+}
+```
+
+- **`signInUrl`** is where the window opens. **`allowedOrigins`** is every top-level https
+  origin of the flow (the identity provider and any queue included); the window refuses any
+  other. **`completionUrlPatterns`** (`*` wildcard) are pages that mean "probably done": the app
+  then confirms with `isSignedIn`.
+- **`isSignedIn(http, signal)`** asks the provider with the partition's cookies (`http`, not
+  `ctx.http`) and returns `signed-in` (with email and name), `signed-out`, or `unknown` with a
+  reason when the answer was not definite (a 5xx, a queue, no network). Never turn "could not
+  tell" into `signed-out`: the app keeps the last definite answer, and checks again later
+  (answers are cached for 60 s, an `unknown` one for 5 s).
+- Settings → Accounts shows the provider's row with "Connect" and "Sign out". Sign-out clears
+  only your partition, and is refused (`ACCOUNT_BUSY`) while a snipe or hold needs it.
+
+| `kind` | How the person signs in | Status |
+| --- | --- | --- |
+| `browser-session` | On the provider's own pages, in an app window on your partition, as above. | Implemented. ParkStay uses it ([sign-in](parkstay/authentication.md)). |
+| `credentials` | The app asks for `fields` (`AccountFieldDescriptor`, secret ones kept in `ctx.secrets`) and calls `signIn(values, http)`. | Declared and validated; the account service does not implement it yet. |
+| `automation` | `signIn(browser)` signs in through browser automation. | Declared and validated; the account service does not implement it yet. |
+
+## 8. Other optional modules
 
 Add these when the capability needs them. Their interfaces are in
 `src/main/providers/sdk/provider.ts`; ParkStay implements every one.
@@ -895,44 +1211,11 @@ When dates become bookable, for Site Sniper (`release`). ParkStay: `release-poli
 - `pollFloorMs: { window, continuous }` are the fastest the core may poll inside a release
   window and continuously. Pick them for the provider's capacity, not yours.
 
-### Holds
-
-A temporary reservation the person pays for (`holds`). ParkStay: `holds.ts`.
-
-- `create({ externalId, unitId?, unitGroupId?, stay }, signal)` returns a `HoldSuccess`
-  (`reference`, `expiresAt`, `unitId`) or a `HoldFailure` with a reason (`taken`,
-  `in-progress`, `auth-required`, `closed`, `invalid`, `error`). A refusal is a result, not a
-  rejection. The core's night guard has already made sure the person holds nothing else for
-  those nights.
-- `paymentUrl(hold)` is where the person pays; the app opens it in a payment window on your
-  partition, after `access.ensure()` when you have a gate.
-- `paymentOrigins` are the top-level origins the payment window may visit (sub-frames are not
-  restricted, for card and 3-D Secure frames).
-- `bookedReference(hold, page)` decides whether a page the payment window loaded is **this**
-  hold's confirmation, using only `page.url` and `page.hasText(text)` (the browser's
-  find-in-page; nothing runs in the page). Return the booking reference to record, or `null`.
-  Without it the app cannot tell when a payment completes. Be strict: ParkStay requires its
-  `/success/` page with this hold's hash and its booking number on the page.
-- Never place a real hold in a test or a trial run (architecture-notes §12.33). Use fixtures.
-
 ### Bookings
 
 `bookings.get(reference)` (and `list`) return `ExternalBooking`s, for "Import booking"
 (`capabilities.bookingImport`). `links.manageBooking(reference)` gives "Manage on {shortName}"
 on a booking.
-
-### Auth
-
-Required unless `capabilities.account` is `none`. `auth.isSignedIn(http, signal)` asks the
-provider, with your partition's cookies, and returns `signed-in` (with email and name),
-`signed-out`, or `unknown` with a reason when the answer was not definite (a queue, a 5xx, no
-network). The app keeps the last definite answer.
-
-| `kind` | How the person signs in | Status |
-| --- | --- | --- |
-| `browser-session` | On the provider's own pages, in an app window on your partition: `signInUrl`, `allowedOrigins` (every top-level https origin of the flow, identity provider and queue included), `completionUrlPatterns` (pages that mean "probably done"; the app confirms with `isSignedIn`). | Implemented (V6). ParkStay uses it ([sign-in](parkstay/authentication.md)). |
-| `credentials` | The app asks for `fields` (`AccountFieldDescriptor`, secret ones kept in `ctx.secrets`) and calls `signIn(values, http)`. | Declared and validated; the account service does not implement it yet. |
-| `automation` | `signIn(browser)` signs in through browser automation ([above](#the-automation-runtime)). | Declared and validated only (§12.30); the account service does not implement it. |
 
 ### Links and dispose
 
@@ -940,9 +1223,51 @@ network). The app keeps the last definite answer.
 `null` when there is no page); they must be absolute https URLs. `dispose()` is called on quit,
 after the access gate's; the registry also closes your browser.
 
-## 7. Register it
+## 9. Timeouts, failures and retries
 
-Add the factory to `BUILT_IN_PROVIDERS` in `src/main/providers/index.ts`: one line.
+### Timeouts
+
+The core bounds every call it makes to a provider. These are fixed, the same for every
+provider: the manifest's `limits` set how often and how many, not how long. Keep each call well
+inside its bound; a call that runs over is aborted through its `signal`. The catalogue's bounds
+are `DEFAULT_CATALOG_TIMINGS` in `src/main/core/catalog/location-catalog.service.ts`.
+
+| Call | Bound | What happens then |
+| --- | --- | --- |
+| A `full` catalogue sync (`listLocations`), `syncTimeoutMs` | 60 s | The sync fails; the cached locations are kept. |
+| A place's detail (`getLocation`), `detailTimeoutMs` | 20 s | The place page shows the cached detail if there is one, or an error. |
+| A place page's availability check (`check`), `availabilityTimeoutMs` | 20 s | The check fails with an error. |
+| One page of a `search` catalogue's area or text search, `searchTimeoutMs` | 20 s | That search fails (earlier pages are kept), and is not asked again for 60 s (`searchErrorTtlMs`). |
+| One `ctx.http` request | 30 s (`timeoutMs`) | `ProviderTimeoutError`. |
+| One `ctx.browser.withPage` call | 60 s (`timeoutMs`) | Playwright's `TimeoutError`. |
+| A watch check, a hold, a sign-in check | none from the core | Only your own request and page timeouts apply. |
+
+Other timings from the same table: the first sync starts once the window has been open for
+5 s (`startDelayMs`), stale catalogues are looked at every 60 minutes (`recheckMs`), a detail is
+cached for 6 hours (`detailTtlMs`), bulk availability for 5 minutes (`bulkTtlMs`; a failed
+answer for 1 minute, `bulkErrorTtlMs`) and a place page's check for 1 minute (`checkTtlMs`).
+
+A browser provider is the one most at risk: a cold browser start plus a page with a script can
+take several seconds on a slow computer. Do one unit of work per call, and wait for elements,
+never for a time.
+
+### When a call fails
+
+- **The core does not retry a failed call.** `ProviderError.retryable` is logged, and nothing
+  reads it. A failed watch check is recorded as an error on the watch (the person sees the
+  message), and the watch runs again at its normal interval. A failed catalogue sync keeps the
+  cached locations and is tried again at the next hourly look (or after 1, 2 and 5 minutes
+  while nothing is cached).
+- **HTTP 429** reaches the person as `RATE_LIMITED`, and is never retried at once. The core does
+  not read `Retry-After` (`ProviderHttpError` does not keep headers). If the provider asks you
+  to slow down, raise `minWatchIntervalMinutes`, lower `maxConcurrentRequests`, and fetch less.
+- **Do not retry in a loop inside a module**, and never sleep and try again. Throw a
+  `ProviderError` with a message the person can act on, and let the next scheduled run try.
+
+## 10. Register it
+
+Add the factory to `BUILT_IN_PROVIDERS` in `src/main/providers/index.ts`: one line and its
+import. The scaffold does it for you (`--no-register` prints the lines instead).
 
 <!-- region: tests/fixtures/providers/example-api/index.ts#api-register -->
 
@@ -961,64 +1286,126 @@ taken), the manifest (schema, then the flag rules), the context, the provider's 
 naming the provider and the rule; `registerBuiltInProviders` logs it and starts the app
 without that provider.
 
-## 8. Test it
+Registering changes nothing else in the project, and no existing test depends on which
+providers are built in:
 
-### Fixtures and a fresh registry
+- Jest tests about ParkStay register ParkStay alone; tests of the registry and the container
+  go through every built-in provider or use fakes. Nothing reaches the network:
+  in Jest the app's HTTP client sits on a mocked Electron.
+- The Electron smoke tests register only ParkStay (the `WA_STAY_PROVIDERS` hook: the harness
+  sets `parkstay` unless a launch passes its own `providers`), so their place counts and
+  pre-selections hold however many providers are built in.
 
-Record a few of the provider's public responses (anonymously, politely, trimmed, with no
-personal data) and serve them from a loopback server. `createTestProviderContext`
-(`tests/utils/fake-provider.ts`) builds a context with a `NodeHttpClient`, in-memory state, a
-fake secret vault and a fixed clock:
+Then run the whole gate, as in the [quick start](#quick-start): lint, format, type-check,
+`npm test`, `test:tz` and the e2e suite.
 
-<!-- region: tests/unit/docs/example-providers.test.ts#test-api -->
+## 11. Test it
+
+### Where the tests go
+
+| What | Where |
+| --- | --- |
+| The provider's tests: the contract suite and its mapping | `tests/integration/<id>-provider.test.ts` (Jest's `main` project) |
+| Recorded responses for Jest (API), with their routes | `tests/fixtures/providers/<id>/` and its `manifest.json` |
+| A made-up copy of the site for the fake browser (browser) | `tests/fixtures/providers/<id>/site.ts` |
+| Recorded responses for the app in fixture mode (API) | `tests/e2e/fixtures/http/<id>/` and its `manifest.json` |
+| An Electron journey that shows the provider (optional) | `tests/e2e/<name>.spec.ts`, launching with `providers: ['<id>']` |
+
+Record only the provider's public responses, anonymously and politely (a browser user agent,
+one request, not a crawl), trimmed to what the tests need, with no cookie, token, booking or
+personal detail.
+
+### Recorded responses: FixtureHttpClient
+
+`FixtureHttpClient` (`src/main/testing/fixture-http-client.ts`) answers requests from recorded
+responses: a folder per provider with a `manifest.json` of routes (`method`, `path`, and
+optionally `query`, `status`, `contentType`) and the files they name. The host is not compared,
+so any https address does, and a request that no route answers fails without being sent
+([the route format](../../tests/e2e/fixtures/http/README.md#manifest)). It is the client the app
+uses in fixture mode, so the same format serves Jest and the Electron smoke tests:
+
+<!-- region: tests/unit/docs/example-providers.test.ts#test-fixtures -->
 
 ```ts
-// A fresh registry, a test context (NodeHttpClient, in-memory state, a fixed clock) and
-// the provider pointed at the loopback server that serves the JSON fixtures.
-const registry = new ProviderRegistry();
-const factory = createExampleApiFactory({ baseUrl: server.baseUrl });
-registry.register(factory, (manifest) => createTestProviderContext(manifest));
-provider = registry.require('example-api', 'bulkAvailability');
+/**
+ * A test context (in-memory state, a fake vault, a fixed clock) whose HTTP answers from the
+ * recorded responses `tests/fixtures/providers/<id>/manifest.json` lists, by method and path.
+ * The host is not compared, and a request no route answers fails without being sent.
+ */
+function fixtureContext(manifest: ProviderManifest) {
+  return createTestProviderContext(manifest, {
+    http: new FixtureHttpClient({
+      providerId: manifest.id,
+      fixturesDir: path.join(ROOT, 'tests/fixtures/providers'),
+      logFile: UNEXPECTED_LOG,
+    }),
+  });
+}
 ```
 
-Then test the mapping: normalised `LocationSummary`s, `NightStatus`es with `YYYY-MM-DD` dates
-and only the stay's nights, unknown words read as `unknown`, an unknown location as a
-`ProviderError`, the limiter.
+A route with `query` answers only a request with those values, so a fixture can prove the
+provider sent the right parameters (Example Parks' availability route answers only
+`siteType=powered` for the stay). When a test needs answers that differ for the same request
+(a refusal, a slow server, a wrong shape), serve them from a loopback server with
+`NodeHttpClient`, as the example's tests do.
 
 ### The contract suite
 
 `describeProviderContract` (`tests/utils/provider-contract.ts`) is the conformance suite every
 provider runs: a valid manifest, a module behind every capability, keys that round-trip, every
 module honouring `AbortSignal`, `ProviderError`s for failures, https links, and registration in
-a `ProviderRegistry`. Modules the provider lacks are skipped:
+a `ProviderRegistry`. Modules the provider lacks are skipped. A `search` catalogue is also
+checked over `searchBbox`: items inside the box, cursor paging that ends, an abort honoured on
+every page.
+
+Register the provider as the app does, in a fresh registry, on recorded responses:
+
+<!-- region: tests/unit/docs/example-providers.test.ts#test-api -->
+
+```ts
+// A fresh registry, as the app has, and the provider on recorded responses: any https
+// host does, because a FixtureHttpClient answers by path and never sends a request.
+const registry = new ProviderRegistry();
+const factory = createExampleApiFactory({ baseUrl: 'https://api.example-parks.test' });
+registry.register(factory, fixtureContext);
+provider = registry.require('example-api', 'bulkAvailability');
+```
+
+and run the suite on it:
 
 <!-- region: tests/unit/docs/example-providers.test.ts#test-contract -->
 
 ```ts
-describeProviderContract('example-api', async () => {
-  const server = await startFixtureServer();
-  const factory = createExampleApiFactory({ baseUrl: server.baseUrl });
+describeProviderContract('example-api', () => {
+  const factory = createExampleApiFactory({ baseUrl: 'https://api.example-parks.test' });
   return {
-    provider: factory(createTestProviderContext(factory.manifest)),
+    provider: factory(fixtureContext(factory.manifest)),
     sample: { externalId: '101', stay: STAY },
     unknownExternalId: '999',
-    cleanup: () => server.close(),
   };
 });
 ```
 
+Then test the mapping: normalised `LocationSummary`s, `NightStatus`es with `YYYY-MM-DD` dates
+and only the stay's nights, unknown words read as `unknown`, an unknown location as a
+`ProviderError`, and the limiter. The scaffold's generated test is a starting point for all of
+these.
+
 ### A browser provider without a browser
 
-Unit tests never start a browser. Give the context the fake browser from
+Unit tests never start a browser: `createTestProviderContext` gives a context whose browser
+fails the test unless you set one up. Give it the fake browser from
 `tests/utils/fake-browser.ts`: its pages load your fixture site into jsdom and run the site's
-scripts, so your real page code runs against it. Pass `openPages` to the contract suite so it
+scripts, forms and links go back through the site, and a page script's `fetch` is answered by
+the site, so your real page code runs against it. Pass `openPages` to the contract suite so it
 checks that no call leaves a page open:
 
 <!-- region: tests/unit/docs/example-providers.test.ts#test-fake-browser -->
 
 ```ts
 describeProviderContract('example-browser', () => {
-  // Pages come from the example site, in jsdom: the provider's own page code runs.
+  // Pages come from the example site, in jsdom, its scripts running: the provider's own
+  // page code runs against them.
   const fake = createFakeBrowser(renderExampleSite);
   const factory = createExampleBrowserFactory();
   return {
@@ -1030,18 +1417,69 @@ describeProviderContract('example-browser', () => {
 });
 ```
 
-For launch failures, crashes and a locked profile, mock `playwright-core` with
-`tests/utils/fake-playwright.ts` and build the context with `createPlaywrightTestProviderContext`;
-for a real-browser smoke test against a loopback site see
+The fake supports the part of playwright-core's `Page` providers use: `goto`, locators and
+`getByRole`, `getByLabel`, `getByText`, `getByTestId`; `fill`, `click`, `selectOption`,
+`check`, `waitFor`; `$$eval`, `evaluate`, `waitForURL` and more (the list is at the top of the
+file). Anything else throws "not supported by the fake browser: <name>". It records `visits`,
+`requests` (a page script's `fetch` calls included) and `pageErrors` for your assertions.
+
+Tests of the browser runtime itself (launch failures, crashes, a locked profile) mock
+`playwright-core` with `tests/utils/fake-playwright.ts`; a provider does not need it. For a
+real-browser check against a loopback copy of a site, see
 [browser providers](browser-providers.md#the-real-browser-smoke-test).
 
 ### The Electron smoke tests
 
 The Electron smoke tests (`tests/e2e`) run the built app in network-free fixture mode: every
 provider's `HttpClient` is a `FixtureHttpClient` that answers from
-`tests/e2e/fixtures/http/<id>/manifest.json`. A provider with no folder there answers every
-request with an error, so add your provider's recorded responses there if a journey shows its
-locations ([tests/README.md](../../tests/README.md)).
+`tests/e2e/fixtures/http/<id>/manifest.json`, and any other request is cancelled and logged. A
+provider with no folder there answers every request with an error. The journeys register only
+ParkStay, so a new provider changes none of them; a journey written for your provider launches
+with `launchWaStay({ providers: ['parkstay', '<id>'] })` ([tests/README.md](../../tests/README.md)).
+
+Fixture mode serves `ctx.http` only. `ctx.browser` is the real browser automation, so a browser
+provider must not be registered in a journey unless its pages are local.
+
+## 12. Preview in the app
+
+See the provider in the running app before you call it done.
+
+**The preview spec** (API providers). `tests/e2e/preview-provider.spec.ts` launches the built
+app as the smoke tests do (fixture mode, a temp profile, no network) with only your provider
+registered, and checks that Explore lists its places, that the first place's page opens, and
+that Settings → Accounts shows it:
+
+```bash
+npm run build:e2e
+npx cross-env PREVIEW_PROVIDER=acme-parks playwright test preview-provider
+npx playwright show-report        # the screenshots: Explore, the place page, Accounts
+```
+
+On Linux without a display, run the second command under `xvfb-run -a`. If Explore shows none
+of its places, the failure quotes what the app logged about the provider, such as "Acme Parks
+is not set up yet: set ACME_PARKS_API_URL …" or "no fixture for GET …; add a route to
+tests/e2e/fixtures/http/acme-parks/manifest.json". Without `PREVIEW_PROVIDER` the spec is
+skipped, so the suite and CI never run it.
+
+**By hand, from source.** The same test hooks work for a build you click through yourself. They
+are honoured only when the app runs from source, never in a packaged build:
+
+```bash
+npm run build:e2e
+npx cross-env WA_STAY_E2E_FIXTURES_DIR=tests/e2e/fixtures/http WA_STAY_PROVIDERS=parkstay,acme-parks WA_STAY_USER_DATA_DIR=tmp/preview-profile electron .
+```
+
+`WA_STAY_E2E_FIXTURES_DIR` turns on fixture mode, `WA_STAY_PROVIDERS` picks the providers
+(ParkStay's fixtures are there too), and `WA_STAY_USER_DATA_DIR` keeps the run out of your own
+WA Stay data (`tmp/` is ignored by git; delete the folder to start again). On Linux as root, or
+in a container, add `--no-sandbox` after `electron .`.
+
+**Browser providers.** Fixture mode does not cover `ctx.browser`: in the app, a browser provider
+drives the installed Edge or Chrome against whatever address its code names. Keep its tests on
+the fake browser, and preview it only once those pass: point it at a local copy of its pages
+for a network-free look, or let it read the live site by hand, read-only and briefly, as a
+person browsing would. A generated browser provider fails before it starts a browser until you
+set its address, so registering it as generated is safe.
 
 ## What the app does with it
 
@@ -1051,14 +1489,19 @@ Once registered, with no other change:
   by the map's area as it moves, indexes it for search (FTS5), and shows its locations on the
   map and in the list with the provider's badge, the Provider, Type, Region and Facilities
   filters, and, with `bulkAvailability`, free counts for the chosen dates.
-- **A location's page** shows the detail (cached for 6 hours), "Check availability" with your
-  stay fields, the provider's links, and the create actions the capabilities allow.
+- **A location's page** shows the detail (cached for 6 hours), "Check availability" for
+  Explore's dates and party (no stay fields: [stay fields](#stay-fields)), the provider's
+  links, and the create actions the capabilities allow.
 - **Watches and Site Sniper** list the provider in their first step when it has the
-  capability, with its stay fields and release modes.
-- **Settings → Accounts** shows its row and sign-in.
+  capability, with its stay fields and release modes. A watch's location step searches the
+  stored catalogue (and, for a `search` catalogue with `searchText`, the provider).
+- **Settings → Accounts** shows its row and, with `browser-session`, its sign-in.
 - **Notifications** name the provider; desktop titles start with its `shortName`.
 
 ## Checklist
+
+What a finished provider looks like. (The steps to get there are in
+[CLAUDE.md, "Adding a provider"](../../CLAUDE.md#adding-a-provider).)
 
 - [ ] Terms of use read; automated access allowed; noted in the module header.
 - [ ] `id` final (it is stored in user data); `shortName` at most 24 characters.
@@ -1068,8 +1511,14 @@ Once registered, with no other change:
 - [ ] `limits` set for the provider's capacity; requests limited with `createLimiter`.
 - [ ] Every capability has its module, and nothing is claimed that is not built.
 - [ ] Raw responses validated; words mapped explicitly; unknown is never `available`.
+- [ ] `check` and `search` work without `stay.params` (the field's default).
 - [ ] Only https image URLs; HTML left for main to sanitise.
-- [ ] Every module honours its `AbortSignal`; failures are `ProviderError`s.
+- [ ] Every module honours its `AbortSignal`, stays inside the core's timeouts, and fails with
+      a `ProviderError`; no retry loops.
+- [ ] Holds: refusals are results; `bookedReference` accepts only this hold's confirmation.
+- [ ] Sign-in: `isSignedIn` answers `unknown`, never `signed-out`, when it cannot tell.
 - [ ] No cookies, tokens or personal details in logs, fixtures or errors.
-- [ ] Factory added to `BUILT_IN_PROVIDERS`; contract suite and mapping tests pass.
-- [ ] No real hold, booking or payment in any test or trial run.
+- [ ] No `TODO` left from the scaffold; no placeholder address.
+- [ ] Factory in `BUILT_IN_PROVIDERS`; its tests, the full `npm test` and the e2e suite pass;
+      the preview shows it on Explore.
+- [ ] No real hold, booking or payment, and no live site, in any test or trial run.

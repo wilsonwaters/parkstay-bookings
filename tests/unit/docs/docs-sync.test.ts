@@ -21,6 +21,8 @@ import { docFiles, readDoc, ROOT } from './markdown';
 const GUIDE = 'docs/providers/adding-a-provider.md';
 const EXAMPLES = [
   'tests/fixtures/providers/example-api/index.ts',
+  'tests/fixtures/providers/example-api/holds.ts',
+  'tests/fixtures/providers/example-api/auth.ts',
   'tests/fixtures/providers/example-browser/index.ts',
 ];
 

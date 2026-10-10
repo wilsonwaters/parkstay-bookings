@@ -3,9 +3,10 @@
  *
  * "Example Holiday Parks" is a fictional site with no API: the provider reads its pages in
  * the person's installed Edge or Chrome through `ctx.browser.withPage` (playwright-core), and
- * maps what it reads to the normalised SDK types. Tests give it the fake browser
- * (`tests/utils/fake-browser.ts`), whose pages come from `site.ts`
- * (`tests/unit/docs/example-providers.test.ts`).
+ * maps what it reads to the normalised SDK types. A park's availability appears only after its
+ * search form runs: the site's script fetches the nights and draws a table. Tests give the
+ * provider the fake browser (`tests/utils/fake-browser.ts`), whose pages come from `site.ts`,
+ * scripts and all (`tests/unit/docs/example-providers.test.ts`).
  *
  * Each region between `// #region docs:<name>` and `// #endregion` is a code block of the
  * guide, word for word; `tests/unit/docs/docs-sync.test.ts` keeps the two in step.
@@ -198,7 +199,7 @@ export function createExampleBrowserFactory({
             async (page): Promise<LocationDetail> => {
               await open(page, parkPath(externalId));
               const [park] = await page.$$eval('main[data-park]', readParks);
-              const units = await page.$$eval('[data-unit]', (items) =>
+              const units = await page.$$eval('li[data-unit]', (items) =>
                 items.map((item) => ({
                   unitId: item.getAttribute('data-unit') ?? '',
                   unitName: item.textContent?.trim() ?? '',
@@ -213,8 +214,14 @@ export function createExampleBrowserFactory({
         check: (externalId, stay, options = {}) =>
           ctx.browser.withPage(
             async (page): Promise<LocationAvailability> => {
-              const query = `arrival=${stay.arrival}&departure=${stay.departure}&guests=${stay.adults}`;
-              await open(page, `${parkPath(externalId)}/availability?${query}`);
+              await open(page, parkPath(externalId));
+              // The park page's own search form: the site's script fetches the nights and
+              // draws the table. Locators wait for each field; wait for the table, not a time.
+              await page.getByLabel('Arrival').fill(stay.arrival);
+              await page.getByLabel('Departure').fill(stay.departure);
+              await page.getByLabel('Guests').fill(String(stay.adults + (stay.children ?? 0)));
+              await page.getByRole('button', { name: 'Check availability' }).click();
+              await page.getByRole('table', { name: 'Availability' }).waitFor();
               const rows = await page.$$eval('tr[data-unit]', readUnits);
               const wanted = options.unitIds?.length ? new Set(options.unitIds) : undefined;
               const units = rows

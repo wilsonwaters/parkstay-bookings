@@ -29,8 +29,9 @@ the [README](../README.md).
 ## Providers
 
 - [Providers](providers/README.md): the providers matrix and the provider SDK.
-- [Adding a provider](providers/adding-a-provider.md): API and browser providers, step by step,
-  with compiling examples.
+- [Adding a provider](providers/adding-a-provider.md): a quick start (`npm run provider:new`,
+  then preview it in the app), and API and browser providers step by step, with compiling
+  examples of holds and sign-in.
 - [Browser providers](providers/browser-providers.md): providers with no API.
 - [ParkStay WA](providers/parkstay/README.md): the manifest, releases, data and terms.
   - [Endpoints](providers/parkstay/endpoints.md): what is requested, with verification status.

@@ -20,11 +20,18 @@ function markdownUnder(dir: string): string[] {
   });
 }
 
+/** The instructions for AI agents: CLAUDE.md, AGENTS.md and the agent commands. */
+export function agentDocs(): string[] {
+  return ['CLAUDE.md', 'AGENTS.md', ...markdownUnder('.claude/commands')].filter((file) =>
+    fs.existsSync(path.join(ROOT, file))
+  );
+}
+
 /** Every doc the link check covers, relative to the repository root. */
 export function docFiles(): string[] {
   return [
     'README.md',
-    'CLAUDE.md',
+    ...agentDocs(),
     'CHANGELOG.md',
     'tests/README.md',
     ...markdownUnder('docs'),

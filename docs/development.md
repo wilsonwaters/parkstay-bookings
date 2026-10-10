@@ -157,6 +157,7 @@ does), not on Linux or macOS. Releasing: [release process](release-process.md).
 | `npm run test:electron` | Live Electron tests of the HTTP transport, the ParkStay module and the provider windows (`tests/electron`), against loopback servers |
 | `npm run smoke:packaged` | Starts the packaged Linux app and checks it opens and quits cleanly, with the test hooks ignored |
 | `npm run docs:screenshots` | Rebuilds and retakes the screenshots in `docs/images/` |
+| `npm run provider:new -- <id>` | Generates a working provider: `--api` (default) or `--browser`, `--search`, `--name`, `--no-register` ([adding a provider](providers/adding-a-provider.md#quick-start)) |
 | `npm run lint` / `lint:fix` | ESLint on `src/`, `tests/`, `scripts/` and the root configs (`eslint.config.js`) |
 | `npm run format` / `format:check` | Prettier on `src/`, `tests/` and `scripts/` |
 | `npm run type-check` | TypeScript: main, renderer, the e2e and docs-screenshot projects |
@@ -260,7 +261,9 @@ Commits follow conventional commits (`feat(watches): …`, `fix(parkstay): …`)
   `src/renderer/api/`. The parity tests fail until all agree. See [CLAUDE.md](../CLAUDE.md).
 - **Add a migration:** only in `src/main/database/connection.ts` `runMigrations()`, following
   the rules in [CLAUDE.md](../CLAUDE.md), with an upgrade test from the v5 and v6 fixtures.
-- **Add a provider:** [Adding a provider](providers/adding-a-provider.md).
+- **Add a provider:** `npm run provider:new -- <id>`, then the checklist in
+  [CLAUDE.md](../CLAUDE.md#adding-a-provider) and the guide,
+  [Adding a provider](providers/adding-a-provider.md).
 - **Add a setting:** a key in `SETTING_KEYS` (`src/shared/contracts/settings.ts`); main owns its
   type and category.
 - **Add a page:** a route in `src/renderer/app/routes.ts` and `AppRoutes.tsx`, the page under
@@ -278,8 +281,10 @@ Commits follow conventional commits (`feat(watches): …`, `fix(parkstay): …`)
   to look at.
 - **Database:** `<userData>/wa-stay.db` (SQLite, WAL). Open a copy with any SQLite browser while
   the app is closed.
-- **Providers in tests:** `createTestProviderContext` and the ParkStay fixture server let a
-  provider run without the network.
+- **Providers in tests:** `createTestProviderContext` with a `FixtureHttpClient` (recorded
+  responses) or the fake browser (`tests/utils/fake-browser.ts`) lets a provider run without
+  the network; `PREVIEW_PROVIDER=<id>` previews one in the built app
+  ([preview in the app](providers/adding-a-provider.md#12-preview-in-the-app)).
 
 ## Troubleshooting
 

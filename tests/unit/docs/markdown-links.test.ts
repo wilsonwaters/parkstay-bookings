@@ -1,15 +1,15 @@
 /**
  * @jest-environment node
  *
- * Every relative link and image in the docs resolves (README.md, CLAUDE.md, CHANGELOG.md,
- * docs/**, resources/** and tests/README.md), anchors included; every image has alt text; and
- * every backticked `src/…`, `tests/…` or `docs/…` path in CLAUDE.md exists. External URLs are
- * not fetched.
+ * Every relative link and image in the docs resolves (README.md, CLAUDE.md, AGENTS.md, the
+ * agent commands in .claude/commands, CHANGELOG.md, docs/**, resources/** and tests/README.md),
+ * anchors included; every image has alt text; and every backticked `src/…`, `tests/…` or
+ * `docs/…` path in the agents' instructions exists. External URLs are not fetched.
  */
 
 import fs from 'fs';
 import path from 'path';
-import { anchorsIn, docFiles, linksIn, readDoc, ROOT, slug } from './markdown';
+import { agentDocs, anchorsIn, docFiles, linksIn, readDoc, ROOT, slug } from './markdown';
 
 const EXTERNAL = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i;
 
@@ -56,6 +56,8 @@ describe('docs links', () => {
       expect.arrayContaining([
         'README.md',
         'CLAUDE.md',
+        'AGENTS.md',
+        '.claude/commands/add-provider.md',
         'CHANGELOG.md',
         'tests/README.md',
         'docs/README.md',
@@ -99,13 +101,23 @@ describe('the link checker itself', () => {
   });
 });
 
-describe('CLAUDE.md', () => {
-  const text = readDoc('CLAUDE.md');
+describe("the agents' instructions", () => {
+  it('include CLAUDE.md, AGENTS.md and the agent commands', () => {
+    expect(agentDocs()).toEqual(
+      expect.arrayContaining([
+        'CLAUDE.md',
+        'AGENTS.md',
+        '.claude/commands/add-provider.md',
+        '.claude/commands/release.md',
+      ])
+    );
+  });
 
-  it('names only paths that exist', () => {
+  it.each(agentDocs())('%s names only paths that exist', (file) => {
     // Backticked paths under src/, tests/ or docs/; placeholders and globs are not paths.
+    const text = readDoc(file);
     const spans = [...text.matchAll(/`((?:src|tests|docs)\/[^`\s]*)`/g)].map((m) => m[1]);
-    expect(spans.length).toBeGreaterThan(20);
+    if (file === 'CLAUDE.md') expect(spans.length).toBeGreaterThan(20);
     const missing = spans
       .filter((span) => !/[<*{]/.test(span))
       .map((span) => span.replace(/[.,:;)]+$/, ''))

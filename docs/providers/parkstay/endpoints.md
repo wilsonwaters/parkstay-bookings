@@ -63,8 +63,8 @@ of its routes do not exist in the DBCA backend. They are listed under
 | --- | --- | --- | --- | --- |
 | GET | `/api/campground_map/` | Verified live 2026-10-02 | `catalog.ts` `listLocations` | A pre-generated GeoJSON FeatureCollection of every campground (169, about 1.2 MB). Per feature: id, `[lng, lat]`, name, `campground_type` (0 online, 1 not online, 2 another operator, 4 by application → `bookingMode`), `max_advance_booking`, features, site-relative images, `info_url`, park → district → region, campsites. `description` is empty for every campground. Synced at most once a day. |
 | GET | `/api/campsite_availablity_view/{id}/` | Verified live 2026-10-02 | `availability.ts` `check`, `catalog.ts` `getLocation`, `release-policy.ts` | Query: `arrival`, `departure` (`YYYY/MM/DD`), `num_adult`, `num_concession`, `num_child`, `num_infant`, `gear_type`. One campground's sites with a tuple per night ([below](#the-availability-tuple)), `long_description` (sanitised in main), `release_date`, `booking_time_open`, `release_time_friendly` (the daily release time, e.g. Bungarra `02:00 AM`, `api.py:1358-1372`), `site_type` and `classes`. Campgrounds listed by site class (Lucky Bay, `site_type` 1 or 2, `api.py:1375-1527`) were re-checked live on 9 Oct 2026 (`site-classes.ts`). Not available for `campground_type` 2 and 4 (HTTP 400). |
-| GET | `/api/campground_availabilty_view/` | Verified live 2026-10-02 | `availability.ts` `search` | Query: `format=json`, `arrival`, `departure`, `gear_type`, `features=[]`, `featurescs=[]`. Every campground's counts in one call, for Explore's pins: `campground_available.{id}.total_available` is the campground's **site count** and `total_bookable` the sites **free on every night** (the names read the other way round, `api.py:1100-1169`; checked against 106 live campgrounds in #34). Both are 0 past the 180-day horizon and for stays over 28 nights. No prices. A request ParkStay rejects is answered 200 with no campgrounds (`api.py:1062-1075`), so an empty answer is logged as a warning. |
-| POST | `/api/create_booking` | In DBCA source, not probed | `holds.ts` `create` | A 30-minute hold ([below](#holds-and-payment)). Never called live by any test or agent run (architecture-notes §12.33). |
+| GET | `/api/campground_availabilty_view/` | Verified live 2026-10-02 | `availability.ts` `search` | Query: `format=json`, `arrival`, `departure`, `gear_type`, `features=[]`, `featurescs=[]`. Every campground's counts in one call, for Explore's pins: `campground_available.{id}.total_available` is the campground's **site count** and `total_bookable` the sites **free on every night** (the names read the other way round, `api.py:1100-1169`; checked against 106 live campgrounds). Both are 0 past the 180-day horizon and for stays over 28 nights. No prices. A request ParkStay rejects is answered 200 with no campgrounds (`api.py:1062-1075`), so an empty answer is logged as a warning. |
+| POST | `/api/create_booking` | In DBCA source, not probed | `holds.ts` `create` | A 30-minute hold ([below](#holds-and-payment)). Never called live by any test or agent run. |
 | GET | `/api/profile` | Verified live 2026-10-10 | `auth.ts` `isSignedIn` | No trailing slash (`urls.py:58`); `IsAuthenticated` (`api.py:4720-4731`). Without a session: 403 `{"detail":"Authentication credentials were not provided."}` (probed). With one: 200 JSON whose `email`, `first_name` and `last_name` are read (from the source; a real signed-in answer is on the stakeholder's checklist, PQ2). |
 | GET | `queue.dbca.wa.gov.au/api/check-create-session/` | Verified live 2026-04-06 | `queue/queue-api.ts` | Query: `session_key`, `queue_group=parkstayv2`. `status` (`Active` or `Waiting`), `queue_position`, `wait_time`, `expiry_seconds`, `session_key`. |
 
@@ -81,14 +81,14 @@ open in the system browser.
 | GET | `/success/?checkouthash=…` | In DBCA source, not probed | Where the payment ledger returns (`utils.py:1766`, `urls.py:137`); read to record a paid hold ([below](#holds-and-payment)). |
 | GET | `/search-availability/campground/?site_id=…` | In DBCA source, not probed | "View on ParkStay" and "Book on ParkStay" (`links.ts`, `urls.py:112`); with a stay it adds `arrival`, `departure` (`YYYY/MM/DD`) and `num_adult`. |
 | GET | `/mybookings/` | In DBCA source, not probed | "Manage on ParkStay" for a booking (`urls.py:136`). |
-| GET | `/media/parkstay/campground_images/…` | Verified live 2026-10-02 | Campground photos, hot-linked from the map's site-relative image paths (brief O8). |
+| GET | `/media/parkstay/campground_images/…` | Verified live 2026-10-02 | Campground photos, hot-linked from the map's site-relative image paths, never redistributed. |
 
 ## In the DBCA backend, not used
 
 | Method | Path | Status | Why WA Stay does not use it |
 | --- | --- | --- | --- |
 | GET | `/api/search_suggest` | Verified live 2026-10-02 | It mixes parks and promotional areas in with campgrounds (258 items for 169 campgrounds). Explore searches the synced catalogue offline instead. |
-| GET | `/api/campsites/{id}/` | Verified live 2026-10-02 | Site names come with the availability view, so per-site lookups were removed (architecture-notes §12.27). |
+| GET | `/api/campsites/{id}/` | Verified live 2026-10-02 | Site names come with the availability view, so per-site lookups were removed. |
 | GET | `/api/booking/` | In DBCA source, not probed | The signed-in person's bookings (`BookingViewSet`). Booking import is not built (`bookingImport: false`). |
 | GET | `/api/complete_booking/{hash}/{id}/` | In DBCA source, not probed | Payment stays a human step on ParkStay's own pages. |
 | GET | `/api/booking_pricing/` | In DBCA source, not probed | Prices come per night with availability. |
@@ -174,8 +174,7 @@ refreshed, as the ParkStay page does; it never fakes activity.
 ## Holds and payment
 
 `POST /api/create_booking` is CSRF-exempt and form-encoded (`api.py:2938-3380`). It needs no
-sign-in (`api.py:2938-2947`), which is why ParkStay's account is optional in WA Stay
-(architecture-notes §12.32).
+sign-in (`api.py:2938-2947`), which is why ParkStay's account is optional in WA Stay.
 
 - **Form** (`createBookingForm`, `api.py:2986-3003`): `arrival`, `departure` (`YYYY/MM/DD`),
   `num_adult`, `num_concession`, `num_child`, `num_infant`, `num_vehicle` (the snipe's

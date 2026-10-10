@@ -1,10 +1,10 @@
 # Browser-driven providers
 
-These notes are for authors of providers that have no API, such as holiday-park chains, Airbnb and RAC Parks & Resorts. Such a provider reads the provider's own website in a real browser through `ctx.browser`. Everything else (the manifest, registering the provider, the conformance suite) works as it does for any other provider: see [Adding a provider](adding-a-provider.md), whose second worked example is a browser provider.
+These notes are for authors of providers that have no API, such as holiday-park chains, Airbnb and RAC Parks & Resorts. Such a provider reads the provider's own website in a real browser through `ctx.browser`. Everything else (the manifest, registering the provider, the conformance suite) works as it does for any other provider: see [Adding a provider](adding-a-provider.md). `npm run provider:new -- <id> --browser` generates a browser provider to start from.
 
 `ctx.browser` is a `PlaywrightBrowserAutomation` (`src/main/providers/sdk/browser-automation.ts`). It drives the **Microsoft Edge or Google Chrome already installed** on the person's computer through `playwright-core`. WA Stay never bundles or downloads a browser.
 
-The worked example is the test-only `tests/utils/fake-browser-provider.ts`, which reads the fake holiday-park site in `tests/fixtures/fake-browser-site.ts`.
+The worked example is the guide's **Example Holiday Parks** (`tests/fixtures/providers/example-browser/`, [walked through in the guide](adding-a-provider.md#5-a-browser-provider)): its availability appears only after a park page's search form runs, and its tests run it on the fake browser (`tests/utils/fake-browser.ts`) over its made-up site.
 
 ## Contents
 
@@ -20,7 +20,7 @@ The worked example is the test-only `tests/utils/fake-browser-provider.ts`, whic
 - [Headless detection and bot walls](#headless-detection-and-bot-walls)
 - [Provider terms and genuine intent](#provider-terms-and-genuine-intent)
 - [Headed mode for human steps](#headed-mode-for-human-steps)
-- [Testing with a mocked `playwright-core`](#testing-with-a-mocked-playwright-core)
+- [Testing with the fake browser](#testing-with-the-fake-browser)
 - [The real-browser smoke test](#the-real-browser-smoke-test)
 - [The browser profile and privacy](#the-browser-profile-and-privacy)
 - [Errors people see](#errors-people-see)
@@ -151,13 +151,13 @@ Many sites that need a browser still load their data as JSON: a page script call
 Read raw values in the page, then map them in Node.
 
 - **Page functions run inside the browser.** A function passed to `$$eval`, `$eval` or `evaluate` can use only its arguments and browser globals. It cannot close over Node variables or imports. Results cross back as JSON, so return plain objects.
-- **Keep page functions dumb.** Read text and attributes (see `readParks` in the fake provider). Do the interpretation, such as parsing prices, mapping words to states and building keys, in ordinary Node code that you can unit test.
+- **Keep page functions dumb.** Read text and attributes (see `readParks` in the example). Do the interpretation, such as parsing prices, mapping words to states and building keys, in ordinary Node code that you can unit test.
 - **Build keys with `makeLocationKey(ctx.id, externalId)`.** Use the site's own stable id as `externalId`, never a position in a list.
 - **Map the site's words to the normalised enums** with an explicit table, and fall back to the neutral value:
   - `NightState`: `available | booked | closed | not-released | unknown`. A word you do not recognise is `unknown`, never `available`.
   - `LocationKind`: an unknown kind is `other`.
 - **Return only the stay's nights.** Filter to `arrival <= date < departure`, whatever the page shows. Set `fullyAvailable` only when every night is `available`.
-- **Turn an error page into an error.** Check `response.status()` after `page.goto` and throw `ProviderHttpError` for a non-2xx status, as `open()` does in the fake provider. A page that has no data is not an empty result.
+- **Turn an error page into an error.** Check `response.status()` after `page.goto` and throw `ProviderHttpError` for a non-2xx status, as `open()` does in the example. A page that has no data is not an empty result.
 - **Sanitise nothing yourself.** Return HTML for `descriptionHtml` as you found it; main sanitises it before it crosses IPC.
 
 ## Search-mode catalogues (`catalogMode: 'search'`)
@@ -195,13 +195,13 @@ catalog: {
 
 The catalogue service (`src/main/core/catalog/location-catalog.service.ts`) never syncs a `search` catalogue. Instead:
 
-- **Explore asks for the area it shows.** Once the map has stayed still for half a second, Explore sends its area (all of WA when there is no map). Main snaps it outwards to a grid (`catalogSearchArea` in `src/shared/utils/catalog-area.ts`), so a small pan or zoom reuses the last search, and calls `searchArea` with the snapped box and no `stay`.
+- **Explore asks for the area it shows.** Once the map has stayed still for half a second, Explore sends its area (all of WA when there is no map), for the providers its Provider filter allows. Main snaps it outwards to a grid (`catalogSearchArea` in `src/shared/utils/catalog-area.ts`), so a small pan or zoom reuses the last search, and calls `searchArea` with the snapped box and no `stay`.
 - **At most 5 pages per area.** Main follows `nextCursor` for up to 5 pages, then stops: zooming in gives a smaller area and finer results. An area inside one whose search read every page, or inside one still being searched, is not asked again.
 - **Areas the map has left are not finished.** Only the provider's 2 newest area searches go on to another page; an older one stops before its next page, keeps what it found, and its area is asked again after 60 s if the map comes back to it. A page that fails after the first keeps the pages before it.
-- **Polite by default.** One search per area at a time; each area is asked at most once per `catalogTtlHours` while the app runs, and a failed one not again for 60 s. Main's search calls stay within `maxConcurrentRequests`, each page has a 20 s deadline, and quitting aborts them.
-- **Non-blocking.** Explore's results come from the stored catalogue at once. When a search stores places that were not stored before, main sends `catalog:updated` and Explore shows them.
+- **Polite by default.** One search per area at a time; each area is asked at most once per `catalogTtlHours` while the app runs (main remembers the last 500 areas and texts), and a failed one not again for 60 s. Main's search calls stay within `maxConcurrentRequests`, each page has a 20 s deadline, and quitting aborts them.
+- **Non-blocking.** Explore's results come from the stored catalogue at once, and `catalog.search` lists the providers still searching in `pending`. When a search stores places that were not stored before, main sends `catalog:updated` and Explore shows them.
 - **Stored like synced places.** What a search finds is added to the stored catalogue, so text search, filters, the place page, availability and watches work for it. Search results are never removed, because watches and bookings may refer to them. A place found again is refreshed; a place the site has dropped keeps its stored copy, and its page shows that copy marked out of date.
-- **Text search is optional.** If the site can search by name, implement `catalog.searchText(text, signal)`: one request, your best few dozen matches. Main calls it when someone types at least 3 characters into Explore's "Where" or a watch's location step, with the same caching and storage as area searches; the location step says "Searching …" until its places arrive (for at most a minute). Without it, the location step finds only the places already seen on the map, and suggests browsing the map to find more.
+- **Text search is optional.** If the site can search by name, implement `catalog.searchText(text, signal)`: one request, your best few dozen matches (main stores at most 100). Main calls it when someone types at least 3 characters into Explore's "Where" or a watch's location step, with the same caching and storage as area searches; the location step says "Searching {shortName}…" until its places arrive (for at most a minute, and not after an error). Without it, the location step finds only the places already seen on the map, and suggests browsing the provider's places on the Explore map to find more.
 - **Explore loads at most 5,000 places.** Search results are kept, so a busy provider can pass that; main then logs a warning once per run, and Explore leaves places out.
 - **Status.** `catalog.status()` shows a `search` catalogue with `search: { textSearch, searchedAt? }`. `syncing` is true while a search runs, and `lastError` holds the last search's error.
 
@@ -212,12 +212,12 @@ A browser visit costs the provider far more than an API call: it loads scripts, 
 - **One page at a time.** `withPage` already serialises a provider's calls. Do not work around it, for example by opening several pages inside one `fn`.
 - **Set `manifest.limits`** to match:
   - `maxConcurrentRequests: 1`;
-  - `minWatchIntervalMinutes` generous enough for a page load (the fake provider uses 30);
+  - `minWatchIntervalMinutes` generous enough for a page load (the example uses 60);
   - `catalogTtlHours` so the catalogue is crawled rarely (24 or more).
 - **Set `release.pollFloorMs`** (`{ window, continuous }`) if the provider supports snipes. Core services never poll faster than these floors. Pick floors for a page load, not for an API call.
 - **Fetch only what the stay needs.** Ask for the stay's dates, not a whole season, and do not pre-fetch pages "just in case".
 - **Never solve, bypass or outsource a CAPTCHA**, and do not use stealth plugins, fingerprint spoofing or a fake user agent. If a CAPTCHA, bot wall or "unusual traffic" page appears, stop and fail with a clear error. Do not retry in a loop.
-- **Back off on errors.** A `429`, `503` or block page means slow down. Throw a retryable `ProviderError` and let the core's scheduling decide when to try again.
+- **Back off on errors.** A `429`, `503` or block page means slow down. Throw a `ProviderError` that says so, and stop: do not retry inside the module. The core does not retry either: it logs `retryable`, records the failure (a watch shows the error) and tries again only at the next scheduled run, at the watch's normal interval. If the site keeps asking you to slow down, raise `minWatchIntervalMinutes` and fetch less ([timeouts, failures and retries](adding-a-provider.md#9-timeouts-failures-and-retries)).
 
 ## Headless detection and bot walls
 
@@ -241,7 +241,7 @@ Read the provider's terms of use before you write a module, and record what they
 
 ## Headed mode for human steps
 
-Headless is the default. Use `headed: true` only for a step a person must do themselves, such as signing in with a one-time code when V6's in-app sign-in window (an Electron window on the provider's partition) cannot be used.
+Headless is the default. Use `headed: true` only for a step a person must do themselves, such as signing in with a one-time code when the app's own sign-in window (an Electron window on the provider's partition, `browser-session` sign-in) cannot be used.
 
 ```ts
 await ctx.browser.withPage(
@@ -260,52 +260,38 @@ await ctx.browser.withPage(
 - **Tell the person first.** The UI should say a browser window is about to open and why.
 - **`ProviderAuth.kind: 'automation'`** (`signIn(browser, signal)`) is declared and validated. The account service does not implement it yet.
 
-## Testing with a mocked `playwright-core`
+## Testing with the fake browser
 
-Unit and contract tests never start a browser. A provider's own tests give its context the fake browser (`tests/utils/fake-browser.ts`, see [the provider guide](adding-a-provider.md#a-browser-provider-without-a-browser)). Tests of the browser runtime itself (launch failures, crashes, locks) mock `playwright-core` with `tests/utils/fake-playwright.ts`:
+Unit and contract tests never start a browser. `createTestProviderContext` (`tests/utils/fake-provider.ts`) gives a context whose browser fails the test unless you set one up; give it the fake browser from `tests/utils/fake-browser.ts`:
+
+<!-- region: tests/unit/docs/example-providers.test.ts#test-fake-browser -->
 
 ```ts
-jest.mock('playwright-core', () =>
-  jest.requireActual('@tests/utils/fake-playwright').fakePlaywrightModule()
-);
-
-import { fakePlaywright } from '@tests/utils/fake-playwright';
-import { renderFakeSite } from '@tests/fixtures/fake-browser-site';
-
-beforeEach(() => {
-  fakePlaywright.reset(); // Edge and Chrome "installed", no site
-  fakePlaywright.site = renderFakeSite; // (url) => { status, html }
+describeProviderContract('example-browser', () => {
+  // Pages come from the example site, in jsdom, its scripts running: the provider's own
+  // page code runs against them.
+  const fake = createFakeBrowser(renderExampleSite);
+  const factory = createExampleBrowserFactory();
+  return {
+    provider: factory(createTestProviderContext(factory.manifest, { browser: fake })),
+    sample: { externalId: 'sunset-bay', stay: STAY },
+    unknownExternalId: 'nowhere',
+    openPages: fake.openPages,
+  };
 });
 ```
 
-- **Pages render your site's HTML in jsdom.** `page.$$eval(selector, fn)` runs your real page function against that DOM, and results come back JSON-serialised, as from a real browser.
-- **Write a fixture site** for your provider that returns the markup your module reads, using the site's real attribute names and words. Keep its data deterministic.
-- **Simulate the environment:**
-  - `fakePlaywright.installed = new Set(['chrome'])` (or an empty set for "no browser");
-  - `unsupported`, `profileLockedLaunches` and `launchError` for launch failures;
-  - `context.crash()` for a crash;
-  - `hangOnClose` for a browser that will not close.
-- **The fake implements the part of the Page API the fake provider uses** (`goto`, `title`, `$$eval`, `close`, the timeout setters). If your module uses more, such as locators, extend the fake with the same behaviour as Playwright's.
-- **Run the conformance suite** with `openPages`, so it checks that no call leaves a page open:
+- **Pages come from a fixture site you write**, a route map (`{ '/parks': '<html>…', 'POST /search': handler }`) or one handler for every URL, with the site's real attribute names, labels and words. Keep its data deterministic. The scaffold generates one (`tests/fixtures/providers/<id>/site.ts`); the example's is `tests/fixtures/providers/example-browser/site.ts`.
+- **The pages run in jsdom, scripts and all.** Inline scripts and same-origin `<script src>` run; a form submit, a link click or a script navigation loads the next page from the site; a page script's `fetch` is answered by the site; nothing reaches the network.
+- **Your real page code runs**: `goto`, locators (`getByRole`, `getByLabel`, `getByText`, `getByTestId`, `locator`, `filter`), `fill`, `click`, `selectOption`, `check`, `waitFor`, `$$eval`, `evaluate`, `waitForURL` and more, with Playwright's strictness, waits and timeouts. Anything it does not support throws "not supported by the fake browser: <name>" rather than returning nothing; the list is at the top of the file.
+- **Assert on what happened**: `visits` (every page loaded), `requests` (pages, scripts and the page's `fetch` calls, with their status), `pageErrors` and `openPages()`. Pass `openPages` to the contract suite, as above, so it checks that no call leaves a page open.
+- **Fixture mode in the app does not cover `ctx.browser`.** The Electron smoke tests serve only `ctx.http` from fixtures, so a browser provider is tested in Jest on the fake browser, and is not registered in a journey unless its pages are local ([preview in the app](adding-a-provider.md#12-preview-in-the-app)).
 
-  ```ts
-  describeProviderContract('my-provider', () => {
-    const factory = createMyProviderFactory();
-    const ctx = createPlaywrightTestProviderContext(factory.manifest);
-    return {
-      provider: factory(ctx),
-      sample: { externalId: 'some-park', stay: STAY },
-      openPages: () => fakePlaywright.openPages(),
-      cleanup: () => ctx.browser.close(),
-    };
-  });
-  ```
-
-`tests/unit/providers/browser-automation.test.ts` is the reference.
+Tests of the browser runtime itself (launch failures, crashes, a locked profile, a browser that will not close) mock `playwright-core` with `tests/utils/fake-playwright.ts` instead: see `tests/unit/providers/browser-automation.test.ts`. A provider does not need it.
 
 ## The real-browser smoke test
 
-`tests/integration/browser-automation.smoke.test.ts` drives the fake provider on a **real** browser, with no mocks, against the fake site served on loopback HTTP. It is skipped unless you opt in:
+`tests/integration/browser-automation.smoke.test.ts` drives a small test provider (`tests/utils/fake-browser-provider.ts`) on a **real** browser, with no mocks, against its site served on loopback HTTP. It is skipped unless you opt in:
 
 ```bash
 WA_STAY_BROWSER_E2E=1 npx jest tests/integration/browser-automation.smoke.test.ts
