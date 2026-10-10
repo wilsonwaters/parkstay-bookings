@@ -1,4 +1,4 @@
-# ParkStay Bookings - Test Suite
+# WA Stay test suite
 
 ## Quick Start
 
@@ -135,13 +135,17 @@ tests/
 ├── unit/                    # Unit tests (main project)
 │   ├── core/                # Provider-agnostic services (watches, snipes, accounts, holds)
 │   ├── database/
-│   └── services/
+│   ├── providers/           # The provider SDK, registry and ParkStay module
+│   ├── docs/                # The docs: links, the provider guide's examples, ParkStay endpoints
+│   └── …                    # app, ipc, security, scheduler, renderer guards, brand, design
 ├── integration/             # Integration tests (main project)
 ├── scripts/                 # Tests for Node scripts in scripts/ (main project)
 ├── e2e/                     # Electron smoke tests on the built app (Playwright _electron, not Jest)
+├── docs/                    # The documentation screenshots (npm run docs:screenshots, not Jest)
 ├── electron/                # Live tests that run inside Electron (npm run test:electron, not Jest)
 ├── manual/                  # Scripts run by hand against live services (not Jest)
-├── fixtures/                # Test data (users, bookings, watches, site-sniper)
+├── fixtures/                # Test data (users, bookings, watches, site-sniper), parkstay/ (trimmed
+│                            # live samples), providers/ (the provider guide's examples), db/ (schema dumps)
 ├── setup/
 │   ├── main.ts              # setupFiles for the main project
 │   └── renderer.ts          # setupFilesAfterEnv for the renderer project
@@ -512,22 +516,10 @@ open coverage/index.html
 
 ## CI/CD Integration
 
-### GitHub Actions Example
-```yaml
-name: Tests
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-node@v2
-        with:
-          node-version: '20'
-      - run: npm install
-      - run: npm rebuild better-sqlite3
-      - run: npm test -- --coverage
-```
+The workflows are `.github/workflows/ci.yml` (lint and format, type-check, Jest with coverage
+on Ubuntu, Windows and macOS plus `npm run test:tz`, a build check, the Electron smoke tests and
+the packaged smoke check) and `.github/workflows/build.yml` (the release build, which runs the
+Jest suite and `test:tz` first). The Jest jobs run `npm rebuild better-sqlite3` after `npm ci`.
 
 The Electron smoke tests need the Electron build of better-sqlite3, so they run in their own
 job (see [Electron smoke tests → CI](#ci)).

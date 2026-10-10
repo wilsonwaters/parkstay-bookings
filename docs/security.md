@@ -1,6 +1,7 @@
 # Security
 
-This document describes how the app protects data on the user's machine.
+This document describes how WA Stay protects data on the user's machine. The overall baseline
+(sandboxing, CSP, IPC checks) is in the [architecture overview](architecture/overview.md#security).
 
 ## Secret storage
 
@@ -11,12 +12,11 @@ The app keeps these secrets on disk:
 | Secret | Where it is stored |
 | --- | --- |
 | Email (SMTP) notifier settings, including the app password | `notifiers.config` in the database |
-| Gmail OAuth client ID, client secret and tokens | `<userData>/gmail-oauth.json` |
-| Provider secrets (`ProviderContext.secrets`) | the provider's own state, under `secret:<key>` (\*) |
+| Provider secrets (`ProviderContext.secrets`) | the provider's own state (`provider_state`), under `secret:<key>` |
 
-(\*) Provider state is held in memory for now, so provider secrets last only until the app
-quits. They are written to disk, still as vault envelopes, once V2 stores provider state in
-the `provider_state` table.
+No built-in provider stores a secret yet. The email password is write-only over IPC: the
+window gets the notifier settings without it (`hasPassword` instead), and saving without a
+password keeps the stored one only for the same server, port and account.
 
 Provider sign-in (ParkStay) stores no secret of the app's: the person signs in on the
 provider's own page in an app window, and the session cookies stay in the provider's
@@ -114,7 +114,7 @@ obfuscation, not protection:
 | --- | --- |
 | ParkStay password | AES-256-GCM, key `PBKDF2(machineId + app constant, constant salt)`, stored as hex in three columns. Not migrated: see below |
 | Notifier config | The same scheme with other constants, stored as `iv:authTag:ciphertext` |
-| `gmail-oauth.json` | electron-store's AES-256-CBC with a hard-coded `encryptionKey` |
+| `gmail-oauth.json` (Gmail OTP) | electron-store's AES-256-CBC with a hard-coded `encryptionKey`. Not migrated: see below |
 
 `migrateLegacySecrets` (`src/main/security/legacy-migration.ts`) runs at every start,
 after the database migrations and before anything reads a secret. It:
@@ -125,9 +125,6 @@ after the database migrations and before anything reads a secret. It:
 - decrypts each new envelope and compares it with the plaintext before it replaces the
   legacy value, which is the only copy. If they differ, the item is left as it is and
   counted as `failed`;
-- rewrites `gmail-oauth.json` atomically and durably (a temp file, fsynced, then a rename,
-  then an fsync of the folder where the platform supports it) as
-  `{ "format": 2, "credentials": "<envelope>", "tokens": "<envelope>" }`, with mode `0600`;
 - handles each item on its own, in one transaction per database row, so a crash leaves
   each item either old or new, and the next start finishes the job;
 - is idempotent: values that are already envelopes are left alone;
@@ -155,18 +152,22 @@ ciphertext is not left in the WA Stay database file:
 as the backup described below, holds the v1.x database with the encrypted ParkStay
 password until the user deletes that folder.
 
+The Gmail OTP sign-in is not migrated either: the feature is gone. On every start
+`removeRetiredGmailStore` deletes any `gmail-oauth.json` in the WA Stay data folder (and only
+there; a symlink's target is left alone). The v1.x data folder keeps its own copy, which holds a
+still-valid Google access token: the user may delete that file and revoke the app's access at
+<https://myaccount.google.com/permissions> ([upgrading](installation.md#upgrading-from-wa-parkstay-bookings)).
+
 #### The legacy data folder is the backup of the pre-vault secrets
 
 On the first start after an upgrade, the legacy install migration
-(`src/main/migration/legacy-install.ts`) copies the v1.x database and `gmail-oauth.json`
-from `%APPDATA%\parkstay-bookings` (or, if the v1.x uninstaller deleted that folder, from the
+(`src/main/migration/legacy-install.ts`) copies the v1.x database from `%APPDATA%\parkstay-bookings` (or, if the v1.x uninstaller deleted that folder, from the
 installer's `%APPDATA%\WA Stay\legacy-snapshot`) into the WA Stay data folder. The secret
 migration above then re-encrypts **only the copies**. The legacy folder and the snapshot
 keep the v1.x originals, so they are the only backup of the secrets as v1.x stored them:
 
 - The app never deletes or modifies either folder. The source database is opened
-  read-only and backed up with SQLite's online backup; `gmail-oauth.json` is copied byte for
-  byte. Opening the database read-only may leave SQLite's empty `-wal`/`-shm` sidecars
+  read-only and backed up with SQLite's online backup. Opening the database read-only may leave SQLite's empty `-wal`/`-shm` sidecars
   beside it.
 - `migration.json` in the WA Stay data folder records what was copied, from where, and the
   source schema version. A failed copy shows the folder that keeps the old data.
@@ -205,7 +206,6 @@ user saving a new one. What the user sees:
 | Secret | When unreadable |
 | --- | --- |
 | Email notifier | The notifier shows `secretState: 'unreadable'`, status `error` and "Saved password could not be decrypted; re-enter it". Nothing is sent through it, and the skip is logged once. Saving the email settings again fixes it. |
-| Gmail | The status is `{ isAuthorized: false, secretState: 'unreadable' }`. Enter the client credentials again if they are unreadable, and sign in again for unreadable tokens. A `gmail-oauth.json` that cannot be parsed at all is moved aside to `gmail-oauth.json.corrupt-<timestamp>` before it is replaced. |
 
 A locked keyring is usually temporary: unlock it and restart the app, and the secrets read
 again. Nothing was overwritten in the meantime.

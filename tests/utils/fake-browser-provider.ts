@@ -3,7 +3,7 @@
  * site (`tests/fixtures/fake-browser-site.ts`) through `ctx.browser.withPage`, the way a real
  * browser-driven provider (RAC, Airbnb, …) would, and maps what it reads to the normalised
  * `LocationSummary`, `LocationDetail` and `LocationAvailability`. It is the worked example for
- * `docs/developer/browser-providers.md`.
+ * `docs/providers/browser-providers.md`.
  *
  *   const factory = createFakeBrowserProviderFactory();                   // https://fake-browser.example
  *   const factory = createFakeBrowserProviderFactory({ baseUrl: server }); // a real browser on loopback

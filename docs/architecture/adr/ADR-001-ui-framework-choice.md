@@ -1,4 +1,7 @@
-# ADR-001: UI Framework Choice for WA ParkStay Bookings
+# ADR-001: UI Framework Choice
+
+> Historical record from October 2025, when the app automated ParkStay campground bookings
+> only; it is now WA Stay. The decision (Electron with React) stands.
 
 **Status:** Proposed
 **Date:** 2025-10-31
@@ -7,7 +10,7 @@
 
 ## Context and Problem Statement
 
-We need to choose a UI framework for the WA ParkStay Bookings application that:
+We need to choose a UI framework for the desktop booking application that:
 - Runs locally on user machines (Windows and Mac)
 - Is simple to install and maintain
 - Provides a good user experience

@@ -1,202 +1,176 @@
-# Release Process
+# Release process
 
-Windows-only for v1.0.0. macOS and Linux builds are not yet available.
+WA Stay ships for Windows only: an NSIS installer and a portable exe, published as a GitHub
+release of [`wilsonwaters/wa-stay`](https://github.com/wilsonwaters/wa-stay). The `/release`
+command (`.claude/commands/release.md`) follows this page.
 
-## Quick Reference
+## Contents
+
+- [Quick reference](#quick-reference)
+- [Step by step](#step-by-step)
+- [The 2.0.0 release](#the-200-release)
+- [Repository description and topics](#repository-description-and-topics)
+- [The pipeline](#the-pipeline)
+- [Artifacts and auto-update](#artifacts-and-auto-update)
+- [Hotfixes and rollback](#hotfixes-and-rollback)
+
+## Quick reference
 
 ```bash
-# 1. Verify everything passes
-npm run lint && npm run type-check && npm run test
+git checkout main && git pull origin main
+npm run lint && npm run format:check && npm run type-check && npm test && npm run test:tz
 
-# 2. Bump version (choose one)
-npm run version:patch   # 1.0.0 → 1.0.1
-npm run version:minor   # 1.0.0 → 1.1.0
-npm run version:major   # 1.0.0 → 2.0.0
-
-# 3. Update CHANGELOG.md, then commit
-git add -A
-git commit -m "chore: prepare release v1.x.x"
-
-# 4. Tag and push
-git tag v1.x.x
+npm version minor --no-git-tag-version   # or patch / major: package.json and the lockfile only
+# CHANGELOG.md: rename [Unreleased] to [x.y.z] - YYYY-MM-DD (see step 3)
+git add package.json package-lock.json CHANGELOG.md
+git commit -m "chore: prepare release vx.y.z"
+git tag vx.y.z
 git push origin main --tags
 ```
 
-Pushing the tag triggers the full CI/CD pipeline which builds and creates a draft GitHub release.
+Pushing the tag builds the release and creates a **draft** on GitHub; publishing the draft is a
+person's decision.
 
-## Step-by-Step
+## Step by step
 
-### 1. Pre-Release Checks
+### 1. Check the branch
 
-Ensure you are on the `main` branch and up to date with the remote before releasing. The tag you push determines which commit GitHub Actions will build, so tagging an outdated local branch means the release will be built from stale code.
+Release from an up-to-date `main` with a clean working tree: the tag decides which commit
+GitHub Actions builds.
 
 ```bash
 git checkout main
 git pull origin main
+git status   # clean
 ```
 
-Ensure the following all pass locally before releasing:
+### 2. Run the checks
 
 ```bash
 npm run lint
+npm run format:check
 npm run type-check
-npm run test
+npm test
+npm run test:tz
 npm run build
 ```
 
-Optionally test the Windows installer locally:
-
-```bash
-npm run dist:win
-```
-
-This creates the installer and portable `.exe` in the `release/` directory without publishing.
-
-### 2. Bump Version
-
-Use the version scripts which update `package.json` and push the tag:
-
-| Command | Example |
-| --- | --- |
-| `npm run version:patch` | 1.0.0 -> 1.0.1 (bug fixes) |
-| `npm run version:minor` | 1.0.0 -> 1.1.0 (new features) |
-| `npm run version:major` | 1.0.0 -> 2.0.0 (breaking changes) |
-
-For pre-releases:
-
-```bash
-npm version prerelease --preid=beta   # 1.1.0-beta.0
-```
+Optionally build the installer locally (`npm run dist:win`, into `release/`) and run the
+Electron smoke tests ([development](development.md#electron-smoke-tests)). CI runs both, and the
+packaged smoke check, on every push to `main`.
 
 ### 3. Update CHANGELOG.md
 
-Add an entry for the new version following [Keep a Changelog](https://keepachangelog.com/) format:
+The changelog follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Changes are
+written under `## [Unreleased]` as they merge. To release, **rename that heading** to the new
+version and date, `## [2.0.0] - 2026-11-03`, and add a fresh empty `## [Unreleased]` above it
+if you like. **Do not regenerate the section from the git log**: it is written for users and
+already says what they need to know (upgrade notes included). Add an entry only for something
+it misses. Older versions' entries never change.
 
-```markdown
-## [1.1.0] - 2026-03-01
-
-### Added
-- Description of new features
-
-### Fixed
-- Description of bug fixes
-```
-
-### 4. Commit and Tag
+### 4. Bump the version and tag
 
 ```bash
-git add -A
-git commit -m "chore: prepare release v1.1.0"
-git tag v1.1.0
+npm version minor --no-git-tag-version   # patch, minor or major
+git add package.json package-lock.json CHANGELOG.md
+git commit -m "chore: prepare release v2.0.0"
+git tag v2.0.0
 git push origin main --tags
 ```
 
-### 5. GitHub Actions Pipeline
+Do not use `npm run version:patch|minor|major` for a release: they push the tag before the
+changelog commit. For a pre-release, `npm version prerelease --preid=beta` gives `2.1.0-beta.0`;
+a tag containing `alpha` or `beta` becomes a GitHub pre-release.
 
-Pushing a `v*` tag triggers the [build workflow](./../.github/workflows/build.yml) which runs three jobs in sequence:
+### 5. Publish
+
+1. Wait for the **WA Stay Build and Release** workflow to finish.
+2. Open [Releases](https://github.com/wilsonwaters/wa-stay/releases), find the draft, and
+   replace the generated notes with the changelog section for this version.
+3. **Publish release.** From then on `latest.yml` offers the update to every installed copy.
+
+### 6. Check the release
+
+- Download the installer from the release page and install it on a clean Windows machine.
+- Update a previous version through the app and check that its data is still there.
+- SmartScreen warns for unsigned builds ([code signing](code-signing.md)).
+
+## The 2.0.0 release
+
+The first WA Stay release renames the app and the repository. Do these, in this order:
+
+- [ ] **Rename the repository to `wa-stay` before publishing 2.0.0** (GitHub → Settings →
+  General → Repository name). Installed v1.x copies look for updates at the old name and
+  reach `wa-stay` only through GitHub's rename redirect. `electron-builder.json` already
+  publishes to `wilsonwaters/wa-stay`.
+- [ ] **Never create a new repository called `parkstay-bookings`** under the same owner: it
+  would replace the redirect, and every v1.x install would stop finding updates.
+- [ ] **Check the redirect** once renamed. This must end at a `wa-stay` URL:
+
+  ```bash
+  curl -sIL https://github.com/wilsonwaters/parkstay-bookings/releases/latest | grep -i '^location'
+  ```
+
+- [ ] **Add the Mapbox token** as a repository secret named `MAPBOX_ACCESS_TOKEN` (Settings →
+  Secrets and variables → Actions). The build reads
+  `${{ secrets.MAPBOX_ACCESS_TOKEN || vars.MAPBOX_ACCESS_TOKEN }}`; a public `pk.` token only.
+  Without it the release builds, but Explore has no map.
+- [ ] Set the **repository description, topics and social preview** ([below](#repository-description-and-topics)).
+- [ ] Work through the [2.0 release checklist](release-checklist-2.0.md): the manual Windows
+  checks no CI can do.
+- [ ] Rename `## [Unreleased]` in CHANGELOG.md to `## [2.0.0] - <date>`, bump to `2.0.0`, tag
+  and push (steps 3 and 4).
+- [ ] **After publishing**, on a Windows machine with **v1.2.0 installed** and some watches,
+  bookings and settings: let it update, and check that WA Stay starts with the welcome notice
+  and everything is there, and that `%APPDATA%\parkstay-bookings` is untouched.
+
+## Repository description and topics
+
+For GitHub → the repository's About settings:
+
+- **Description:** WA Stay — find and book places to stay across Western Australia. Map-first
+  discovery, availability watches and instant site holds across providers, starting with
+  ParkStay WA. Electron desktop app.
+- **Website:** `https://github.com/wilsonwaters/wa-stay/releases/latest`
+- **Topics:** `western-australia`, `camping`, `accommodation`, `booking`, `parkstay`,
+  `electron`, `react`, `typescript`
+- **Social preview** (Settings → General → Social preview): `resources/brand/readme-banner.png`.
+
+## The pipeline
+
+**WA Stay Build and Release** (`.github/workflows/build.yml`) runs on pushes to `main` and
+`develop`, pull requests, `v*` tags and by hand:
 
 ```text
-ci (lint, type-check, test)
-  -> build-windows (build installer + portable)
-    -> release (create draft GitHub release)
+ci (ubuntu, windows): type-check, lint, test:coverage, test:tz
+  -> build-windows: npm run build (with MAPBOX_ACCESS_TOKEN), icon check,
+                    electron-builder --win --publish never (signed when CSC_LINK is set),
+                    uploads the .exe files and latest.yml
+    -> release (tags only): a draft GitHub release with the artifacts
 ```
 
-**CI job** — Runs on both Ubuntu and Windows:
+**WA Stay CI** (`.github/workflows/ci.yml`) runs on pushes and pull requests: lint and
+`format:check`; type-check; Jest with coverage on Ubuntu, Windows and macOS plus `test:tz`; an
+npm audit; a build check; the Electron smoke tests (`e2e`, report always uploaded); and the
+packaged smoke check (`packaged-smoke`). Neither the `e2e` nor the `packaged-smoke` job blocks
+a release tag; consider making `e2e` a required check once it has run green for a while.
 
-- `npm run type-check`
-- `npm run lint`
-- `npm run test:coverage`
+## Artifacts and auto-update
 
-**Build Windows job** — Runs on Windows after CI passes:
-
-- Builds the app with `npm run build`
-- Packages with `npm run release:win` (runs `electron-builder --win --publish always`)
-- Uploads artifacts: `.exe` installer, portable `.exe`, `latest.yml`
-- Code signing is applied automatically if `CSC_LINK` and `CSC_KEY_PASSWORD` secrets are configured
-
-**Release job** — Runs on Ubuntu after build passes:
-
-- Downloads the Windows build artifacts
-- Creates a **draft** GitHub release using `softprops/action-gh-release@v2`
-- Attaches all artifacts to the release
-- Pre-release tags (containing `alpha` or `beta`) are marked as pre-release
-
-### 6. Publish the Release
-
-1. Go to the [GitHub Releases page](https://github.com/wilsonwaters/wa-stay/releases)
-2. Find the draft release created by CI
-3. Review the auto-generated release notes
-4. Edit the description if needed
-5. Click **Publish release**
-
-Once published, the `latest.yml` file in the release enables auto-updates — existing users will be notified of the new version on next app launch.
-
-### 7. Post-Release Verification
-
-- Download the installer from the release and test on a clean Windows machine
-- Verify auto-update works from a previous version (the app checks on startup after a 15-second delay)
-- Windows SmartScreen may show a warning for unsigned builds — users click "More info" then "Run anyway"
-
-## Release Artifacts
-
-Each release produces:
-
-| File | Description |
+| File | What it is |
 | --- | --- |
-| `WA-Stay-Setup-x.x.x.exe` | NSIS installer (recommended) |
-| `WA-Stay-Portable-x.x.x.exe` | Portable executable |
-| `latest.yml` | Auto-update metadata |
+| `WA-Stay-Setup-x.y.z.exe` | The NSIS installer (recommended; updates itself) |
+| `WA-Stay-Portable-x.y.z.exe` | The portable exe (does not update itself) |
+| `latest.yml` | Update metadata for electron-updater |
 
-## Auto-Updates
+The installed app checks GitHub Releases 15 seconds after it starts (`electron-updater`,
+`publish` in `electron-builder.json`). It never downloads by itself: an update card offers
+**Download**, then **Restart now**; a downloaded update also installs on quit. The `appId`
+stays `com.parkstay.bookings`, so every release upgrades the existing install in place.
 
-The app uses `electron-updater` with GitHub Releases as the update provider.
+## Hotfixes and rollback
 
-Behaviour:
-
-- Checks for updates 15 seconds after app launch
-- Downloads are **not** automatic — user is prompted by the update card in the bottom-right tray (`UpdateCard`)
-- User clicks "Download" then "Restart now" when ready
-- Updates install on next app restart if `autoInstallOnAppQuit` applies
-
-Configuration is in [electron-builder.json](../electron-builder.json) under the `publish` key.
-
-## Code Signing (Optional)
-
-To enable Windows code signing, add these repository secrets:
-
-| Secret | Description |
-| --- | --- |
-| `CSC_LINK` | Base64-encoded `.pfx` certificate |
-| `CSC_KEY_PASSWORD` | Certificate password |
-
-Without code signing, Windows SmartScreen will warn users on first run.
-
-## npm Scripts Reference
-
-| Script | Description |
-| --- | --- |
-| `npm run build` | Production build (Vite) |
-| `npm run build:win` | Build + package Windows installer (no publish) |
-| `npm run dist:win` | Same as `build:win` with `--publish never` |
-| `npm run release:win` | Build + package + publish to GitHub Releases |
-| `npm run version:patch` | Bump patch version + push tag |
-| `npm run version:minor` | Bump minor version + push tag |
-| `npm run version:major` | Bump major version + push tag |
-
-## Hotfix Process
-
-For critical issues after a release:
-
-1. Create a hotfix branch: `git checkout -b hotfix/description`
-2. Fix the issue and add a regression test
-3. Bump the patch version: `npm run version:patch`
-4. Update CHANGELOG.md
-5. Merge to main, tag, and push — the normal pipeline handles the rest
-
-## Rollback
-
-If a release has critical issues:
-
-1. Mark the broken release as pre-release on GitHub (removes it from auto-update)
-2. Create a new patch release with the fix, or revert to the previous version's code
-3. The new release must have a **higher** version number to trigger auto-updates
+- **Hotfix:** fix on a branch with a regression test, merge to `main`, then release a patch
+  version as above.
+- **Rollback:** mark the broken release as a pre-release on GitHub (it stops being offered),
+  then release a fix with a **higher** version number; auto-update never goes backwards.

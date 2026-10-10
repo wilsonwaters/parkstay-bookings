@@ -1,6 +1,6 @@
 # Browser-driven providers
 
-These notes are for authors of providers that have no API, such as holiday-park chains, Airbnb and RAC Parks & Resorts. Such a provider reads the provider's own website in a real browser through `ctx.browser`. Everything else (the manifest, registering the provider, the conformance suite) works as it does for any other provider.
+These notes are for authors of providers that have no API, such as holiday-park chains, Airbnb and RAC Parks & Resorts. Such a provider reads the provider's own website in a real browser through `ctx.browser`. Everything else (the manifest, registering the provider, the conformance suite) works as it does for any other provider: see [Adding a provider](adding-a-provider.md), whose second worked example is a browser provider.
 
 `ctx.browser` is a `PlaywrightBrowserAutomation` (`src/main/providers/sdk/browser-automation.ts`). It drives the **Microsoft Edge or Google Chrome already installed** on the person's computer through `playwright-core`. WA Stay never bundles or downloads a browser.
 
@@ -218,7 +218,7 @@ Some sites treat a headless browser differently. Chromium's headless user agent 
 Read the provider's terms of use before you write a module, and record what they say about automated access in the module's notes.
 
 - **If the terms forbid automated access, do not build a browser module.** A provider can still be listed with links only.
-- **Genuine intent.** WA Stay acts for one person, for stays they really mean to take. A browser provider must follow the same rules as ParkStay ([SITE_SNIPER.md](../SITE_SNIPER.md#compliance--read-this)):
+- **Genuine intent.** WA Stay acts for one person, for stays they really mean to take. A browser provider must follow the same rules as ParkStay ([Site Sniper](../site-sniper.md#book-responsibly)):
   - one account per person;
   - one booking per night;
   - holds only on the person's own account, in their own name;
@@ -305,7 +305,7 @@ WA_STAY_BROWSER_E2E=1 npx jest tests/integration/browser-automation.smoke.test.t
     npx jest tests/integration/browser-automation.smoke.test.ts
   ```
 
-- **`WA_STAY_BROWSER_PATH` is for development only.** The running app also honours it, but only when it is not packaged; a packaged build always detects Edge or Chrome itself. A browser started from this path runs without Chromium's sandbox (Playwright's default), so it can run as root in CI; Edge and Chrome found by detection always run sandboxed.
+- **`WA_STAY_BROWSER_PATH` is for development only.** The running app also honours it, but only when it runs from source (unpackaged and not loaded from an asar archive, `src/main/app/app-source.ts`); a packaged build always detects Edge or Chrome itself. A browser started from this path runs without Chromium's sandbox (Playwright's default), so it can run as root in CI; Edge and Chrome found by detection always run sandboxed.
 
 Copy this test for your provider and point it at a local fixture site, never at the live site.
 

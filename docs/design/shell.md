@@ -22,7 +22,6 @@ The accessible names in [Stable names](#stable-names) are a contract with the El
 | `features/explore/ExplorePage.tsx` | Explore, the home screen (E1): search pill, filters, results and the map ([map.md](map.md)). |
 | `features/place/PlaceDetailPage.tsx` | A place's detail page (E2): gallery, description, facilities, sites, booking rules, and the "Check your dates" card with the night grid and the hand-offs. |
 | `app/stayParams.ts` | The stay in a query string (`arrival`, `departure`, `adults`, `children`, `infants`): parsed, validated and written in one order. |
-| `features/<domain>/legacy/` | The pre-redesign pages, moved unchanged. The U tasks rebuild them and delete these folders. |
 
 ## Header
 
@@ -124,7 +123,7 @@ One column, `fixed bottom-4 right-4`, 380 px wide at most, with an 8 px gap, por
   - `useLocationCheck(key, stay)`: `catalog.checkLocation`, asked only once a stay is given (the person pressed Check), one cache entry per stay, 1 minute fresh as in main, and never retried by itself.
   - `useBulkAvailability(stay, { settled, online })` (E3): `catalog.availability(stay, { providerIds: [id] })`, one query per catalogue provider with `bulkAvailability`, so one provider failing or slow never holds up another. Keyed by provider and the stay fields it reads (`stayKeyFor(stay, manifest.bulkAvailabilityStayFields)`, `shared/utils/stay-key.ts`; every field when a provider declares none), so changing guests reuses ParkStay's answer; 2 minutes fresh, kept 15 minutes, never retried or refetched by itself. Main's bulk cache uses the same key. Nothing is asked while the stay is still changing (`settled`, Explore debounces it 400 ms) or offline, but a stay already in the cache shows at once. A sync (`catalog:updated`) or a refresh reloads every catalogue query except these.
 - **Query client** (`app/queryClient.ts`): `staleTime` 60 s, no refetch on window focus, queries retry once except for `VALIDATION`, `CAPABILITY`, `NOT_FOUND`, `NOT_IMPLEMENTED` and `API_UNAVAILABLE`, and mutations never retry.
-- **Guard:** `tests/unit/renderer/api-boundary.test.ts` fails if `window.api` appears outside `renderer/api/` and its explicit legacy allow-list. The U tasks delete entries as they rebuild each page; the list never grows. The token guard keeps a similar list of the legacy pages.
+- **Guard:** `tests/unit/renderer/api-boundary.test.ts` fails if `window.api` appears outside `renderer/api/`. Its legacy allow-list is empty (the U tasks rebuilt every pre-redesign page) and can never grow again; the token guard's list of legacy pages is empty too.
 
 ### Outside the app
 
@@ -179,4 +178,4 @@ With no `window.api` (the renderer opened in a plain browser with `npm run dev:r
 ## Testing
 
 - `tests/utils/renderer/renderWithApp.tsx`: `renderWithApp({ route, api })` renders the whole app at a route, in a `#root` container, with a fresh query client. `api` takes stubs for `createMockApi`, a ready `MockApi`, or `null` for no `window.api`. `currentRoute()` reads the HashRouter path. `getBanners()` returns the banner landmarks as a browser computes them: jsdom also counts every `PageHeader`'s `<header>`, which browsers do not.
-- `tests/utils/renderer/createMockApi.ts`: a strict `window.api` (an un-stubbed method rejects with an error naming it) that answers the shell's and the legacy list pages' first calls, with a working `events.on`. `emit(name, payload)` drives events inside `act`, and `unsubscribes` holds a spy for each subscription.
+- `tests/utils/renderer/createMockApi.ts`: a strict `window.api` (an un-stubbed method rejects with an error naming it) that answers the shell's first calls, with a working `events.on`. `emit(name, payload)` drives events inside `act`, and `unsubscribes` holds a spy for each subscription.

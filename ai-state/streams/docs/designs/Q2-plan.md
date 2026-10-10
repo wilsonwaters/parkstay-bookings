@@ -10,8 +10,12 @@ Base `3561abd`. Every claim is checked against the merged code; `client.ts`, `co
 - Root status files and `tests/TEST_SUMMARY.md` were already removed by P7.
 - `docs/design/shell.md`: only the stale `features/<domain>/legacy/` row and guard lines (dispatch).
 - `docs/developer/browser-providers.md` moves to `docs/providers/browser-providers.md`.
-- `docs:screenshots` lives in `tests/docs/` with its own Playwright config, reusing the Q1
-  harness by import (lane V owns `tests/e2e/**`).
+- `docs:screenshots` lives in `tests/docs/` with its own Playwright config (lane V owns
+  `tests/e2e/**`). It reuses the harness's paths and fixtures but launches Electron itself: the
+  harness takes no launch arguments, and Mapbox under xvfb needs SwiftShader flags. With a token
+  only `api.mapbox.com` is allowed; provider photos stay blocked (O8: never in the repository).
+- The provider guide's examples are type-checked inside the test (TypeScript API, main tsconfig),
+  since the gate's `type-check` does not cover `tests/`.
 - `search_suggest` and `campsites/{id}` were verified live but `client.ts` no longer calls them:
   listed as "Verified live, not used".
 
