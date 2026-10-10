@@ -13,6 +13,7 @@ Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task spe
 - Next (multiple agents approved): reviews of E3, U5, U4, U2, U3 as they finish; then P7 (dead-code cleanup, v10), Q1 phase-2 review, Q2 (docs, CLAUDE.md incl. `RATE_LIMITED`, key components), system verification, final review, PR.
 
 ## Notes
+- 2026-10-10 ~04:30 UTC: a third usage limit stopped U4 (final gate), U2 (gate), the U3 fix and the E3 fix; all resumed at 06:25 UTC from saved state (U4 `28f3e40` and U2 `cd243b0` backed up to `wip/*`).
 - 2026-10-09 23:45 UTC: standing stakeholder permission to back up in-progress lanes to GitHub `wip/*` branches at each checkpoint (the git proxy refuses deletes; the stakeholder deletes merged ones). Current: `wip/u1-watches`, `wip/v3-class-listed` (plus merged `wip/v4-core-scheduler`, `wip/v6-accounts-phase1`, `wip/e1-explore`, deletable). Multiple agents in parallel approved.
 - 2026-10-09 ~19:30 UTC: a second account usage limit stopped the U1 review and the V3 follow-up 2 fix; both resumed at 23:40 UTC from their saved state (lane/x wip `67c7964`).
 - 2026-10-09: the stakeholder resumed. V4 and E1 rebased onto `47ceaf1` (`a14dfe3`, `16bc8c4`; wip backups updated); V4 and E1 reviews running in parallel (two agents at a time to pace quota).
