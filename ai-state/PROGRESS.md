@@ -6,15 +6,23 @@ _Last updated: 2026-10-11 (orchestrator)_
 Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wilsonwaters/wa-stay`). Phase 6 is done: the final review fixes are merged and the PR is open. The stakeholder asked for CI fixes, Node 24, hardening, dependency upgrades and developer-experience fixes on the same PR.
 
 ## Currently in flight
-- **ParkStay details round** (the stakeholder's Windows testing, 2026-10-11).
-  - **The three findings:**
-    1. Per-site details on "Check availability": ParkStay's paragraph per site, plus max people and vehicles.
-    2. A richer campground "About" as an accordion, with the PDF campground map viewable in the app.
-    3. "View on ParkStay" opens an error page. The link `search-availability/campground/?site_id=` was never probed live.
-  - **Step 1 (running):** a research agent reads DBCA's source and makes a few anonymous, read-only live GETs. Findings go to the scratchpad's `parkstay-details/findings.md`.
-  - **Step 2:** specs.
-  - **Step 3:** implementation, then review, then merge.
-  - **Stakeholder instruction:** run in series, one agent at a time (quota). Planned design for the map: a sandboxed in-app document window limited to ParkStay's origin, rather than loosening the main window's CSP.
+- **ParkStay details round** (the stakeholder's Windows testing, 2026-10-11). Run in series, one agent at a time (stakeholder instruction, quota).
+  - **Research:** done, in `ai-state/research/parkstay-details.md`.
+    - "View on ParkStay" fails because ParkStay's campground page refuses requests without its `Referer`. The fix is the information page with `campground_id`.
+    - Per-site details are already in the availability view.
+    - The About shows a legacy description whose "not available" strike-through our sanitiser drops (a real bug: Bungarra shows pets and campfires as allowed).
+    - The detailed sections and notices exist only in the campground page's HTML.
+    - The map PDF path is in the availability view; the PDF is public, with `X-Frame-Options: DENY`.
+  - **Specs, in order:**
+    1. PD1: links, per-site details, the About bug.
+    2. PD2: sections and notices in an accordion (one page GET per campground per 6 h).
+    3. PD3: the campground map in a sandboxed document window.
+
+    All are in `ai-state/streams/providers/tasks/`.
+  - **Next:** PD1, then its review, then the merge, then PD2, then PD3.
+  - **Open for the stakeholder:**
+    - PD2 reads ParkStay's public page HTML, so DBCA's terms for reusing page content are unknown.
+    - Side note: ParkStay's page now uses `queue-endpoint.dbca.wa.gov.au` for queue checks, where the app uses `queue.dbca.wa.gov.au`. Worth a read-only check.
 - PR #42 is green on `32f43e2`. A safety-net check-in is armed for 02:20 UTC.
 
 ## Notes
