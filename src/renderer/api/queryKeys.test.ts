@@ -24,6 +24,7 @@ describe('queryKeys', () => {
     const keys = [
       [queryKeys.providers.all, queryKeys.providers.list()],
       [queryKeys.catalog.all, queryKeys.catalog.search({ text: 'bay' })],
+      [queryKeys.catalog.all, queryKeys.catalog.area('8/112,-40,136,-8', ['search'])],
       [queryKeys.catalog.all, queryKeys.catalog.detail('parkstay:1')],
       [queryKeys.catalog.all, queryKeys.catalog.check('parkstay:1', { arrival: '2026-12-01' })],
       [

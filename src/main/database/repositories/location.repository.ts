@@ -87,6 +87,13 @@ export interface UpsertLocationsResult {
   deleted: number;
 }
 
+export interface MergeLocationsResult {
+  /** Locations inserted or updated (each external id once). */
+  stored: number;
+  /** Of those, the ones that were not stored before. */
+  added: number;
+}
+
 export interface CachedLocationDetail {
   detail: LocationDetail;
   fetchedAt: Date;
@@ -113,6 +120,47 @@ export class LocationRepository extends BaseRepository<LocationSummary> {
     summaries: LocationSummary[],
     fetchedAt: Date
   ): UpsertLocationsResult {
+    return this.transaction(() => {
+      this.upsertRows(providerId, summaries, fetchedAt);
+      const { changes: deleted } = this.db
+        .prepare(
+          `DELETE FROM locations
+           WHERE provider_id = ? AND external_id NOT IN (SELECT value FROM json_each(?))`
+        )
+        .run(providerId, JSON.stringify(summaries.map((s) => s.externalId)));
+      return { upserted: summaries.length, deleted };
+    });
+  }
+
+  /**
+   * Adds `summaries` to the provider's catalogue, in one transaction: each one is inserted or
+   * updated as `upsertMany` does, and no other row is touched. For a catalogue that is
+   * searched (`catalogMode: 'search'`), never listed whole. Every summary must belong to
+   * `providerId`.
+   */
+  mergeMany(
+    providerId: ProviderId,
+    summaries: LocationSummary[],
+    fetchedAt: Date
+  ): MergeLocationsResult {
+    return this.transaction(() => {
+      const count = (): number =>
+        (
+          this.db
+            .prepare('SELECT COUNT(*) AS n FROM locations WHERE provider_id = ?')
+            .get(providerId) as { n: number }
+        ).n;
+      const before = count();
+      this.upsertRows(providerId, summaries, fetchedAt);
+      return {
+        stored: new Set(summaries.map((s) => s.externalId)).size,
+        added: count() - before,
+      };
+    });
+  }
+
+  /** Inserts or updates each summary; the caller holds the transaction. */
+  private upsertRows(providerId: ProviderId, summaries: LocationSummary[], fetchedAt: Date): void {
     const foreign = summaries.find((s) => s.providerId !== providerId);
     if (foreign) {
       throw new Error(`Location ${foreign.key} does not belong to provider ${providerId}`);
@@ -140,36 +188,26 @@ export class LocationRepository extends BaseRepository<LocationSummary> {
         booking_url = excluded.booking_url,
         fetched_at = excluded.fetched_at
     `);
-
-    return this.transaction(() => {
-      for (const s of summaries) {
-        upsert.run(
-          providerId,
-          s.externalId,
-          s.name,
-          s.kind,
-          s.bookingMode,
-          s.lat,
-          s.lng,
-          s.area?.name ?? null,
-          s.area?.region ?? null,
-          s.summary ?? null,
-          JSON.stringify(s.imageUrls),
-          JSON.stringify(s.amenities),
-          s.unitCount ?? null,
-          s.infoUrl ?? null,
-          s.bookingUrl ?? null,
-          fetchedAt.toISOString()
-        );
-      }
-      const { changes: deleted } = this.db
-        .prepare(
-          `DELETE FROM locations
-           WHERE provider_id = ? AND external_id NOT IN (SELECT value FROM json_each(?))`
-        )
-        .run(providerId, JSON.stringify(summaries.map((s) => s.externalId)));
-      return { upserted: summaries.length, deleted };
-    });
+    for (const s of summaries) {
+      upsert.run(
+        providerId,
+        s.externalId,
+        s.name,
+        s.kind,
+        s.bookingMode,
+        s.lat,
+        s.lng,
+        s.area?.name ?? null,
+        s.area?.region ?? null,
+        s.summary ?? null,
+        JSON.stringify(s.imageUrls),
+        JSON.stringify(s.amenities),
+        s.unitCount ?? null,
+        s.infoUrl ?? null,
+        s.bookingUrl ?? null,
+        fetchedAt.toISOString()
+      );
+    }
   }
 
   /** The cached summary of one location, or null. */

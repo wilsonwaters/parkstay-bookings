@@ -10,12 +10,18 @@
  * round-trip, every module honours `AbortSignal`, failures are `ProviderError`s, and links
  * are absolute https URLs. Modules the provider does not have are skipped. For a
  * browser-driven provider, `openPages` lets it check that no call leaves a page open.
+ *
+ * A `search`-mode catalogue is also checked over `searchBbox` (`searchAreaViolations`): its
+ * items are inside the box, it pages by cursor and stops, and every page honours
+ * `AbortSignal`; `catalog.searchText`, if any, must find this provider's locations for
+ * `searchText`. The checks are exported, so a provider's own tests can name what is wrong.
  */
 
 import {
   isAbortError,
   ProviderError,
   type AccommodationProvider,
+  type CatalogAreaPage,
   type CatalogModule,
   type ProviderContext,
 } from '@main/providers/sdk';
@@ -40,8 +46,16 @@ export interface ProviderContractSubject {
   unknownExternalId?: string;
   /** Builds the context used for the registration check. Defaults to `createTestProviderContext`. */
   makeContext?: (manifest: ProviderManifest) => ProviderContext;
-  /** The map area a `search` catalogue is listed with. Default: the whole world. */
+  /**
+   * The map area a `search` catalogue is listed and checked with: give one with some (not
+   * all) of its locations. Default: the whole world.
+   */
   searchBbox?: BoundingBox;
+  /**
+   * A text `catalog.searchText` finds locations for. Default: the first word of the first
+   * location's name.
+   */
+  searchText?: string;
   /** Called after the suite (e.g. to stop a fixture server). */
   cleanup?: () => Promise<void> | void;
   /**
@@ -74,6 +88,109 @@ async function listAll(catalog: CatalogModule, bbox: BoundingBox): Promise<Locat
     if (!cursor) break;
   }
   return items;
+}
+
+/** How far outside its box a `searchArea` item may be, for rounding: 0.01° (about 1 km). */
+export const SEARCH_BBOX_TOLERANCE = 0.01;
+/** The most `searchArea` pages the checks follow before they call the cursor endless. */
+export const SEARCH_PAGE_LIMIT = 100;
+
+/**
+ * What is wrong with `catalog.searchArea` over `bbox`, as messages ([] when nothing): a page
+ * that is not `{ items, nextCursor? }`, an item outside the box (by more than
+ * `SEARCH_BBOX_TOLERANCE`), a cursor that comes back unchanged, or one that has not ended
+ * after `pageLimit` pages.
+ */
+export async function searchAreaViolations(
+  catalog: CatalogModule,
+  bbox: BoundingBox,
+  pageLimit = SEARCH_PAGE_LIMIT
+): Promise<string[]> {
+  if (!catalog.searchArea) return ['catalog.searchArea is missing'];
+  const [west, south, east, north] = bbox;
+  const t = SEARCH_BBOX_TOLERANCE;
+  const violations: string[] = [];
+  let cursor: string | undefined;
+  for (let page = 1; page <= pageLimit; page++) {
+    const result: unknown = await catalog.searchArea({ bbox, cursor });
+    const { items, nextCursor } = (result ?? {}) as Partial<CatalogAreaPage>;
+    if (!Array.isArray(items)) return [...violations, `page ${page} has no items array`];
+    for (const item of items) {
+      const inside =
+        item.lng >= west - t &&
+        item.lng <= east + t &&
+        item.lat >= south - t &&
+        item.lat <= north + t;
+      if (!inside) {
+        violations.push(
+          `page ${page}: ${item.key} at (${item.lng}, ${item.lat}) is outside [${bbox.join(', ')}]`
+        );
+      }
+    }
+    if (nextCursor === undefined) return violations;
+    if (typeof nextCursor !== 'string' || nextCursor === '') {
+      return [...violations, `page ${page}: nextCursor must be a non-empty string or absent`];
+    }
+    if (nextCursor === cursor) {
+      return [
+        ...violations,
+        `page ${page}: nextCursor "${nextCursor}" repeats the cursor it was given`,
+      ];
+    }
+    cursor = nextCursor;
+  }
+  return [...violations, `searchArea still had a nextCursor after ${pageLimit} pages`];
+}
+
+/**
+ * What is wrong with how `run` honours its signal: undefined when it rejects with an
+ * AbortError both for a signal aborted before the call and for one aborted during it.
+ */
+export async function abortViolation(
+  run: (signal: AbortSignal) => Promise<unknown>
+): Promise<string | undefined> {
+  const outcomeOf = (pending: Promise<unknown>): Promise<string> =>
+    pending.then(
+      () => 'resolved',
+      (error: unknown) => (isAbortError(error) ? 'aborted' : `rejected with ${String(error)}`)
+    );
+  const call = (signal: AbortSignal): Promise<unknown> => {
+    try {
+      return Promise.resolve(run(signal));
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  };
+
+  const before = new AbortController();
+  before.abort();
+  const early = await outcomeOf(call(before.signal));
+  if (early !== 'aborted') return `${early} although its signal was aborted before the call`;
+
+  const during = new AbortController();
+  const pending = call(during.signal);
+  during.abort();
+  const late = await outcomeOf(pending);
+  if (late !== 'aborted') return `${late} although its signal was aborted during the call`;
+  return undefined;
+}
+
+/**
+ * What is wrong with `catalog.searchText` for `text`, as messages ([] when nothing): it found
+ * nothing, or an item does not name `providerId`.
+ */
+export async function searchTextViolations(
+  catalog: CatalogModule,
+  providerId: string,
+  text: string
+): Promise<string[]> {
+  if (!catalog.searchText) return ['catalog.searchText is missing'];
+  const items: unknown = await catalog.searchText(text);
+  if (!Array.isArray(items)) return [`searchText("${text}") did not return an array`];
+  if (items.length === 0) return [`searchText("${text}") found nothing`];
+  return (items as LocationSummary[])
+    .filter((item) => item.key !== makeLocationKey(providerId, item.externalId))
+    .map((item) => `searchText("${text}"): ${item.key} is not a location of ${providerId}`);
 }
 
 /** A promise that rejects with an AbortError (the caller aborted). */
@@ -227,6 +344,41 @@ export function describeProviderContract(
         await expect(provider.catalog.getLocation(unknownId())).rejects.toBeInstanceOf(
           ProviderError
         );
+      });
+    });
+
+    describe('search-mode catalogue', () => {
+      const searchCatalog = (): CatalogModule | undefined =>
+        provider.manifest.capabilities.catalogMode === 'search' ? provider.catalog : undefined;
+
+      it('searchArea returns items inside the box, pages by cursor and stops', async () => {
+        const catalog = searchCatalog();
+        if (!catalog) return;
+        expect(await searchAreaViolations(catalog, bbox())).toEqual([]);
+      });
+
+      it('searchArea honours AbortSignal on a first and a next page', async () => {
+        const catalog = searchCatalog();
+        if (!catalog?.searchArea) return;
+        const searchArea = catalog.searchArea.bind(catalog);
+        expect(await abortViolation((signal) => searchArea({ bbox: bbox() }, signal))).toBe(
+          undefined
+        );
+        const { nextCursor: cursor } = await searchArea({ bbox: bbox() });
+        if (cursor === undefined) return;
+        expect(await abortViolation((signal) => searchArea({ bbox: bbox(), cursor }, signal))).toBe(
+          undefined
+        );
+      });
+
+      it("searchText, if any, finds this provider's locations and honours AbortSignal", async () => {
+        const catalog = searchCatalog();
+        if (!catalog?.searchText) return;
+        const text =
+          subject.searchText ?? (await listAll(catalog, bbox()))[0]?.name.split(/\s+/)[0] ?? 'a';
+        expect(await searchTextViolations(catalog, provider.manifest.id, text)).toEqual([]);
+        const searchText = catalog.searchText.bind(catalog);
+        expect(await abortViolation((signal) => searchText(text, signal))).toBe(undefined);
       });
     });
 

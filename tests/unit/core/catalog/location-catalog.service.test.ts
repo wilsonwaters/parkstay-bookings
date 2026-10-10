@@ -593,7 +593,7 @@ describe('sync outcomes', () => {
     await expect(s.catalog.refresh('nope')).rejects.toMatchObject({ code: 'unknown-provider' });
   });
 
-  it("a 'search' catalogue (searched by map area) is listed but never synced: the hook for such providers", async () => {
+  it("a 'search' catalogue (searched by map area) is listed but never synced (search-mode.test.ts)", async () => {
     const s = setup();
     const area = createFakeProvider({ id: 'area', capabilities: { catalogMode: 'search' } });
     s.registry.register(area.factory, createTestProviderContext);
@@ -606,6 +606,7 @@ describe('sync outcomes', () => {
       count: 0,
       stale: false,
       syncing: false,
+      search: { textSearch: false },
     });
   });
 });

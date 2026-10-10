@@ -27,6 +27,9 @@ export const queryKeys = {
   catalog: {
     all: catalog,
     search: (query: unknown) => [...catalog, 'search', query] as const,
+    /** Explore's map area, asked of the search-mode catalogues (`catalogSearchArea` key). */
+    area: (areaKey: string, providerIds: readonly string[]) =>
+      [...catalog, 'area', areaKey, providerIds] as const,
     detail: (key: string) => [...catalog, 'detail', key] as const,
     /** One location's availability for one stay (`catalog.checkLocation`). */
     check: (key: string, stay: unknown) => [...catalog, 'check', key, stay] as const,

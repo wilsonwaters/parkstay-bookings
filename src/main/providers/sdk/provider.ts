@@ -61,8 +61,21 @@ export interface GetLocationOptions {
 export interface CatalogModule {
   /** Every location (`catalogMode: 'full'`). */
   listLocations?(signal?: AbortSignal): Promise<LocationSummary[]>;
-  /** The locations in a map area, a page at a time (`catalogMode: 'search'`). */
+  /**
+   * The locations in a map area, a page at a time (`catalogMode: 'search'`). The core asks for
+   * the area Explore's map shows (snapped outwards to a grid), follows `nextCursor` for at most
+   * a few pages, and stores what it gets, so the places work everywhere a synced one does.
+   */
   searchArea?(query: CatalogAreaQuery, signal?: AbortSignal): Promise<CatalogAreaPage>;
+  /**
+   * Optional, for `catalogMode: 'search'`: the provider's best matches for a place name, area
+   * or town a person typed (`text`, trimmed, at least 3 characters), in one request: a few
+   * dozen at most, best first. The core asks it when a search of the stored catalogue has
+   * that text (the watch flow's location step, Explore's "Where") and stores the matches as
+   * it stores area results. Without it, a name finds only the places already seen on the map.
+   * Ignored for `catalogMode: 'full'`, whose whole catalogue is searched offline.
+   */
+  searchText?(text: string, signal?: AbortSignal): Promise<LocationSummary[]>;
   getLocation(
     externalId: string,
     signal?: AbortSignal,

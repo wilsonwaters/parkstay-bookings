@@ -9,6 +9,7 @@ import {
 } from '@tanstack/react-query';
 import {
   CATALOG_MAX_LIMIT,
+  type BoundingBox,
   type CatalogErrorCode,
   type CatalogQuery,
   type CatalogSearchResult,
@@ -22,6 +23,7 @@ import type {
   ProviderId,
   StayQuery,
 } from '../../shared/types/provider.types';
+import { catalogSearchArea, clampBbox } from '../../shared/utils/catalog-area';
 import { parseLocationKey } from '../../shared/utils/location-key';
 import { stayKeyFor } from '../../shared/utils/stay-key';
 import { ApiError, toApiError, unwrap } from './client';
@@ -38,7 +40,8 @@ export const CATALOG_STALE_TIME_MS = 5 * 60_000;
 /**
  * The query as it is sent and cached: empty filters and blank text left out, `limit` 5000
  * ("everything", §12.15), so equal searches share one cache entry. The map area (`bbox`) is
- * never sent: Explore filters by area in the renderer, so panning makes no request.
+ * never sent with it: Explore filters by area in the renderer, so panning makes no request
+ * (only `useCatalogAreaSearch` sends the area, to search-mode catalogues).
  */
 export function normaliseCatalogQuery(query: CatalogQuery): CatalogQuery {
   const out: CatalogQuery = {};
@@ -88,6 +91,42 @@ export function useCatalogSearch(query: CatalogQuery, options: { enabled?: boole
     placeholderData: keepPreviousData,
     staleTime: CATALOG_STALE_TIME_MS,
     enabled: options.enabled ?? true,
+  });
+}
+
+/**
+ * Tells main which map area Explore shows, so the catalogues searched by area
+ * (`catalogMode: 'search'`) are asked for the places there: `catalog.search` with the area
+ * (`bbox`), limited to those providers. Main answers from its stored catalogue at once and
+ * asks the providers in the background; the places they add arrive as `catalog:updated`,
+ * which reloads Explore's own searches, so the answer here is not used. Keyed by the area main
+ * snaps the box to (`catalogSearchArea`), so a small pan asks nothing new. Asks nothing while
+ * `bbox` is null or no catalogue provider is search-mode (ParkStay is `full`).
+ */
+export function useCatalogAreaSearch(bbox: BoundingBox | null): void {
+  const providers = useProvidersWith('catalog');
+  const searchIds = useMemo(
+    () =>
+      (providers.data ?? [])
+        .filter((p) => p.capabilities.catalogMode === 'search')
+        .map((p) => p.id)
+        .sort(),
+    [providers.data]
+  );
+  // Within the globe (a map zoomed far out reports edges past 180°); main snaps it again to
+  // the same area.
+  const box = bbox ? clampBbox(bbox) : null;
+  const area = box ? catalogSearchArea(box) : null;
+  useQuery({
+    queryKey: queryKeys.catalog.area(area?.key ?? '', searchIds),
+    queryFn: () =>
+      unwrap((api) =>
+        api.catalog.search({ bbox: box as BoundingBox, providerIds: searchIds, limit: 1 })
+      ),
+    enabled: area !== null && searchIds.length > 0,
+    staleTime: CATALOG_STALE_TIME_MS,
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -245,11 +284,15 @@ export function useLocationCheck(key: string | null, stay: StayQuery | null) {
 export const LOCATION_SEARCH_LIMIT = 20;
 /** A location picker searches from this many characters. */
 export const LOCATION_SEARCH_MIN_CHARS = 2;
+/** While main is still asking a provider about the text (`pending`), it is asked this often. */
+export const LOCATION_SEARCH_PENDING_POLL_MS = 1000;
 
 /**
  * A location picker's search: one provider's places matching `text`, best first (main's
  * full-text ranking), at most `LOCATION_SEARCH_LIMIT`. Runs from 2 characters; while the next
- * search loads, the previous results stay (`isPlaceholderData`).
+ * search loads, the previous results stay (`isPlaceholderData`). For a search-mode provider
+ * with text search, main also asks the provider: while the answer lists it in `pending`, the
+ * search is repeated every second (main answers from its own store), until its places arrive.
  */
 export function useLocationSearch({
   providerId,
@@ -271,6 +314,8 @@ export function useLocationSearch({
     placeholderData: keepPreviousData,
     staleTime: CATALOG_STALE_TIME_MS,
     enabled: Boolean(providerId) && trimmed.length >= LOCATION_SEARCH_MIN_CHARS,
+    refetchInterval: (q) =>
+      q.state.data?.pending?.length ? LOCATION_SEARCH_PENDING_POLL_MS : false,
   });
 }
 

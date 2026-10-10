@@ -56,6 +56,10 @@ const locationsLabel = (n: number) => `${n} ${n === 1 ? 'location' : 'locations'
  * catalogue in main from 2 characters, after a short pause, best match first. Announces how
  * many matched; a failed search shows Retry; a catalogue still syncing says so. U2 and U3 use
  * it too.
+ *
+ * A provider searched by map area (`catalogMode: 'search'`) has only the places seen so far
+ * in the catalogue: with text search, main asks it too and this says "Searching…" until its
+ * places arrive; without, a name that matches nothing suggests browsing it on Explore's map.
  */
 export function LocationCombobox({
   providerId,
@@ -78,6 +82,9 @@ export function LocationCombobox({
   const status = useCatalogStatus();
   const providerStatus = status.data?.providers.find((p) => p.providerId === providerId);
   const stillLoading = Boolean(providerStatus?.syncing && providerStatus.count === 0);
+  // A search-mode provider that cannot be searched by name: only places seen on the map match.
+  const browseOnly = providerStatus?.search?.textSearch === false;
+  const browseHint = `Browse ${providerName} places on the Explore map to find more`;
   const { refetch: refetchStatus } = status;
   useEffect(() => {
     if (!stillLoading) return undefined;
@@ -92,6 +99,8 @@ export function LocationCombobox({
     () => (searching && typedEnough ? (search.data?.items ?? []) : []),
     [searching, typedEnough, search.data]
   );
+  // Main is still asking the provider about this text (a search-mode provider).
+  const pending = Boolean(search.data?.pending?.includes(providerId));
 
   const valueKey = value ? `${providerId}:${value.externalId}` : null;
   const options: ComboboxOption[] = useMemo(() => {
@@ -116,10 +125,13 @@ export function LocationCombobox({
   const shown = search.data?.items.length ?? 0;
   useEffect(() => {
     if (!settled) return;
-    if (total === 0) announce(`No locations match "${query.trim()}"`);
-    else if (total > shown) announce(`${shown} of ${locationsLabel(total)}`);
+    if (total === 0) {
+      // Its places may still arrive: announce once the provider has answered.
+      if (pending) return;
+      announce(browseOnly ? browseHint : `No locations match "${query.trim()}"`);
+    } else if (total > shown) announce(`${shown} of ${locationsLabel(total)}`);
     else announce(locationsLabel(total));
-  }, [settled, total, shown, query, announce]);
+  }, [settled, total, shown, query, announce, pending, browseOnly, browseHint]);
 
   const onInputChange = (next: string) => {
     if (choosing.current) {
@@ -149,7 +161,11 @@ export function LocationCombobox({
     ? `Type at least ${LOCATION_SEARCH_MIN_CHARS} letters`
     : search.isFetching && !search.data
       ? 'Searching…'
-      : `No locations match "${text.trim()}"`;
+      : pending
+        ? `Searching ${providerName}…`
+        : browseOnly
+          ? browseHint
+          : `No locations match "${text.trim()}"`;
 
   return (
     <div className="flex flex-col gap-3">

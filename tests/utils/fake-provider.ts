@@ -6,8 +6,10 @@
  *   const fake2 = createFakeProvider({ id: 'fake2' });       // a second provider
  *   registry.register(fake.factory, createTestProviderContext(fake.manifest));
  *
- * `capabilities: { catalogMode: 'search' }` gives it `catalog.searchArea` (pages of two)
- * instead of `catalog.listLocations`.
+ * `capabilities: { catalogMode: 'search' }` gives it `catalog.searchArea` (the locations inside
+ * the box, `searchPageSize` (2) a page) instead of `catalog.listLocations`, and `textSearch`
+ * adds `catalog.searchText` (names containing the text). `createFakeSearchProvider`
+ * (fake-search-provider.ts) is one with places spread across WA.
  *
  * Knobs:
  * - `failNext(module, error)`: the next call into that module rejects with `error`;
@@ -90,6 +92,9 @@ export type FakeUnitNights = NightState | FakeNight[];
 export interface FakeLocationSeed {
   externalId: string;
   name: string;
+  /** Where it is; by default a step of 0.1° per location from (-34, 116). */
+  lat?: number;
+  lng?: number;
 }
 
 export interface FakeProviderOptions {
@@ -117,6 +122,10 @@ export interface FakeProviderOptions {
   delays?: Partial<Record<FakeModule, number>>;
   /** The manifest's `bulkAvailabilityStayFields` (every stay field when absent). */
   bulkAvailabilityStayFields?: ProviderManifest['bulkAvailabilityStayFields'];
+  /** A search-mode catalogue's `searchArea` page size (default 2). */
+  searchPageSize?: number;
+  /** A search-mode catalogue also has `catalog.searchText`. */
+  textSearch?: boolean;
 }
 
 export interface FakeProvider extends AccommodationProvider {
@@ -305,8 +314,8 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
       name: seed.name,
       kind: 'campground',
       bookingMode: 'online',
-      lat: -34 + index * 0.1,
-      lng: 116 + index * 0.1,
+      lat: seed.lat ?? -34 + index * 0.1,
+      lng: seed.lng ?? 116 + index * 0.1,
       area: { name: 'Fake National Park', region: 'South West' },
       imageUrls: [`https://${id}.example/img/${index}.jpg`],
       amenities: ['Toilets'],
@@ -437,14 +446,26 @@ export function createFakeProvider(options: FakeProviderOptions = {}): FakeProvi
       },
     };
     if (capabilities.catalogMode === 'search') {
-      // Pages of two; the cursor is the index of the next location.
+      // The locations inside the box, a page at a time; the cursor is the index of the next.
+      const pageSize = options.searchPageSize ?? 2;
       catalog.searchArea = async (query, signal) => {
         await enter('catalog', 'searchArea', [query], signal);
+        const [west, south, east, north] = query.bbox;
+        const inside = seeds
+          .map(summary)
+          .filter((l) => l.lng >= west && l.lng <= east && l.lat >= south && l.lat <= north);
         const start = Number(query.cursor ?? 0);
-        const items = seeds.map(summary).slice(start, start + 2);
+        const items = inside.slice(start, start + pageSize);
         const next = start + items.length;
-        return next < seeds.length ? { items, nextCursor: String(next) } : { items };
+        return next < inside.length ? { items, nextCursor: String(next) } : { items };
       };
+      if (options.textSearch) {
+        catalog.searchText = async (text, signal) => {
+          await enter('catalog', 'searchText', [text], signal);
+          const wanted = text.toLowerCase();
+          return seeds.map(summary).filter((l) => l.name.toLowerCase().includes(wanted));
+        };
+      }
     } else {
       catalog.listLocations = async (signal) => {
         await enter('catalog', 'listLocations', [], signal);

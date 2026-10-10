@@ -2,7 +2,8 @@
  * `LocationRepository.search` (V5): FTS5 words as prefixes, filters, facets, paging and
  * scope, on a real migrated database; plus the helpers the catalogue service uses
  * (`externalIds`, `setSummaryIfEmpty`) and the summary a sync keeps. Includes the
- * performance criterion: `text: 'bay'` over 5,000 rows in under 200 ms.
+ * performance criterion: `text: 'bay'` over 5,000 rows in under 200 ms. And `mergeMany`,
+ * which stores what a search-mode catalogue's search found (DX2).
  */
 
 import type Database from 'better-sqlite3';
@@ -268,5 +269,60 @@ describe('LocationRepository.search performance', () => {
     expect(result.items[0].name).toMatch(/^Bay Camp/);
     expect(result.facets!.regions).toHaveLength(5);
     expect(elapsed).toBeLessThan(200);
+  });
+});
+
+describe('LocationRepository.mergeMany (search-mode catalogues)', () => {
+  let helper: TestDatabaseHelper;
+  let locations: LocationRepository;
+
+  beforeEach(async () => {
+    helper = new TestDatabaseHelper('location-merge');
+    locations = new LocationRepository(await helper.setup());
+    locations.upsertMany('fake', [place('fake', '1', 'Lucky Bay')], AT);
+  });
+
+  afterEach(async () => {
+    await helper.teardown();
+  });
+
+  it('adds and updates without removing any other row, and counts the new ones', () => {
+    const first = locations.mergeMany(
+      'search',
+      [place('search', 'a', 'Quenda Cottage'), place('search', 'b', 'Bilby Bungalow')],
+      AT
+    );
+    const later = new Date(AT.getTime() + 60_000);
+    const second = locations.mergeMany(
+      'search',
+      [
+        place('search', 'b', 'Bilby Bungalow (renovated)', { summary: 'Fresh paint' }),
+        place('search', 'b', 'Bilby Bungalow (renovated)'),
+        place('search', 'c', 'Marri Retreat'),
+      ],
+      later
+    );
+
+    expect(first).toEqual({ stored: 2, added: 2 });
+    expect(second).toEqual({ stored: 2, added: 1 });
+    expect(locations.countByProvider()).toEqual({ fake: 1, search: 3 });
+    expect(locations.get('search', 'b')).toMatchObject({
+      name: 'Bilby Bungalow (renovated)',
+      summary: 'Fresh paint',
+    });
+    expect(locations.search({ text: 'renovated' }, ['search']).items.map((l) => l.key)).toEqual([
+      'search:b',
+    ]);
+  });
+
+  it('refuses a location of another provider, storing nothing', () => {
+    expect(() =>
+      locations.mergeMany(
+        'search',
+        [place('search', 'a', 'Quenda Cottage'), place('other', 'x', 'Elsewhere')],
+        AT
+      )
+    ).toThrow('Location other:x does not belong to provider search');
+    expect(locations.countByProvider()).toEqual({ fake: 1 });
   });
 });

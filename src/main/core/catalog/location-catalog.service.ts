@@ -23,12 +23,33 @@
  *   1, 2 and 5 minutes before the hourly schedule takes over. Manual refresh always runs.
  * - **Freshness.** A timestamp in the future (the clock was set back) counts as stale.
  *
- * `catalogMode: 'search'` providers cannot list every location, so they are not synced:
- * they are the hook for providers that are searched by map area (`catalog.searchArea`,
- * §12.30). `status()` lists them with what is cached; `syncableMode` is where they join.
+ * - **Search-mode catalogues** (`catalogMode: 'search'`, §12.30) cannot list every location,
+ *   so they are never synced. A `search` with a map area (`bbox`) asks each of them in scope
+ *   for that area (`catalog.searchArea`), and one with text asks those that have
+ *   `catalog.searchText`; the answer comes from the stored catalogue at once, with those
+ *   providers in `pending`. What a search finds is added to `locations` (`mergeMany`), so FTS
+ *   search, filters, facets, the detail cache, availability and watches treat it as a synced
+ *   place, and `catalog:updated` announces places not stored before. Bounded and polite:
+ *   - the area is the box snapped outwards to a grid (`catalogSearchArea`), so small pans
+ *     reuse a search, and an area inside one already searched in full is not asked again;
+ *   - one search per area or text at a time (single flight), not repeated for the provider's
+ *     `catalogTtlHours` (24 h by default; kept for this launch), and after a failure not
+ *     for `searchErrorTtlMs` (60 s);
+ *   - an area search follows `nextCursor` for at most `AREA_SEARCH_MAX_PAGES` (5) pages, and
+ *     a text search stores at most `TEXT_SEARCH_MAX_ITEMS` (100) places;
+ *   - at most `maxConcurrentRequests` of the provider's search calls run at once, each with a
+ *     `searchTimeoutMs` (20 s) deadline, and `stop()` aborts them all.
+ *
+ *   Places found by a search are never removed: nothing lists the whole catalogue to tell
+ *   what disappeared, and watches, snipes, bookings and links refer to them. A search that
+ *   finds a place again refreshes its row; a place the provider no longer has keeps its row,
+ *   and its page falls back to the stored copy marked `stale`. The last search and its error
+ *   are kept in `provider_state` as `('<providerId>', 'core.catalog.search')`; `refresh()`
+ *   forgets which areas and texts were searched, so the next search asks again.
  */
 
 import type {
+  BoundingBox,
   CatalogAvailabilityResult,
   CatalogProviderStatus,
   CatalogQuery,
@@ -45,14 +66,23 @@ import {
   type StayQuery,
 } from '@shared/types/provider.types';
 import type { EventSink } from '@shared/contracts/events';
+import { bboxContains, catalogSearchArea } from '@shared/utils/catalog-area';
 import { makeLocationKey, parseLocationKey } from '@shared/utils/location-key';
 import { stayKeyFor } from '@shared/utils/stay-key';
-import type { LocationRepository } from '../../database/repositories/location.repository';
+import {
+  searchWords,
+  type LocationRepository,
+} from '../../database/repositories/location.repository';
 import type { ProviderStateRepository } from '../../database/repositories/provider-state.repository';
 import type { ProviderRegistry } from '../../providers/registry';
 import type { ProviderLogger } from '../../providers/sdk/context';
+import { createLimiter, type Limiter } from '../../providers/sdk/concurrency';
 import { sanitizeProviderHtml } from '../../providers/sdk/html';
-import type { AccommodationProvider, FullCatalogModule } from '../../providers/sdk/provider';
+import type {
+  AccommodationProvider,
+  FullCatalogModule,
+  SearchCatalogModule,
+} from '../../providers/sdk/provider';
 import { AppError } from '../../utils/app-error';
 import {
   catalogErrorCode,
@@ -64,6 +94,43 @@ import {
 
 /** The `provider_state` key of a provider's last sync. */
 export const CATALOG_SYNC_STATE_KEY = 'core.catalog.sync';
+
+/** The `provider_state` key of a search-mode provider's last area or text search. */
+export const CATALOG_SEARCH_STATE_KEY = 'core.catalog.search';
+
+/** The most `catalog.searchArea` pages one area search follows. */
+export const AREA_SEARCH_MAX_PAGES = 5;
+/** The most places one `catalog.searchText` answer stores. */
+export const TEXT_SEARCH_MAX_ITEMS = 100;
+/** The shortest text (its words, joined by spaces) a provider is asked to search by name. */
+export const TEXT_SEARCH_MIN_CHARS = 3;
+/** The most area and text searches remembered at once; the oldest are forgotten first. */
+const SEARCH_MEMORY_SIZE = 500;
+
+/** What `provider_state` keeps about a search-mode provider's searches. */
+export interface CatalogSearchState {
+  /** ISO timestamp of the last area or text search that answered. */
+  searchedAt?: string;
+  /** Why the latest search failed; absent after a success. */
+  lastError?: string;
+}
+
+/** A finished area or text search, remembered so it is not repeated too soon. */
+interface SearchRecord {
+  providerId: ProviderId;
+  /** Epoch ms it finished. */
+  at: number;
+  failed: boolean;
+  /** An area search: the area searched, and whether every page of it was read. */
+  area?: { bbox: BoundingBox; complete: boolean };
+}
+
+/** What a search found, before it is stored. */
+interface SearchFind {
+  items: LocationSummary[];
+  /** An area search: true when the provider had no more pages. */
+  complete: boolean;
+}
 
 /** What `provider_state` keeps about a provider's catalogue sync. */
 export interface CatalogSyncState {
@@ -94,6 +161,10 @@ export interface CatalogTimings {
   bulkErrorTtlMs: number;
   /** How long a location's availability for a stay is reused. */
   checkTtlMs: number;
+  /** One `catalog.searchArea` page or `catalog.searchText` call (search-mode catalogues). */
+  searchTimeoutMs: number;
+  /** How long a failed area or text search is not repeated for the same area or text. */
+  searchErrorTtlMs: number;
   /**
    * While a provider has no cached locations, the waits before retrying a failed automatic
    * sync, one after another; then only the hourly re-check.
@@ -111,6 +182,8 @@ export const DEFAULT_CATALOG_TIMINGS: Readonly<CatalogTimings> = Object.freeze({
   bulkTtlMs: 5 * 60_000,
   bulkErrorTtlMs: 60_000,
   checkTtlMs: 60_000,
+  searchTimeoutMs: 20_000,
+  searchErrorTtlMs: 60_000,
   emptyRetryMs: Object.freeze([60_000, 2 * 60_000, 5 * 60_000]),
 });
 
@@ -175,6 +248,12 @@ export class LocationCatalogService {
   private readonly bulkErrorCache = new Map<string, Cached<unknown>>();
   private readonly checks = new Map<string, Promise<LocationAvailability>>();
   private readonly checkCache = new Map<string, Cached<LocationAvailability>>();
+  /** Area and text searches in flight, by `searchKey`. */
+  private readonly searchRuns = new Map<string, Promise<void>>();
+  /** Finished area and text searches, by `searchKey`, oldest first. */
+  private readonly searchMemory = new Map<string, SearchRecord>();
+  /** Each search-mode provider's cap on its search calls in flight. */
+  private readonly searchLimiters = new Map<ProviderId, Limiter>();
 
   constructor(deps: LocationCatalogServiceDeps) {
     this.registry = deps.registry;
@@ -242,23 +321,49 @@ export class LocationCatalogService {
     await Promise.allSettled(providers.map((p) => this.syncProvider(p, options.force === true)));
   }
 
-  /** `sync(providerId, { force: true })`, then the status. */
+  /**
+   * `sync(providerId, { force: true })`, then the status. For search-mode catalogues it
+   * forgets which areas and texts were searched (and which failed), so the next search with
+   * an area or text asks the provider again.
+   */
   async refresh(providerId?: ProviderId): Promise<CatalogStatus> {
+    for (const [key, record] of this.searchMemory) {
+      if (!providerId || record.providerId === providerId) this.searchMemory.delete(key);
+    }
     await this.sync(providerId, { force: true });
     return this.status();
   }
 
-  /** Each catalogue provider's cache: count, last success, staleness, syncing, last error. */
+  /**
+   * Each catalogue provider's cache: count, last success, staleness, syncing, last error. A
+   * search-mode catalogue is never stale; `syncing` means a search is in flight, `lastError`
+   * is its last search's failure, and `search` says whether it searches by name and when it
+   * last answered.
+   */
   status(): CatalogStatus {
     const counts = this.locations.countByProvider();
     const providers = this.catalogProviders().map((provider): CatalogProviderStatus => {
       const id = provider.manifest.id;
+      if (!this.syncableMode(provider)) {
+        const searched = this.searchState(id);
+        return {
+          providerId: id,
+          count: counts[id] ?? 0,
+          stale: false,
+          syncing: this.isSearching(id),
+          ...(searched?.lastError ? { lastError: searched.lastError } : {}),
+          search: {
+            textSearch: typeof provider.catalog?.searchText === 'function',
+            ...(searched?.searchedAt ? { searchedAt: searched.searchedAt } : {}),
+          },
+        };
+      }
       const state = this.syncState(id);
       return {
         providerId: id,
         count: counts[id] ?? 0,
         ...(state?.syncedAt ? { syncedAt: state.syncedAt } : {}),
-        stale: this.syncableMode(provider) && !this.isFresh(provider, state),
+        stale: !this.isFresh(provider, state),
         syncing: this.syncs.has(id),
         ...(state?.lastError ? { lastError: state.lastError } : {}),
       };
@@ -390,13 +495,229 @@ export class LocationCatalogService {
   }
 
   // -------------------------------------------------------------------------------------
+  // Search-mode catalogues
+  // -------------------------------------------------------------------------------------
+
+  /**
+   * Starts (or joins) an area search for `query.bbox` and a text search for `query.text` in
+   * each search-mode catalogue the query covers. Returns the ids of those with a search in
+   * flight for it. Never throws and never waits.
+   */
+  private searchProviders(
+    providers: readonly AccommodationProvider[],
+    query: CatalogQuery
+  ): ProviderId[] {
+    if (this.stopped || (!query.bbox && !query.text)) return [];
+    const wanted = query.providerIds?.length ? new Set(query.providerIds) : undefined;
+    const area = query.bbox ? catalogSearchArea(query.bbox) : undefined;
+    const text = searchWords(query.text).join(' ');
+    const pending: ProviderId[] = [];
+    for (const provider of providers) {
+      const id = provider.manifest.id;
+      if (this.syncableMode(provider) || (wanted && !wanted.has(id))) continue;
+      const catalog = provider.catalog as SearchCatalogModule;
+      const asked = [
+        area ? this.searchArea(provider, catalog, area.key, area.bbox) : false,
+        text.length >= TEXT_SEARCH_MIN_CHARS && typeof catalog.searchText === 'function'
+          ? this.searchText(provider, catalog, text)
+          : false,
+      ];
+      if (asked.includes(true)) pending.push(id);
+    }
+    return pending;
+  }
+
+  /**
+   * One area of a search-mode catalogue: up to `AREA_SEARCH_MAX_PAGES` pages of
+   * `catalog.searchArea` over the snapped area. True when a search for it is in flight.
+   */
+  private searchArea(
+    provider: AccommodationProvider,
+    catalog: SearchCatalogModule,
+    areaKey: string,
+    bbox: BoundingBox
+  ): boolean {
+    const id = provider.manifest.id;
+    const key = searchKey(id, 'area', areaKey);
+    if (this.searchRuns.has(key)) return true;
+    if (this.searchedRecently(provider, key) || this.searchedInFull(provider, bbox)) return false;
+    this.runSearch(provider, key, bbox, async () => {
+      const items: LocationSummary[] = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < AREA_SEARCH_MAX_PAGES; page++) {
+        const result = await this.callForSearch(provider, (signal) =>
+          catalog.searchArea({ bbox, ...(cursor === undefined ? {} : { cursor }) }, signal)
+        );
+        if (!Array.isArray(result?.items)) throw new Error(`${id} did not answer an area search`);
+        items.push(...result.items);
+        const next = result.nextCursor;
+        if (typeof next !== 'string' || next === '') return { items, complete: true };
+        // A cursor that comes back unchanged would ask for the same page again.
+        if (next === cursor) break;
+        cursor = next;
+      }
+      return { items, complete: false };
+    });
+    return true;
+  }
+
+  /** One text for a catalogue with `catalog.searchText`. True when a search for it is in flight. */
+  private searchText(
+    provider: AccommodationProvider,
+    catalog: SearchCatalogModule,
+    text: string
+  ): boolean {
+    const id = provider.manifest.id;
+    const key = searchKey(id, 'text', text.toLocaleLowerCase('en-AU'));
+    if (this.searchRuns.has(key)) return true;
+    if (this.searchedRecently(provider, key)) return false;
+    this.runSearch(provider, key, undefined, async () => {
+      const items = await this.callForSearch(provider, (signal) =>
+        catalog.searchText!(text, signal)
+      );
+      if (!Array.isArray(items)) throw new Error(`${id} did not answer a text search`);
+      return { items: items.slice(0, TEXT_SEARCH_MAX_ITEMS), complete: true };
+    });
+    return true;
+  }
+
+  /**
+   * Runs one search in the background, single flight under `key`: stores what it finds,
+   * remembers the outcome, records the provider's search state, and announces places that
+   * were not stored before. A failure is recorded, never thrown; after `stop()` nothing is
+   * written.
+   */
+  private runSearch(
+    provider: AccommodationProvider,
+    key: string,
+    bbox: BoundingBox | undefined,
+    find: () => Promise<SearchFind>
+  ): void {
+    const id = provider.manifest.id;
+    const run = (async (): Promise<void> => {
+      try {
+        const { items, complete } = await find();
+        if (this.stopped) return;
+        const at = this.clock();
+        const { stored, added } = this.locations.mergeMany(id, items, at);
+        const searchedAt = at.toISOString();
+        this.rememberSearch(key, {
+          providerId: id,
+          at: at.getTime(),
+          failed: false,
+          ...(bbox ? { area: { bbox, complete } } : {}),
+        });
+        this.providerState.set(id, CATALOG_SEARCH_STATE_KEY, { searchedAt }, at);
+        this.logger.info(`Catalogue search of ${id} stored ${stored} locations (${added} new)`);
+        if (added > 0) {
+          this.events.emit('catalog:updated', {
+            providerId: id,
+            count: stored,
+            syncedAt: searchedAt,
+          });
+        }
+      } catch (error) {
+        // Quitting (stop aborted the call): the database is closing, so nothing is written.
+        if (this.stopped) return;
+        const at = this.clock();
+        this.rememberSearch(key, { providerId: id, at: at.getTime(), failed: true });
+        this.logger.warn(`Catalogue search of ${id} failed`, error);
+        const lastError = errorMessage(error);
+        this.providerState.set(
+          id,
+          CATALOG_SEARCH_STATE_KEY,
+          { ...this.searchState(id), lastError },
+          at
+        );
+      }
+    })().finally(() => this.searchRuns.delete(key));
+    this.searchRuns.set(key, run);
+  }
+
+  /** A provider call for a search: within the provider's concurrency cap, with a deadline. */
+  private callForSearch<T>(
+    provider: AccommodationProvider,
+    task: (signal: AbortSignal) => Promise<T>
+  ): Promise<T> {
+    const id = provider.manifest.id;
+    let limiter = this.searchLimiters.get(id);
+    if (!limiter) {
+      limiter = createLimiter(providerLimits(provider.manifest).maxConcurrentRequests);
+      this.searchLimiters.set(id, limiter);
+    }
+    return limiter(() =>
+      withDeadline(id, this.timings.searchTimeoutMs, this.lifetime.signal, task)
+    );
+  }
+
+  /**
+   * Whether `key` was searched within the provider's `catalogTtlHours`, or failed within
+   * `searchErrorTtlMs`.
+   */
+  private searchedRecently(provider: AccommodationProvider, key: string): boolean {
+    const record = this.searchMemory.get(key);
+    return Boolean(record && this.within(record.at, this.searchTtlMs(provider, record)));
+  }
+
+  /** Whether an area containing `bbox` was searched in full (every page) within its TTL. */
+  private searchedInFull(provider: AccommodationProvider, bbox: BoundingBox): boolean {
+    const id = provider.manifest.id;
+    for (const record of this.searchMemory.values()) {
+      if (
+        record.providerId === id &&
+        record.area?.complete &&
+        bboxContains(record.area.bbox, bbox) &&
+        this.within(record.at, this.searchTtlMs(provider, record))
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private searchTtlMs(provider: AccommodationProvider, record: SearchRecord): number {
+    return record.failed
+      ? this.timings.searchErrorTtlMs
+      : providerLimits(provider.manifest).catalogTtlHours * 3_600_000;
+  }
+
+  /** Remembers a finished search as the newest, forgetting the oldest beyond the limit. */
+  private rememberSearch(key: string, record: SearchRecord): void {
+    this.searchMemory.delete(key);
+    this.searchMemory.set(key, record);
+    for (const oldest of this.searchMemory.keys()) {
+      if (this.searchMemory.size <= SEARCH_MEMORY_SIZE) break;
+      this.searchMemory.delete(oldest);
+    }
+  }
+
+  private isSearching(id: ProviderId): boolean {
+    for (const key of this.searchRuns.keys()) if (key.startsWith(`${id}|`)) return true;
+    return false;
+  }
+
+  private searchState(id: ProviderId): CatalogSearchState | undefined {
+    return this.providerState.get<CatalogSearchState>(id, CATALOG_SEARCH_STATE_KEY);
+  }
+
+  // -------------------------------------------------------------------------------------
   // Search and detail
   // -------------------------------------------------------------------------------------
 
-  /** Searches the cached catalogues of the registered catalogue providers. */
+  /**
+   * Searches the stored catalogues of the registered catalogue providers, at once. With an
+   * area (`bbox`) or text, it first asks the search-mode catalogues in scope about it in the
+   * background (see the header); those with a search in flight for it are listed in
+   * `pending`, and the places they add arrive with `catalog:updated`.
+   */
   search(query: CatalogQuery): CatalogSearchResult {
-    const scope = this.catalogProviders().map((p) => p.manifest.id);
-    return this.locations.search(query, scope);
+    const providers = this.catalogProviders();
+    const pending = this.searchProviders(providers, query);
+    const result = this.locations.search(
+      query,
+      providers.map((p) => p.manifest.id)
+    );
+    return pending.length ? { ...result, pending } : result;
   }
 
   /**
@@ -619,4 +940,9 @@ function safeParseKey(key: unknown): ReturnType<typeof parseLocationKey> | undef
   } catch {
     return undefined;
   }
+}
+
+/** The single-flight and memory key of an area or text search. */
+function searchKey(providerId: ProviderId, kind: 'area' | 'text', what: string): string {
+  return `${providerId}|${kind}|${what}`;
 }

@@ -94,6 +94,11 @@ export interface CatalogSearchResult {
   items: LocationSummary[];
   /** Every match, ignoring `limit` and `offset`. */
   total: number;
+  /**
+   * The `search` catalogues (`catalogMode: 'search'`) being asked about this query's area or
+   * text in the background. Their new places arrive with `catalog:updated`; absent when none.
+   */
+  pending?: ProviderId[];
   facets?: {
     regions: FacetCount[];
     amenities: FacetCount[];
@@ -111,25 +116,46 @@ export interface CatalogAvailabilityResult {
   errors: { providerId: ProviderId; code: CatalogErrorCode; message: string }[];
 }
 
+/** How a `search` catalogue is filled: by area and text searches, never by a sync. */
+export interface CatalogSearchStatus {
+  /**
+   * The provider can be searched by name (`catalog.searchText`). Without it, a name finds
+   * only its places already seen on the map.
+   */
+  textSearch: boolean;
+  /** ISO timestamp of the last area or text search that answered. */
+  searchedAt?: string;
+}
+
 export interface CatalogProviderStatus {
   providerId: ProviderId;
+  /** Locations stored. */
   count: number;
-  /** ISO timestamp of the last successful sync. */
+  /** ISO timestamp of the last successful sync (`full` catalogues). */
   syncedAt?: string;
+  /** A `full` catalogue is due a sync; always false for a `search` one. */
   stale: boolean;
+  /** A sync, or for a `search` catalogue an area or text search, is in flight. */
   syncing: boolean;
+  /** Why the latest sync (or search) failed; absent after a success. */
   lastError?: string;
+  /** Present for a `search` catalogue (`catalogMode: 'search'`). */
+  search?: CatalogSearchStatus;
 }
 
 export interface CatalogStatus {
   providers: CatalogProviderStatus[];
 }
 
-/** Payload of the `catalog:updated` event. */
+/**
+ * Payload of the `catalog:updated` event: a provider's catalogue synced, or an area or text
+ * search of a `search` catalogue stored places that were not stored before.
+ */
 export interface CatalogUpdatedEvent {
   providerId: ProviderId;
+  /** Locations the sync (or the search) stored. */
   count: number;
-  /** ISO timestamp. */
+  /** ISO timestamp of the sync or search. */
   syncedAt: string;
 }
 

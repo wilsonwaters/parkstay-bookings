@@ -23,6 +23,7 @@ import {
   toApiError,
   useBulkAvailability,
   useCatalogAll,
+  useCatalogAreaSearch,
   useCatalogRefresh,
   useCatalogSearch,
   useCatalogStatus,
@@ -78,6 +79,8 @@ const STATUS_POLL_MS = 3000;
 export const STAY_DEBOUNCE_MS = 400;
 /** A provider still checking availability after this long gets a notice (EQ7). */
 export const SLOW_AVAILABILITY_MS = 10_000;
+/** The map's area is sent to main once the map has stayed still this long (search mode). */
+export const AREA_SEARCH_DEBOUNCE_MS = 500;
 const ALL_PLACES: PlaceAvailability = { state: 'no-dates' };
 const HEADER_HEIGHT = 64;
 
@@ -233,6 +236,12 @@ export default function ExplorePage() {
     () => (area ? results.filter((item) => withinBbox(item, area)) : results),
     [results, area]
   );
+
+  // A provider that cannot list all its places (`catalogMode: 'search'`) is asked for the area
+  // the map shows (all of WA without a map). Its places join the results when main announces
+  // them (`catalog:updated`); with only `full` catalogues (ParkStay) nothing is asked.
+  const shownArea = useDebouncedValue(mapMode ? liveBbox : WA_BBOX, AREA_SEARCH_DEBOUNCE_MS);
+  useCatalogAreaSearch(shownArea);
 
   // ---- Availability for the dates (E3) ----------------------------------------------------
   // One bulk call per provider for the whole catalogue, once the stay has settled; panning the

@@ -188,3 +188,101 @@ describe('LocationCombobox', () => {
     expect(screen.getByRole('option', { name: /Osprey Bay/ })).not.toHaveAttribute('aria-disabled');
   });
 });
+
+describe('LocationCombobox for a provider searched by map area', () => {
+  const LOFT = makeLocation({ providerId: 'search', externalId: 'karri', name: 'Karri Loft' });
+
+  function SearchPicker() {
+    const [value, setValue] = useState<LocationChoice | null>(null);
+    return (
+      <LocationCombobox
+        providerId="search"
+        providerName="SearchStays"
+        value={value}
+        onChange={setValue}
+      />
+    );
+  }
+
+  const searchCatalog = (search: jest.Mock, textSearch: boolean) => ({
+    catalog: {
+      search,
+      status: jest.fn().mockResolvedValue(
+        ok({
+          providers: [
+            {
+              providerId: 'search',
+              count: 2,
+              stale: false,
+              syncing: false,
+              search: { textSearch, searchedAt: '2026-10-10T00:00:00.000Z' },
+            },
+          ],
+        })
+      ),
+    },
+  });
+
+  it('without text search, a name that matches nothing suggests browsing it on the Explore map', async () => {
+    const { user } = renderWithProviders(<SearchPicker />, {
+      api: searchCatalog(results([]), false),
+    });
+    await user.type(screen.getByRole('combobox', { name: 'Location' }), 'loft');
+
+    const hint = 'Browse SearchStays places on the Explore map to find more';
+    expect(await screen.findByRole('option', { name: hint })).toBeInTheDocument();
+    await waitFor(() => expect(politeAnnouncement()).toBe(hint));
+    expect(screen.queryByText(/No locations match/)).toBeNull();
+  });
+
+  it('without text search, the places already seen still match by name', async () => {
+    const { user } = renderWithProviders(<SearchPicker />, {
+      api: searchCatalog(results([LOFT]), false),
+    });
+    await user.type(screen.getByRole('combobox', { name: 'Location' }), 'loft');
+    expect(await screen.findByRole('option', { name: /Karri Loft/ })).toBeInTheDocument();
+    await waitFor(() => expect(politeAnnouncement()).toBe('1 location'));
+  });
+
+  it('with text search, says it is searching the provider until its places arrive (catalog:updated)', async () => {
+    const search = jest
+      .fn()
+      .mockResolvedValueOnce(ok({ items: [], total: 0, pending: ['search'] }))
+      .mockResolvedValue(ok({ items: [LOFT], total: 1 }));
+    const { user, mock } = renderWithProviders(<SearchPicker />, {
+      api: searchCatalog(search, true),
+    });
+    await user.type(screen.getByRole('combobox', { name: 'Location' }), 'loft');
+
+    expect(
+      await screen.findByRole('option', { name: 'Searching SearchStays…' })
+    ).toBeInTheDocument();
+    expect(politeAnnouncement()).not.toMatch(/No locations match/);
+    mock.emit('catalog:updated', {
+      providerId: 'search',
+      count: 1,
+      syncedAt: '2026-10-10T00:00:01.000Z',
+    });
+
+    expect(await screen.findByRole('option', { name: /Karri Loft/ })).toBeInTheDocument();
+    await waitFor(() => expect(politeAnnouncement()).toBe('1 location'));
+  });
+
+  it('with text search, asks main again while the provider is pending, then says nothing matched', async () => {
+    const search = jest
+      .fn()
+      .mockResolvedValueOnce(ok({ items: [], total: 0, pending: ['search'] }))
+      .mockResolvedValue(ok({ items: [], total: 0 }));
+    const { user } = renderWithProviders(<SearchPicker />, { api: searchCatalog(search, true) });
+    await user.type(screen.getByRole('combobox', { name: 'Location' }), 'zzz');
+
+    expect(
+      await screen.findByRole('option', { name: 'Searching SearchStays…' })
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole('option', { name: 'No locations match "zzz"' }, { timeout: 3000 })
+    ).toBeInTheDocument();
+    await waitFor(() => expect(politeAnnouncement()).toBe('No locations match "zzz"'));
+    expect(search).toHaveBeenCalledTimes(2);
+  });
+});

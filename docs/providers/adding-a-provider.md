@@ -181,7 +181,7 @@ behind it (`CONSISTENCY_RULES` and `MANIFEST_RULES` in `src/main/providers/regis
 | Capability | Needs | Turns on |
 | --- | --- | --- |
 | `catalog` | `catalog.getLocation`, and `listLocations` or `searchArea` per `catalogMode` | Explore's map and list, a location's detail page |
-| `catalogMode` | `full`: `catalog.listLocations`; `search`: `catalog.searchArea` | `full` catalogues are synced (every `catalogTtlHours`) and searched offline. `search` is for marketplaces too big to list: one page of a map area at a time. The registry checks it; the catalogue service syncs `full` providers today and leaves a hook for `search`. |
+| `catalogMode` | `full`: `catalog.listLocations`; `search`: `catalog.searchArea` (and optionally `catalog.searchText`) | `full` catalogues are synced (every `catalogTtlHours`) and searched offline. `search` is for marketplaces too big to list: the catalogue service asks `searchArea` for the area Explore's map shows (all of WA without a map), at most 5 pages per area, and `searchText` for a name typed in Explore's "Where" or a location step. What it finds is stored and then works like a synced place (search, filters, the place page, availability, watches); each area or text is asked once per `catalogTtlHours`. See [Search-mode catalogues](browser-providers.md#search-mode-catalogues-catalogmode-search). |
 | `availability` | `availability.check` | "Check availability" on a location's page |
 | `bulkAvailability` | `availability.search` | Free-unit counts on Explore's pins and cards, "Available only" |
 | `watches` | `availability.check` | The provider in Watches |
@@ -209,7 +209,7 @@ context gives the effective values as `ctx.limits`.
 | --- | --- |
 | `minWatchIntervalMinutes` | The watch form offers no shorter interval, and the scheduler runs a shorter stored one at this interval (`core/watches/next-check.ts`). |
 | `maxConcurrentRequests` | The watch loop runs at most `min(2, maxConcurrentRequests)` checks at once for the provider. **Your module enforces it for its own requests**, with `createLimiter` from the SDK, as both examples do. |
-| `catalogTtlHours` | How long a synced catalogue stays fresh before the catalogue service syncs it again. |
+| `catalogTtlHours` | How long a synced catalogue stays fresh before the catalogue service syncs it again; for a `search` catalogue, how long an area or text search is not repeated. |
 
 A browser provider should use `maxConcurrentRequests: 1` and generous intervals.
 
@@ -1047,10 +1047,10 @@ locations ([tests/README.md](../../tests/README.md)).
 
 Once registered, with no other change:
 
-- **Explore** syncs a `full` catalogue (every `catalogTtlHours`), indexes it for search
-  (FTS5), and shows its locations on the map and in the list with the provider's badge, the
-  Provider, Type, Region and Facilities filters, and, with `bulkAvailability`, free counts for
-  the chosen dates.
+- **Explore** syncs a `full` catalogue (every `catalogTtlHours`), or searches a `search` one
+  by the map's area as it moves, indexes it for search (FTS5), and shows its locations on the
+  map and in the list with the provider's badge, the Provider, Type, Region and Facilities
+  filters, and, with `bulkAvailability`, free counts for the chosen dates.
 - **A location's page** shows the detail (cached for 6 hours), "Check availability" with your
   stay fields, the provider's links, and the create actions the capabilities allow.
 - **Watches and Site Sniper** list the provider in their first step when it has the

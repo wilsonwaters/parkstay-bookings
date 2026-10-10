@@ -191,6 +191,18 @@ catalog: {
 - **Keep keys stable across pages.** A listing that moves between pages because the site re-sorts keeps the same `makeLocationKey(ctx.id, externalId)`.
 - **Use the site's own page size.** Every page is a full browser visit. Leave it to the caller to decide how many pages it needs.
 
+### How the app uses a search-mode catalogue
+
+The catalogue service (`src/main/core/catalog/location-catalog.service.ts`) never syncs a `search` catalogue. Instead:
+
+- **Explore asks for the area it shows.** Once the map has stayed still for half a second, Explore sends its area (all of WA when there is no map). Main snaps it outwards to a grid (`catalogSearchArea` in `src/shared/utils/catalog-area.ts`), so a small pan or zoom reuses the last search, and calls `searchArea` with the snapped box and no `stay`.
+- **At most 5 pages per area.** Main follows `nextCursor` for up to 5 pages, then stops: zooming in gives a smaller area and finer results. An area inside one whose search read every page is not asked again.
+- **Polite by default.** One search per area at a time; each area is asked at most once per `catalogTtlHours` while the app runs, and a failed one not again for 60 s. Main's search calls stay within `maxConcurrentRequests`, each page has a 20 s deadline, and quitting aborts them.
+- **Non-blocking.** Explore's results come from the stored catalogue at once. When a search stores places that were not stored before, main sends `catalog:updated` and Explore shows them.
+- **Stored like synced places.** What a search finds is added to the stored catalogue, so text search, filters, the place page, availability and watches work for it. Search results are never removed, because watches and bookings may refer to them. A place found again is refreshed; a place the site has dropped keeps its stored copy, and its page shows that copy marked out of date.
+- **Text search is optional.** If the site can search by name, implement `catalog.searchText(text, signal)`: one request, your best few dozen matches. Main calls it when someone types at least 3 characters into Explore's "Where" or a watch's location step, with the same caching and storage as area searches. Without it, the location step finds only the places already seen on the map, and suggests browsing the map to find more.
+- **Status.** `catalog.status()` shows a `search` catalogue with `search: { textSearch, searchedAt? }`. `syncing` is true while a search runs, and `lastError` holds the last search's error.
+
 ## Politeness
 
 A browser visit costs the provider far more than an API call: it loads scripts, images and fonts. Keep the load to what one careful person would cause.
