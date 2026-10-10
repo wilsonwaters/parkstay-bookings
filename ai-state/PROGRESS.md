@@ -6,14 +6,8 @@ _Last updated: 2026-10-11 (orchestrator)_
 Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wilsonwaters/wa-stay`). Phase 6 is done: the final review fixes are merged and the PR is open. The stakeholder asked for CI fixes, Node 24, hardening, dependency upgrades and developer-experience fixes on the same PR.
 
 ## Currently in flight
-- **DX5** (validation follow-ups, `ai-state/streams/providers/tasks/DX5-validation-follow-ups.md`), on lane/a:
-  - doc errors: the example's hold requests bypass its limiter; `BulkAvailabilityEntry` is undocumented; the signed-in check's e2e fixture route isn't mentioned;
-  - doc gaps; Settings → Accounts wording driven by the manifest;
-  - the preview checks availability with dates;
-  - a browser-provider preview recipe that doesn't weaken TLS.
-
-  Then a review, a merge and a report to the stakeholder.
-- PR #42 CI is green on every head up to `8af2606` (Ubuntu, Windows and macOS on Node 24, e2e, packaged smoke, Build Windows). DX4 (`3726435`) and its spec commit (`10512b5`) are pushed; CI is running.
+- Nothing. DX5 is merged (`fea81aa`), and PR #42 waits on CI for its head, then on the stakeholder.
+- The macOS runner's Jest worker SIGSEGV recurred once (`10512b5`). Since `444d840`, CI uploads macOS crash reports on failure, so the next one can be diagnosed (V8 or a native module).
 
 ## Notes
 - 2026-10-10 ~04:30 UTC: a third usage limit stopped U4 (final gate), U2 (gate), the U3 fix and the E3 fix; all resumed at 06:25 UTC from saved state (U4 `28f3e40` and U2 `cd243b0` backed up to `wip/*`).
@@ -25,6 +19,25 @@ Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wils
 - 2026-10-04 ~10:30 UTC: an account usage limit stopped all agents; resumed at 10:55 from their saved lanes (pre-rebase work pinned as `backup/e1-pre-rebase` and `backup/v4-pre-rebase`, local only).
 
 ## Completed
+- **DX5** Validation follow-ups (`2a83dbd`..`49c7589`, review follow-ups `fea81aa`).
+  - **Settings → Accounts wording** follows `snipes`, `holds` and `watches`, and "No account needed" shows once.
+  - **The example API provider** sends every request through its limiter.
+  - **Docs:**
+    - `BulkAvailabilityEntry` is documented, on the type and in the guide;
+    - the guide's tables of location kinds, stay-field types and bulk fields are checked against the code;
+    - a contract-suite coverage table;
+    - the signed-in check's e2e fixture route;
+    - why there are two fixture manifests.
+  - **Browser preview:** `tests/utils/fake-site.ts` and `scripts/serve-provider-site.mjs` serve a browser provider's `site.ts` on loopback. The preview recipe (a temporary loopback address and `WA_STAY_BROWSER_PATH`) is proven end to end with no TLS weakening.
+  - **The preview spec:**
+    - sets dates (`PREVIEW_ARRIVAL`, default tomorrow);
+    - checks Explore's counts and "Check availability";
+    - fails on any request fixture mode refused;
+    - warns when every night reads Unknown.
+  - **Guards:** `tests/unit/providers/no-loopback-addresses.test.ts` means no provider can ship a loopback address.
+  - **Windows:** the scaffold's rollback fix (`5c56c76`).
+  - **Review:** APPROVE. The minors were fixed in `fea81aa`.
+  - **Gate:** 3985 tests, `test:tz`, and e2e with 21 passed.
 - **DX4** Provider scaffold, agent checklist and guide (`1e048cf`, review follow-ups `3726435`).
   - **Scaffold:** `npm run provider:new -- <id> [--api|--browser] [--search] [--name] [--no-register]` (`scripts/new-provider.mjs`, templates in `scripts/templates/provider/`). Every variant passes the full gate and e2e as generated. Placeholder addresses fail loudly and nothing is sent.
   - **Checklist:** CLAUDE.md "Adding a provider", `.claude/commands/add-provider.md`, and `AGENTS.md` pointing to it.
@@ -90,14 +103,14 @@ Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wils
 - Dependencies installed: playwright-core 1.56.1, sanitize-html 2.17, mapbox-gl, lucide-react, Figtree and Fraunces.
 
 ## Next to dispatch
-- Nothing after DX5. All 30 tasks, the verification and final-review fixes, M1–M3 and DX1–DX4 are merged. More provider DX work waits for the stakeholder (see Active blockers).
+- Nothing. All 30 tasks, the verification and final-review fixes, M1–M3 and DX1–DX5 are merged. More provider DX work waits for the stakeholder (see Active blockers).
 
 ## Notes
 - Spec files in `ai-state/streams/*/tasks/` are canonical. Orchestrator addenda are added there, and issue bodies are synced at the end.
 
 ## Active blockers
 - None. Stakeholder actions (non-blocking, all in `docs/release-checklist-2.0.md`): add the `MAPBOX_ACCESS_TOKEN` Actions secret; the manual Windows checks, the ParkStay sign-in checks (PQ1/PQ2) and the GPU check; delete the 11 `wip/*` branches on GitHub (the git proxy refuses deletes). Done by the stakeholder: repo renamed to `wa-stay` with its description; LICENSE holder decided (WA Stay).
-- Provider DX follow-ups not yet approved: fixture mode for `ctx.browser` (the most valuable next fix after DX5), a typed `defineProvider`, contract-suite messages and checks, SDK helpers (`requestJson`, a rate limiter, `Retry-After`, per-provider timeouts), and the model gaps (minimum stay, tax and fees, `credentials`/OAuth sign-in, an access-gate base class).
+- Provider DX follow-ups not yet approved: fixture mode for `ctx.browser` (the most valuable next fix: it would let the preview spec cover browser providers), a typed `defineProvider`, contract-suite messages and checks, SDK helpers (`requestJson`, a rate limiter, `Retry-After`, per-provider timeouts), and the model gaps (minimum stay, tax and fees, `credentials`/OAuth sign-in, an access-gate base class).
 
 ## Proposed GitHub repo description (stakeholder to paste)
 > WA Stay — find and book places to stay across Western Australia. Map-first discovery, availability watches and instant site holds across providers, starting with ParkStay WA. Electron desktop app.
