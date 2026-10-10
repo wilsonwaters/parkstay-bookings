@@ -25,7 +25,10 @@ const ESM_ONLY_DEPENDENCIES = [
   'domelementtype',
   'entities',
 ];
-const ESM_ONLY = `node_modules/(?:${ESM_ONLY_DEPENDENCIES.join('|')})/`;
+/** A path separator: Jest matches these patterns against native paths (`\\` on Windows). */
+const SEP = '[/\\\\]';
+const ESM_ONLY_NAMES = `(?:${ESM_ONLY_DEPENDENCIES.join('|')})${SEP}`;
+const ESM_ONLY = `node_modules${SEP}${ESM_ONLY_NAMES}`;
 
 const base = {
   roots: ['<rootDir>/src', '<rootDir>/tests'],
@@ -49,7 +52,7 @@ const base = {
       { tsconfig: { allowJs: true, esModuleInterop: true, isolatedModules: true } },
     ],
   },
-  transformIgnorePatterns: [`/node_modules/(?!${ESM_ONLY.slice('node_modules/'.length)})`],
+  transformIgnorePatterns: [`${SEP}node_modules${SEP}(?!${ESM_ONLY_NAMES})`],
   moduleNameMapper: {
     '^@main/(.*)$': '<rootDir>/src/main/$1',
     '^@renderer/(.*)$': '<rootDir>/src/renderer/$1',
