@@ -67,8 +67,8 @@ Build every address with `ROUTES` (or `buildPath` with a pattern), never by join
 | `/site-sniper` | `snipes` | legacy Site Sniper list |  |
 | `/site-sniper/new` | `snipeNew(prefill?)` | legacy Create Snipe |  |
 | `/site-sniper/:id` | `snipeDetail(id)` | `NotFoundPage` | Reserved for U2. |
-| `/bookings` | `bookings` | legacy Bookings list |  |
-| `/bookings/:id` | `bookingDetail(id)` | legacy Booking detail |  |
+| `/bookings` | `bookings` | `BookingsPage` | Upcoming / Past / Cancelled tabs, provider filter and search in the URL (`?tab=&provider=&q=`). |
+| `/bookings/:id` | `bookingDetail(id)` | `BookingDetailPage` | "Manage on {shortName}" hands off to the provider; "Remove from WA Stay" never cancels there. |
 | `/settings/:section?` | `settings(section?)` | legacy Settings | The legacy page ignores `section` until U4, so an unknown section shows the default. |
 | `/__design` | `design` | `DesignPreviewPage` | Development builds only, lazy, outside the shell (it has its own header and main). |
 | `/watches/create`, `/site-sniper/create` |  | redirect | To `/new`, keeping the query string (§12.19). |
@@ -162,6 +162,9 @@ With no `window.api` (the renderer opened in a plain browser with `npm run dev:r
 | Place hand-offs | link | Book on {shortName} (opens in your browser) · Watch for availability · Snipe a site, coming soon |
 | Place gallery | button, dialog | Show all {n} photos · Photos of {name} |
 | Place results | region, table, switch | Availability · Availability by night, {dates} · Fully available only |
+| Bookings | heading level 1, button, tablist, tab | Bookings · Add booking (· Import booking, only when a provider can import) · Trips · "Upcoming, 2 trips", "Past, 1 trip", "Cancelled, 0 trips" |
+| Booking card | article, link, button, menuitem | The place's name · More actions for {place} · Remove from WA Stay |
+| Booking page | heading level 1, link, button, region | The place's name · Manage on {shortName} (opens in your browser) · About {place} · Copy reference {ref} · Stay, Unit, Guests, Cost, Reference |
 
 ## Testing
 

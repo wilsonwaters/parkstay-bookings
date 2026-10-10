@@ -24,7 +24,6 @@ describe('renderer layout after the shell rebuild', () => {
   it('keeps the legacy pages under features/<domain>/legacy/', () => {
     for (const file of [
       'features/snipes/legacy/index.tsx',
-      'features/bookings/legacy/BookingsList.tsx',
       'features/settings/legacy/Settings.tsx',
     ]) {
       expect(fs.existsSync(path.join(RENDERER, file))).toBe(true);

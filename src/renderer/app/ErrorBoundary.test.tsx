@@ -6,13 +6,13 @@ import { AppErrorBoundary, errorDetails } from './ErrorBoundary';
 // A page and a header component that can be told to throw while rendering.
 const failures = { page: false, header: false };
 
-jest.mock('../features/bookings/legacy/BookingsList', () => ({
-  __esModule: true,
-  default: function BookingsList() {
+jest.mock('../features/bookings/BookingsPage', () => {
+  function BookingsPage() {
     if (failures.page) throw new Error('Bookings list exploded');
-    return <h1>Your Bookings</h1>;
-  },
-}));
+    return <h1>Bookings</h1>;
+  }
+  return { __esModule: true, BookingsPage, default: BookingsPage };
+});
 
 jest.mock('../features/notifications/NotificationBell', () => ({
   __esModule: true,
@@ -66,9 +66,7 @@ describe('RouteErrorBoundary', () => {
 
     failures.page = false;
     await user.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(
-      await screen.findByRole('heading', { level: 1, name: 'Your Bookings' })
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Bookings' })).toBeInTheDocument();
   });
 });
 

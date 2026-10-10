@@ -11,8 +11,11 @@ import {
 } from '../ui';
 
 export interface ProviderPickerProps {
-  /** Only providers offering this are listed (a create flow's provider step, §8). */
-  capability: ProviderCapability;
+  /**
+   * Only providers offering this are listed (a create flow's provider step, §8). Omit it to
+   * list every provider, for a flow that needs no capability (adding a booking by hand).
+   */
+  capability?: ProviderCapability;
   /** The group's visible label, e.g. "Provider". */
   label: string;
   value: string | undefined;
@@ -25,7 +28,7 @@ export interface ProviderPickerProps {
 /**
  * The provider step of a create flow: one card per provider with `capability`, with its name,
  * description and badge. A single qualifying provider is chosen for you, but still shown
- * (§12.9). Domain-generic: U2 and U3 use it with their own capability.
+ * (§12.9). Domain-generic: U2 and U3 use it with their own capability (or none).
  */
 export function ProviderPicker({
   capability,

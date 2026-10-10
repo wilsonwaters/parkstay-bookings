@@ -152,7 +152,7 @@ describe('App shell', () => {
 
     it.each([
       ['Site Sniper, coming soon', '/site-sniper', 'Site Sniper'],
-      ['Bookings, coming soon', '/bookings', 'Your Bookings'],
+      ['Bookings, coming soon', '/bookings', 'Bookings'],
     ])('"%s" navigates to its page', async (name, route, heading) => {
       const { user } = renderWithApp();
       await user.click(screen.getByRole('link', { name }));
@@ -217,7 +217,7 @@ describe('App shell', () => {
       ['/watches/new', 'New watch'],
       ['/site-sniper', 'Site Sniper'],
       ['/site-sniper/new', 'Create Site Snipe'],
-      ['/bookings', 'Your Bookings'],
+      ['/bookings', 'Bookings'],
       ['/settings', 'Settings'],
       ['/settings/notifications', 'Settings'],
       ['/places/nowhere/1', "This place isn't available"],

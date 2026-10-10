@@ -65,3 +65,11 @@ export {
   useWatchUpdates,
 } from './watches';
 export { useAccountStatus } from './accounts';
+export {
+  useBooking,
+  useBookings,
+  useBookingUpdates,
+  useCreateBooking,
+  useDeleteBooking,
+  useImportBooking,
+} from './bookings';

@@ -25,7 +25,7 @@ export const PARKSTAY_MANIFEST: ProviderManifest = {
     watches: true,
     snipes: true,
     holds: true,
-    bookingImport: true,
+    bookingImport: false,
     accessGate: true,
     account: 'optional',
   },

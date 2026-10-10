@@ -16,8 +16,8 @@ import { WatchDetailPage } from '../features/watches/detail/WatchDetailPage';
 import { EditWatchPage } from '../features/watches/edit/EditWatchPage';
 import SiteSniperPage from '../features/snipes/legacy';
 import CreateSiteSnipe from '../features/snipes/legacy/CreateSiteSnipe';
-import BookingsList from '../features/bookings/legacy/BookingsList';
-import BookingDetail from '../features/bookings/legacy/BookingDetail';
+import { BookingsPage } from '../features/bookings/BookingsPage';
+import { BookingDetailPage } from '../features/bookings/detail/BookingDetailPage';
 import Settings from '../features/settings/legacy/Settings';
 import { AppShell } from './AppShell';
 import { LegacyPageFrame } from './LegacyPageFrame';
@@ -59,8 +59,8 @@ export function AppRoutes() {
         {/* Reserved for U2 (snipe detail). */}
         <Route path={PATTERNS.snipeDetail} element={<NotFoundPage />} />
 
-        <Route path={PATTERNS.bookings} element={legacy(<BookingsList />)} />
-        <Route path={PATTERNS.bookingDetail} element={legacy(<BookingDetail />)} />
+        <Route path={PATTERNS.bookings} element={<BookingsPage />} />
+        <Route path={PATTERNS.bookingDetail} element={<BookingDetailPage />} />
 
         {/* The legacy page ignores `:section` until U4 rebuilds Settings. */}
         <Route path={PATTERNS.settings} element={legacy(<Settings />)} />
