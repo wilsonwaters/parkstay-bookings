@@ -93,3 +93,97 @@ describe('useRouteFocus when a page replaces its heading', () => {
     expect(elsewhere).toHaveFocus();
   });
 });
+
+/** A page with an `h1` and a button it may focus itself when it mounts (a deep link's target). */
+function FocusingPage({ title, focusOnMount }: { title: string; focusOnMount?: boolean }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (focusOnMount) ref.current?.focus();
+  }, [focusOnMount]);
+  return (
+    <>
+      <h1>{title}</h1>
+      <h2 tabIndex={-1}>Section</h2>
+      <button ref={ref} type="button">
+        Target
+      </button>
+    </>
+  );
+}
+
+function SettingsShell() {
+  const mainRef = useRef<HTMLElement>(null);
+  useRouteFocus(mainRef);
+  return (
+    <>
+      <Link to="/settings/accounts">Accounts</Link>
+      <Link to="/settings/notifications">Notifications</Link>
+      <Link to="/settings/accounts?provider=parkstay">Deep link</Link>
+      <main ref={mainRef} tabIndex={-1}>
+        <Routes>
+          <Route path="/" element={<h1>Home</h1>} />
+          <Route
+            path="/settings/:section"
+            element={<FocusingPage title="Settings" focusOnMount={false} />}
+          />
+        </Routes>
+      </main>
+    </>
+  );
+}
+
+function DeepLinkShell() {
+  const mainRef = useRef<HTMLElement>(null);
+  useRouteFocus(mainRef);
+  return (
+    <>
+      <Link to="/settings/accounts?provider=parkstay">Deep link</Link>
+      <main ref={mainRef} tabIndex={-1}>
+        <Routes>
+          <Route path="/" element={<h1>Home</h1>} />
+          <Route
+            path="/settings/:section"
+            element={<FocusingPage title="Settings" focusOnMount />}
+          />
+        </Routes>
+      </main>
+    </>
+  );
+}
+
+function renderAt(shell: ReactNode) {
+  render(
+    <AnnouncerProvider>
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        {shell}
+      </MemoryRouter>
+    </AnnouncerProvider>
+  );
+}
+
+describe('useRouteFocus and Settings', () => {
+  it('settings sections are one page for route focus: changing section leaves focus alone', async () => {
+    renderAt(<SettingsShell />);
+
+    act(() => screen.getByRole('link', { name: 'Accounts' }).click());
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Settings' });
+    await waitFor(() => expect(heading).toHaveFocus());
+
+    // The section moves focus to its own heading; the shell must not take it back
+    const section = screen.getByRole('heading', { level: 2, name: 'Section' });
+    act(() => screen.getByRole('link', { name: 'Notifications' }).click());
+    act(() => section.focus());
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(section).toHaveFocus();
+  });
+
+  it('a page that placed focus inside main itself keeps it, and its title is still announced', async () => {
+    renderAt(<DeepLinkShell />);
+
+    act(() => screen.getByRole('link', { name: 'Deep link' }).click());
+    const target = await screen.findByRole('button', { name: 'Target' });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(target).toHaveFocus();
+    expect(document.querySelector('[aria-live="polite"]')?.textContent).toContain('Settings');
+  });
+});

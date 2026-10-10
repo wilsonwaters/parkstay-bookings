@@ -33,13 +33,11 @@ describe('app shell flow', () => {
     // Settings through the account menu.
     await user.click(screen.getByRole('button', { name: 'Account and settings' }));
     await user.click(screen.getByRole('menuitem', { name: 'Settings' }));
-    // The legacy page renders, swaps to a spinner while it loads, then renders again, so look
-    // the heading up afresh rather than holding on to the first one.
-    await waitFor(() => expect(mock.api.app.getAutoLaunch).toHaveBeenCalled());
-    await waitFor(() =>
-      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
-    );
-    expect(currentRoute()).toBe('/settings');
+    // /settings opens its first section, Accounts, which reads the stored accounts
+    const settingsHeading = await screen.findByRole('heading', { level: 1, name: 'Settings' });
+    await waitFor(() => expect(currentRoute()).toBe('/settings/accounts'));
+    await waitFor(() => expect(mock.api.accounts.list).toHaveBeenCalled());
+    await waitFor(() => expect(settingsHeading).toHaveFocus());
 
     // An unknown address, then back to Explore.
     act(() => {
@@ -57,9 +55,11 @@ describe('app shell flow', () => {
     // The frame never changed underneath.
     expect(getBanners()).toHaveLength(1);
     expect(screen.getAllByRole('main')).toHaveLength(1);
-    // Settings shows the stored ParkStay account; nothing asks anyone to sign in
+    // Settings shows the stored ParkStay account and checks it once (read-only); nothing asks
+    // anyone to sign in
     expect(mock.api.accounts.list).toHaveBeenCalled();
     expect(mock.api.accounts.signIn).not.toHaveBeenCalled();
-    expect(mock.api.accounts.status).not.toHaveBeenCalled();
+    expect(mock.api.accounts.status).toHaveBeenCalledTimes(1);
+    expect(mock.api.accounts.status).toHaveBeenCalledWith('parkstay');
   });
 });

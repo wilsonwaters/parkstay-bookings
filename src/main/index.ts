@@ -23,7 +23,12 @@ import { openDatabase } from './database/connection';
 import { bootstrapShell } from './app/bootstrap';
 import { createContainer, AppContainer } from './app/container';
 import { installCrashPolicy } from './app/crash-policy';
-import { currentLaunchTarget, replaceLegacyLoginItems } from './app/login-item';
+import {
+  currentLaunchTarget,
+  legacyStartMinimised,
+  replaceLegacyLoginItems,
+  startMinimisedSetting,
+} from './app/login-item';
 import { createMainWindow, denyWebviews } from './app/main-window';
 import { getBrandIconPath } from './app/paths';
 import { isProviderWindow } from './app/provider-windows';
@@ -66,7 +71,7 @@ let container: AppContainer | null = null;
 let mainWindow: BrowserWindow | null = null;
 
 /**
- * Detect if app was launched at login and should start hidden
+ * A login launch with "Start minimised" (`--hidden`, or macOS's open-as-hidden login item)
  */
 function isHiddenLaunch(): boolean {
   if (process.argv.includes(HIDDEN_ARG)) return true;
@@ -88,9 +93,9 @@ function showMainWindow(): boolean {
 }
 
 /**
- * Create the main window. Only the first window of a login launch starts hidden.
+ * Create the main window. Only the first window of a login launch starts minimised.
  */
-function createWindow(startHidden: boolean): void {
+function createWindow(startMinimised: boolean): void {
   if (!container) return;
 
   const window = createMainWindow({
@@ -98,7 +103,7 @@ function createWindow(startHidden: boolean): void {
     // The bundled preload (`npm run build:preload`): dist/preload/, next to dist/main/
     preloadPath: path.join(__dirname, '../../preload/index.js'),
     trustedWebContents: container.trustedWebContents,
-    startHidden,
+    startMinimised,
     // A packaged Windows or macOS window shows the executable's own icon
     icon: process.platform === 'linux' || !app.isPackaged ? getBrandIconPath() : undefined,
   });
@@ -166,8 +171,18 @@ async function start(): Promise<void> {
     notifications: ready.repositories.notifications,
     userId: ready.profile.requireUserId(),
     launchOnStartup: ready.repositories.settings.getValue<boolean>('launchOnStartup') === true,
+    // v1.x always started hidden: such a user keeps a quiet start ("Start minimised")
     replaceLoginItems: (launchOnStartup) =>
-      replaceLegacyLoginItems(launchOnStartup, { ...currentLaunchTarget(), log: logger }),
+      replaceLegacyLoginItems(
+        {
+          launchOnStartup,
+          startMinimised: legacyStartMinimised(
+            launchOnStartup,
+            startMinimisedSetting(ready.repositories.settings)
+          ),
+        },
+        { ...currentLaunchTarget(), log: logger }
+      ),
     markerPath: paths.markerPath,
     logger,
   });

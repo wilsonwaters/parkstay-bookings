@@ -6,8 +6,9 @@ const removeApi = () => {
 
 describe('unwrap', () => {
   it('resolves to the data of a successful response', async () => {
-    jest.mocked(window.api.app.getAutoLaunch).mockResolvedValue({ success: true, data: true });
-    await expect(unwrap((api) => api.app.getAutoLaunch())).resolves.toBe(true);
+    const launch = { enabled: true, startMinimised: false };
+    jest.mocked(window.api.app.getAutoLaunch).mockResolvedValue({ success: true, data: launch });
+    await expect(unwrap((api) => api.app.getAutoLaunch())).resolves.toEqual(launch);
     await expect(unwrap(Promise.resolve({ success: true, data: [1, 2] }))).resolves.toEqual([1, 2]);
   });
 

@@ -11,6 +11,9 @@ const app = ['app'] as const;
 const updater = ['updater'] as const;
 const watches = ['watches'] as const;
 const accounts = ['accounts'] as const;
+const accountChecks = ['account-checks'] as const;
+const settings = ['settings'] as const;
+const notifiers = ['notifiers'] as const;
 
 export const queryKeys = {
   providers: {
@@ -37,6 +40,7 @@ export const queryKeys = {
   app: {
     all: app,
     info: () => [...app, 'info'] as const,
+    launchAtLogin: () => [...app, 'launch-at-login'] as const,
   },
   updater: {
     all: updater,
@@ -50,5 +54,21 @@ export const queryKeys = {
   accounts: {
     all: accounts,
     list: () => [...accounts, 'list'] as const,
+  },
+  /**
+   * A live signed-in check (`accounts.status`), apart from `accounts` so that `account:updated`
+   * (which a check can cause) reloads the stored list without asking the provider again.
+   */
+  accountChecks: {
+    all: accountChecks,
+    check: (providerId: string) => [...accountChecks, providerId] as const,
+  },
+  settings: {
+    all: settings,
+    value: (key: string) => [...settings, 'value', key] as const,
+  },
+  notifiers: {
+    all: notifiers,
+    detail: (channel: string) => [...notifiers, 'detail', channel] as const,
   },
 } as const;

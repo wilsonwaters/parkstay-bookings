@@ -15,8 +15,10 @@
  */
 import {
   LEGACY_LOGIN_ITEM_NAMES,
+  legacyStartMinimised,
   replaceLegacyLoginItems,
   setLaunchAtLogin,
+  type StartMinimisedStore,
   type LoginItemApp,
   type LoginItemHost,
 } from '@main/app/login-item';
@@ -101,12 +103,22 @@ function v1RunKey(app: FakeRunKey, exe: string = LEGACY_EXE): void {
 }
 
 describe('setLaunchAtLogin', () => {
-  it('Windows: the default name (the AppUserModelId), the quoted executable and --hidden', () => {
+  it('Windows: the default name (the AppUserModelId) and the quoted executable, no --hidden', () => {
     const app = new FakeRunKey();
 
-    setLaunchAtLogin(true, host(app));
+    setLaunchAtLogin({ enabled: true, startMinimised: false }, host(app));
 
+    expect(app.values).toEqual(new Map([[AUMID, `"${EXE_IN_PLACE}"`]]));
+  });
+
+  it('Windows: --hidden only when start minimised is on (written again when it changes)', () => {
+    const app = new FakeRunKey();
+
+    setLaunchAtLogin({ enabled: true, startMinimised: true }, host(app));
     expect(app.values).toEqual(new Map([[AUMID, `"${EXE_IN_PLACE}" --hidden`]]));
+
+    setLaunchAtLogin({ enabled: true, startMinimised: false }, host(app));
+    expect(app.values).toEqual(new Map([[AUMID, `"${EXE_IN_PLACE}"`]]));
   });
 
   it('portable: the entry starts the portable exe (PORTABLE_EXECUTABLE_FILE), not the temp copy', () => {
@@ -114,7 +126,7 @@ describe('setLaunchAtLogin', () => {
     const portable = 'D:\\Apps\\WA Stay 2.0.0.exe';
 
     setLaunchAtLogin(
-      true,
+      { enabled: true, startMinimised: true },
       host(app, {
         execPath: 'C:\\Users\\Ann\\AppData\\Local\\Temp\\2abcd\\WA Stay.exe',
         env: { PORTABLE_EXECUTABLE_FILE: portable },
@@ -126,30 +138,31 @@ describe('setLaunchAtLogin', () => {
 
   it('off: removes the entry', () => {
     const app = new FakeRunKey();
-    setLaunchAtLogin(true, host(app));
+    setLaunchAtLogin({ enabled: true, startMinimised: true }, host(app));
 
-    setLaunchAtLogin(false, host(app));
+    setLaunchAtLogin({ enabled: false, startMinimised: true }, host(app));
 
     expect(app.values.size).toBe(0);
   });
 
-  it('macOS: a login item opened hidden', () => {
+  it.each([
+    [true, true],
+    [false, false],
+  ])('macOS: a login item, opened hidden when start minimised is %s', (startMinimised, hidden) => {
     const app = {
       isPackaged: true,
       getLoginItemSettings: jest.fn(),
       setLoginItemSettings: jest.fn(),
     };
 
-    setLaunchAtLogin(true, {
-      app,
-      platform: 'darwin',
-      execPath: '/Applications/WA Stay.app',
-      env: {},
-    });
+    setLaunchAtLogin(
+      { enabled: true, startMinimised },
+      { app, platform: 'darwin', execPath: '/Applications/WA Stay.app', env: {} }
+    );
 
     expect(app.setLoginItemSettings).toHaveBeenCalledWith({
       openAtLogin: true,
-      openAsHidden: true,
+      openAsHidden: hidden,
     });
   });
 });
@@ -166,7 +179,7 @@ describe('replaceLegacyLoginItems (after the first-run migration)', () => {
     );
     const h = host(app);
 
-    const result = replaceLegacyLoginItems(true, h);
+    const result = replaceLegacyLoginItems({ launchOnStartup: true, startMinimised: true }, h);
 
     expect(app.values).toEqual(
       new Map([
@@ -184,14 +197,17 @@ describe('replaceLegacyLoginItems (after the first-run migration)', () => {
     });
     // Removed before the new entry is written
     expect(app.calls.indexOf(`set ${AUMID}`)).toBe(app.calls.length - 1);
-    expect(h.lines).toContain('legacy-install: launch at login registered for WA Stay');
+    expect(h.lines).toContain('legacy-install: launch at login registered for WA Stay, minimised');
   });
 
   it('finds a v1.x entry under any name through launchItems, from the nested install folder too', () => {
     const app = new FakeRunKey();
     app.values.set('My renamed entry', `${LEGACY_EXE} --hidden`);
 
-    const result = replaceLegacyLoginItems(true, host(app, { execPath: EXE_NESTED }));
+    const result = replaceLegacyLoginItems(
+      { launchOnStartup: true, startMinimised: true },
+      host(app, { execPath: EXE_NESTED })
+    );
 
     expect(result.removed).toEqual(['My renamed entry', ...LEGACY_LOGIN_ITEM_NAMES]);
     expect(app.values).toEqual(new Map([[AUMID, `"${EXE_NESTED}" --hidden`]]));
@@ -206,7 +222,7 @@ describe('replaceLegacyLoginItems (after the first-run migration)', () => {
     const portable = 'D:\\Apps\\WA Stay 2.0.0.exe';
 
     replaceLegacyLoginItems(
-      true,
+      { launchOnStartup: true, startMinimised: true },
       host(app, {
         execPath: 'C:\\Users\\Ann\\AppData\\Local\\Temp\\2abcd\\WA Stay.exe',
         env: { PORTABLE_EXECUTABLE_FILE: portable },
@@ -220,7 +236,9 @@ describe('replaceLegacyLoginItems (after the first-run migration)', () => {
     const app = new FakeRunKey();
     v1RunKey(app);
 
-    expect(replaceLegacyLoginItems(false, host(app))).toMatchObject({ registered: false });
+    expect(
+      replaceLegacyLoginItems({ launchOnStartup: false, startMinimised: false }, host(app))
+    ).toMatchObject({ registered: false });
 
     expect(app.values.size).toBe(0);
   });
@@ -229,7 +247,9 @@ describe('replaceLegacyLoginItems (after the first-run migration)', () => {
     const app = new FakeRunKey(false);
     v1RunKey(app);
 
-    expect(replaceLegacyLoginItems(true, host(app))).toEqual({ removed: [], registered: false });
+    expect(
+      replaceLegacyLoginItems({ launchOnStartup: true, startMinimised: true }, host(app))
+    ).toEqual({ removed: [], registered: false });
 
     expect(app.calls).toEqual([]);
     expect(app.values.size).toBe(1);
@@ -240,11 +260,69 @@ describe('replaceLegacyLoginItems (after the first-run migration)', () => {
     (platform) => {
       const app = new FakeRunKey();
 
-      expect(replaceLegacyLoginItems(true, host(app, { platform }))).toEqual({
+      expect(
+        replaceLegacyLoginItems(
+          { launchOnStartup: true, startMinimised: true },
+          host(app, { platform })
+        )
+      ).toEqual({
         removed: [],
         registered: false,
       });
       expect(app.calls).toEqual([]);
     }
   );
+});
+
+describe('legacyStartMinimised (a v1.x user keeps a quiet start)', () => {
+  function store(initial: boolean | null): StartMinimisedStore & { value: boolean | null } {
+    const s = {
+      value: initial,
+      get: () => s.value,
+      set: jest.fn((value: boolean) => {
+        s.value = value;
+      }),
+    };
+    return s;
+  }
+
+  it('turns start minimised on for a v1.x user who had launch at login on', () => {
+    const settings = store(null);
+
+    expect(legacyStartMinimised(true, settings)).toBe(true);
+    expect(settings.value).toBe(true);
+  });
+
+  it('is idempotent: a second run (or a stored choice) changes nothing', () => {
+    const settings = store(null);
+    legacyStartMinimised(true, settings);
+    expect(legacyStartMinimised(true, settings)).toBe(true);
+    expect(settings.set).toHaveBeenCalledTimes(1);
+
+    // The person turned it off since: kept
+    const changed = store(false);
+    expect(legacyStartMinimised(true, changed)).toBe(false);
+    expect(changed.set).not.toHaveBeenCalled();
+  });
+
+  it('launch at login off: nothing is stored', () => {
+    const settings = store(null);
+
+    expect(legacyStartMinimised(false, settings)).toBe(false);
+    expect(settings.set).not.toHaveBeenCalled();
+  });
+
+  it('stays consistent with the replaced entry: the new Run value carries --hidden', () => {
+    const app = new FakeRunKey();
+    v1RunKey(app);
+    const settings = store(null);
+
+    replaceLegacyLoginItems(
+      { launchOnStartup: true, startMinimised: legacyStartMinimised(true, settings) },
+      host(app)
+    );
+
+    expect(settings.value).toBe(true);
+    expect(app.values).toEqual(new Map([[AUMID, `"${EXE_IN_PLACE}" --hidden`]]));
+  });
 });

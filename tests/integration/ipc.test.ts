@@ -231,31 +231,126 @@ describe('IPC through the container', () => {
       expect(row('unknown.key')).toBeUndefined();
     });
 
-    it("settings.set('launchOnStartup', 'yes') is VALIDATION", async () => {
+    it("settings.set('notifications.desktop', 'yes') is VALIDATION", async () => {
       await expect(
-        call('settings:set', { key: 'launchOnStartup', value: 'yes' })
+        call('settings:set', { key: 'notifications.desktop', value: 'yes' })
       ).resolves.toMatchObject({ success: false, code: 'VALIDATION', issues: ['value'] });
-      expect(row('launchOnStartup')).toBeUndefined();
+      expect(row('notifications.desktop')).toBeUndefined();
     });
 
     it("a valid set stores the registry's valueType and category, ignoring any sent", async () => {
       await expect(
         call('settings:set', {
-          key: 'launchOnStartup',
-          value: true,
+          key: 'notifications.desktop',
+          value: false,
           valueType: 'json',
           category: 'advanced',
         })
       ).resolves.toEqual({ success: true, data: true });
 
-      expect(row('launchOnStartup')).toEqual({
-        value: 'true',
+      expect(row('notifications.desktop')).toEqual({
+        value: 'false',
         value_type: 'boolean',
-        category: 'general',
+        category: 'notifications',
       });
-      await expect(call('settings:get', { key: 'launchOnStartup' })).resolves.toEqual({
+      await expect(call('settings:get', { key: 'notifications.desktop' })).resolves.toEqual({
         success: true,
-        data: true,
+        data: false,
+      });
+    });
+
+    it.each(['launchOnStartup', 'app.startMinimised'])(
+      'settings.set refuses the main-only key %s (app.setAutoLaunch writes it)',
+      async (key) => {
+        await expect(call('settings:set', { key, value: true })).resolves.toMatchObject({
+          success: false,
+          code: 'VALIDATION',
+          issues: ['key'],
+        });
+        expect(row(key)).toBeUndefined();
+      }
+    );
+
+    it.each([
+      ['notifications.desktop', true],
+      ['notifications.sound', true],
+      ['app.startMinimised', false],
+      ['launchOnStartup', false],
+    ])('settings.get answers the default for %s while nothing is stored', async (key, value) => {
+      await expect(call('settings:get', { key })).resolves.toEqual({ success: true, data: value });
+    });
+  });
+
+  describe('app.setAutoLaunch / getAutoLaunch', () => {
+    const electronApp = (jest.requireMock('electron') as { app: Record<string, unknown> }).app as {
+      isPackaged: boolean;
+      setLoginItemSettings: jest.Mock;
+    };
+
+    beforeEach(() => {
+      electronApp.setLoginItemSettings.mockClear();
+    });
+
+    afterEach(() => {
+      electronApp.isPackaged = false;
+    });
+
+    it('is refused when running from source, and nothing is stored or registered', async () => {
+      await expect(call('app:set-auto-launch', { enabled: true })).resolves.toMatchObject({
+        success: false,
+        error: expect.stringContaining('only available in the installed app'),
+      });
+      expect(electronApp.setLoginItemSettings).not.toHaveBeenCalled();
+      await expect(call('app:get-auto-launch')).resolves.toEqual({
+        success: true,
+        data: { enabled: false, startMinimised: false },
+      });
+    });
+
+    it('registers with --hidden only when start minimised is on, and stores both keys', async () => {
+      electronApp.isPackaged = true;
+
+      await expect(call('app:set-auto-launch', { enabled: true })).resolves.toEqual({
+        success: true,
+        data: { enabled: true, startMinimised: false },
+      });
+      expect(electronApp.setLoginItemSettings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ openAtLogin: true, args: [] })
+      );
+
+      await expect(
+        call('app:set-auto-launch', { enabled: true, startMinimised: true })
+      ).resolves.toEqual({ success: true, data: { enabled: true, startMinimised: true } });
+      expect(electronApp.setLoginItemSettings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ openAtLogin: true, args: ['--hidden'] })
+      );
+      await expect(call('app:get-auto-launch')).resolves.toEqual({
+        success: true,
+        data: { enabled: true, startMinimised: true },
+      });
+    });
+
+    it('keeps the stored start minimised choice when the request leaves it out', async () => {
+      electronApp.isPackaged = true;
+      await call('app:set-auto-launch', { enabled: true, startMinimised: true });
+
+      await expect(call('app:set-auto-launch', { enabled: false })).resolves.toEqual({
+        success: true,
+        data: { enabled: false, startMinimised: true },
+      });
+      expect(electronApp.setLoginItemSettings).toHaveBeenLastCalledWith(
+        expect.objectContaining({ openAtLogin: false, args: [] })
+      );
+      await expect(call('app:set-auto-launch', { enabled: true })).resolves.toEqual({
+        success: true,
+        data: { enabled: true, startMinimised: true },
+      });
+    });
+
+    it('turning it off is allowed when running from source', async () => {
+      await expect(call('app:set-auto-launch', { enabled: false })).resolves.toEqual({
+        success: true,
+        data: { enabled: false, startMinimised: false },
       });
     });
   });

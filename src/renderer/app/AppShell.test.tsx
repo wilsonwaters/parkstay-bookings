@@ -176,8 +176,8 @@ describe('App shell', () => {
       ).toEqual(['Settings', 'About WA Stay']);
       expect(within(menu).getByRole('menuitem', { name: 'Settings' })).toHaveFocus();
       await user.keyboard('{Enter}');
-      await waitFor(() => expect(currentRoute()).toBe('/settings'));
-      // Looked up afresh: the legacy page re-renders its heading after loading.
+      // The menu links to /settings, which opens its first section
+      await waitFor(() => expect(currentRoute()).toBe('/settings/accounts'));
       await waitFor(() =>
         expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible()
       );

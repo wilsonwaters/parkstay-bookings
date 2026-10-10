@@ -29,6 +29,8 @@ describe('AboutPanel', () => {
       api: { app: { getInfo: jest.fn().mockResolvedValue(fail('Main is busy', 'NOT_FOUND')) } },
     });
     expect(await screen.findByRole('alert')).toHaveTextContent('Main is busy');
+    // The version reads Unknown; the rest still renders (U4 edge case)
+    expect(screen.getByText('Version Unknown')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'GitHub (opens in your browser)' })).toHaveAttribute(
       'href',
       'https://github.com/wilsonwaters/wa-stay'

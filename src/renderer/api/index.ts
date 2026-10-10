@@ -14,7 +14,23 @@ export {
 } from './client';
 export { queryKeys } from './queryKeys';
 export { useApiEvent, useInvalidateOn, type InvalidateOnOptions } from './events';
-export { useAppInfo, useOpenLogsFolder } from './app';
+export { useAppInfo, useLaunchAtLogin, useOpenLogsFolder, useSetLaunchAtLogin } from './app';
+export {
+  useAccountCheck,
+  useAccounts,
+  useAccountStatus,
+  useOpenSignInLink,
+  useSignIn,
+  useSignOut,
+} from './accounts';
+export {
+  useConfigureEmailNotifier,
+  useEmailNotifier,
+  useSetEmailNotifierEnabled,
+  useTestEmailNotifier,
+  type EmailNotifierView,
+} from './notifiers';
+export { useSetSetting, useSetting } from './settings';
 export {
   useAccessStatus,
   useProvider,
@@ -34,7 +50,12 @@ export {
   useNotifications,
   useUnreadNotificationCount,
 } from './notifications';
-export { useDownloadUpdate, useInstallUpdate } from './updater';
+export {
+  useCheckForUpdates,
+  useDownloadUpdate,
+  useInstallUpdate,
+  type UpdateCheckOutcome,
+} from './updater';
 export {
   CATALOG_STALE_TIME_MS,
   LOCATION_CHECK_STALE_TIME_MS,
@@ -64,4 +85,3 @@ export {
   useWatches,
   useWatchUpdates,
 } from './watches';
-export { useAccountStatus } from './accounts';

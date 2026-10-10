@@ -1,9 +1,20 @@
 import { queryKeys } from './queryKeys';
 
 describe('queryKeys', () => {
-  it('has the providers, catalog, notifications, app, updater, watches and accounts namespaces', () => {
+  it('has one namespace per data area', () => {
     expect(Object.keys(queryKeys).sort()).toEqual(
-      ['accounts', 'app', 'catalog', 'notifications', 'providers', 'updater', 'watches'].sort()
+      [
+        'accountChecks',
+        'accounts',
+        'app',
+        'catalog',
+        'notifications',
+        'notifiers',
+        'providers',
+        'settings',
+        'updater',
+        'watches',
+      ].sort()
     );
   });
 
@@ -22,6 +33,10 @@ describe('queryKeys', () => {
       [queryKeys.watches.all, queryKeys.watches.list()],
       [queryKeys.watches.all, queryKeys.watches.detail(3)],
       [queryKeys.accounts.all, queryKeys.accounts.list()],
+      [queryKeys.app.all, queryKeys.app.launchAtLogin()],
+      [queryKeys.accountChecks.all, queryKeys.accountChecks.check('parkstay')],
+      [queryKeys.settings.all, queryKeys.settings.value('notifications.desktop')],
+      [queryKeys.notifiers.all, queryKeys.notifiers.detail('email_smtp')],
     ] as const;
     for (const [prefix, key] of keys) {
       expect(key.slice(0, prefix.length)).toEqual([...prefix]);
@@ -35,5 +50,10 @@ describe('queryKeys', () => {
     );
     expect(queryKeys.catalog.detail('a')).not.toEqual(queryKeys.catalog.detail('b'));
     expect(queryKeys.providers.list()).toEqual(['providers', 'list']);
+  });
+
+  it('keeps live account checks out of the accounts namespace (account:updated reloads only the list)', () => {
+    const check = queryKeys.accountChecks.check('parkstay');
+    expect(check.slice(0, queryKeys.accounts.all.length)).not.toEqual([...queryKeys.accounts.all]);
   });
 });

@@ -111,7 +111,8 @@ const api: WindowApi = {
   app: bind('app', {
     getInfo: none,
     openLogsFolder: none,
-    setAutoLaunch: (enabled) => ({ enabled }),
+    setAutoLaunch: (enabled, startMinimised) =>
+      startMinimised === undefined ? { enabled } : { enabled, startMinimised },
     getAutoLaunch: none,
   }),
 

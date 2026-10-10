@@ -67,8 +67,8 @@ export type {
   ResponseOf,
 } from './define';
 export type { EventPayload, EventPayloads, EventsApi, EventSink, UpdateProgress } from './events';
-export type { AppInfo } from './app';
+export type { AppInfo, LaunchAtLogin } from './app';
 export type { UpdateStatus } from './updater';
 export type { CatalogAvailabilityOptions } from './catalog';
-export { SETTING_KEYS } from './settings';
-export type { SettingDefinition, SettingKey, SettingValue } from './settings';
+export { SETTING_KEYS, WRITABLE_SETTING_KEYS, settingDefault } from './settings';
+export type { SettingDefinition, SettingKey, SettingValue, WritableSettingKey } from './settings';

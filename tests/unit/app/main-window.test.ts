@@ -57,6 +57,8 @@ jest.mock('electron', () => {
     loadURL = jest.fn(() => Promise.resolve());
     loadFile = jest.fn(() => Promise.resolve());
     show = jest.fn();
+    minimize = jest.fn();
+    focus = jest.fn();
     constructor(public options: Record<string, unknown>) {
       super();
       BrowserWindow.all.push(this);
@@ -80,6 +82,8 @@ interface FakeWindow extends EventEmitter {
   loadURL: jest.Mock;
   loadFile: jest.Mock;
   show: jest.Mock;
+  minimize: jest.Mock;
+  focus: jest.Mock;
 }
 
 interface FakeContents extends EventEmitter {
@@ -229,7 +233,7 @@ describe('createMainWindow', () => {
       entry: { kind: 'file', path: INDEX },
       preloadPath: PRELOAD,
       trustedWebContents: new TrustedWebContents(),
-      startHidden: false,
+      startMinimised: false,
     }) as unknown as FakeWindow;
 
     expect(window.options.webPreferences).toEqual(
@@ -246,7 +250,7 @@ describe('createMainWindow', () => {
       entry: { kind: 'file', path: INDEX },
       preloadPath: missing,
       trustedWebContents: new TrustedWebContents(),
-      startHidden: false,
+      startMinimised: false,
     }) as unknown as FakeWindow;
 
     expect(logger.error).toHaveBeenCalledWith(`The preload script is missing: ${missing}`);
@@ -269,7 +273,7 @@ describe('createMainWindow', () => {
       entry: { kind: 'dev-server', url: 'http://localhost:3000' },
       preloadPath: path.join(PRELOAD_DIR, 'missing.js'),
       trustedWebContents: new TrustedWebContents(),
-      startHidden: false,
+      startMinimised: false,
     }) as unknown as FakeWindow;
 
     expect(window.loadURL).toHaveBeenCalledTimes(1);
@@ -282,7 +286,7 @@ describe('createMainWindow', () => {
       entry: { kind: 'file', path: INDEX },
       preloadPath: PRELOAD,
       trustedWebContents: trusted,
-      startHidden: false,
+      startMinimised: false,
     }) as unknown as FakeWindow;
 
     expect(window.options.webPreferences).toEqual(
@@ -314,16 +318,19 @@ describe('createMainWindow', () => {
     expect(window.show).toHaveBeenCalledTimes(1);
   });
 
-  it('a hidden login launch creates the window without showing it', () => {
+  it('a hidden login launch (Start minimised) opens minimised: never shown on screen or focused', () => {
     const window = createMainWindow({
       entry: { kind: 'file', path: INDEX },
       preloadPath: PRELOAD,
       trustedWebContents: new TrustedWebContents(),
-      startHidden: true,
+      startMinimised: true,
     }) as unknown as FakeWindow;
 
+    expect(window.minimize).not.toHaveBeenCalled();
     window.emit('ready-to-show');
+    expect(window.minimize).toHaveBeenCalledTimes(1);
     expect(window.show).not.toHaveBeenCalled();
+    expect(window.focus).not.toHaveBeenCalled();
   });
 
   it('is titled WA Stay and uses the icon it is given, if any', () => {
@@ -331,7 +338,7 @@ describe('createMainWindow', () => {
     const plain = createMainWindow({
       ...options,
       trustedWebContents: new TrustedWebContents(),
-      startHidden: false,
+      startMinimised: false,
     }) as unknown as FakeWindow;
     expect(plain.options.title).toBe('WA Stay');
     expect(plain.options).not.toHaveProperty('icon');
@@ -339,7 +346,7 @@ describe('createMainWindow', () => {
     const withIcon = createMainWindow({
       ...options,
       trustedWebContents: new TrustedWebContents(),
-      startHidden: false,
+      startMinimised: false,
       icon: '/repo/resources/icons/icon.png',
     }) as unknown as FakeWindow;
     expect(withIcon.options.icon).toBe('/repo/resources/icons/icon.png');
@@ -350,7 +357,7 @@ describe('createMainWindow', () => {
       entry: { kind: 'dev-server', url: 'http://localhost:3005' },
       preloadPath: PRELOAD,
       trustedWebContents: new TrustedWebContents(),
-      startHidden: false,
+      startMinimised: false,
     }) as unknown as FakeWindow;
 
     expect(window.loadURL).toHaveBeenCalledWith('http://localhost:3005');
@@ -383,7 +390,7 @@ describe('createMainWindow', () => {
       entry: { kind: 'file', path: INDEX },
       preloadPath: PRELOAD,
       trustedWebContents: new TrustedWebContents(),
-      startHidden: false,
+      startMinimised: false,
     }) as unknown as FakeWindow;
 
     window.webContents.emit('render-process-gone', {}, { reason: 'crashed', exitCode: 133 });

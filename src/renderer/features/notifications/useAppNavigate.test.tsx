@@ -24,13 +24,14 @@ describe('app:navigate (a desktop notification was clicked)', () => {
     'ignores %s, which is not an allowed in-app page',
     async (path) => {
       const mock = createMockApi();
-      renderWithApp({ route: '/settings', api: mock });
+      // A page with a stable address (/settings itself redirects to its first section)
+      renderWithApp({ route: '/settings/accounts', api: mock });
       await screen.findByRole('heading', { level: 1, name: 'Settings' });
 
       mock.emit('app:navigate', { path });
 
       await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
-      expect(currentRoute()).toBe('/settings');
+      expect(currentRoute()).toBe('/settings/accounts');
     }
   );
 });
