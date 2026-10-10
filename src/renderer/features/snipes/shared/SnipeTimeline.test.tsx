@@ -18,6 +18,7 @@ describe('SnipeTimeline', () => {
       'Waiting for releaseDonedone',
       'SnipingNowcurrent step',
       'HeldNot yetnot yet',
+      'BookedNot yetnot yet',
     ]);
     expect(items()[3]).toHaveAttribute('aria-current', 'step');
     expect(items().filter((li) => li.hasAttribute('aria-current'))).toHaveLength(1);
@@ -30,6 +31,7 @@ describe('SnipeTimeline', () => {
       'Waiting for releaseDonedone',
       'SnipingDonedone',
       'HeldNowcurrent step',
+      'BookedNot yetnot yet',
     ]);
   });
 
@@ -41,9 +43,23 @@ describe('SnipeTimeline', () => {
     expect(items()[1]).toHaveTextContent('Waiting for releaseNot reachednot reached');
   });
 
+  it('counts the same steps in every state: a hold is step 4 of 5, a booking step 5 of 5', () => {
+    const { rerender } = render(<SnipeTimeline snipe={makeSnipe()} compact />);
+    expect(screen.getByText('Step 1 of 5: Armed')).toBeInTheDocument();
+    rerender(<SnipeTimeline snipe={makeHeldSnipe()} compact />);
+    expect(screen.getByText('Step 4 of 5: Held')).toBeInTheDocument();
+    rerender(
+      <SnipeTimeline
+        snipe={makeHeldSnipe(10, { status: SnipeStatus.BOOKED, bookedReference: 'PB123' })}
+        compact
+      />
+    );
+    expect(screen.getByText('Step 5 of 5: Booked')).toBeInTheDocument();
+  });
+
   it('shows a card only where the snipe is', () => {
     const { rerender } = render(<SnipeTimeline snipe={makeHeldSnipe()} compact />);
-    expect(screen.getByText('Step 4 of 4: Held')).toBeInTheDocument();
+    expect(screen.getByText('Step 4 of 5: Held')).toBeInTheDocument();
     expect(screen.queryByRole('list')).toBeNull();
     rerender(<SnipeTimeline snipe={makeSnipe({ status: SnipeStatus.FAILED })} compact />);
     expect(screen.getByText('Stopped: Failed')).toBeInTheDocument();

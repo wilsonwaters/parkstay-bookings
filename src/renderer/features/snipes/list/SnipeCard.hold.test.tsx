@@ -1,7 +1,7 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { makeHeldSnipe } from '@tests/fixtures/renderer/snipes';
 import { catalogGet, makeLocationDetail } from '@tests/fixtures/renderer/watches';
-import { ok, PARKSTAY_MANIFEST } from '@tests/utils/renderer/createMockApi';
+import { fail, ok, PARKSTAY_MANIFEST } from '@tests/utils/renderer/createMockApi';
 import { renderWithProviders } from '@tests/utils/renderer/renderWithProviders';
 import { SnipesPage } from '../SnipesPage';
 import { SnipeCard } from './SnipeCard';
@@ -59,6 +59,29 @@ describe('SnipeCard: a held unit', () => {
       />,
       { api: { catalog: { get: catalogGet(BUNGARRA) } } }
     );
+    expect(await screen.findByText('CAMPSITE 01 is held for you')).toBeInTheDocument();
+  });
+
+  it('names the held site once the first catalogue sync finishes (a brand-new profile)', async () => {
+    // Before the first sync main knows no places: the detail is NOT_FOUND
+    const get = jest.fn().mockResolvedValue(fail('There is no location parkstay:20', 'NOT_FOUND'));
+    const { mock } = renderWithProviders(
+      <SnipeCard
+        snipe={makeHeldSnipe(20, { holdUnitId: '1' })}
+        manifest={PARKSTAY_MANIFEST}
+        today="2099-06-01"
+      />,
+      { api: { catalog: { get } } }
+    );
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('Site 1 is held for you')).toBeInTheDocument();
+
+    get.mockResolvedValue(ok(BUNGARRA));
+    mock.emit('catalog:updated', {
+      providerId: 'parkstay',
+      count: 169,
+      syncedAt: '2026-10-10T02:00:00Z',
+    });
     expect(await screen.findByText('CAMPSITE 01 is held for you')).toBeInTheDocument();
   });
 

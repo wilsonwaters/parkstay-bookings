@@ -38,7 +38,7 @@ describe('SnipesPage', () => {
     ).toBeInTheDocument();
     expect(within(card).getByText('Armed', { selector: 'span' })).toBeInTheDocument();
     // A card shows only where the snipe is; the detail page lists every step.
-    expect(within(card).getByText(/Step 1 of 4: Armed/)).toBeInTheDocument();
+    expect(within(card).getByText(/Step 1 of 5: Armed/)).toBeInTheDocument();
     expect(within(card).queryByRole('list', { name: 'Progress' })).toBeNull();
     expect(
       within(card).getByRole('timer', { name: /^Opens in 1 day 2 hours$/ })

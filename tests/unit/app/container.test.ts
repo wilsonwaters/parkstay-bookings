@@ -352,6 +352,57 @@ describe('createContainer', () => {
     expect(session.fromPartition).toHaveBeenCalledWith('persist:provider-parkstay');
   });
 
+  describe('development hooks only from source (architecture-notes §12.34)', () => {
+    const electronApp = (jest.requireMock('electron') as { app: Record<string, unknown> }).app;
+    const original = { ...electronApp };
+    const browserPath = () =>
+      (jest.mocked(createProviderContext).mock.calls[0][1] as ProviderContextDeps)
+        .browserExecutablePath;
+
+    beforeEach(() => {
+      process.env.WA_STAY_BROWSER_PATH = '/opt/chromium/chrome';
+    });
+
+    afterEach(() => {
+      Object.assign(electronApp, original);
+      delete process.env.WA_STAY_BROWSER_PATH;
+    });
+
+    it('from source: WA_STAY_BROWSER_PATH reaches the providers and provider windows allow devTools', () => {
+      build();
+      expect(browserPath()).toBe('/opt/chromium/chrome');
+      expect(ProviderWindows).toHaveBeenCalledWith({ devTools: true });
+    });
+
+    it('a packaged build renamed to `electron` (unpackaged, loaded from app.asar) gets neither', () => {
+      Object.assign(electronApp, {
+        isPackaged: false,
+        getAppPath: () => '/opt/WA Stay/resources/app.asar',
+      });
+      build();
+      expect(browserPath()).toBeUndefined();
+      expect(ProviderWindows).toHaveBeenCalledWith({ devTools: false });
+    });
+
+    it('a packaged build gets neither', () => {
+      Object.assign(electronApp, {
+        isPackaged: true,
+        getAppPath: () => '/opt/WA Stay/resources/app.asar',
+      });
+      // The packaged email logo is read from `resources`
+      const proc = process as { resourcesPath?: string };
+      const resourcesPath = proc.resourcesPath;
+      proc.resourcesPath = '/opt/WA Stay/resources';
+      try {
+        build();
+      } finally {
+        proc.resourcesPath = resourcesPath;
+      }
+      expect(browserPath()).toBeUndefined();
+      expect(ProviderWindows).toHaveBeenCalledWith({ devTools: false });
+    });
+  });
+
   it("gives the email notifier the providers' names and the small WA Stay email logo", () => {
     build();
 

@@ -152,7 +152,8 @@ export class SiteSniperService {
   /**
    * Creates a snipe. Throws `CAPABILITY` for a provider without snipes and `VALIDATION`
    * (with the field) for a release mode the provider does not support, bad dates, bad stay
-   * fields, or a release time the provider cannot work out (a scheduled release needs one).
+   * fields, or a release time the provider cannot work out (a scheduled release needs one,
+   * before check-in).
    */
   async create(userId: number, input: SiteSnipeInput): Promise<SiteSnipe> {
     const provider = this.providers.require(input.providerId, 'snipes');
@@ -683,7 +684,8 @@ export class SiteSniperService {
   /**
    * What create and update work out with the provider: the release mode is supported, the
    * dates are good where the provider is, the stay fields (with defaults), the release
-   * instant, whether the queue is used, and the poll cadence (never below the floor).
+   * instant (a scheduled one before check-in), whether the queue is used, and the poll cadence
+   * (never below the floor).
    */
   private async prepare(
     provider: SnipeProvider,
@@ -728,6 +730,17 @@ export class SiteSniperService {
         throw new AppError('VALIDATION', error.message, { issues: ['releaseAt'] });
       }
       throw error;
+    }
+    // A scheduled release is the person's own time: it must come before check-in day starts
+    // where the provider is (the form's rule, checked here too)
+    if (
+      input.releaseMode === SnipeReleaseMode.SCHEDULED &&
+      releaseAt &&
+      compareDates(todayIn(manifest.timezone, releaseAt), input.stay.arrival) >= 0
+    ) {
+      throw new AppError('VALIDATION', 'The release must be before check-in', {
+        issues: ['releaseAt'],
+      });
     }
 
     const continuous = input.releaseMode === SnipeReleaseMode.CANCELLATION;

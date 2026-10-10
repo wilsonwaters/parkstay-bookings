@@ -61,6 +61,42 @@ describe('snipe create and update', () => {
     });
   });
 
+  it('rejects a scheduled release at or after check-in where the provider is, on releaseAt, at create and update', async () => {
+    const scheduled = (releaseAt: Date) =>
+      h.snipeInput({ releaseMode: SnipeReleaseMode.SCHEDULED, releaseAt });
+    // Check-in is 1 Dec; midnight in Perth is 16:00 UTC the day before
+    const checkIn = new Date('2026-11-30T16:00:00Z');
+    await expect(h.snipes.create(h.userId, scheduled(checkIn))).rejects.toMatchObject({
+      code: 'VALIDATION',
+      issues: ['releaseAt'],
+      message: 'The release must be before check-in',
+    });
+    await expect(
+      h.snipes.create(h.userId, scheduled(new Date('2026-12-02T00:00:00Z')))
+    ).rejects.toMatchObject({ code: 'VALIDATION', issues: ['releaseAt'] });
+    expect(h.snipeRepo.findAll()).toEqual([]);
+
+    // A minute before check-in is fine
+    const before = new Date(checkIn.getTime() - 60_000);
+    const snipe = await h.snipes.create(h.userId, scheduled(before));
+    expect(snipe.releaseAt).toEqual(before);
+
+    // An update may not move the release past check-in, nor check-in before the release
+    await expect(h.snipes.update(snipe.id, { releaseAt: checkIn })).rejects.toMatchObject({
+      code: 'VALIDATION',
+      issues: ['releaseAt'],
+    });
+    await expect(
+      h.snipes.update(snipe.id, {
+        stay: { arrival: '2026-11-20', departure: '2026-11-22', adults: 2 },
+      })
+    ).rejects.toMatchObject({ code: 'VALIDATION', issues: ['releaseAt'] });
+    expect(h.snipeRepo.findById(snipe.id)).toMatchObject({
+      releaseAt: before,
+      stay: expect.objectContaining({ arrival: '2026-12-01' }),
+    });
+  });
+
   it('asks the provider for the release instant, fills in its stay-field defaults, and arms the snipe', async () => {
     const snipe = await h.snipes.create(
       h.userId,

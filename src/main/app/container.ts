@@ -58,6 +58,7 @@ import { migrateLegacySecrets, removeRetiredGmailStore } from '../security/legac
 import { FileLocalKeyStore, SecretVault, type SafeStorageLike } from '../security/secret-vault';
 import { FixtureHttpClient, type FixtureModeOptions } from '../testing';
 import { logger } from '../utils/logger';
+import { runsFromSource } from './app-source';
 import { getEmailLogoPath } from './paths';
 import { createLocalProfile, LocalProfile } from './profile';
 import { ProviderWindows } from './provider-windows';
@@ -195,6 +196,9 @@ export function createContainer({
   const trustedWebContents = new TrustedWebContents();
   const rendererEvents = new RendererEvents(trustedWebContents);
 
+  // Development hooks (a browser override, DevTools in provider windows) only from source
+  const fromSource = runsFromSource({ isPackaged: app.isPackaged, appPath: app.getAppPath() });
+
   // Each provider gets its own session partition, state, secrets and child logger.
   const providerDeps: ProviderContextDeps = {
     createHttp: (providerId) =>
@@ -208,8 +212,8 @@ export function createContainer({
     logger,
     // Each provider's browser profile is <userData>/providers/<id>/browser.
     providersDir: path.join(app.getPath('userData'), 'providers'),
-    // Development only (§12.14): a packaged build always detects Edge or Chrome itself.
-    browserExecutablePath: app.isPackaged ? undefined : process.env.WA_STAY_BROWSER_PATH,
+    // Development only (§12.34): a packaged build always detects Edge or Chrome itself.
+    browserExecutablePath: fromSource ? process.env.WA_STAY_BROWSER_PATH : undefined,
   };
   const providers = new ProviderRegistry({ logger });
   registerBuiltInProviders(providers, (manifest) => createProviderContext(manifest, providerDeps), {
@@ -237,7 +241,7 @@ export function createContainer({
   });
 
   // Sign-in and payment windows share each provider's session partition with its HTTP client.
-  const providerWindows = new ProviderWindows({ devTools: !app.isPackaged });
+  const providerWindows = new ProviderWindows({ devTools: fromSource });
   const accounts = new ProviderAccountService({
     providers,
     accounts: repositories.providerAccounts,

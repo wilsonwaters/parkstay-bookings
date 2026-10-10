@@ -50,6 +50,7 @@ describe('timelineSteps', () => {
       'waiting:upcoming',
       'sniping:upcoming',
       'held:upcoming',
+      'booked:upcoming',
     ]);
     expect(
       ids(timelineSteps(makeSnipe({ accessGateEnabled: true, status: SnipeStatus.QUEUEING })))
@@ -59,6 +60,7 @@ describe('timelineSteps', () => {
       'waiting:upcoming',
       'sniping:upcoming',
       'held:upcoming',
+      'booked:upcoming',
     ]);
   });
 
@@ -68,25 +70,44 @@ describe('timelineSteps', () => {
       'waiting:done',
       'sniping:current',
       'held:upcoming',
+      'booked:upcoming',
     ]);
     expect(ids(timelineSteps(makeHeldSnipe()))).toEqual([
       'armed:done',
       'waiting:done',
       'sniping:done',
       'held:current',
+      'booked:upcoming',
     ]);
   });
 
-  it('adds Booked once there is a booking', () => {
+  it('ends at Booked, current once there is a booking', () => {
     const booked = makeHeldSnipe(10, { status: SnipeStatus.BOOKED, bookedReference: 'PB123' });
     expect(timelineSteps(booked).at(-1)).toMatchObject({ id: 'booked', state: 'current' });
+  });
+
+  it('has the same number of steps in every state, so "Step n of N" keeps its N', () => {
+    const states = [
+      makeSnipe({ status: SnipeStatus.DISABLED, isActive: false }),
+      makeSnipe(),
+      makeSnipe({ status: SnipeStatus.WAITING_RELEASE }),
+      makeSnipe({ status: SnipeStatus.SNIPING }),
+      makeHeldSnipe(),
+      makeHeldSnipe(10, { status: SnipeStatus.BOOKED, bookedReference: 'PB123' }),
+      makeHeldSnipe(-5, { status: SnipeStatus.EXPIRED }),
+      makeSnipe({ status: SnipeStatus.EXPIRED }),
+      makeSnipe({ status: SnipeStatus.FAILED }),
+    ];
+    expect(states.map((snipe) => timelineSteps(snipe).length)).toEqual(states.map(() => 5));
+    const queued = states.map((snipe) => ({ ...snipe, accessGateEnabled: true }));
+    expect(queued.map((snipe) => timelineSteps(snipe).length)).toEqual(states.map(() => 6));
   });
 
   it('has no release to wait for when watching for cancellations', () => {
     const steps = timelineSteps(
       makeSnipe({ releaseMode: SnipeReleaseMode.CANCELLATION, status: SnipeStatus.SNIPING })
     );
-    expect(steps.map((s) => s.label)).toEqual(['Armed', 'Sniping', 'Held']);
+    expect(steps.map((s) => s.label)).toEqual(['Armed', 'Sniping', 'Held', 'Booked']);
   });
 
   it('ends an expired or failed snipe with a terminal step, marking only what happened', () => {
@@ -118,7 +139,7 @@ describe('timelineSteps', () => {
         (s) => s.state === 'upcoming'
       )
     ).toBe(true);
-    expect(timelineSteps(makeSnipe({ status: 'mystery' as SnipeStatus })).length).toBe(4);
+    expect(timelineSteps(makeSnipe({ status: 'mystery' as SnipeStatus })).length).toBe(5);
   });
 });
 

@@ -76,11 +76,14 @@ export interface TimelineStep {
   terminal?: boolean;
 }
 
-/** The steps in order (the state machine in tech-review): Armed → … → Held (→ Booked). */
+/**
+ * The steps in order (the state machine in tech-review): Armed → … → Held → Booked. Booked is
+ * always there, still to come until the hold is paid for, so a snipe counts the same steps in
+ * every state ("Step 4 of 5: Held", then "Step 5 of 5: Booked").
+ */
 function stepsFor(snipe: SiteSnipe): { id: string; label: string }[] {
   const continuous = snipe.releaseMode === SnipeReleaseMode.CANCELLATION;
   const queue = snipe.accessGateEnabled || snipe.status === SnipeStatus.QUEUEING;
-  const booked = snipe.status === SnipeStatus.BOOKED || Boolean(snipe.bookedReference);
   return [
     { id: 'armed', label: 'Armed' },
     ...(queue ? [{ id: 'queueing', label: 'Queueing' }] : []),
@@ -90,7 +93,7 @@ function stepsFor(snipe: SiteSnipe): { id: string; label: string }[] {
       : [{ id: 'waiting', label: 'Waiting for release' }]),
     { id: 'sniping', label: 'Sniping' },
     { id: 'held', label: 'Held' },
-    ...(booked ? [{ id: 'booked', label: 'Booked' }] : []),
+    { id: 'booked', label: 'Booked' },
   ];
 }
 
@@ -105,9 +108,10 @@ const CURRENT_STEP: Partial<Record<string, string>> = {
 
 /**
  * The timeline: each step done, current, still to come, or (once the snipe has stopped) not
- * reached. A paused or unknown status has no current step. Expired and Failed end the list as
- * its current, terminal step; only steps known to have happened are marked done (an expired
- * hold was held; an expired window was spent sniping; a failure only says it was armed).
+ * reached. A paused or unknown status has no current step. Expired and Failed take Booked's
+ * place as the current, terminal step, so the count stays the same; only steps known to have
+ * happened are marked done (an expired hold was held; an expired window was spent sniping; a
+ * failure only says it was armed).
  */
 export function timelineSteps(snipe: SiteSnipe): TimelineStep[] {
   const steps = stepsFor(snipe);

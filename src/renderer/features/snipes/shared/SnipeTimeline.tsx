@@ -6,7 +6,7 @@ import { STEP_STATE_TEXT, timelineSteps, type TimelineStep } from './snipeState'
 
 export interface SnipeTimelineProps {
   snipe: SiteSnipe;
-  /** Only where it is ("Step 2 of 4: Waiting for release"), for a card. The detail page lists every step. */
+  /** Only where it is ("Step 2 of 5: Waiting for release"), for a card. The detail page lists every step. */
   compact?: boolean;
   className?: string;
 }
@@ -28,7 +28,7 @@ function StepIcon({ step, size }: { step: TimelineStep; size: number }) {
 }
 
 /**
- * A card's one line of progress: the current step and how many there are ("Step 2 of 4:
+ * A card's one line of progress: the current step and how many there are ("Step 2 of 5:
  * Waiting for release"), "Stopped: Hold expired" once it has ended, "Not running" while paused.
  */
 export function compactProgress(steps: readonly TimelineStep[]): string {

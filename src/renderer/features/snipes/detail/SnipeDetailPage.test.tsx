@@ -76,6 +76,33 @@ describe('SnipeDetailPage', () => {
     expect(openPayment).toHaveBeenCalledWith(7);
   });
 
+  it('names the held and preferred sites once the first catalogue sync finishes', async () => {
+    const snipe = makeHeldSnipe(23, { unitIds: ['12'] });
+    // A brand-new profile: until the first sync main knows no places
+    const get = jest.fn().mockResolvedValue(fail('There is no location parkstay:20', 'NOT_FOUND'));
+    const { mock } = renderWithApp({
+      route: '/site-sniper/7',
+      api: api(snipe, {
+        snipes: { get: jest.fn().mockResolvedValue(ok(snipe)) },
+        catalog: { get },
+      }),
+    });
+    const hold = await screen.findByRole('region', { name: 'Hold at Osprey Bay' });
+    await waitFor(() => expect(get).toHaveBeenCalled());
+    expect(within(hold).getByText('Site 12 is held for you')).toBeInTheDocument();
+    const stay = screen.getByRole('region', { name: 'Stay' });
+    expect(within(stay).getByText('Site 12')).toBeInTheDocument();
+
+    get.mockResolvedValue(ok(detail));
+    mock!.emit('catalog:updated', {
+      providerId: 'parkstay',
+      count: 169,
+      syncedAt: '2026-10-10T02:00:00Z',
+    });
+    expect(await within(hold).findByText('Site 12 (powered) is held for you')).toBeInTheDocument();
+    expect(within(stay).getByText('Site 12 (powered)')).toBeInTheDocument();
+  });
+
   it('links a booked snipe to its booking', async () => {
     const booked = makeHeldSnipe(5, { status: SnipeStatus.BOOKED, bookedReference: 'PB123' });
     renderWithApp({ route: '/site-sniper/7', api: api(booked) });
