@@ -18,7 +18,7 @@ The accessible names in [Stable names](#stable-names) are a contract with the El
 | `app/Tray.tsx` | The bottom-right stack of floating messages. |
 | `app/ErrorBoundary.tsx` | `AppErrorBoundary` and `RouteErrorBoundary`. |
 | `app/useRouteFocus.ts` | Focus and announcements on page changes. |
-| `app/NotFoundPage.tsx`, `app/LegacyPageFrame.tsx` | The 404 page, and the gutter and width the legacy pages used to get from the old sidebar layout (the same as the new pages'). |
+| `app/NotFoundPage.tsx` | The 404 page. |
 | `features/explore/ExplorePage.tsx` | Explore, the home screen (E1): search pill, filters, results and the map ([map.md](map.md)). |
 | `features/place/PlaceDetailPage.tsx` | A place's detail page (E2): gallery, description, facilities, sites, booking rules, and the "Check your dates" card with the night grid and the hand-offs. |
 | `app/stayParams.ts` | The stay in a query string (`arrival`, `departure`, `adults`, `children`, `infants`): parsed, validated and written in one order. |
@@ -73,8 +73,6 @@ Build every address with `ROUTES` (or `buildPath` with a pattern), never by join
 | `/__design` | `design` | `DesignPreviewPage` | Development builds only, lazy, outside the shell (it has its own header and main). |
 | `/watches/create`, `/site-sniper/create` |  | redirect | To `/new`, keeping the query string (§12.19). |
 | anything else |  | `NotFoundPage` | "Page not found" and "Back to Explore". |
-
-`LegacyPageFrame` gave the legacy pages the new pages' gutter (`px-6 py-8 lg:px-8`, `max-w-7xl`) until the provider-ux stream rebuilt them, and cancelled a legacy `p-6` root. Since U2 no route renders a legacy page, so nothing uses it.
 
 **Prefill query** for create flows (§12.10): `?provider=<id>&location=<externalId>&arrival=YYYY-MM-DD&departure=YYYY-MM-DD&adults=N&children=N`. `ROUTES.watchNew(prefill)` and `ROUTES.snipeNew(prefill)` build it and leave out empty values, and `parseCreatePrefill(search)` reads it back, dropping values that are not valid. `location` is the provider's external id, not the composite location key. New watch (U1) and New snipe (U2) read it with `parseCreatePrefill`, keep the dates to the provider's day with `clampStayParams`, and say which parts of a link they could not use.
 

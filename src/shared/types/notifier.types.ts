@@ -10,7 +10,6 @@ import type { SecretState } from './secret.types';
  * Supported notification channels
  */
 export enum NotifierChannel {
-  DESKTOP = 'desktop',
   EMAIL_SMTP = 'email_smtp',
   // Future channels
   // TELEGRAM = 'telegram',

@@ -23,6 +23,9 @@ import {
 import { FakeSafeStorage, FOREIGN_OS_KEY, testVault } from '@tests/utils/fake-safe-storage';
 
 /** In-memory notifier: records what it receives, or throws when told to. */
+/** A second channel for the multi-notifier cases: email is the only real one today. */
+const SECOND_CHANNEL = 'second' as NotifierChannel;
+
 class FakeNotifier extends BaseNotifier {
   readonly received: NotificationMessage[] = [];
 
@@ -116,7 +119,7 @@ describe('NotificationDispatcher delivery logging', () => {
 
   it('keeps dispatching to the next notifier after one throws, and logs both', async () => {
     const failing = new FakeNotifier(NotifierChannel.EMAIL_SMTP, 'throw');
-    const next = new FakeNotifier(NotifierChannel.DESKTOP, 'deliver');
+    const next = new FakeNotifier(SECOND_CHANNEL, 'deliver');
     useNotifiers(failing, next);
 
     const results = await dispatcher.dispatch(message);
@@ -124,7 +127,7 @@ describe('NotificationDispatcher delivery logging', () => {
     expect(next.received).toEqual([message]);
     expect(results.map((r) => [r.channel, r.result.success])).toEqual([
       [NotifierChannel.EMAIL_SMTP, false],
-      [NotifierChannel.DESKTOP, true],
+      [SECOND_CHANNEL, true],
     ]);
     expect(logs()).toEqual([
       {
@@ -134,9 +137,9 @@ describe('NotificationDispatcher delivery logging', () => {
         error_message: 'SMTP connection reset',
       },
       {
-        notifier_channel: 'desktop',
+        notifier_channel: 'second',
         status: 'sent',
-        message_id: '<desktop-1@example.com>',
+        message_id: '<second-1@example.com>',
         error_message: null,
       },
     ]);
@@ -149,7 +152,7 @@ describe('NotificationDispatcher delivery logging', () => {
     });
     const error = jest.spyOn(logger, 'error').mockImplementation(() => logger);
     const failing = new FakeNotifier(NotifierChannel.EMAIL_SMTP, 'throw');
-    const next = new FakeNotifier(NotifierChannel.DESKTOP, 'deliver');
+    const next = new FakeNotifier(SECOND_CHANNEL, 'deliver');
     useNotifiers(failing, next);
 
     const results = await dispatcher.dispatch(message);
@@ -161,13 +164,13 @@ describe('NotificationDispatcher delivery logging', () => {
         result: { success: false, error: 'SMTP connection reset' },
       },
       {
-        channel: NotifierChannel.DESKTOP,
-        result: { success: true, messageId: '<desktop-1@example.com>' },
+        channel: SECOND_CHANNEL,
+        result: { success: true, messageId: '<second-1@example.com>' },
       },
     ]);
     expect(logDelivery).toHaveBeenCalledTimes(2);
     expect(error).toHaveBeenCalledWith(
-      'Failed to write delivery log for desktop:',
+      'Failed to write delivery log for second:',
       expect.objectContaining({ message: 'no such table: main.notifications_old' })
     );
   });
