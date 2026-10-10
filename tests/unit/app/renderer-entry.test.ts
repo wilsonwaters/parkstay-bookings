@@ -12,31 +12,38 @@ import {
 } from '@main/app/renderer-entry';
 
 const BUILT = path.join(os.tmpdir(), 'built', 'index.html');
+/** From a source checkout, installed, and installed with the executable renamed to electron. */
+const SOURCE = { isPackaged: false, appPath: path.join(os.tmpdir(), 'wa-stay') };
+const PACKAGED = { isPackaged: true, appPath: '/opt/WA Stay/resources/app.asar' };
+const RENAMED = { isPackaged: false, appPath: '/opt/WA Stay/resources/app.asar' };
 
 describe('resolveRendererEntry', () => {
   it('uses ELECTRON_RENDERER_URL when set (`npm start` sets it), on any port', () => {
     expect(
-      resolveRendererEntry({ ELECTRON_RENDERER_URL: 'http://localhost:3005' }, BUILT, false)
+      resolveRendererEntry({ ELECTRON_RENDERER_URL: 'http://localhost:3005' }, BUILT, SOURCE)
     ).toEqual({ kind: 'dev-server', url: 'http://localhost:3005' });
   });
 
   it('falls back to http://localhost:3000 in development', () => {
-    expect(resolveRendererEntry({ NODE_ENV: 'development' }, BUILT, false)).toEqual({
+    expect(resolveRendererEntry({ NODE_ENV: 'development' }, BUILT, SOURCE)).toEqual({
       kind: 'dev-server',
       url: 'http://localhost:3000',
     });
   });
 
   it('loads the built index.html otherwise', () => {
-    expect(resolveRendererEntry({}, BUILT, false)).toEqual({ kind: 'file', path: BUILT });
+    expect(resolveRendererEntry({}, BUILT, SOURCE)).toEqual({ kind: 'file', path: BUILT });
   });
 
-  it('a packaged build ignores ELECTRON_RENDERER_URL and NODE_ENV and loads its own index.html', () => {
+  it.each([
+    ['a packaged build', PACKAGED],
+    ['a packaged executable renamed to electron (isPackaged false, app.asar)', RENAMED],
+  ])('%s ignores ELECTRON_RENDERER_URL and NODE_ENV and loads its own index.html', (_, source) => {
     expect(
       resolveRendererEntry(
         { ELECTRON_RENDERER_URL: 'https://evil.example', NODE_ENV: 'development' },
         BUILT,
-        true
+        source
       )
     ).toEqual({ kind: 'file', path: BUILT });
   });

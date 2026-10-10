@@ -1,8 +1,10 @@
 /**
  * Test-only environment hooks (architecture-notes §12.14).
  *
- * They are honoured only when the app runs from source (`!app.isPackaged`). A packaged build
- * reads none of these variables, so nothing here is production behaviour.
+ * They are honoured only when the app runs from source: unpackaged, and not loaded from an asar
+ * archive (`runsFromSource`, `app/app-source.ts`), so a packaged executable renamed to
+ * `electron` still ignores them. A packaged build reads none of these variables, so nothing
+ * here is production behaviour.
  *
  * - `WA_STAY_USER_DATA_DIR` replaces userData: the database, logs, secrets and the
  *   single-instance lock. The Electron smoke tests (`tests/e2e`) give every launch its own.
@@ -17,6 +19,7 @@
  */
 
 import path from 'path';
+import { runsFromSource } from '../app/app-source';
 
 export const TEST_ENV = {
   userDataDir: 'WA_STAY_USER_DATA_DIR',
@@ -50,6 +53,7 @@ export type TestEnv = Readonly<Record<string, string | undefined>>;
 /** The part of Electron's `app` the hooks use. */
 export interface TestHooksApp {
   readonly isPackaged: boolean;
+  getAppPath(): string;
   setPath(name: 'userData', value: string): void;
 }
 
@@ -66,16 +70,20 @@ export function parseAllowHosts(value: string | undefined): string[] {
 }
 
 /**
- * The hooks the environment asks for. Packaged: none, whatever the environment says.
- * Relative paths resolve against `cwd`.
+ * The hooks the environment asks for. Unless the app runs from source (`isPackaged` false and
+ * `appPath` outside any asar archive): none, whatever the environment says. Relative paths
+ * resolve against `cwd`.
  */
 export function resolveTestHooks(options: {
   env: TestEnv;
+  /** `app.isPackaged`. */
   isPackaged: boolean;
+  /** `app.getAppPath()`. */
+  appPath: string;
   cwd: string;
 }): TestHooks {
-  const { env, isPackaged, cwd } = options;
-  if (isPackaged) return {};
+  const { env, isPackaged, appPath, cwd } = options;
+  if (!runsFromSource({ isPackaged, appPath })) return {};
 
   const userDataDir = readPath(env, TEST_ENV.userDataDir, cwd);
   const legacyOverride = readPath(env, TEST_ENV.legacyDataDir, cwd);
@@ -103,7 +111,12 @@ export function applyTestEnvHooks(
   env: TestEnv = process.env,
   cwd: string = process.cwd()
 ): TestHooks {
-  const hooks = resolveTestHooks({ env, isPackaged: app.isPackaged, cwd });
+  const hooks = resolveTestHooks({
+    env,
+    isPackaged: app.isPackaged,
+    appPath: app.getAppPath(),
+    cwd,
+  });
   if (hooks.userDataDir) app.setPath('userData', hooks.userDataDir);
   return hooks;
 }

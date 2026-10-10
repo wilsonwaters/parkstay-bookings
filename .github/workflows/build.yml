@@ -48,6 +48,11 @@ jobs:
       - name: Run tests
         run: npm run test:coverage
 
+      # SQLite's own timestamps are UTC with no zone: read them with the host in Perth (UTC+8).
+      # TZ is set before Jest starts, since a running test cannot change its zone.
+      - name: Run timestamp tests in Perth time
+        run: npm run test:tz
+
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
         if: matrix.os == 'ubuntu-latest'

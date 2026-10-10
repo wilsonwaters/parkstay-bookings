@@ -29,7 +29,12 @@ export interface TempInstall {
 /** A fresh `fs.mkdtempSync` appData with the WA Stay and legacy paths under it (none created). */
 export function tempInstall(): TempInstall {
   const appData = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-stay-appdata-'));
-  const paths = resolveAppPaths({ appData, env: {}, isPackaged: true });
+  const paths = resolveAppPaths({
+    appData,
+    env: {},
+    isPackaged: true,
+    appPath: path.join(appData, 'resources', 'app.asar'),
+  });
   if (!paths.legacyUserData || !paths.legacyDbPath) throw new Error('legacy paths expected');
   return {
     appData,

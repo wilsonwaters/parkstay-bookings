@@ -13,10 +13,20 @@ import { APP_USER_MODEL_ID, bootstrapShell } from '@main/app/bootstrap';
 const ROOT = path.resolve(__dirname, '../../..');
 const EXEC_PATH = 'C:\\Users\\Ann\\AppData\\Local\\Programs\\WA Stay\\WA Stay.exe';
 
-function fakeApp(options: { isPackaged: boolean; hasLock?: boolean; windows?: boolean }) {
+function fakeApp(options: {
+  isPackaged: boolean;
+  appPath?: string;
+  hasLock?: boolean;
+  windows?: boolean;
+}) {
   const calls: string[] = [];
   const app = {
     isPackaged: options.isPackaged,
+    getAppPath: jest.fn(
+      () =>
+        options.appPath ??
+        (options.isPackaged ? 'C:\\Program Files\\WA Stay\\resources\\app.asar' : ROOT)
+    ),
     getPath: jest.fn(() => '/home/ann/.config'),
     setPath: jest.fn((name: string, value: string) => calls.push(`setPath ${name} ${value}`)),
     requestSingleInstanceLock: jest.fn(() => {
@@ -83,6 +93,23 @@ describe('bootstrapShell', () => {
     expect(shell.paths.dbPath).toBe(path.join(override, 'wa-stay.db'));
     expect(shell.paths.legacyDbPath).toBeNull();
     expect(shell.testHooks).toEqual({ userDataDir: override, legacyDataDir: null });
+  });
+
+  it('a packaged executable renamed to electron.exe (isPackaged false, app.asar) ignores WA_STAY_USER_DATA_DIR', () => {
+    const { app, calls } = fakeApp({
+      isPackaged: false,
+      appPath: 'C:\\Program Files\\WA Stay\\resources\\app.asar',
+    });
+
+    const shell = bootstrapShell(app, {
+      platform: 'linux',
+      execPath: '/opt/WA Stay/electron',
+      env: { WA_STAY_USER_DATA_DIR: path.resolve(os.tmpdir(), 'wa-stay-e2e', 'user-data') },
+      log,
+    });
+
+    expect(calls).toEqual([`setPath userData ${USER_DATA}`, 'requestSingleInstanceLock']);
+    expect(shell.testHooks).toEqual({});
   });
 
   it('elsewhere: no AppUserModelId (the method exists only on Windows)', () => {

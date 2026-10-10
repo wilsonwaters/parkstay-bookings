@@ -8,7 +8,6 @@
  */
 
 import { stayRangeLabel } from '../../src/renderer/components/nightGrid';
-import { APP_NAME } from '../../src/shared/constants/app-constants';
 import { addDays, todayIn } from '../../src/shared/utils/calendar-date';
 import { expect, test, withoutGuardedRequests, withoutRemoteImages } from './support/wa-stay';
 import { expectCurrentNavLink, expectRoute, NAV_PAGES, pageHeading } from './support/shell';
@@ -160,8 +159,6 @@ test('Explore with dates shows each campground’s availability and narrows to "
 });
 
 test('the window is titled WA Stay', async ({ launchWaStay }) => {
-  // B2 (#27) renames the app. Until it is merged, APP_NAME and the title are still the v1 name.
-  test.fail((APP_NAME as string) !== 'WA Stay', 'B2 (#27) has not renamed the app yet');
   const { window } = await launchWaStay();
 
   await expect(window).toHaveTitle('WA Stay');

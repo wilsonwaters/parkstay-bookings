@@ -9,9 +9,12 @@
  *   `tests/e2e/fixtures/http`, and every other request is cancelled and logged;
  * - runs as a production build (`NODE_ENV=production`, no `ELECTRON_RENDERER_URL`, no Mapbox
  *   token), in Perth time and Australian English;
+ * - is online as far as the window can tell (`navigator.onLine`), whatever the host's network
+ *   (`forceOnline`);
  * - records a trace and the main process's output.
  *
- * After the test, every app still running is closed (or killed) and its temp folder removed.
+ * After the test, every app still running is closed (or killed), then the temp folders
+ * (`tempDir`) are removed.
  * When a test fails, the window's trace and a screenshot, the main-process output, the main
  * log file, the renderer console errors and the unexpected requests are attached to the
  * report. (The config's `use.trace` records only the test's own steps, so the harness
@@ -68,7 +71,15 @@ export interface WaStay {
 export interface LaunchOptions {
   /** Relaunch on an existing profile. By default each launch gets a fresh temp folder. */
   userDataDir?: string;
-  /** Extra environment, e.g. `WA_STAY_E2E_ALLOW_HOSTS` for documentation screenshots. */
+  /**
+   * Prepares the profile before the app starts, e.g. seeds its database (`support/seed.ts`).
+   * Runs on the fresh temp folder, or on `userDataDir`.
+   */
+  prepare?: (userDataDir: string) => void | Promise<void>;
+  /**
+   * Extra environment, e.g. `WA_STAY_E2E_ALLOW_HOSTS` for documentation screenshots or
+   * `WA_STAY_LEGACY_DATA_DIR` for the v1.x upgrade.
+   */
   env?: Record<string, string>;
 }
 
@@ -116,6 +127,27 @@ function launchEnv(
     WA_STAY_E2E_FIXTURES_DIR: HTTP_FIXTURES_DIR,
     ...extra,
   };
+}
+
+/**
+ * Makes the window report itself online (`navigator.onLine`, the `online` event). Chromium
+ * derives it from the host's network interfaces, so a host with loopback only (a sandbox,
+ * `unshare -n`) reads offline, and Explore then turns its availability off. Fixture mode never
+ * uses the network, so the suite must not depend on it.
+ *
+ * DevTools network emulation with `offline: false` and no throttling overrides it. (Playwright's
+ * `setOffline(false)` sends nothing unless the context was offline before.) The emulation
+ * belongs to this CDP session, which is kept open for the window's life.
+ */
+async function forceOnline(window: Page): Promise<void> {
+  const cdp = await window.context().newCDPSession(window);
+  await cdp.send('Network.enable');
+  await cdp.send('Network.emulateNetworkConditions', {
+    offline: false,
+    latency: 0,
+    downloadThroughput: -1,
+    uploadThroughput: -1,
+  });
 }
 
 function stripAnsi(text: string): string {
@@ -246,13 +278,10 @@ async function startWaStay(
   testInfo: TestInfo,
   options: LaunchOptions,
   launches: Launch[],
-  dirs: string[]
+  tempDir: TempDir
 ): Promise<Launch> {
-  let userDataDir = options.userDataDir;
-  if (!userDataDir) {
-    userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wa-stay-e2e-'));
-    dirs.push(userDataDir);
-  }
+  const userDataDir = options.userDataDir ?? tempDir('profile');
+  await options.prepare?.(userDataDir);
 
   const app = await electron.launch({
     // The project root, not the main script, so Electron reads package.json (name, version, main)
@@ -304,6 +333,7 @@ async function startWaStay(
     }
 
     launch.window = await step('opening the window', app.firstWindow());
+    await step('forcing the window online', forceOnline(launch.window));
     // The app is up when its page heading shows (not on ready-to-show).
     await step(
       'showing a page heading',
@@ -345,7 +375,7 @@ async function attachDiagnostics(testInfo: TestInfo, index: number, launch: Laun
   }
 }
 
-async function teardown(testInfo: TestInfo, launches: Launch[], dirs: string[]): Promise<void> {
+async function teardown(testInfo: TestInfo, launches: Launch[]): Promise<void> {
   const failed = testInfo.status !== testInfo.expectedStatus;
 
   for (const [i, launch] of launches.entries()) {
@@ -377,17 +407,30 @@ async function teardown(testInfo: TestInfo, launches: Launch[], dirs: string[]):
       fs.rmSync(launch.tracePath, { force: true });
     }
   }
-
-  for (const dir of dirs) fs.rmSync(dir, { recursive: true, force: true });
 }
 
-export const test = base.extend<{ launchWaStay: (options?: LaunchOptions) => Promise<WaStay> }>({
-  launchWaStay: async ({}, use, testInfo) => {
-    const launches: Launch[] = [];
+/** Makes a temp folder (`wa-stay-e2e-<label>-…`), removed after the test. */
+export type TempDir = (label: string) => string;
+
+export const test = base.extend<{
+  tempDir: TempDir;
+  launchWaStay: (options?: LaunchOptions) => Promise<WaStay>;
+}>({
+  tempDir: async ({}, use) => {
     const dirs: string[] = [];
-    await use((options = {}) => startWaStay(testInfo, options, launches, dirs));
+    await use((label) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), `wa-stay-e2e-${label}-`));
+      dirs.push(dir);
+      return dir;
+    });
+    for (const dir of dirs) fs.rmSync(dir, { recursive: true, force: true });
+  },
+  // On `tempDir`, so its folders are removed only after every app has closed.
+  launchWaStay: async ({ tempDir }, use, testInfo) => {
+    const launches: Launch[] = [];
+    await use((options = {}) => startWaStay(testInfo, options, launches, tempDir));
     // A step of its own: after use() this code still runs in the setup step, which has ended.
-    await base.step('Close WA Stay', () => teardown(testInfo, launches, dirs), { box: true });
+    await base.step('Close WA Stay', () => teardown(testInfo, launches), { box: true });
   },
 });
 

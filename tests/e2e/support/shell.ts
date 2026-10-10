@@ -15,6 +15,14 @@ export const NAV_PAGES = {
 
 export type NavPage = (typeof NAV_PAGES)[keyof typeof NAV_PAGES];
 
+/** Settings' sections (U4), in sub-navigation order: link name → route → section heading. */
+export const SETTINGS_SECTIONS = [
+  { link: 'Accounts', route: '/settings/accounts', heading: 'Accounts' },
+  { link: 'Notifications', route: '/settings/notifications', heading: 'Notifications' },
+  { link: 'App', route: '/settings/app', heading: 'App' },
+  { link: 'About', route: '/settings/about', heading: 'About WA Stay' },
+] as const;
+
 export function primaryNav(window: Page): Locator {
   return window.getByRole('navigation', { name: 'Primary' });
 }
@@ -54,6 +62,18 @@ export async function expectHeadingFocused(window: Page, heading: string): Promi
   await expect(pageHeading(window)).toHaveCount(1);
   await expect(pageHeading(window)).toHaveText(heading);
   await expect(pageHeading(window)).toBeFocused();
+}
+
+/**
+ * In a create flow's step list (`StepFlow`), the step titled `title` is the current one
+ * (`aria-current="step"`), and it is the only one.
+ */
+export async function expectCurrentStep(steps: Locator, title: string): Promise<void> {
+  const items = steps.getByRole('listitem');
+  await expect(items.filter({ hasText: title })).toHaveAttribute('aria-current', 'step');
+  for (const item of await items.filter({ hasNotText: title }).all()) {
+    await expect(item).not.toHaveAttribute('aria-current');
+  }
 }
 
 /** Opens the account menu and picks one of its items. */

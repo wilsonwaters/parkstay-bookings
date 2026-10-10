@@ -1,13 +1,16 @@
 /**
  * The test-only env hooks and fixture mode (architecture-notes §12.14): honoured only when the
- * app is unpackaged. A packaged build ignores every variable, sets no userData and installs no
- * network guard. In fixture mode the guard cancels http(s)/ws(s) requests on the default
- * session and every later session (provider partitions), except to allowed hosts, and logs them.
+ * app runs from source (unpackaged, and not loaded from an asar archive). A packaged build,
+ * even one whose executable was renamed to `electron` (so Electron reports it unpackaged),
+ * ignores every variable, sets no userData and installs no network guard. In fixture mode the
+ * guard cancels http(s)/ws(s) requests on the default session and every later session
+ * (provider partitions), except to allowed hosts, and logs them.
  */
 
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { isInsideAsar, runsFromSource } from '@main/app/app-source';
 import {
   applyTestEnvHooks,
   installNetworkGuard,
@@ -19,6 +22,10 @@ import {
   type GuardableSession,
   type SessionSource,
 } from '@main/testing';
+
+/** `app.getAppPath()` from a source checkout, and in an installed (packaged) app. */
+const SOURCE_APP_PATH = '/repo';
+const PACKAGED_APP_PATH = '/opt/WA Stay/resources/app.asar';
 
 const ALL_HOOKS = {
   WA_STAY_USER_DATA_DIR: '/tmp/wa-stay-e2e-profile',
@@ -53,7 +60,13 @@ class FakeSession implements GuardableSession {
 class FakeApp implements SessionSource {
   readonly listeners: Array<(session: GuardableSession) => void> = [];
   readonly setPath = jest.fn();
-  constructor(readonly isPackaged: boolean) {}
+  constructor(
+    readonly isPackaged: boolean,
+    private readonly appPath = isPackaged ? PACKAGED_APP_PATH : SOURCE_APP_PATH
+  ) {}
+  getAppPath(): string {
+    return this.appPath;
+  }
   on(_event: 'session-created', listener: (session: GuardableSession) => void): this {
     this.listeners.push(listener);
     return this;
@@ -77,17 +90,37 @@ afterEach(() => {
   fs.rmSync(userDataDir, { recursive: true, force: true });
 });
 
-describe('packaged: the hooks are inert even with every variable set', () => {
-  it('resolves no hooks and never changes userData', () => {
-    const app = new FakeApp(true);
+/**
+ * A packaged app as Electron reports it: installed, or with its executable renamed to
+ * `electron`, which makes `isPackaged` false while the code still comes from `app.asar`.
+ */
+const PACKAGED_APPS: Array<[string, () => FakeApp]> = [
+  ['packaged', () => new FakeApp(true)],
+  ['renamed to electron (isPackaged false, app.asar)', () => new FakeApp(false, PACKAGED_APP_PATH)],
+  [
+    'renamed to electron.exe (Windows path)',
+    () => new FakeApp(false, 'C:\\Program Files\\WA Stay\\resources\\app.asar'),
+  ],
+];
 
-    expect(resolveTestHooks({ env: ALL_HOOKS, isPackaged: true, cwd: '/repo' })).toEqual({});
+describe.each(PACKAGED_APPS)('%s: the hooks are inert even with every variable set', (_, make) => {
+  it('resolves no hooks and never changes userData', () => {
+    const app = make();
+
+    expect(
+      resolveTestHooks({
+        env: ALL_HOOKS,
+        isPackaged: app.isPackaged,
+        appPath: app.getAppPath(),
+        cwd: '/repo',
+      })
+    ).toEqual({});
     expect(applyTestEnvHooks(app, ALL_HOOKS, '/repo')).toEqual({});
     expect(app.setPath).not.toHaveBeenCalled();
   });
 
   it('installs neither fixture mode nor the network guard', () => {
-    const app = new FakeApp(true);
+    const app = make();
     const defaultSession = new FakeSession();
 
     const hooks = applyTestEnvHooks(app, ALL_HOOKS, '/repo');
@@ -106,7 +139,29 @@ describe('packaged: the hooks are inert even with every variable set', () => {
   });
 });
 
-describe('unpackaged', () => {
+describe('runsFromSource', () => {
+  it('is true only unpackaged with an app path outside any asar archive', () => {
+    expect(runsFromSource({ isPackaged: false, appPath: '/home/ann/wa-stay' })).toBe(true);
+    expect(runsFromSource({ isPackaged: false, appPath: 'C:\\src\\wa-stay' })).toBe(true);
+    expect(runsFromSource({ isPackaged: true, appPath: '/home/ann/wa-stay' })).toBe(false);
+    expect(runsFromSource({ isPackaged: false, appPath: PACKAGED_APP_PATH })).toBe(false);
+    expect(runsFromSource({ isPackaged: false, appPath: '/x/resources/APP.ASAR/dist' })).toBe(
+      false
+    );
+    expect(runsFromSource({ isPackaged: false, appPath: 'D:\\WA Stay\\resources\\app.asar' })).toBe(
+      false
+    );
+  });
+
+  it('reads an asar archive only from a whole path segment', () => {
+    expect(isInsideAsar('/opt/app.asar')).toBe(true);
+    expect(isInsideAsar('/opt/app.asar/dist/main')).toBe(true);
+    expect(isInsideAsar('/opt/app.asar.unpacked')).toBe(false);
+    expect(isInsideAsar('/home/ann/asar-tools/wa-stay')).toBe(false);
+  });
+});
+
+describe('from source (unpackaged, not in an asar archive)', () => {
   it('overrides userData and resolves every hook, relative paths against cwd', () => {
     const app = new FakeApp(false);
 
@@ -132,7 +187,9 @@ describe('unpackaged', () => {
 
   it('disables the legacy source when userData is overridden without a legacy folder (B3)', () => {
     const env = { WA_STAY_USER_DATA_DIR: '/tmp/profile' };
-    expect(resolveTestHooks({ env, isPackaged: false, cwd: '/repo' })).toEqual({
+    expect(
+      resolveTestHooks({ env, isPackaged: false, appPath: SOURCE_APP_PATH, cwd: '/repo' })
+    ).toEqual({
       userDataDir: path.resolve('/tmp/profile'),
       legacyDataDir: null,
     });

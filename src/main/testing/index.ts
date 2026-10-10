@@ -1,8 +1,9 @@
 /**
  * Test-support code for the Electron smoke tests (architecture-notes §12.14).
  *
- * Everything here is driven by environment variables that only an unpackaged app reads
- * (`env.ts`). A packaged build never sets userData from the environment, never serves
+ * Everything here is driven by environment variables that only an app running from source
+ * reads (`env.ts`: unpackaged and not loaded from an asar archive). A packaged build, even with
+ * its executable renamed to `electron`, never sets userData from the environment, never serves
  * fixtures and never installs the network guard.
  *
  * `src/main/index.ts` calls:
@@ -35,7 +36,7 @@ export interface FixtureModeDeps {
 /**
  * Fixture mode: installs the network guard and returns the options for the providers'
  * `FixtureHttpClient`. Returns undefined, and installs nothing, unless the hooks ask for it
- * (never when packaged).
+ * (never unless running from source).
  */
 export function startFixtureMode(
   hooks: TestHooks,

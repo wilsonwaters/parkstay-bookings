@@ -7,19 +7,25 @@
  */
 
 import { expect, test, withoutGuardedRequests, withoutRemoteImages } from './support/wa-stay';
-import { expectHeadingFocused, expectRoute, NAV_PAGES, navLink } from './support/shell';
+import { addDays, todayIn } from '../../src/shared/utils/calendar-date';
+import {
+  expectCurrentStep,
+  expectHeadingFocused,
+  expectRoute,
+  NAV_PAGES,
+  navLink,
+} from './support/shell';
 
 /** The catalogue syncs 5 s after launch (V5); give it room on a slow runner. */
 const CATALOGUE_TIMEOUT_MS = 30_000;
 
 /**
- * Two weeks from now, `YYYY-MM-DD`: a scheduled release that cannot come while the test runs,
- * and before the stay's check-in (two months out), which the form requires.
+ * Two weeks from today in Perth (ParkStay's zone, and the e2e run's), `YYYY-MM-DD`: a scheduled
+ * release that cannot come while the test runs, and before the stay's check-in (two months
+ * out), which the form requires.
  */
 function inTwoWeeks(): string {
-  const date = new Date();
-  date.setDate(date.getDate() + 14);
-  return date.toISOString().slice(0, 10);
+  return addDays(todayIn('Australia/Perth'), 14);
 }
 
 test('creates a ParkStay snipe through the provider-first flow', async ({ launchWaStay }) => {
@@ -38,7 +44,7 @@ test('creates a ParkStay snipe through the provider-first flow', async ({ launch
 
   // 1. Provider: the only provider with Site Sniper, chosen for you but shown.
   const steps = window.getByRole('navigation', { name: 'New snipe steps' });
-  await expect(steps.locator('[aria-current="step"]')).toContainText('Provider');
+  await expectCurrentStep(steps, 'Provider');
   await expect(window.getByRole('radio', { name: 'ParkStay WA' })).toBeChecked();
   await window.getByRole('button', { name: 'Continue' }).click();
 
@@ -79,8 +85,8 @@ test('creates a ParkStay snipe through the provider-first flow', async ({ launch
     'aria-expanded',
     'false'
   );
-  // The radio is the whole card (its native input is visually hidden): pick it by its label.
-  await modes.locator('label', { hasText: 'At a scheduled time' }).click();
+  // The radio is the whole card (its native input is visually hidden): pick it by its text.
+  await modes.getByText('At a scheduled time', { exact: true }).click();
   await expect(modes.getByRole('radio', { name: 'At a scheduled time' })).toBeChecked();
   await window.getByLabel('Release date').fill(inTwoWeeks());
   await window.getByLabel(/^Release time/).fill('10:00');

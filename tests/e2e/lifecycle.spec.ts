@@ -1,10 +1,11 @@
 /**
- * Lifecycle: a journey through every page stays clean (no renderer console errors, nothing
- * sent to the network), the app quits promptly with exit code 0 (no timer keeps it alive),
- * and a relaunch on the same profile reopens the database with its data.
+ * Lifecycle: a journey through every page and every Settings section stays clean (no renderer
+ * console errors, nothing sent to the network), the app quits promptly with exit code 0 (no
+ * timer keeps it alive), and a relaunch on the same profile reopens the database with its data.
  */
 
 import type { Page } from '@playwright/test';
+import { addDays, todayIn } from '../../src/shared/utils/calendar-date';
 import {
   expect,
   test,
@@ -20,32 +21,31 @@ import {
   NAV_PAGES,
   navLink,
   pageHeading,
+  SETTINGS_SECTIONS,
 } from './support/shell';
 
-/** The preload's settings API, as the renderer sees it. */
-interface SettingsApi {
-  get(key: 'notifications.desktop'): Promise<unknown>;
-  set(key: 'notifications.desktop', value: boolean): Promise<unknown>;
-}
+const WATCH_NAME = 'Bungarra next month';
 
-// Writes and reads through the real preload, IPC handler and SQLite database. No page can
-// store anything yet without the network: the legacy pages it would take are being rebuilt.
-function readSetting(window: Page): Promise<unknown> {
-  return window.evaluate(() =>
-    (globalThis as unknown as { api: { settings: SettingsApi } }).api.settings.get(
-      'notifications.desktop'
-    )
-  );
-}
-
-function writeSetting(window: Page, value: boolean): Promise<unknown> {
+/**
+ * Creates a watch through the real preload, IPC handler and SQLite database (the create flow
+ * itself is `create-watch.spec.ts`). Bungarra, so its checks answer from the fixtures.
+ */
+function createWatch(window: Page): Promise<unknown> {
+  const arrival = addDays(todayIn('Australia/Perth'), 30);
+  const input = {
+    providerId: 'parkstay',
+    name: WATCH_NAME,
+    location: { externalId: '20', name: 'Bungarra', areaName: 'Kennedy Range National Park' },
+    stay: { arrival, departure: addDays(arrival, 2), adults: 2 },
+  };
   return window.evaluate(
-    (v) =>
-      (globalThis as unknown as { api: { settings: SettingsApi } }).api.settings.set(
-        'notifications.desktop',
-        v
-      ),
-    value
+    (watch) =>
+      (
+        globalThis as unknown as {
+          api: { watches: { create(input: unknown): Promise<unknown> } };
+        }
+      ).api.watches.create(watch),
+    input
   );
 }
 
@@ -60,8 +60,22 @@ test('a journey through every page logs no console errors and sends nothing to t
     await expectRoute(window, page.route);
     await expectCurrentNavLink(window, page.link);
   }
+
+  // Settings opens its first section; each section from the sub-navigation is the current
+  // item, and focus moves to its heading.
   await chooseAccountMenuItem(window, 'Settings');
   await expectHeadingFocused(window, 'Settings');
+  await expectRoute(window, SETTINGS_SECTIONS[0].route);
+  const sections = window.getByRole('navigation', { name: 'Settings sections' });
+  for (const section of [...SETTINGS_SECTIONS.slice(1), SETTINGS_SECTIONS[0]]) {
+    const link = sections.getByRole('link', { name: section.link, exact: true });
+    await link.click();
+    await expectRoute(window, section.route);
+    await expect(link).toHaveAttribute('aria-current', 'page');
+    await expect(window.getByRole('heading', { level: 2, name: section.heading })).toBeFocused();
+    await expect(pageHeading(window)).toHaveText('Settings');
+  }
+
   await chooseAccountMenuItem(window, 'About WA Stay');
   const about = window.getByRole('dialog', { name: 'About WA Stay' });
   await expect(about.getByText(/^Version /)).toBeVisible();
@@ -80,18 +94,22 @@ test('quits within 10 s with exit code 0, and a relaunch on the same profile kee
   launchWaStay,
 }) => {
   const first = await launchWaStay();
-  // A fresh profile has no value; this one is written to the database
-  // Nothing stored yet: main answers the key's default
-  expect(await readSetting(first.window)).toEqual({ success: true, data: true });
-  expect(await writeSetting(first.window, false)).toEqual({ success: true, data: true });
+  expect(await createWatch(first.window)).toMatchObject({
+    success: true,
+    data: { name: WATCH_NAME },
+  });
 
   const exitCode = await within(first.close(), 10_000, 'Quitting WA Stay');
   expect(exitCode).toBe(0);
   expect(first.mainLog()).toContain('Application shut down successfully');
+  expect(withoutRemoteImages(first.unexpectedRequests())).toEqual([]);
 
+  // The database reopens with the watch in it.
   const second = await launchWaStay({ userDataDir: first.userDataDir });
   await expectRoute(second.window, '/');
   await expect(pageHeading(second.window)).toHaveText(NAV_PAGES.explore.heading);
-  expect(await readSetting(second.window)).toEqual({ success: true, data: false });
+  await navLink(second.window, NAV_PAGES.watches.link).click();
+  await expectHeadingFocused(second.window, NAV_PAGES.watches.heading);
+  await expect(second.window.getByRole('article', { name: WATCH_NAME })).toBeVisible();
   expect(withoutRemoteImages(second.unexpectedRequests())).toEqual([]);
 });

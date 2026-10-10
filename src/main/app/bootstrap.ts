@@ -36,13 +36,13 @@ export interface BootstrapOptions extends SingleInstanceOptions {
   platform: NodeJS.Platform;
   /** `process.execPath`: the AppUserModelId when running from source. */
   execPath: string;
-  /** `process.env` (the test hooks are read only when unpackaged). */
+  /** `process.env` (the test hooks are read only when running from source). */
   env?: TestEnv;
 }
 
 export interface Shell {
   readonly paths: AppPaths;
-  /** The test-only hooks in effect (none when packaged). */
+  /** The test-only hooks in effect (none unless running from source). */
   readonly testHooks: TestHooks;
   readonly instance: SingleInstance;
 }

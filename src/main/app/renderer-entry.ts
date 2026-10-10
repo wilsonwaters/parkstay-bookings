@@ -7,6 +7,7 @@
  */
 
 import { pathToFileURL } from 'url';
+import { runsFromSource, type AppSource } from './app-source';
 
 export type RendererEntry =
   | { readonly kind: 'dev-server'; readonly url: string }
@@ -17,14 +18,15 @@ export const DEFAULT_DEV_SERVER_URL = 'http://localhost:3000';
 
 /**
  * A packaged build always loads its own `index.html`: the dev-server variables are honoured
- * only when running from source (`!app.isPackaged`).
+ * only when running from source (unpackaged and not loaded from an asar archive, so a packaged
+ * executable renamed to `electron` still loads its own page; `app-source.ts`).
  */
 export function resolveRendererEntry(
   env: NodeJS.ProcessEnv,
   builtIndexPath: string,
-  isPackaged: boolean
+  source: AppSource
 ): RendererEntry {
-  if (!isPackaged && (env.ELECTRON_RENDERER_URL || env.NODE_ENV === 'development')) {
+  if (runsFromSource(source) && (env.ELECTRON_RENDERER_URL || env.NODE_ENV === 'development')) {
     return { kind: 'dev-server', url: env.ELECTRON_RENDERER_URL || DEFAULT_DEV_SERVER_URL };
   }
   return { kind: 'file', path: builtIndexPath };

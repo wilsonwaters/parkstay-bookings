@@ -260,7 +260,8 @@ The `launchWaStay()` fixture starts the app with:
 
 - **Its own userData**, a fresh temp folder (`WA_STAY_USER_DATA_DIR`). Before anything else it
   checks that the app really uses it (`app.getPath('userData')`), so a test can never touch a
-  real profile. Pass `{ userDataDir }` to relaunch on an existing one.
+  real profile. Pass `{ userDataDir }` to relaunch on an existing one, and `{ prepare }` to seed
+  the profile before the app starts (see "Seeding data" below).
 - **Fixture mode** (`WA_STAY_E2E_FIXTURES_DIR=tests/e2e/fixtures/http`): every provider's
   `HttpClient` is a `FixtureHttpClient` that answers from recorded responses, and a network
   guard cancels every other http(s)/ws(s) request any Electron session makes. Each refusal is
@@ -269,16 +270,39 @@ The `launchWaStay()` fixture starts the app with:
   through, for documentation screenshots.
 - **A production renderer**: `NODE_ENV=production`, no `ELECTRON_RENDERER_URL`, no Mapbox
   token, `TZ=Australia/Perth`, `LANG=en_AU.UTF-8`.
+- **An online window, whatever the host.** Chromium reads `navigator.onLine` from the host's
+  network interfaces, so a machine with loopback only (a sandbox, `unshare -n`) looks offline
+  and Explore turns its availability off. The harness overrides it through DevTools network
+  emulation (`forceOnline`), so the suite passes with no network at all.
 
-These test-only hooks live in `src/main/testing/` and are honoured only when the app is not
-packaged (architecture-notes §12.14); unit tests in `tests/unit/testing/` prove a packaged
-app ignores them.
+These test-only hooks live in `src/main/testing/` and are honoured only when the app runs from
+source: unpackaged, and not loaded from an asar archive (`src/main/app/app-source.ts`), so a
+packaged executable renamed to `electron` (which Electron then reports as unpackaged) ignores
+them too (architecture-notes §12.14). Unit tests in `tests/unit/testing/` and
+`tests/unit/app/` prove it, and CI's packaged smoke check (below) runs the real package both
+ways.
 
 The fixture returns `{ app, window, userDataDir, consoleErrors(), mainLog(),
 unexpectedRequests(), close() }`. After the test it closes every app it started (killing one
-that hangs) and deletes the temp folders. When a test fails, the report gets the Electron
-window's trace (`trace-N`) and screenshot, the main process's output and log file, the
-renderer console errors and the unexpected requests.
+that hangs), then deletes the temp folders. A test that needs a folder of its own (a v1.x data
+folder) takes the `tempDir` fixture: `tempDir('legacy')` makes one, removed after the apps
+have closed. When a test fails, the report gets the Electron window's trace (`trace-N`) and
+screenshot, the main process's output and log file, the renderer console errors and the
+unexpected requests.
+
+### Seeding data
+
+`support/seed.ts` writes data before a launch with the app's own built code
+(`support/seed-db.js`, run with the Electron binary as Node, `ELECTRON_RUN_AS_NODE=1`, so
+better-sqlite3's Electron build loads and `dist/main` opens and migrates the database):
+
+- `seedHeldSnipe(userDataDir, …)`, from `launchWaStay({ prepare })`: a HELD snipe with its hold
+  and its `snipe_held` notification. No hold is ever placed (architecture-notes §12.33).
+- `writeLegacyV1Data(dir)`: a v1.2.0 data folder from `tests/fixtures/db/v5-release-1.2.0.sql`,
+  for `WA_STAY_LEGACY_DATA_DIR` (the upgrade journey).
+
+Data a page can create through the preload is written that way instead
+(`window.api.bookings.create`, `window.api.watches.create`), from the test.
 
 ### Fixtures
 
@@ -292,7 +316,7 @@ Recorded provider responses live in `tests/e2e/fixtures/http/<providerId>/`, wit
    and the shell helpers (`navLink`, `pageHeading`, `chooseAccountMenuItem`, …) from
    `./support/shell`.
 2. Start with `const { window } = await launchWaStay();`. Isolation, fixture mode and the
-   report attachments come with it.
+   report attachments come with it. Seed what the journey needs (see "Seeding data").
 3. Find elements only by role, label or text (`getByRole`, `getByLabel`, `getByText`), using the
    accessible names in `docs/design/shell.md` and the feature's spec. No CSS classes, XPath or
    test ids: `grep -rnE "locator\(['\"][.#\[]|xpath=|data-testid" tests/e2e` must print nothing.
@@ -304,9 +328,8 @@ Recorded provider responses live in `tests/e2e/fixtures/http/<providerId>/`, wit
 6. Add the journey's pages to the lifecycle spec's journey, so its console errors and requests
    are checked too.
 
-A `test.fail(…)` line marks a known gap the assertion is waiting for (the window title until
-B2 renames the app; an `h1` on Bookings until U3 rebuilds it). Once the gap is closed the test
-passes, Playwright reports it as failing, and the line must be removed.
+To mark a known gap an assertion is waiting for, use `test.fail(condition, reason)` with a
+condition that turns false once the gap is closed; then remove the line. The suite has none.
 
 ### Debugging
 
@@ -317,14 +340,26 @@ passes, Playwright reports it as failing, and the line must be removed.
 - `npx playwright show-trace test-results/<test>/trace-1.zip` replays a failed launch: DOM
   snapshots, screenshots, console and network.
 - `npx playwright test navigation -g "keyboard"` runs one spec or test.
+- With no network at all: run the suite in a network namespace whose only interface is
+  loopback, brought up first because Playwright talks to Electron over 127.0.0.1, e.g.
+  `unshare -rn sh -c 'ip link set lo up && xvfb-run -a npm run test:e2e'`. It must pass.
 
 ### CI
 
 The `e2e` job in `.github/workflows/ci.yml` runs on `ubuntu-latest` (20 minutes at most):
 `npm ci` (whose postinstall builds better-sqlite3 for Electron, so the job does not rebuild it
-for Node), `npm run build:e2e`, then `xvfb-run -a npm run test:e2e`. On failure it uploads
-`playwright-report/` and `test-results/` for 7 days. It is not in `build.yml`, so it never
-blocks a release tag.
+for Node), `npm run build:e2e`, then `xvfb-run -a npm run test:e2e`. It always uploads
+`playwright-report/` and `test-results/` (7 days), so a test that failed and passed on its
+retry leaves its first attempt's trace and logs. It is not in `build.yml`, so it never blocks a
+release tag.
+
+The `packaged-smoke` job checks what electron-builder ships: `npm run build:e2e`,
+`npx electron-builder --linux dir --publish never`, then `xvfb-run -a npm run smoke:packaged`
+(`scripts/packaged-smoke.js`). It starts `release/linux-unpacked/wa-stay` with a temp
+`XDG_CONFIG_HOME` and every test-only hook set, waits for the window's `h1`, and requires that
+userData is the temp `WA Stay` folder, the page comes from `app.asar`, and `app.quit()` exits
+with code 0 within 10 s. It then does the same with a copy of the executable named `electron`,
+which Electron reports as unpackaged.
 
 ## Test Utilities
 

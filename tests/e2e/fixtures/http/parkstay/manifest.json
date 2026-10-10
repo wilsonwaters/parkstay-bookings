@@ -20,6 +20,14 @@
       "path": "/api/profile",
       "status": 403,
       "file": "profile-signed-out.json"
+    },
+    {
+      "method": "GET",
+      "path": "/api/check-create-session/",
+      "query": {
+        "queue_group": "parkstayv2"
+      },
+      "file": "queue-active.json"
     }
   ]
 }

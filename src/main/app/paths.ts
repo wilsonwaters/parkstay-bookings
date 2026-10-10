@@ -57,9 +57,12 @@ export interface AppPaths {
 export interface ResolveAppPathsOptions {
   /** `app.getPath('appData')`. */
   appData: string;
-  /** `process.env`: the test hooks (§12.14) are read from it, only when unpackaged. */
+  /** `process.env`: the test hooks (§12.14) are read from it, only when running from source. */
   env: TestEnv;
+  /** `app.isPackaged`. */
   isPackaged: boolean;
+  /** `app.getAppPath()`: with `isPackaged`, decides whether the app runs from source. */
+  appPath: string;
   /** Resolves relative hook paths. Defaults to `process.cwd()`. */
   cwd?: string;
   /** `path.win32` or `path.posix`; defaults to this platform's. */
@@ -67,18 +70,19 @@ export interface ResolveAppPathsOptions {
 }
 
 /**
- * The data paths, from appData and (when unpackaged) the test hooks. Pure: it neither reads
- * the disk nor changes the app. A portable build uses the same folders: only the executable
- * is extracted to a temp folder.
+ * The data paths, from appData and (when running from source) the test hooks. Pure: it
+ * neither reads the disk nor changes the app. A portable build uses the same folders: only the
+ * executable is extracted to a temp folder.
  */
 export function resolveAppPaths({
   appData,
   env,
   isPackaged,
+  appPath,
   cwd = process.cwd(),
   pathApi = path,
 }: ResolveAppPathsOptions): AppPaths {
-  const hooks = resolveTestHooks({ env, isPackaged, cwd });
+  const hooks = resolveTestHooks({ env, isPackaged, appPath, cwd });
   const userData = hooks.userDataDir ?? pathApi.join(appData, DATA_FOLDER_NAME);
   const legacyUserData =
     hooks.legacyDataDir === undefined
@@ -102,7 +106,7 @@ export interface PathsApp extends TestHooksApp {
 
 export interface ConfiguredPaths {
   readonly paths: AppPaths;
-  /** The test-only hooks in effect (none when packaged), for fixture mode. */
+  /** The test-only hooks in effect (none unless running from source), for fixture mode. */
   readonly testHooks: TestHooks;
 }
 
@@ -119,7 +123,13 @@ export function configureAppPaths(
   const appData = electronApp.getPath('appData');
   electronApp.setPath('userData', path.join(appData, DATA_FOLDER_NAME));
   const testHooks = applyTestEnvHooks(electronApp, env, cwd);
-  const paths = resolveAppPaths({ appData, env, isPackaged: electronApp.isPackaged, cwd });
+  const paths = resolveAppPaths({
+    appData,
+    env,
+    isPackaged: electronApp.isPackaged,
+    appPath: electronApp.getAppPath(),
+    cwd,
+  });
   return { paths, testHooks };
 }
 

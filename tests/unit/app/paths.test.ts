@@ -2,7 +2,8 @@
  * @jest-environment node
  *
  * - `resolveAppPaths` / `configureAppPaths`: the WA Stay data folder and the legacy (v1.x)
- *   one, with the test-only hooks honoured only when unpackaged (§12.14).
+ *   one, with the test-only hooks honoured only when running from source (§12.14): unpackaged,
+ *   and not loaded from an asar archive.
  * - `getBrandIconPath`: the WA Stay icon for the window and OS notifications, and
  *   `getEmailLogoPath`: the small one the emails show. Packaged, each is the copy
  *   `extraResources` puts next to app.asar; from source, the committed file.
@@ -30,11 +31,20 @@ const APP_DATA = 'C:\\Users\\Ann Lee\\AppData\\Roaming';
 const E2E_USER_DATA = path.resolve(os.tmpdir(), 'wa-stay-e2e', 'user-data');
 const E2E_LEGACY = path.resolve(os.tmpdir(), 'wa-stay-e2e', 'legacy');
 const HOOKS = { WA_STAY_USER_DATA_DIR: E2E_USER_DATA, WA_STAY_LEGACY_DATA_DIR: E2E_LEGACY };
+/** `app.getAppPath()` from a source checkout, and in an installed (packaged) app. */
+const SOURCE_APP_PATH = ROOT;
+const PACKAGED_APP_PATH = 'C:\\Program Files\\WA Stay\\resources\\app.asar';
 
 describe('resolveAppPaths', () => {
   it('defaults (Windows): the WA Stay data folder, wa-stay.db, and the legacy folder beside it', () => {
     expect(
-      resolveAppPaths({ appData: APP_DATA, env: {}, isPackaged: true, pathApi: path.win32 })
+      resolveAppPaths({
+        appData: APP_DATA,
+        env: {},
+        isPackaged: true,
+        appPath: PACKAGED_APP_PATH,
+        pathApi: path.win32,
+      })
     ).toEqual({
       userData: 'C:\\Users\\Ann Lee\\AppData\\Roaming\\WA Stay',
       dbPath: 'C:\\Users\\Ann Lee\\AppData\\Roaming\\WA Stay\\wa-stay.db',
@@ -47,7 +57,12 @@ describe('resolveAppPaths', () => {
 
   it('unpackaged: WA_STAY_USER_DATA_DIR replaces userData and WA_STAY_LEGACY_DATA_DIR the legacy folder', () => {
     expect(
-      resolveAppPaths({ appData: '/home/ann/.config', env: HOOKS, isPackaged: false })
+      resolveAppPaths({
+        appData: '/home/ann/.config',
+        env: HOOKS,
+        isPackaged: false,
+        appPath: SOURCE_APP_PATH,
+      })
     ).toEqual({
       userData: E2E_USER_DATA,
       dbPath: path.join(E2E_USER_DATA, 'wa-stay.db'),
@@ -58,9 +73,17 @@ describe('resolveAppPaths', () => {
     });
   });
 
-  it('packaged: the hooks are ignored', () => {
+  it.each([
+    ['packaged', true],
+    ['a packaged executable renamed to electron (isPackaged false, app.asar)', false],
+  ])('%s: the hooks are ignored', (_, isPackaged) => {
     expect(
-      resolveAppPaths({ appData: '/home/ann/.config', env: HOOKS, isPackaged: true })
+      resolveAppPaths({
+        appData: '/home/ann/.config',
+        env: HOOKS,
+        isPackaged,
+        appPath: '/opt/WA Stay/resources/app.asar',
+      })
     ).toMatchObject({
       userData: path.join('/home/ann/.config', 'WA Stay'),
       legacyUserData: path.join('/home/ann/.config', 'parkstay-bookings'),
@@ -72,6 +95,7 @@ describe('resolveAppPaths', () => {
       appData: '/home/ann/.config',
       env: { WA_STAY_USER_DATA_DIR: 'relative/user-data' },
       isPackaged: false,
+      appPath: SOURCE_APP_PATH,
       cwd: ROOT,
     });
     expect(paths).toMatchObject({
@@ -84,9 +108,21 @@ describe('resolveAppPaths', () => {
   it('the portable build uses the same folders (only its executable runs from a temp folder)', () => {
     const env = { PORTABLE_EXECUTABLE_FILE: 'D:\\Apps\\WA Stay 2.0.0.exe' };
     expect(
-      resolveAppPaths({ appData: APP_DATA, env, isPackaged: true, pathApi: path.win32 })
+      resolveAppPaths({
+        appData: APP_DATA,
+        env,
+        isPackaged: true,
+        appPath: PACKAGED_APP_PATH,
+        pathApi: path.win32,
+      })
     ).toEqual(
-      resolveAppPaths({ appData: APP_DATA, env: {}, isPackaged: true, pathApi: path.win32 })
+      resolveAppPaths({
+        appData: APP_DATA,
+        env: {},
+        isPackaged: true,
+        appPath: PACKAGED_APP_PATH,
+        pathApi: path.win32,
+      })
     );
   });
 
@@ -96,6 +132,7 @@ describe('resolveAppPaths', () => {
       appData: '$APPDATA',
       env: {},
       isPackaged: true,
+      appPath: PACKAGED_APP_PATH,
       pathApi: path.win32,
     });
     expect(nsh).toContain(`CreateDirectory "${paths.snapshotDir}"`);
@@ -105,23 +142,37 @@ describe('resolveAppPaths', () => {
 });
 
 describe('configureAppPaths', () => {
-  function fakeApp(isPackaged: boolean) {
-    return { isPackaged, getPath: jest.fn(() => '/home/ann/.config'), setPath: jest.fn() };
+  function fakeApp(
+    isPackaged: boolean,
+    appPath = isPackaged ? PACKAGED_APP_PATH : SOURCE_APP_PATH
+  ) {
+    return {
+      isPackaged,
+      getAppPath: jest.fn(() => appPath),
+      getPath: jest.fn(() => '/home/ann/.config'),
+      setPath: jest.fn(),
+    };
   }
 
-  it('packaged: pins userData to the WA Stay data folder once, whatever the environment says', () => {
-    const app = fakeApp(true);
+  it.each([
+    ['packaged', true],
+    ['a packaged executable renamed to electron (isPackaged false, app.asar)', false],
+  ])(
+    '%s: pins userData to the WA Stay data folder once, whatever the environment says',
+    (_, isPackaged) => {
+      const app = fakeApp(isPackaged, PACKAGED_APP_PATH);
 
-    const { paths, testHooks } = configureAppPaths(app, HOOKS);
+      const { paths, testHooks } = configureAppPaths(app, HOOKS);
 
-    expect(app.getPath).toHaveBeenCalledWith('appData');
-    expect(app.setPath.mock.calls).toEqual([
-      ['userData', path.join('/home/ann/.config', 'WA Stay')],
-    ]);
-    expect(paths.dbPath).toBe(path.join('/home/ann/.config', 'WA Stay', 'wa-stay.db'));
-    expect(paths.legacyUserData).toBe(path.join('/home/ann/.config', 'parkstay-bookings'));
-    expect(testHooks).toEqual({});
-  });
+      expect(app.getPath).toHaveBeenCalledWith('appData');
+      expect(app.setPath.mock.calls).toEqual([
+        ['userData', path.join('/home/ann/.config', 'WA Stay')],
+      ]);
+      expect(paths.dbPath).toBe(path.join('/home/ann/.config', 'WA Stay', 'wa-stay.db'));
+      expect(paths.legacyUserData).toBe(path.join('/home/ann/.config', 'parkstay-bookings'));
+      expect(testHooks).toEqual({});
+    }
+  );
 
   it('from source: the WA Stay folder, then the test override applied after it; the paths follow the hooks', () => {
     const app = fakeApp(false);

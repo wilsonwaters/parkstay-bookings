@@ -62,7 +62,7 @@ const { paths, testHooks, instance } = bootstrapShell(app, {
 const rendererEntry = resolveRendererEntry(
   process.env,
   path.join(__dirname, '../../../dist/renderer/index.html'),
-  app.isPackaged
+  { isPackaged: app.isPackaged, appPath: app.getAppPath() }
 );
 
 // Global references

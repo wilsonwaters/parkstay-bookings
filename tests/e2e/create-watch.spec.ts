@@ -5,7 +5,13 @@
  */
 
 import { expect, test, withoutGuardedRequests, withoutRemoteImages } from './support/wa-stay';
-import { expectHeadingFocused, expectRoute, NAV_PAGES, navLink } from './support/shell';
+import {
+  expectCurrentStep,
+  expectHeadingFocused,
+  expectRoute,
+  NAV_PAGES,
+  navLink,
+} from './support/shell';
 
 /** The catalogue syncs 5 s after launch (V5); give it room on a slow runner. */
 const CATALOGUE_TIMEOUT_MS = 30_000;
@@ -24,7 +30,7 @@ test('creates a ParkStay watch through the provider-first flow', async ({ launch
 
   // 1. Provider: the only provider with watches, chosen for you but shown.
   const steps = window.getByRole('navigation', { name: 'New watch steps' });
-  await expect(steps.locator('[aria-current="step"]')).toContainText('Provider');
+  await expectCurrentStep(steps, 'Provider');
   await expect(window.getByRole('radio', { name: 'ParkStay WA' })).toBeChecked();
   await window.getByRole('button', { name: 'Continue' }).click();
 

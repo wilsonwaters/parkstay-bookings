@@ -4,15 +4,21 @@
  * userData), fixture mode after `ready` and before the container, which then serves
  * providers from fixtures. With the override and no `WA_STAY_LEGACY_DATA_DIR`, the legacy
  * install migration has no legacy source, so a test never reads a real profile. A packaged
- * app does none of it, even with every variable set.
+ * app does none of it, even with every variable set, and neither does one whose executable
+ * was renamed to `electron` (Electron then reports it unpackaged, but its code is in app.asar):
+ * it also loads its own page, whatever `ELECTRON_RENDERER_URL` says.
  */
 
 import { EventEmitter } from 'events';
 import path from 'path';
 
 const mockOrder: string[] = [];
+const SOURCE_APP_PATH = '/repo';
+const PACKAGED_APP_PATH = '/opt/WA Stay/resources/app.asar';
+
 const mockState = {
   userData: '/user-data',
+  appPath: SOURCE_APP_PATH,
   containerOptions: null as null | Record<string, unknown>,
 };
 
@@ -26,6 +32,7 @@ jest.mock('electron', () => {
     }),
     whenReady: jest.fn(() => Promise.resolve()),
     getPath: jest.fn(() => mockState.userData),
+    getAppPath: jest.fn(() => mockState.appPath),
     setPath: jest.fn((name: string, value: string) => {
       mockOrder.push(`setPath ${name} ${value}`);
       mockState.userData = value;
@@ -110,6 +117,10 @@ jest.mock('@main/app/main-window', () => {
   };
 });
 
+const mainWindow = jest.requireMock('@main/app/main-window') as {
+  createMainWindow: jest.Mock;
+};
+
 const electron = jest.requireMock('electron') as {
   app: EventEmitter & { isPackaged: boolean; setPath: jest.Mock };
   session: { defaultSession: { webRequest: { onBeforeRequest: jest.Mock } } };
@@ -132,6 +143,7 @@ async function launch(): Promise<void> {
 beforeEach(() => {
   mockOrder.length = 0;
   mockState.userData = '/user-data';
+  mockState.appPath = SOURCE_APP_PATH;
   mockState.containerOptions = null;
   electron.app.isPackaged = false;
   electron.app.removeAllListeners();
@@ -140,7 +152,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  for (const name of Object.keys(HOOK_VARS)) {
+  delete (process as { resourcesPath?: string }).resourcesPath;
+  for (const name of [...Object.keys(HOOK_VARS), 'ELECTRON_RENDERER_URL']) {
     if (savedEnv[name] === undefined) delete process.env[name];
     else process.env[name] = savedEnv[name];
   }
@@ -172,26 +185,39 @@ describe('test-only hooks at startup', () => {
     });
   });
 
-  it('packaged: no userData override, no network guard and no fixture mode, even with the variables set', async () => {
-    electron.app.isPackaged = true;
+  it.each([
+    ['packaged', true],
+    ['a packaged executable renamed to electron (isPackaged false, app.asar)', false],
+  ])(
+    '%s: no userData override, no network guard, no fixture mode and its own page, even with the variables set',
+    async (_, isPackaged) => {
+      electron.app.isPackaged = isPackaged;
+      mockState.appPath = PACKAGED_APP_PATH;
+      // Electron sets it; a packaged window's icon is read from it
+      (process as { resourcesPath?: string }).resourcesPath = path.dirname(PACKAGED_APP_PATH);
+      process.env.ELECTRON_RENDERER_URL = 'https://evil.example/';
 
-    await launch();
+      await launch();
 
-    // Only the app's own userData folder: the test override is ignored when packaged
-    expect(electron.app.setPath).toHaveBeenCalledTimes(1);
-    expect(electron.app.setPath).not.toHaveBeenCalledWith(
-      'userData',
-      HOOK_VARS.WA_STAY_USER_DATA_DIR
-    );
-    expect(electron.session.defaultSession.webRequest.onBeforeRequest).not.toHaveBeenCalled();
-    expect(electron.app.listenerCount('session-created')).toBe(0);
-    expect(mockOrder).toEqual([
-      `setPath userData ${path.join('/user-data', 'WA Stay')}`,
-      'requestSingleInstanceLock',
-      `migrateLegacyInstall ${path.join('/user-data', 'WA Stay', 'wa-stay.db')} (legacy source ${path.join('/user-data', 'parkstay-bookings', 'parkstay.db')})`,
-      `openDatabase ${path.join('/user-data', 'WA Stay', 'wa-stay.db')}`,
-      'createContainer',
-    ]);
-    expect(mockState.containerOptions?.fixtureMode).toBeUndefined();
-  });
+      // Only the app's own userData folder: the test override is ignored when packaged
+      expect(electron.app.setPath).toHaveBeenCalledTimes(1);
+      expect(electron.app.setPath).not.toHaveBeenCalledWith(
+        'userData',
+        HOOK_VARS.WA_STAY_USER_DATA_DIR
+      );
+      expect(electron.session.defaultSession.webRequest.onBeforeRequest).not.toHaveBeenCalled();
+      expect(electron.app.listenerCount('session-created')).toBe(0);
+      expect(mockOrder).toEqual([
+        `setPath userData ${path.join('/user-data', 'WA Stay')}`,
+        'requestSingleInstanceLock',
+        `migrateLegacyInstall ${path.join('/user-data', 'WA Stay', 'wa-stay.db')} (legacy source ${path.join('/user-data', 'parkstay-bookings', 'parkstay.db')})`,
+        `openDatabase ${path.join('/user-data', 'WA Stay', 'wa-stay.db')}`,
+        'createContainer',
+      ]);
+      expect(mockState.containerOptions?.fixtureMode).toBeUndefined();
+      expect(mainWindow.createMainWindow).toHaveBeenCalledWith(
+        expect.objectContaining({ entry: expect.objectContaining({ kind: 'file' }) })
+      );
+    }
+  );
 });
