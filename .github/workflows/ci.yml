@@ -93,6 +93,18 @@ jobs:
       - name: Run timestamp tests in Perth time
         run: npm run test:tz
 
+      # Jest prints only the signal when a worker crashes (a SIGSEGV seen now and then on the macOS
+      # runner, in a different test file each time); macOS's crash report names the faulting
+      # library and stack. Kept so the next one can be diagnosed.
+      - name: Keep crash reports
+        if: failure() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-reports-macos
+          path: ~/Library/Logs/DiagnosticReports/node*
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload coverage to Codecov
         if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@v3
