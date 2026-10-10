@@ -12,7 +12,7 @@ Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task spe
 - **U5** (#39) Notifications and system surfaces: IMPLEMENTED on lane/w (`95b5632`; gate ×3 green, 2833; axe 0 on bell/chip/update/About; desktop title "ParkStay · …", click restores the window and navigates via an allow-listed path). Needs a rebase onto U1 (LEGACY_ALLOW_LIST_MAX → 9; `useNow`/`timeFormat` identical), then review. Created reusable `AboutPanel` and `Countdown`; fixed D2 Popover focus return and notification `createdAt` read as UTC.
 - **U2** (#36) Site Sniper provider-first: implementing (M, reusing U1 blocks), lane M. Countdown from U5 when merged.
 - **U3** (#37) Bookings provider-first: implementing (M), lane X.
-- Next (multiple agents approved): then P7, U3, U5,  Q2 last.
+- Next (multiple agents approved): reviews of E3, U5, U4, U2, U3 as they finish; then P7 (dead-code cleanup, v10), Q1 phase-2 review, Q2 (docs, CLAUDE.md incl. `RATE_LIMITED`, key components), system verification, final review, PR.
 
 ## Notes
 - 2026-10-09 23:45 UTC: standing stakeholder permission to back up in-progress lanes to GitHub `wip/*` branches at each checkpoint (the git proxy refuses deletes; the stakeholder deletes merged ones). Current: `wip/u1-watches`, `wip/v3-class-listed` (plus merged `wip/v4-core-scheduler`, `wip/v6-accounts-phase1`, `wip/e1-explore`, deletable). Multiple agents in parallel approved.
