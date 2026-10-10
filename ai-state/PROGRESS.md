@@ -1,13 +1,16 @@
 # Project Progress — WA Stay
 
-_Last updated: 2026-10-09 (orchestrator)_
+_Last updated: 2026-10-10 (orchestrator)_
 
 ## Phase
-Phase 5 — System verification (all feature tasks merged except Q2 docs). Previously: Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
+Phase 6 — Final review done; the single PR is next. Previously: Phase 5 — System verification (passed), Phase 4 — Execution loop. Planning: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
 
 ## Currently in flight
-- **Phase 5 system verification** (`056c5d3`): no blockers. Criteria 1–10 met (1 and 6 completed by Q2 after the run; 2 with the approved deviations). All 6 critical/high tech-review findings traced to fixing commits. Gate ×3 green, e2e 20/20, electron 36/36, packaged smoke 16/16, 108 axe audits 0 critical/serious, upgrade v5/v6 → v10 with the v1 DB hash unchanged, CSP/sandbox/IPC refusal/no secrets in logs confirmed. Findings being fixed (lane X): map resize counted as a user move (M1), a stale snipe makes one wasted release lookup, `build` does not clean `dist/`, coverage thresholds far below actual, `.d.ts`/maps in the asar, legacy gear types. Note: the verifier exceeded the live-request cap (~105 read-only GETs, mostly hot-linked photos; no holds) because its counter failed to load; a normal Explore session hot-links ~90 ParkStay photos by design (O8). Orchestrator scrubbed a local path and neutralised rule wording in ai-state.
-- Next: system verification (Phase 5); final review (Phase 6); sync issue bodies; open the single PR (no AI attribution; Closes #12–#41); hand the stakeholder the repo description and checklist.
+- **Phase 6 final review** of the whole change (`b2b8db5..6f53a18`), two independent reviewers:
+  - **A — code, security, release readiness:** FIX FIRST on one major finding, now fixed (`d618101`): v8 copied v1's never-used `auto_book`, so upgraded watches with "Enable Auto-booking" ticked would have started placing real holds; v8 now writes 0 (test proves the old code failed). Also: background update-check failures no longer show the update card (only a download the person started reports, in plain words); the tag pipeline checks formatting. Provider boundary, composition root, IPC guard, CSP, window guards, `runsFromSource`, secrets and Mapbox token placement confirmed. `npm audit --omit=dev`: 12 high, 0 critical, none reachable at runtime by the reviewer's reading. Attribution and secrets scans clean.
+  - **B — docs, copy, design, a11y (also Q2's review):** FIX FIRST on docs: the release process bumped `minor` (1.3.0 under a v2.0.0 tag) and the checklist was out of order and asked for an auto-update test before publishing. Fixed (`9c46003`): `npm version major`, the 2.0.0 steps in order (rename → redirect incl. `releases.atom` → description → Mapbox secret → green CI → tag builds a draft → Windows checks on the draft, update path via the installer's `--updated` → publish → real update), LICENSE decision added, user-guide/troubleshooting/CHANGELOG/CLAUDE.md fixes. Design polish F1 (`434dff3`): one shared `HoldPanel` for watches and snipes, one `BackLink`, the place page's stay card on the first screen at 1440×900, focus into the email form, one "available" wording and date-range format. axe 0 critical/serious on 42 captures; 201 tab stops all with visible focus. Design verdict: crafted and Airbnb-like with photos; placeholders without (O8).
+- Gate on the final head: lint 0 errors, format, type-check, 3666 tests, `test:tz` 7, e2e 21 (+1 opt-in skip).
+- Next: open the single PR (no AI attribution; Closes #12–#41); hand the stakeholder the repo description, the release checklist and the open decisions. Issue bodies are not re-synced: the spec files in `ai-state/streams/*/tasks/` are canonical and the PR closes the issues.
 
 ## Notes
 - 2026-10-10 ~04:30 UTC: a third usage limit stopped U4 (final gate), U2 (gate), the U3 fix and the E3 fix; all resumed at 06:25 UTC from saved state (U4 `28f3e40` and U2 `cd243b0` backed up to `wip/*`).
@@ -58,17 +61,14 @@ Phase 5 — System verification (all feature tasks merged except Q2 docs). Previ
 - Dependencies installed: playwright-core 1.56.1, sanitize-html 2.17, mapbox-gl, lucide-react, Figtree and Fraunces.
 
 ## Next to dispatch
-- After P4: P5 (SecretVault) and P6 (sandboxed preload) in parallel.
-- After V1: V2, V3 and V7; D3 (once D2 is merged).
-- Lane M: P2 (after P1 merges) → P3 → {P4, P5, P6} → V1 → …
-- Lane R: D2 (after D1 merges) → D3 (needs V1) → …
-- Lane A: B1 (after D1 merges).
+- Nothing: all 30 tasks, the verification fixes and the final-review fixes are merged.
 
 ## Notes
 - Spec files in `ai-state/streams/*/tasks/` are canonical. Orchestrator addenda are added there, and issue bodies are synced at the end.
 
 ## Active blockers
-- None. Stakeholder actions pending (non-blocking): add the `MAPBOX_ACCESS_TOKEN` Actions secret; rename the repo before releasing v2.0.0; confirm ParkStay sign-in (PQ1/PQ2) during V6 verification.
+- None. Stakeholder actions (non-blocking, all in `docs/release-checklist-2.0.md`): rename the repo and set its description before tagging 2.0.0; add the `MAPBOX_ACCESS_TOKEN` Actions secret; decide the LICENSE holder; delete the merged `wip/*` branches; the manual Windows, ParkStay sign-in (PQ1/PQ2) and GPU checks.
+- Follow-ups suggested by the final review (not blocking): Electron fuses (RunAsNode, NODE_OPTIONS, inspect off; OnlyLoadAppFromAsar on); a permission handler on the main window's session; a non-major `npm audit fix` and moving `axios`/`tsconfig-paths` to devDependencies; small duplicated helpers (`zonedInstant`, `unitNounFor`, `needsAccountForHolds`, `withoutQuery`); `ParkStayBookingData` in shared types; upload `.blockmap` files for differential updates; real place photos in the docs screenshots.
 
 ## Proposed GitHub repo description (stakeholder to paste)
 > WA Stay — find and book places to stay across Western Australia. Map-first discovery, availability watches and instant site holds across providers, starting with ParkStay WA. Electron desktop app.
