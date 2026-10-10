@@ -194,7 +194,7 @@ interface ProviderContext {
 ## 6. Upgrade path (B-stream)
 
 - `appId` stays `com.parkstay.bookings`. `productName` becomes `WA Stay` and package `name` becomes `wa-stay`.
-- `app.setPath('userData', <appData>/WA Stay)` is called before `ready`. On first run, if the new DB is absent and the legacy `<appData>/parkstay-bookings/parkstay.db` exists, it is copied with better-sqlite3 `backup()` to `<userData>/wa-stay.db`. `gmail-oauth.json` is copied too. A `migration.json` marker is written. The legacy folder is left untouched.
+- `app.setPath('userData', <appData>/WA Stay)` is called before `ready`. On first run, if the new DB is absent and the legacy `<appData>/parkstay-bookings/parkstay.db` exists, it is copied with better-sqlite3 `backup()` to `<userData>/wa-stay.db`. (P7 amendment: `gmail-oauth.json` is no longer copied; WA Stay deletes any copy in its own folder, and the v1 folder keeps its file.) A `migration.json` marker is written. The legacy folder is left untouched.
 - The installer removes legacy `WA ParkStay Bookings` shortcuts. Uninstall data cleanup targets `WA Stay`.
 - Auto-launch is re-registered under the new name and the legacy entry is removed.
 - Publish target is `wilsonwaters/wa-stay`. v1 clients reach it through GitHub's rename redirect.

@@ -34,7 +34,7 @@ L. This is larger than `streams.md`'s M; DocQ5 proposes a split.
    - data is copied to `%APPDATA%\WA Stay`, and the old `%APPDATA%\parkstay-bookings` is kept as a backup that is safe to delete once checked;
    - the install folder name is unchanged;
    - shortcuts are renamed, and taskbar pins need re-pinning;
-   - launch-at-login carries over; Gmail carries over;
+   - launch-at-login carries over; Gmail OTP is removed (P7): WA Stay deletes its own copy, the v1 folder keeps `gmail-oauth.json` (safe to delete) and access is revoked in the Google account;
    - what the ParkStay account needs (per V6);
    - downgrade is unsupported.
 3. **Building from source:**
