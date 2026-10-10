@@ -120,6 +120,7 @@ One column, `fixed bottom-4 right-4`, 380 px wide at most, with an 8 px gap, por
 - `catalog.ts`: `useCatalogSearch(query)` (`catalog.search` with `limit: 5000`, previous results kept while the next load, 5 minutes fresh), `useCatalogAll()` (the unfiltered catalogue, for filter options and suggestions; the same cache entry as an empty search), `useCatalogStatus()`, `useCatalogRefresh()`, and `useCatalogUpdates()`, which reloads them on `catalog:updated`. The map area is never sent: Explore filters by area in the renderer.
   - `useLocationDetail(key)`: `catalog.get` (10 minutes fresh; main caches it 6 hours), showing the place's summary from a cached search (`isPlaceholderData`) while it loads. `useLocationDetailUpdates(key)` reloads only that detail when its provider's catalogue syncs.
   - `useLocationCheck(key, stay)`: `catalog.checkLocation`, asked only once a stay is given (the person pressed Check), one cache entry per stay, 1 minute fresh as in main, and never retried by itself.
+  - `useBulkAvailability(stay, { settled, online })` (E3): `catalog.availability(stay, { providerIds: [id] })`, one query per catalogue provider with `bulkAvailability`, so one provider failing or slow never holds up another. Keyed by `stayKey(stay)` (`arrival_departure_adults_children_infants`) and provider, 2 minutes fresh, kept 15 minutes, never retried or refetched by itself. Nothing is asked while the stay is still changing (`settled`, Explore debounces it 400 ms) or offline, but a stay already in the cache shows at once. A sync (`catalog:updated`) or a refresh reloads every catalogue query except these.
 - **Query client** (`app/queryClient.ts`): `staleTime` 60 s, no refetch on window focus, queries retry once except for `VALIDATION`, `CAPABILITY`, `NOT_FOUND`, `NOT_IMPLEMENTED` and `API_UNAVAILABLE`, and mutations never retry.
 - **Guard:** `tests/unit/renderer/api-boundary.test.ts` fails if `window.api` appears outside `renderer/api/` and its explicit legacy allow-list. The U tasks delete entries as they rebuild each page; the list never grows. The token guard keeps a similar list of the legacy pages.
 
@@ -153,8 +154,9 @@ With no `window.api` (the renderer opened in a plain browser with `npm run dev:r
 | App error | heading, buttons | WA Stay hit a problem · Reload WA Stay · Copy error details |
 | Explore page title | heading level 1 (visually hidden) | Explore places to stay |
 | Explore search | search, combobox, button | Search places · Where · Search |
-| Explore filters | group, buttons | Filters · Provider · Type · Region · Facilities · Book online · Clear all (a chip with choices: "Region, 1 selected") |
-| Explore results | region, heading level 2 | Results · "169 places", or "12 places in map area" once the person has moved the map |
+| Explore filters | group, buttons | Filters · Provider · Type · Region · Facilities · Book online · Available only · Clear all (a chip with choices: "Region, 1 selected") |
+| Explore results | region, heading level 2 | Results · "169 places", or "12 places in map area" once the person has moved the map; with dates "169 places · 8 available for 6–8 Nov", or "… · checking availability…" |
+| Explore availability | button, list | Retry {shortName} availability · Map key |
 | Explore map | region, switch | Map of places · Search as I move the map |
 | Explore below 1024 px | button | Show map · Show list |
 | Place page title | heading level 1 | The place's name, or "This place isn't available" |

@@ -6,7 +6,14 @@ import { ROUTES } from '../app/routes';
 import type { StayParams } from '../app/stayParams';
 import { amenityIcon } from './amenityIcons';
 import { areaLine, hasMapLocation, kindLabel, unitCountLabel } from './locationFormat';
-import { Badge, PhotoPlaceholder, ProviderBadge, Skeleton, VisuallyHidden } from './ui';
+import {
+  Badge,
+  PhotoPlaceholder,
+  ProviderBadge,
+  Skeleton,
+  VisuallyHidden,
+  type BadgeTone,
+} from './ui';
 import { cx } from './ui/cx';
 
 export interface LocationPhotoProps {
@@ -110,6 +117,14 @@ function Amenities({ amenities }: { amenities: string[] }) {
   );
 }
 
+/**
+ * A place's availability for the stay being searched (E3): a badge with its words and tone, or
+ * a skeleton line while it is checked.
+ */
+export type CardAvailability =
+  | { status: 'loading' }
+  | { status: 'ready'; text: string; tone: Extract<BadgeTone, 'available' | 'neutral' | 'danger'> };
+
 export interface LocationCardProps {
   location: LocationSummary;
   /** Its pin is hovered, or it is hovered or focused itself. */
@@ -126,7 +141,12 @@ export interface LocationCardProps {
   stay?: Partial<StayParams>;
   /** History state for the detail link, e.g. where it was opened from. Keep it stable. */
   linkState?: unknown;
-  /** Extra content under the details, e.g. an availability state (E3). */
+  /**
+   * Its availability for the stay being searched, shown under the area line. Leave it out
+   * when no dates are chosen: nothing is shown then.
+   */
+  availability?: CardAvailability | null;
+  /** Extra content under the details. */
   children?: ReactNode;
 }
 
@@ -144,6 +164,7 @@ export const LocationCard = memo(function LocationCard({
   id,
   stay,
   linkState,
+  availability,
   children,
 }: LocationCardProps) {
   const generated = useId();
@@ -188,6 +209,17 @@ export const LocationCard = memo(function LocationCard({
         </p>
         <div id={detailsId} className="flex flex-col gap-1.5">
           {area && <p className="line-clamp-2 text-sm text-fg-secondary">{area}</p>}
+          {availability?.status === 'ready' && (
+            <p>
+              <Badge tone={availability.tone}>{availability.text}</Badge>
+            </p>
+          )}
+          {availability?.status === 'loading' && (
+            <p className="flex h-5 items-center">
+              <Skeleton shape="text" className="w-32" />
+              <VisuallyHidden>Checking availability</VisuallyHidden>
+            </p>
+          )}
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-secondary">
             <ProviderBadge providerId={location.providerId} variant="compact" size="sm" />
             <span>{kindLabel(location.kind)}</span>

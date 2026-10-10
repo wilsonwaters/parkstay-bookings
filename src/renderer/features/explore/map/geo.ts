@@ -6,6 +6,7 @@
 
 import type { BoundingBox, LocationSummary } from '../../../../shared/types/catalog.types';
 import { hasMapLocation } from '../../../components/locationFormat';
+import type { PinAvailability } from './types';
 
 export { hasMapLocation };
 
@@ -100,7 +101,14 @@ export interface LocationFeatureProperties {
   name: string;
   /** The pill text: the name, truncated. */
   label: string;
+  /** With dates (E3): the place's availability state, which colours its pin and pill. */
+  avail?: string;
+  /** With dates (E3): the pill text instead of the name ("8 available", "Full"). */
+  availLabel?: string;
 }
+
+/** A place a provider said nothing about: its pill reads "–". */
+const UNKNOWN_PIN: PinAvailability = { state: 'unknown', pill: '–' };
 
 export interface LocationFeature {
   type: 'Feature';
@@ -113,17 +121,31 @@ export interface LocationFeatureCollection {
   features: LocationFeature[];
 }
 
-/** The map's GeoJSON: one point per mappable location, keyed by its location key. */
+/**
+ * The map's GeoJSON: one point per mappable location, keyed by its location key. With
+ * `availability` (dates are set) each point also carries `avail` and `availLabel`.
+ */
 export function toFeatureCollection(
-  items: readonly Pick<LocationSummary, 'key' | 'name' | 'lat' | 'lng'>[]
+  items: readonly Pick<LocationSummary, 'key' | 'name' | 'lat' | 'lng'>[],
+  availability?: ReadonlyMap<string, PinAvailability> | null
 ): LocationFeatureCollection {
   const features: LocationFeature[] = [];
   for (const item of items) {
     if (!hasMapLocation(item)) continue;
+    const properties: LocationFeatureProperties = {
+      key: item.key,
+      name: item.name,
+      label: pillLabel(item.name),
+    };
+    if (availability) {
+      const pin = availability.get(item.key) ?? UNKNOWN_PIN;
+      properties.avail = pin.state;
+      properties.availLabel = pin.pill;
+    }
     features.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [item.lng, item.lat] },
-      properties: { key: item.key, name: item.name, label: pillLabel(item.name) },
+      properties,
     });
   }
   return { type: 'FeatureCollection', features };

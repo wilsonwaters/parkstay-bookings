@@ -36,12 +36,16 @@ export {
 } from './notifications';
 export { useDownloadUpdate, useInstallUpdate } from './updater';
 export {
+  BULK_AVAILABILITY_GC_TIME_MS,
+  BULK_AVAILABILITY_STALE_TIME_MS,
   CATALOG_STALE_TIME_MS,
   LOCATION_CHECK_STALE_TIME_MS,
   LOCATION_DETAIL_STALE_TIME_MS,
   LOCATION_SEARCH_LIMIT,
   LOCATION_SEARCH_MIN_CHARS,
   normaliseCatalogQuery,
+  stayKey,
+  useBulkAvailability,
   useCatalogAll,
   useCatalogRefresh,
   useCatalogSearch,
@@ -51,6 +55,8 @@ export {
   useLocationDetail,
   useLocationDetailUpdates,
   useLocationSearch,
+  type BulkAvailability,
+  type BulkAvailabilityStatus,
 } from './catalog';
 export {
   WATCH_EVENT_COALESCE_MS,

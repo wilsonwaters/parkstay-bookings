@@ -61,6 +61,32 @@ describe('map geometry', () => {
     });
   });
 
+  it('adds each place availability with dates, and "unknown" for a place not in it', () => {
+    const places = [
+      { key: 'parkstay:20', name: 'Bungarra', lng: 113.84, lat: -22.247 },
+      { key: 'parkstay:43', name: 'Lucky Bay', lng: 122.23, lat: -33.99 },
+    ];
+    const availability = new Map([['parkstay:20', { state: 'available', pill: '3 available' }]]);
+    expect(toFeatureCollection(places, availability).features.map((f) => f.properties)).toEqual([
+      {
+        key: 'parkstay:20',
+        name: 'Bungarra',
+        label: 'Bungarra',
+        avail: 'available',
+        availLabel: '3 available',
+      },
+      {
+        key: 'parkstay:43',
+        name: 'Lucky Bay',
+        label: 'Lucky Bay',
+        avail: 'unknown',
+        availLabel: '–',
+      },
+    ]);
+    // Without dates there is nothing to add.
+    expect(toFeatureCollection(places, null).features[0].properties).not.toHaveProperty('avail');
+  });
+
   it('cuts long names to 22 characters for the map pill, keeping the full name', () => {
     // 51 characters, ParkStay's longest name.
     const name = 'Chapman Pool (formerly Warner Glen at Chapman Pool)';

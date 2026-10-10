@@ -36,18 +36,28 @@ export interface MapTokens {
   white: string;
   /** sand-50: land. */
   sand50: string;
+  /** sand-100 (`surface-subtle`): full and not-open pills and pins. */
+  sand100: string;
   /** sand-200: roads and road casings. */
   sand200: string;
   /** sand-500: casings of unsealed tracks, the state border. */
   sand500: string;
+  /** sand-600 (`fg-muted`): text on full and not-open pills. */
+  sand600: string;
   /** ocean-100: water. */
   ocean100: string;
   /** ocean-200: rivers and creeks. */
   ocean200: string;
   /** eucalypt-50: national parks and parks. */
   eucalypt50: string;
-  /** eucalypt-600: national park edges, faint. */
+  /** eucalypt-600 (`available`): national park edges, faint; available pills, pins and clusters. */
   eucalypt600: string;
+}
+
+/** A place's availability on the map (E3): its state, and the text its pill shows. */
+export interface PinAvailability {
+  state: string;
+  pill: string;
 }
 
 /**
@@ -55,8 +65,17 @@ export interface MapTokens {
  * tests use a fake. Data and highlight calls are cheap to repeat.
  */
 export interface MapController {
-  /** Replaces the places shown. */
-  setData(items: readonly LocationSummary[]): void;
+  /**
+   * Replaces the places shown. With `availability` (dates are set) every pill shows its
+   * place's availability instead of its name, at every zoom, coloured by state; a place
+   * missing from it reads "unknown". Without it the pills show names from zoom 8.
+   */
+  setData(
+    items: readonly LocationSummary[],
+    availability?: ReadonlyMap<string, PinAvailability> | null
+  ): void;
+  /** The pills' fill opacity, for the loading pulse (1 when nothing loads). */
+  setPillOpacity(opacity: number): void;
   setHovered(key: string | null): void;
   setSelected(key: string | null): void;
   /** Frames `bbox`; `animate: false` jumps (the first view of a search opened from a link). */

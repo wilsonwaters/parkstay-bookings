@@ -73,4 +73,22 @@ describe('Chip', () => {
     expect(ref.current).toBe(screen.getByRole('button', { name: 'Type' }));
     expect(ref.current).toBeDisabled();
   });
+
+  it('stays focusable but ignores presses while aria-disabled, so a tooltip can say why', async () => {
+    const onClick = jest.fn();
+    const user = userEvent.setup();
+    render(
+      <Chip pressed={false} aria-disabled onClick={onClick}>
+        Available only
+      </Chip>
+    );
+    const chip = screen.getByRole('button', { name: 'Available only' });
+    await user.tab();
+    expect(chip).toHaveFocus();
+    await user.click(chip);
+    await user.keyboard('{Enter}');
+    expect(onClick).not.toHaveBeenCalled();
+    expect(chip).toHaveAttribute('aria-disabled', 'true');
+    expect(chip).toHaveAttribute('aria-pressed', 'false');
+  });
 });

@@ -7,6 +7,8 @@ import {
   MAP_FONT_BOLD,
   PILL_IMAGE_ID,
   PREVIEWED,
+  PULSE_INTERVAL_MS,
+  PULSE_OPACITY,
   pillImage,
   SOURCE_ID,
   SOURCE_SPEC,
@@ -18,8 +20,10 @@ const TOKENS: MapTokens = {
   ink700: 'token-ink-700',
   white: 'token-white',
   sand50: 'token-sand-50',
+  sand100: 'token-sand-100',
   sand200: 'token-sand-200',
   sand500: 'token-sand-500',
+  sand600: 'token-sand-600',
   ocean100: 'token-ocean-100',
   ocean200: 'token-ocean-200',
   eucalypt50: 'token-eucalypt-50',
@@ -71,7 +75,9 @@ describe('map source and layers', () => {
       'text-field': ['get', 'point_count_abbreviated'],
       'text-font': MAP_FONT_BOLD,
     });
-    expect(count.paint).toEqual({ 'text-color': TOKENS.white });
+    // White either way; state dependent so Mapbox GL can restyle the source's other symbol
+    // layer while places have feature state (see layers.ts).
+    expect(count.paint).toEqual({ 'text-color': ['case', ACTIVE, TOKENS.white, TOKENS.white] });
   });
 
   it('fills every pin ink with a white ring, larger with a soft halo while hovered or selected', () => {
@@ -94,16 +100,133 @@ describe('map source and layers', () => {
     });
   });
 
-  it('uses only ink and white, so pins outrank everything on the base map', () => {
-    const colours = new Set<unknown>();
-    for (const layer of buildLayers(TOKENS)) {
+  /** Every colour token the layers' paint uses, however deep in an expression. */
+  const coloursOf = (layers: ReturnType<typeof buildLayers>) => {
+    const tokens = new Set<string>(Object.values(TOKENS));
+    const found = new Set<string>();
+    const walk = (value: unknown): void => {
+      if (Array.isArray(value)) value.forEach(walk);
+      else if (typeof value === 'string' && tokens.has(value)) found.add(value);
+    };
+    for (const layer of layers) {
       for (const [name, value] of Object.entries(layer.paint ?? {})) {
-        if (!name.endsWith('color')) continue;
-        const values = Array.isArray(value) ? value.slice(-2) : [value];
-        values.forEach((v) => colours.add(v));
+        if (name.endsWith('color')) walk(value);
       }
     }
-    expect([...colours].sort()).toEqual([TOKENS.ink, TOKENS.white].sort());
+    return [...found].sort();
+  };
+
+  it('uses only ink and white, so pins outrank everything on the base map', () => {
+    expect(coloursOf(buildLayers(TOKENS))).toEqual([TOKENS.ink, TOKENS.white].sort());
+  });
+
+  describe('with dates (availability)', () => {
+    const layers = buildLayers(TOKENS, { withAvailability: true });
+    const [clusters, count, , dot, pill] = layers;
+    const AVAIL = ['get', 'avail'];
+
+    it('counts the available places in each cluster', () => {
+      expect(SOURCE_SPEC.clusterProperties).toEqual({
+        availableCount: ['+', ['case', ['==', AVAIL, 'available'], 1, 0]],
+      });
+    });
+
+    it('turns a cluster eucalypt when it holds an available place, keeping its white count', () => {
+      expect(clusters.paint?.['circle-color']).toEqual([
+        'case',
+        ['>', ['get', 'availableCount'], 0],
+        TOKENS.eucalypt600,
+        TOKENS.ink,
+      ]);
+      expect(count.paint).toEqual({ 'text-color': ['case', ACTIVE, TOKENS.white, TOKENS.white] });
+    });
+
+    it('shows the state on every pill at every zoom, available pills placed first', () => {
+      expect(pill.minzoom).toBeUndefined();
+      expect(pill.layout).toMatchObject({
+        'text-field': ['get', 'availLabel'],
+        'icon-image': PILL_IMAGE_ID,
+        'symbol-sort-key': ['match', AVAIL, 'available', 0, 1],
+      });
+    });
+
+    it('fills available pills eucalypt with white text, full and not open sand with muted text, others white; ink while active', () => {
+      expect(pill.paint).toMatchObject({
+        'icon-color': [
+          'case',
+          ACTIVE,
+          TOKENS.ink,
+          [
+            'match',
+            AVAIL,
+            'available',
+            TOKENS.eucalypt600,
+            ['full', 'none-open'],
+            TOKENS.sand100,
+            TOKENS.white,
+          ],
+        ],
+        'text-color': [
+          'case',
+          ACTIVE,
+          TOKENS.white,
+          [
+            'match',
+            AVAIL,
+            'available',
+            TOKENS.white,
+            ['full', 'none-open'],
+            TOKENS.sand600,
+            TOKENS.ink,
+          ],
+        ],
+        // Every pill keeps its ink outline.
+        'icon-halo-color': TOKENS.ink,
+      });
+    });
+
+    it('fills available and muted pins, with a white ring, and leaves the others hollow', () => {
+      expect(dot.paint).toMatchObject({
+        'circle-color': [
+          'match',
+          AVAIL,
+          'available',
+          TOKENS.eucalypt600,
+          ['full', 'none-open'],
+          TOKENS.sand600,
+          TOKENS.white,
+        ],
+        'circle-stroke-color': [
+          'match',
+          AVAIL,
+          ['available', 'full', 'none-open'],
+          TOKENS.white,
+          TOKENS.ink,
+        ],
+        'circle-radius': ['case', ACTIVE, 9, 6],
+      });
+    });
+
+    it('pulses the pill fill while loading: the opacity it is given, fading over 700 ms', () => {
+      const dimmed = buildLayers(TOKENS, {
+        withAvailability: true,
+        pillOpacity: PULSE_OPACITY.low,
+      });
+      expect(PULSE_OPACITY).toEqual({ low: 0.55, high: 1 });
+      expect(dimmed[4].paint).toMatchObject({
+        'icon-opacity': ['case', PREVIEWED, 0, 0.55],
+        'icon-opacity-transition': { duration: PULSE_INTERVAL_MS, delay: 0 },
+        // The text stays solid.
+        'text-opacity': ['case', PREVIEWED, 0, 1],
+      });
+      expect(PULSE_INTERVAL_MS).toBe(700);
+    });
+
+    it('adds only the available and muted colours to ink and white', () => {
+      expect(coloursOf(layers)).toEqual(
+        [TOKENS.ink, TOKENS.white, TOKENS.eucalypt600, TOKENS.sand100, TOKENS.sand600].sort()
+      );
+    });
   });
 
   it('shows name pills from zoom 8 on a stretchable SDF pill, swapping to ink when active', () => {

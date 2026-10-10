@@ -1,19 +1,30 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo, useRef } from 'react';
+import {
+  keepPreviousData,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type Query,
+} from '@tanstack/react-query';
 import {
   CATALOG_MAX_LIMIT,
+  type CatalogErrorCode,
   type CatalogQuery,
   type CatalogSearchResult,
   type CatalogStatus,
   type LocationDetail,
 } from '../../shared/types/catalog.types';
 import type {
+  BulkAvailabilityEntry,
   LocationAvailability,
   ProviderId,
   StayQuery,
 } from '../../shared/types/provider.types';
 import { parseLocationKey } from '../../shared/utils/location-key';
-import { unwrap } from './client';
-import { useApiEvent, useInvalidateOn } from './events';
+import { ApiError, toApiError, unwrap } from './client';
+import { useApiEvent } from './events';
+import { useProvidersWith } from './providers';
 import { queryKeys } from './queryKeys';
 
 // Vite replaces `process.env.NODE_ENV` in renderer code; Jest runs on Node (as in ui/dev.ts).
@@ -99,21 +110,37 @@ export function useCatalogStatus(
   });
 }
 
-/** Re-syncs one provider's catalogue, or all of them; afterwards every catalogue query reloads. */
+/**
+ * Every catalogue query except bulk availability: a catalogue sync changes the places, not
+ * whether they are free, and each availability call is a request to the provider. (Places a
+ * sync adds read "unknown" until the stay's availability is next asked for.)
+ */
+const catalogQueriesButAvailability = {
+  queryKey: queryKeys.catalog.all,
+  predicate: (query: Query) => query.queryKey[1] !== 'availability',
+};
+
+/**
+ * Re-syncs one provider's catalogue, or all of them; afterwards every catalogue query reloads
+ * (bulk availability excepted).
+ */
 export function useCatalogRefresh() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (providerId?: ProviderId) => unwrap((api) => api.catalog.refresh(providerId)),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.catalog.all }),
+    onSettled: () => queryClient.invalidateQueries(catalogQueriesButAvailability),
   });
 }
 
 /**
- * Reloads catalogue queries when a provider finishes a sync. The results already on screen
- * stay until the new ones arrive, so nothing flickers.
+ * Reloads catalogue queries when a provider finishes a sync (bulk availability excepted). The
+ * results already on screen stay until the new ones arrive, so nothing flickers.
  */
 export function useCatalogUpdates(): void {
-  useInvalidateOn('catalog:updated', queryKeys.catalog.all);
+  const queryClient = useQueryClient();
+  useApiEvent('catalog:updated', () => {
+    void queryClient.invalidateQueries(catalogQueriesButAvailability);
+  });
 }
 
 /** A place's detail keeps 10 minutes here; main caches it for 6 hours. */
@@ -223,4 +250,169 @@ export function useLocationSearch({
     staleTime: CATALOG_STALE_TIME_MS,
     enabled: Boolean(providerId) && trimmed.length >= LOCATION_SEARCH_MIN_CHARS,
   });
+}
+
+// ---------------------------------------------------------------------------------------
+// Bulk availability (E3)
+// ---------------------------------------------------------------------------------------
+
+/** A stay's bulk availability is asked again after 2 minutes, if the stay is applied again. */
+export const BULK_AVAILABILITY_STALE_TIME_MS = 2 * 60_000;
+/** It stays in the cache for 15 minutes, so dates switched back to show at once. */
+export const BULK_AVAILABILITY_GC_TIME_MS = 15 * 60_000;
+
+/**
+ * A stay as one cache key, `arrival_departure_adults_children_infants`. Guests are part of it
+ * although ParkStay's bulk call ignores them: other providers may not.
+ */
+export function stayKey(stay: StayQuery): string {
+  return [stay.arrival, stay.departure, stay.adults, stay.children ?? 0, stay.infants ?? 0].join(
+    '_'
+  );
+}
+
+/** What one provider answered: its entries, or that it has no bulk availability after all. */
+interface ProviderBulkAvailability {
+  entries: BulkAvailabilityEntry[];
+  supported: boolean;
+}
+
+/** `catalog.availability`'s per-provider error codes, as the renderer's error codes. */
+const BULK_ERROR_CODES: Record<CatalogErrorCode, string> = {
+  'access-gate': 'ACCESS_GATE',
+  timeout: 'TIMEOUT',
+  http: 'PROVIDER_ERROR',
+  parse: 'PROVIDER_ERROR',
+  unknown: 'PROVIDER_ERROR',
+};
+
+/**
+ * One provider's bulk availability: `catalog.availability(stay, { providerIds: [id] })`. Its
+ * failure (listed in the result's `errors`) is thrown, so each provider fails on its own. A
+ * provider main says has no bulk availability (`CAPABILITY`) is not a failure.
+ */
+async function providerBulkAvailability(
+  stay: StayQuery,
+  providerId: ProviderId
+): Promise<ProviderBulkAvailability> {
+  try {
+    const result = await unwrap((api) =>
+      api.catalog.availability(stay, { providerIds: [providerId] })
+    );
+    const failure = result.errors.find((error) => error.providerId === providerId);
+    if (failure) throw new ApiError(failure.message, BULK_ERROR_CODES[failure.code]);
+    const prefix = `${providerId}:`;
+    return { entries: result.entries.filter((e) => e.key.startsWith(prefix)), supported: true };
+  } catch (error) {
+    const apiError = toApiError(error);
+    if (apiError.code === 'CAPABILITY') return { entries: [], supported: false };
+    throw apiError;
+  }
+}
+
+/**
+ * What a provider's bulk availability is doing for the stay:
+ * `idle` (offline, nothing cached), `loading`, `success`, `error`, or `unsupported`.
+ */
+export type BulkAvailabilityStatus = 'idle' | 'loading' | 'success' | 'error' | 'unsupported';
+
+export interface BulkAvailability {
+  /** The stay's entries from every provider that answered, by location key. */
+  byKey: ReadonlyMap<string, BulkAvailabilityEntry>;
+  /** Each bulk provider's status for the stay; empty with no stay. */
+  statusByProvider: Readonly<Record<ProviderId, BulkAvailabilityStatus>>;
+  /** Why each failed provider failed. */
+  errors: Readonly<Record<ProviderId, ApiError>>;
+  /** Asks one provider again (Retry), and no other. */
+  refetch(providerId: ProviderId): void;
+}
+
+export interface BulkAvailabilityOptions {
+  /**
+   * False while the stay is still changing (debounced by the caller): nothing is asked, but a
+   * stay already in the cache shows at once and the others read `loading`.
+   */
+  settled?: boolean;
+  /** False when offline: nothing is asked, and providers with nothing cached read `idle`. */
+  online?: boolean;
+}
+
+const EMPTY_ENTRIES: ReadonlyMap<string, BulkAvailabilityEntry> = new Map();
+
+/**
+ * Bulk availability for `stay` (null: no stay) from every catalogue provider with
+ * `bulkAvailability`: one query per provider, so one failing or slow provider never holds up
+ * another. Keyed by stay and provider: a stay keeps its answers for 15 minutes, and an answer
+ * is only ever shown for the stay it was asked for. Nothing is retried or refetched by itself
+ * (no retry, no refetch on reconnect or focus): a failed provider is asked again by `refetch`,
+ * and a stale stay when it is applied again.
+ */
+export function useBulkAvailability(
+  stay: StayQuery | null,
+  options: BulkAvailabilityOptions = {}
+): BulkAvailability {
+  const { settled = true, online = true } = options;
+  const providersQuery = useProvidersWith('bulkAvailability');
+  const providerIds = useMemo(
+    () => (providersQuery.data ?? []).filter((p) => p.capabilities.catalog).map((p) => p.id),
+    [providersQuery.data]
+  );
+  const key = stay ? stayKey(stay) : null;
+  const enabled = Boolean(stay) && settled && online;
+
+  const results = useQueries({
+    queries:
+      stay && key
+        ? providerIds.map((providerId) => ({
+            queryKey: queryKeys.catalog.availability(key, providerId),
+            queryFn: () => providerBulkAvailability(stay, providerId),
+            enabled,
+            staleTime: BULK_AVAILABILITY_STALE_TIME_MS,
+            gcTime: BULK_AVAILABILITY_GC_TIME_MS,
+            retry: false,
+            refetchOnReconnect: false,
+            refetchOnWindowFocus: false,
+          }))
+        : [],
+  });
+  const latest = useRef(results);
+  latest.current = results;
+
+  // Rebuilt only when a query's state changes. (Not with `combine`: on the render after the
+  // stay changes it can still return the previous stay's result.)
+  const signature = [
+    key,
+    ...results.map((r) => `${r.status}|${r.fetchStatus}|${r.dataUpdatedAt}|${r.errorUpdatedAt}`),
+  ].join('\n');
+  const combined = useMemo(() => {
+    const byKey = new Map<string, BulkAvailabilityEntry>();
+    const statusByProvider: Record<ProviderId, BulkAvailabilityStatus> = {};
+    const errors: Record<ProviderId, ApiError> = {};
+    latest.current.forEach((result, i) => {
+      const id = providerIds[i];
+      if (!id) return;
+      if (result.data) {
+        // An answer in the cache shows, even while it is asked again.
+        statusByProvider[id] = result.data.supported ? 'success' : 'unsupported';
+        for (const entry of result.data.entries) byKey.set(entry.key, entry);
+      } else if (result.isFetching) statusByProvider[id] = 'loading';
+      else if (result.isError) {
+        statusByProvider[id] = 'error';
+        errors[id] = toApiError(result.error);
+      } else statusByProvider[id] = online ? 'loading' : 'idle';
+    });
+    return { byKey: byKey.size ? byKey : EMPTY_ENTRIES, statusByProvider, errors };
+    // `signature` stands for the results (a new array every render), read through `latest`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature, providerIds, online]);
+
+  const refetch = useCallback(
+    (providerId: ProviderId) => {
+      const index = providerIds.indexOf(providerId);
+      if (index >= 0) void latest.current[index]?.refetch();
+    },
+    [providerIds]
+  );
+
+  return useMemo(() => ({ ...combined, refetch }), [combined, refetch]);
 }

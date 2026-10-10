@@ -1,8 +1,16 @@
 import { forwardRef, memo, useEffect, useRef, useState, type ReactNode } from 'react';
-import { CircleAlert, Compass, LoaderCircle, MapPinned, SearchX, Store } from 'lucide-react';
+import {
+  CalendarX,
+  CircleAlert,
+  Compass,
+  LoaderCircle,
+  MapPinned,
+  SearchX,
+  Store,
+} from 'lucide-react';
 import type { LocationSummary } from '../../../../shared/types/catalog.types';
 import type { StayParams } from '../../../app/stayParams';
-import { LocationCard } from '../../../components/LocationCard';
+import { LocationCard, type CardAvailability } from '../../../components/LocationCard';
 import { placesLabel } from '../../../components/locationFormat';
 import { Button, EmptyState, Skeleton } from '../../../components/ui';
 import { cx } from '../../../components/ui/cx';
@@ -22,6 +30,13 @@ export type ResultsState =
   | { kind: 'no-providers' }
   | { kind: 'no-matches' }
   | { kind: 'empty-area' }
+  /** "Available only" is on and availability is still being checked. */
+  | { kind: 'checking' }
+  /**
+   * "Available only" is on and no place has a unit free for the dates (`range`), or, with
+   * `checked` false, no provider could be asked (failed, or offline with nothing saved).
+   */
+  | { kind: 'none-available'; range: string; checked: boolean }
   | { kind: 'results' };
 
 export interface ResultsListProps {
@@ -55,6 +70,16 @@ export interface ResultsListProps {
   initialShown?: number;
   /** Called with the number of cards on the page whenever it changes. */
   onShownChange?: (shown: number) => void;
+  /** The places before "Available only" narrows them: the heading's count. */
+  placeCount?: number;
+  /** Said after the count: "3 available for 6–8 Nov", or "checking availability…". */
+  availabilityNote?: string;
+  /** Each card's availability for the dates, by location key; null without dates. */
+  availability?: ReadonlyMap<string, CardAvailability> | null;
+  /** "Show all places": turns "Available only" off. */
+  onShowAllPlaces?: () => void;
+  /** "Try different dates": opens the date picker. */
+  onTryOtherDates?: () => void;
 }
 
 export { cardId };
@@ -67,6 +92,7 @@ const ResultCard = memo(function ResultCard({
   onHighlight,
   stay,
   linkState,
+  availability,
 }: {
   location: LocationSummary;
   selected: boolean;
@@ -74,6 +100,7 @@ const ResultCard = memo(function ResultCard({
   onHighlight: (key: string | null) => void;
   stay?: Partial<StayParams>;
   linkState?: unknown;
+  availability: CardAvailability | null;
 }) {
   const highlighted = useIsHighlighted(location.key);
   return (
@@ -86,6 +113,7 @@ const ResultCard = memo(function ResultCard({
       onHighlight={onHighlight}
       stay={stay}
       linkState={linkState}
+      availability={availability}
     />
   );
 });
@@ -142,6 +170,11 @@ export function ResultsList({
   linkState,
   initialShown,
   onShownChange,
+  placeCount,
+  availabilityNote,
+  availability = null,
+  onShowAllPlaces,
+  onTryOtherDates,
 }: ResultsListProps) {
   const lg = useMinWidth(1024);
   const xl = useMinWidth(1280);
@@ -187,6 +220,22 @@ export function ResultsList({
 
   const busy = state.kind === 'loading' || state.kind === 'syncing';
   const count = items.length;
+  const places = placeCount ?? count;
+  const heading = [
+    inMapArea ? `${placesLabel(places)} in map area` : placesLabel(places),
+    availabilityNote,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const skeletons = (
+    <ul role="list" className={cx('mt-6 grid gap-x-6 gap-y-8', grid)}>
+      {Array.from({ length: SKELETON_COUNT }, (_, i) => (
+        <li key={i}>
+          <CardSkeleton layout={layout} />
+        </li>
+      ))}
+    </ul>
+  );
 
   let body: ReactNode;
   switch (state.kind) {
@@ -194,13 +243,7 @@ export function ResultsList({
       body = (
         <>
           <Heading>Loading places</Heading>
-          <ul role="list" className={cx('mt-6 grid gap-x-6 gap-y-8', grid)}>
-            {Array.from({ length: SKELETON_COUNT }, (_, i) => (
-              <li key={i}>
-                <CardSkeleton layout={layout} />
-              </li>
-            ))}
-          </ul>
+          {skeletons}
         </>
       );
       break;
@@ -280,10 +323,46 @@ export function ResultsList({
         />
       );
       break;
+    case 'checking':
+      body = (
+        <>
+          <Heading>{heading}</Heading>
+          {skeletons}
+        </>
+      );
+      break;
+    case 'none-available':
+      body = (
+        <EmptyState
+          size="md"
+          icon={<CalendarX size={24} />}
+          title={
+            state.checked
+              ? `No places have sites for ${state.range}`
+              : `Availability couldn't be checked for ${state.range}`
+          }
+          description={
+            state.checked
+              ? 'Places that are full or not open for these dates are hidden.'
+              : 'Show all places, or try again from the notice above.'
+          }
+          actions={
+            <>
+              <Button variant="secondary" onClick={onShowAllPlaces}>
+                Show all places
+              </Button>
+              <Button variant="ghost" onClick={onTryOtherDates}>
+                Try different dates
+              </Button>
+            </>
+          }
+        />
+      );
+      break;
     case 'results':
       body = (
         <>
-          <Heading>{inMapArea ? `${placesLabel(count)} in map area` : placesLabel(count)}</Heading>
+          <Heading>{heading}</Heading>
           <ul role="list" className={cx('mt-6 grid gap-x-6 gap-y-8', grid)}>
             {items.slice(0, shown).map((item) => (
               <li key={item.key} className="scroll-mt-[var(--explore-sticky,8rem)]">
@@ -294,6 +373,7 @@ export function ResultsList({
                   onHighlight={onHighlight}
                   stay={stay}
                   linkState={linkState}
+                  availability={availability?.get(item.key) ?? null}
                 />
               </li>
             ))}

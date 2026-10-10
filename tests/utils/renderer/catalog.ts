@@ -12,7 +12,9 @@ import type {
   LocationDetail,
   LocationSummary,
 } from '../../../src/shared/types/catalog.types';
-import type { StayQuery } from '../../../src/shared/types/provider.types';
+import type { CatalogAvailabilityOptions } from '../../../src/shared/contracts/catalog';
+import type { BulkAvailabilityEntry, StayQuery } from '../../../src/shared/types/provider.types';
+import { bulkAvailabilityFor } from '../../fixtures/catalog/bulk-availability';
 import { PARKSTAY_LOCATIONS, searchLocations } from '../../fixtures/catalog/parkstay-locations';
 import { availabilityFor, placeDetail } from '../../fixtures/catalog/place-detail';
 import { fail, ok, type ApiStubs } from './createMockApi';
@@ -68,12 +70,30 @@ export function searchStub(items: readonly LocationSummary[] = PARKSTAY_LOCATION
   return jest.fn(async (query: CatalogQuery) => ok(searchLocations(query, items)));
 }
 
+/**
+ * A `catalog.availability` that answers as main does: the entries of the providers asked for
+ * (all when none are named), with no errors. Entries default to the fixture's
+ * (tests/fixtures/catalog/bulk-availability.ts).
+ */
+export function availabilityStub(
+  entries: readonly BulkAvailabilityEntry[] = bulkAvailabilityFor()
+): jest.Mock {
+  return jest.fn(async (_stay: StayQuery, options: CatalogAvailabilityOptions = {}) => {
+    const wanted = options.providerIds?.length ? new Set(options.providerIds) : null;
+    return ok({
+      entries: entries.filter((e) => !wanted || wanted.has(e.key.slice(0, e.key.indexOf(':')))),
+      errors: [],
+    });
+  });
+}
+
 export function catalogApi(options: CatalogApiOptions = {}): ApiStubs {
   const items = options.items ?? PARKSTAY_LOCATIONS;
   return {
     ...options.stubs,
     catalog: {
       search: searchStub(items),
+      availability: availabilityStub(bulkAvailabilityFor(items)),
       status: jest.fn().mockResolvedValue(ok(options.status ?? syncedStatus(items.length))),
       refresh: jest.fn().mockResolvedValue(ok(options.status ?? syncedStatus(items.length))),
       ...options.catalog,

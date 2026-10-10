@@ -137,7 +137,7 @@ Every colour combination the app uses, one-to-one with `CONTRAST_PAIRS` in `src/
 | `fg-secondary` | `surface-subtle` | text | 9.17 | 4.5 | Secondary text on subtle fills, table headers |
 | `fg-muted` | `surface` | text | 5.99 | 4.5 | Muted text: hints, timestamps, placeholders |
 | `fg-muted` | `canvas` | text | 5.60 | 4.5 | Muted text on the page |
-| `fg-muted` | `surface-subtle` | text | 5.19 | 4.5 | Muted text on subtle fills, booked nights |
+| `fg-muted` | `surface-subtle` | text | 5.19 | 4.5 | Muted text on subtle fills, booked nights, full and not-open map pills |
 | `fg-inverse` | `surface-inverse` | text | 17.79 | 4.5 | Tooltips, hovered and selected map pills |
 | `accent-fg` | `accent` | text | 5.14 | 4.5 | Primary button label |
 | `accent-fg` | `accent-hover` | text | 6.92 | 4.5 | Primary button label on hover |
@@ -171,6 +171,7 @@ Every colour combination the app uses, one-to-one with `CONTRAST_PAIRS` in `src/
 | `brand` | `ocean-100` | ui | 4.98 | 3 | Kind icon on the photo-placeholder dab |
 | `coral-400` | `surface` | ui | 4.10 | 3 | Logo coral accent, a large graphic and never text |
 | `available` | `surface` | ui | 5.68 | 3 | Available map pill against white map land |
+| `available` | `canvas` | ui | 5.31 | 3 | Available map pill and pin against sand map land |
 
 Rules:
 

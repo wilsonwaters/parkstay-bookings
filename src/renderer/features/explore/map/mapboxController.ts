@@ -22,7 +22,13 @@ import {
   SOURCE_ID,
   SOURCE_SPEC,
 } from './layers';
-import type { CreateMapController, MapClick, MapController, MapViewState } from './types';
+import type {
+  CreateMapController,
+  MapClick,
+  MapController,
+  MapViewState,
+  PinAvailability,
+} from './types';
 import { applyWaPalette } from './waPalette';
 
 export const STYLE_URL = 'mapbox://styles/mapbox/outdoors-v12';
@@ -62,6 +68,16 @@ function errorStatus(event: { error?: unknown }): number | undefined {
 
 const isAuthFailure = (status: number | undefined) => status === 401 || status === 403;
 
+/** The style setters `syncLayers` uses, typed loosely: the values come from `buildLayers`. */
+interface LayerStyle {
+  setPaintProperty(layer: string, name: string, value: unknown): unknown;
+  setLayoutProperty(layer: string, name: string, value: unknown): unknown;
+  setLayerZoomRange(layer: string, minzoom: number, maxzoom: number): unknown;
+}
+
+/** Mapbox's widest zoom range for a layer. */
+const MAX_LAYER_ZOOM = 24;
+
 export const createMapboxController: CreateMapController = async ({
   container,
   token,
@@ -97,6 +113,9 @@ export const createMapboxController: CreateMapController = async ({
   // ---- State --------------------------------------------------------------------------
   let items: readonly LocationSummary[] = [];
   const byKey = new Map<string, LocationSummary>();
+  /** With dates: each place's availability, which its pill shows instead of its name. */
+  let availability: ReadonlyMap<string, PinAvailability> | null = null;
+  let pillOpacity = 1;
   let collection = toFeatureCollection([]);
   let hovered: string | null = null;
   let selected: string | null = null;
@@ -157,6 +176,41 @@ export const createMapboxController: CreateMapController = async ({
   });
 
   // ---- Style: palette, pill image, source and layers (again after any style reload) ------
+  const layerOptions = () => ({ withAvailability: availability !== null, pillOpacity });
+
+  /**
+   * Brings the app's layers from the other mode in line with `layerOptions()`: only the paint
+   * and layout properties whose value differs between the modes (a property only the other
+   * mode sets goes back to its default), and the zoom range when it differs. Feature state
+   * (hover, selection, preview) is kept.
+   *
+   * Untouched layers stay untouched: Mapbox GL 3 fails while redrawing a symbol layer with no
+   * state-dependent paint (`cluster-count`) that was restyled while places have feature state.
+   */
+  const syncLayers = () => {
+    const options = layerOptions();
+    const wanted = buildLayers(tokens, options);
+    const before = buildLayers(tokens, { ...options, withAvailability: !options.withAvailability });
+    const style = map as unknown as LayerStyle;
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    wanted.forEach((layer, i) => {
+      if (!map.getLayer(layer.id)) return;
+      const old = before[i];
+      for (const group of ['paint', 'layout'] as const) {
+        const next = (layer[group] ?? {}) as Record<string, unknown>;
+        const previous = (old[group] ?? {}) as Record<string, unknown>;
+        for (const name of new Set([...Object.keys(next), ...Object.keys(previous)])) {
+          if (same(next[name], previous[name])) continue;
+          if (group === 'paint') style.setPaintProperty(layer.id, name, next[name]);
+          else style.setLayoutProperty(layer.id, name, next[name]);
+        }
+      }
+      if (layer.minzoom !== old.minzoom || layer.maxzoom !== old.maxzoom) {
+        style.setLayerZoomRange(layer.id, layer.minzoom ?? 0, layer.maxzoom ?? MAX_LAYER_ZOOM);
+      }
+    });
+  };
+
   const setup = () => {
     applyWaPalette(map, tokens);
     if (!map.hasImage(PILL_IMAGE_ID)) {
@@ -168,7 +222,7 @@ export const createMapboxController: CreateMapController = async ({
       );
     }
     if (!source()) map.addSource(SOURCE_ID, SOURCE_SPEC);
-    for (const layer of buildLayers(tokens)) {
+    for (const layer of buildLayers(tokens, layerOptions())) {
       if (!map.getLayer(layer.id)) map.addLayer(layer);
     }
     source()?.setData(collection);
@@ -368,13 +422,27 @@ export const createMapboxController: CreateMapController = async ({
 
   // ---- The controller --------------------------------------------------------------------
   const controller: MapController = {
-    setData(next) {
+    setData(next, nextAvailability = null) {
+      const modeChanged = (availability === null) !== (nextAvailability === null);
       items = next;
+      availability = nextAvailability;
       byKey.clear();
       for (const item of items) byKey.set(item.key, item);
-      collection = toFeatureCollection(items);
+      collection = toFeatureCollection(items, availability);
+      if (modeChanged) syncLayers();
       source()?.setData(collection);
       updateMarker();
+    },
+    setPillOpacity(opacity) {
+      if (opacity === pillOpacity) return;
+      pillOpacity = opacity;
+      if (!map.getLayer(LAYER_IDS.pill)) return;
+      const pill = buildLayers(tokens, layerOptions()).find((l) => l.id === LAYER_IDS.pill);
+      (map as unknown as LayerStyle).setPaintProperty(
+        LAYER_IDS.pill,
+        'icon-opacity',
+        (pill?.paint as Record<string, unknown> | undefined)?.['icon-opacity']
+      );
     },
     setHovered(key) {
       if (key === hovered) return;

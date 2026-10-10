@@ -14,12 +14,14 @@ import {
   useOverlay,
 } from '../../../components/ui';
 import { buttonClassName } from '../../../components/ui/Button';
+import { cx } from '../../../components/ui/cx';
 import { ROUTES } from '../../../app/routes';
 import type { StayParams } from '../../../app/stayParams';
 import { cardId } from '../results/cardId';
 import { useHighlightStore } from '../state/highlight';
+import { PULSE_INTERVAL_MS, PULSE_OPACITY } from './layers';
 import { createMapboxController } from './mapboxController';
-import type { MapCamera, MapController, MapViewState } from './types';
+import type { MapCamera, MapController, MapViewState, PinAvailability } from './types';
 import { readMapTokens } from './waPalette';
 
 export interface FitRequest {
@@ -64,6 +66,45 @@ export interface MapViewProps {
   detailStay?: Partial<StayParams>;
   /** The history state "View details" carries (where the place was opened from). */
   detailState?: unknown;
+  /**
+   * With dates (E3): each place's availability, which its pill shows instead of its name, and
+   * the map key. Keep it memoised: the map's data is replaced when it changes.
+   */
+  availability?: ReadonlyMap<string, PinAvailability> | null;
+  /** Availability is still loading: the pills pulse (not under reduced motion). */
+  pulsing?: boolean;
+}
+
+/** True when the person asked for less motion. */
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
+
+/** The map key with dates: what each pill colour means, in words beside a swatch. */
+function MapLegend() {
+  const swatch = 'inline-block h-2.5 w-2.5 shrink-0 rounded-full';
+  return (
+    <ul
+      aria-label="Map key"
+      className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-surface px-3 py-1.5 text-xs text-fg-secondary shadow-pill"
+    >
+      <li className="flex items-center gap-1.5">
+        <span aria-hidden="true" className={cx(swatch, 'bg-available')} />
+        Available
+      </li>
+      <li className="flex items-center gap-1.5">
+        <span aria-hidden="true" className={cx(swatch, 'bg-fg-muted')} />
+        Full or not open
+      </li>
+      <li className="flex items-center gap-1.5">
+        <span aria-hidden="true" className={cx(swatch, 'border border-fg bg-surface')} />
+        Not checked
+      </li>
+    </ul>
+  );
 }
 
 /** The key set, as one string, so the map's data is replaced only when it really changes. */
@@ -93,6 +134,8 @@ export default function MapView({
   onFailed,
   detailStay,
   detailState,
+  availability = null,
+  pulsing = false,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<HTMLDivElement>(null);
@@ -142,9 +185,26 @@ export default function MapView({
   const signature = useMemo(() => keySignature(items), [items]);
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  // Once per change of places or availability, never per hover.
   useEffect(() => {
-    controller?.setData(itemsRef.current);
-  }, [controller, signature]);
+    controller?.setData(itemsRef.current, availability);
+  }, [controller, signature, availability]);
+
+  // While availability loads the pills' fill pulses, from one interval that stops when it
+  // settles (or the map goes). Never under reduced motion.
+  useEffect(() => {
+    if (!controller || !pulsing || prefersReducedMotion()) return undefined;
+    let low = true;
+    controller.setPillOpacity(PULSE_OPACITY.low);
+    const timer = setInterval(() => {
+      low = !low;
+      controller.setPillOpacity(low ? PULSE_OPACITY.low : PULSE_OPACITY.high);
+    }, PULSE_INTERVAL_MS);
+    return () => {
+      clearInterval(timer);
+      controller.setPillOpacity(PULSE_OPACITY.high);
+    };
+  }, [controller, pulsing]);
 
   useEffect(() => {
     if (!controller) return undefined;
@@ -281,12 +341,15 @@ export default function MapView({
         ref={controlsRef}
         className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-3"
       >
-        <div className="pointer-events-auto rounded-full bg-surface py-2 pl-4 pr-3 shadow-pill">
-          <Switch
-            label="Search as I move the map"
-            checked={follow}
-            onChange={(event) => onFollowChange(event.target.checked)}
-          />
+        <div className="flex flex-col items-start gap-2">
+          <div className="pointer-events-auto rounded-full bg-surface py-2 pl-4 pr-3 shadow-pill">
+            <Switch
+              label="Search as I move the map"
+              checked={follow}
+              onChange={(event) => onFollowChange(event.target.checked)}
+            />
+          </div>
+          {availability && <MapLegend />}
         </div>
         {!follow && areaChanged && controller && (
           <Button

@@ -26,6 +26,7 @@ describe('exploreParams', () => {
       adults: 2,
       children: 1,
       infants: 0,
+      avail: true,
       map: { lng: 121.5, lat: -26.25, zoom: 4.5 },
       follow: false,
       view: 'map',
@@ -35,7 +36,7 @@ describe('exploreParams', () => {
     expect(search).toBe(
       '?q=Cape+Range&providers=parkstay&kinds=campground,hut&regions=Pilbara,Kimberley' +
         '&amenities=Dogs+permitted,Road+access+for+2WD%2FSUV&online=1&arrival=2026-12-01' +
-        '&departure=2026-12-04&adults=2&children=1&infants=0&map=121.5,-26.25,4.5&follow=0' +
+        '&departure=2026-12-04&adults=2&children=1&infants=0&avail=1&map=121.5,-26.25,4.5&follow=0' +
         '&view=map&sel=parkstay%3A20'
     );
     expect(parseExploreParams(search).params).toEqual(full);
@@ -117,6 +118,22 @@ describe('exploreParams', () => {
         params({ map: { lng: 115.123456789, lat: -31.987654321, zoom: 7.6543 } })
       )
     ).toBe('?map=115.12346,-31.98765,7.65');
+  });
+
+  it('keeps "Available only" with an arrival, even before the departure is chosen again, and drops it with no dates', () => {
+    expect(
+      parseExploreParams('?arrival=2026-12-01&departure=2026-12-04&avail=1').params.avail
+    ).toBe(true);
+    expect(parseExploreParams('?arrival=2026-12-01&avail=1').canonical).toBe(
+      '?arrival=2026-12-01&avail=1'
+    );
+    expect(parseExploreParams('?avail=1')).toEqual({
+      params: expect.objectContaining({ avail: false }),
+      canonical: '',
+    });
+    expect(
+      parseExploreParams('?arrival=2026-12-01&departure=2026-12-04&avail=yes').params.avail
+    ).toBe(false);
   });
 
   it('counts only real filters as active (not the text, map or stay)', () => {

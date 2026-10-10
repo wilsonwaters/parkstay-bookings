@@ -3,10 +3,13 @@
  *
  * Explore (E1): the search pill, the filters, the list-only notice (the e2e build has no
  * Mapbox token, so there is no map), and the campgrounds from the ParkStay catalogue fixture
- * (tests/e2e/fixtures/http/parkstay/campground_map.json).
+ * (tests/e2e/fixtures/http/parkstay/campground_map.json). With dates (E3): each campground's
+ * availability from the bulk fixture (campground_availabilty_view.json) and "Available only".
  */
 
+import { stayRangeLabel } from '../../src/renderer/components/nightGrid';
 import { APP_NAME } from '../../src/shared/constants/app-constants';
+import { addDays, todayIn } from '../../src/shared/utils/calendar-date';
 import { expect, test, withoutGuardedRequests, withoutRemoteImages } from './support/wa-stay';
 import { expectCurrentNavLink, expectRoute, NAV_PAGES, pageHeading } from './support/shell';
 
@@ -36,7 +39,7 @@ test('Explore shows the search pill, the filters and, with no token, the list in
   await expect(search.getByRole('combobox', { name: 'Where' })).toBeVisible();
   await expect(search.getByRole('button', { name: 'Search' })).toBeVisible();
   const filters = window.getByRole('group', { name: 'Filters' });
-  for (const chip of ['Provider', 'Region', 'Facilities', 'Book online']) {
+  for (const chip of ['Provider', 'Region', 'Facilities', 'Book online', 'Available only']) {
     await expect(filters.getByRole('button', { name: chip, exact: true })).toBeVisible();
   }
 
@@ -84,6 +87,72 @@ test('Explore lists the ParkStay campgrounds from the catalogue fixture', async 
   // Its detail page (E2): the name, and its sites from the fixture.
   await expect(window.getByRole('heading', { level: 1, name: 'Bungarra' })).toBeVisible();
   await expect(window.getByRole('heading', { level: 2, name: 'Sites' })).toBeVisible();
+
+  expect(withoutGuardedRequests(await wa.consoleErrors(), wa.unexpectedRequests())).toEqual([]);
+  expect(withoutRemoteImages(wa.unexpectedRequests())).toEqual([]);
+});
+
+test('Explore with dates shows each campground’s availability and narrows to "Available only"', async ({
+  launchWaStay,
+}) => {
+  const wa = await launchWaStay();
+  const { window } = wa;
+  const results = window.getByRole('region', { name: 'Results' });
+  await expect(
+    results.getByRole('heading', { level: 2, name: `${FIXTURE_CAMPGROUNDS} places` })
+  ).toBeVisible({ timeout: 20_000 });
+
+  // "Available only" needs dates first, and says so.
+  const filters = window.getByRole('group', { name: 'Filters' });
+  const availableOnly = filters.getByRole('button', { name: 'Available only' });
+  await expect(availableOnly).toHaveAttribute('aria-disabled', 'true');
+  await availableOnly.focus();
+  await expect(window.getByRole('tooltip')).toHaveText('Add dates to filter by availability');
+
+  // Dates from the search pill: tomorrow, for 2 nights (Perth).
+  await window.getByRole('button', { name: /^When/ }).click();
+  await window.keyboard.press('ArrowRight');
+  await window.keyboard.press('Enter');
+  await window.keyboard.press('ArrowRight');
+  await window.keyboard.press('ArrowRight');
+  await window.keyboard.press('Enter');
+  await window.keyboard.press('Escape');
+  const arrival = addDays(todayIn('Australia/Perth'), 1);
+  const departure = addDays(arrival, 2);
+  await expectRoute(window, `/?arrival=${arrival}&departure=${departure}`);
+
+  // ParkStay's bulk availability (the fixture), on every card.
+  const range = stayRangeLabel(arrival, departure);
+  await expect(
+    results.getByRole('heading', {
+      level: 2,
+      name: `${FIXTURE_CAMPGROUNDS} places · 3 available for ${range}`,
+    })
+  ).toBeVisible({ timeout: 20_000 });
+  const card = (name: string) => results.getByRole('link', { name, exact: true });
+  await expect(card('Bungarra')).toContainText('2 of 3 sites available');
+  await expect(card('Kurrajong (Cape Range)')).toContainText('Fully booked');
+  await expect(card('Temple Gorge')).toContainText('No sites open for these dates');
+  await expect(card('Lake Mason Homestead')).toContainText('Not bookable online');
+
+  // Available only: the three with a site free, most free first; kept in the URL.
+  await availableOnly.click();
+  await expect(availableOnly).toHaveAttribute('aria-pressed', 'true');
+  await expectRoute(window, `/?arrival=${arrival}&departure=${departure}&avail=1`);
+  await expect(results.getByRole('link')).toHaveCount(3);
+  const names = await results
+    .getByRole('link')
+    .evaluateAll((links) =>
+      links.map(
+        (link) => document.getElementById(link.getAttribute('aria-labelledby') ?? '')?.textContent
+      )
+    );
+  expect(names).toEqual(['Lucky Bay (Cape Le Grand)', 'Bungarra', 'Workmans Pool']);
+
+  // The card opens the place with the same stay.
+  await card('Bungarra').click();
+  await expectRoute(window, `/places/parkstay/20?arrival=${arrival}&departure=${departure}`);
+  await expect(window.getByRole('heading', { level: 1, name: 'Bungarra' })).toBeVisible();
 
   expect(withoutGuardedRequests(await wa.consoleErrors(), wa.unexpectedRequests())).toEqual([]);
   expect(withoutRemoteImages(wa.unexpectedRequests())).toEqual([]);

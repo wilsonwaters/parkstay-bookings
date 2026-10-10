@@ -9,6 +9,7 @@
  * | `online` | `1`: bookable online only |
  * | `arrival`, `departure` | `YYYY-MM-DD` |
  * | `adults`, `children`, `infants` | whole numbers |
+ * | `avail` | `1`: places available for the dates only (dropped with no arrival) |
  * | `map` | `lng,lat,zoom`, the map camera |
  * | `follow` | `0`: "Search as I move the map" is off |
  * | `view` | `map` or `list`, the pane shown below 1024 px |
@@ -44,6 +45,8 @@ export interface ExploreParams {
   adults: number | null;
   children: number | null;
   infants: number | null;
+  /** "Available only": places with a unit free for the dates. Used only once a stay is set. */
+  avail: boolean;
   map: MapCamera | null;
   /** "Search as I move the map". On unless the URL says `follow=0`. */
   follow: boolean;
@@ -64,6 +67,7 @@ export const DEFAULT_EXPLORE_PARAMS: Readonly<ExploreParams> = Object.freeze({
   adults: null,
   children: null,
   infants: null,
+  avail: false,
   map: null,
   follow: true,
   view: 'list',
@@ -95,6 +99,7 @@ export const EXPLORE_KEYS = [
   'adults',
   'children',
   'infants',
+  'avail',
   'map',
   'follow',
   'view',
@@ -217,6 +222,9 @@ export function parseExploreParams(search: string, known: KnownValues = {}): Par
     const raw = get(kind);
     if (raw !== undefined) params[kind] = count(raw, kind);
   }
+  // Kept while dates are being chosen again (an arrival with no departure yet), but not
+  // without any dates at all.
+  params.avail = get('avail') === '1' && params.arrival !== null;
 
   const map = get('map');
   if (map !== undefined) params.map = camera(map);
@@ -274,6 +282,9 @@ export function serialiseExploreParams(params: ExploreParams): string {
         break;
       case 'online':
         if (params.online) add(key, '1');
+        break;
+      case 'avail':
+        if (params.avail) add(key, '1');
         break;
       case 'arrival':
       case 'departure':
