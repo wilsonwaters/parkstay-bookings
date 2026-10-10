@@ -42,6 +42,11 @@ export interface LocationComboboxProps {
   hint?: string;
   /** A validation message, e.g. "Choose a location". */
   error?: string;
+  /**
+   * Why a place cannot be chosen here, e.g. "Not bookable online" for Site Sniper; such places
+   * are listed, disabled, with the reason under their name.
+   */
+  unavailableReason?: (location: LocationSummary) => string | undefined;
 }
 
 const locationsLabel = (n: number) => `${n} ${n === 1 ? 'location' : 'locations'}`;
@@ -60,6 +65,7 @@ export function LocationCombobox({
   label = 'Location',
   hint,
   error,
+  unavailableReason,
 }: LocationComboboxProps) {
   const [text, setText] = useState(value?.name ?? '');
   const [query, setQuery] = useState('');
@@ -89,16 +95,20 @@ export function LocationCombobox({
 
   const valueKey = value ? `${providerId}:${value.externalId}` : null;
   const options: ComboboxOption[] = useMemo(() => {
-    const list = items.map((item) => ({
-      value: item.key,
-      label: item.name,
-      description: areaLine(item) || undefined,
-    }));
+    const list = items.map((item): ComboboxOption => {
+      const reason = unavailableReason?.(item);
+      return {
+        value: item.key,
+        label: item.name,
+        description: [areaLine(item), reason].filter(Boolean).join(' · ') || undefined,
+        disabled: reason !== undefined,
+      };
+    });
     if (value && valueKey && !list.some((o) => o.value === valueKey)) {
       list.push({ value: valueKey, label: value.name, description: value.areaName });
     }
     return list;
-  }, [items, value, valueKey]);
+  }, [items, value, valueKey, unavailableReason]);
 
   // Tell screen-reader users how many matched, once a search for what was typed settles.
   const settled = searching && search.isSuccess && !search.isPlaceholderData;
@@ -129,7 +139,7 @@ export function LocationCombobox({
       return;
     }
     const item = items.find((i) => i.key === key);
-    if (!item) return;
+    if (!item || unavailableReason?.(item) !== undefined) return;
     choosing.current = true;
     setText(item.name);
     onChange(toLocationChoice(item));

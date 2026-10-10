@@ -62,6 +62,28 @@ export const PARKSTAY_MANIFEST: ProviderManifest = {
       appliesTo: ['snipe', 'hold'],
     },
   ],
+  releaseModes: [
+    {
+      id: 'daily_rollover',
+      label: 'When new dates open',
+      description:
+        "Each day ParkStay opens one more date, 180 days ahead, at the campground's release time.",
+      usesAccessGate: true,
+    },
+    {
+      id: 'scheduled',
+      label: 'At a scheduled time',
+      description:
+        'For campgrounds whose dates are released in blocks (such as Ningaloo), at a time you set.',
+      usesAccessGate: true,
+    },
+    {
+      id: 'cancellation',
+      label: 'When someone cancels',
+      description: 'Keeps checking for a site that comes free.',
+      usesAccessGate: false,
+    },
+  ],
 };
 
 /** A second provider: watches but no holds, no account and no stay fields of its own. */

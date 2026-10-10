@@ -11,6 +11,7 @@ const app = ['app'] as const;
 const updater = ['updater'] as const;
 const watches = ['watches'] as const;
 const accounts = ['accounts'] as const;
+const snipes = ['snipes'] as const;
 
 export const queryKeys = {
   providers: {
@@ -50,5 +51,10 @@ export const queryKeys = {
   accounts: {
     all: accounts,
     list: () => [...accounts, 'list'] as const,
+  },
+  snipes: {
+    all: snipes,
+    list: () => [...snipes, 'list'] as const,
+    detail: (id: number) => [...snipes, 'detail', id] as const,
   },
 } as const;

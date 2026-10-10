@@ -17,13 +17,14 @@ describe('renderer layout after the shell rebuild', () => {
     'components/ErrorBoundary.tsx',
     'pages/Login.tsx',
     'pages/Dashboard.tsx',
+    'features/snipes/legacy',
+    'components/forms/SiteSniperForm.tsx',
   ])('src/renderer/%s no longer exists', (file) => {
     expect(fs.existsSync(path.join(RENDERER, file))).toBe(false);
   });
 
   it('keeps the legacy pages under features/<domain>/legacy/', () => {
     for (const file of [
-      'features/snipes/legacy/index.tsx',
       'features/bookings/legacy/BookingsList.tsx',
       'features/settings/legacy/Settings.tsx',
     ]) {

@@ -1,9 +1,18 @@
 import { queryKeys } from './queryKeys';
 
 describe('queryKeys', () => {
-  it('has the providers, catalog, notifications, app, updater, watches and accounts namespaces', () => {
+  it('has the providers, catalog, notifications, app, updater, watches, accounts and snipes namespaces', () => {
     expect(Object.keys(queryKeys).sort()).toEqual(
-      ['accounts', 'app', 'catalog', 'notifications', 'providers', 'updater', 'watches'].sort()
+      [
+        'accounts',
+        'app',
+        'catalog',
+        'notifications',
+        'providers',
+        'snipes',
+        'updater',
+        'watches',
+      ].sort()
     );
   });
 
@@ -22,6 +31,8 @@ describe('queryKeys', () => {
       [queryKeys.watches.all, queryKeys.watches.list()],
       [queryKeys.watches.all, queryKeys.watches.detail(3)],
       [queryKeys.accounts.all, queryKeys.accounts.list()],
+      [queryKeys.snipes.all, queryKeys.snipes.list()],
+      [queryKeys.snipes.all, queryKeys.snipes.detail(7)],
     ] as const;
     for (const [prefix, key] of keys) {
       expect(key.slice(0, prefix.length)).toEqual([...prefix]);

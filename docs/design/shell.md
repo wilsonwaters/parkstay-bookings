@@ -64,9 +64,9 @@ Build every address with `ROUTES` (or `buildPath` with a pattern), never by join
 | `/watches/new` | `watchNew(prefill?)` | `NewWatchPage` | The five-step create flow, filled from the prefill query. |
 | `/watches/:id` | `watchDetail(id)` | `WatchDetailPage` |  |
 | `/watches/:id/edit` | `watchEdit(id)` | `EditWatchPage` |  |
-| `/site-sniper` | `snipes` | legacy Site Sniper list |  |
-| `/site-sniper/new` | `snipeNew(prefill?)` | legacy Create Snipe |  |
-| `/site-sniper/:id` | `snipeDetail(id)` | `NotFoundPage` | Reserved for U2. |
+| `/site-sniper` | `snipes` | `SnipesPage` | Keeps its "Soon" pill and `ComingSoonBanner` (D4). Pushed updates change cards in place. |
+| `/site-sniper/new` | `snipeNew(prefill?)` | `NewSnipePage` | The five-step create flow (provider, location, stay, release and timing, review), filled from the prefill query. |
+| `/site-sniper/:id` | `snipeDetail(id)` | `SnipeDetailPage` | Notifications link here. An unknown id shows "Snipe not found". |
 | `/bookings` | `bookings` | legacy Bookings list |  |
 | `/bookings/:id` | `bookingDetail(id)` | legacy Booking detail |  |
 | `/settings/:section?` | `settings(section?)` | legacy Settings | The legacy page ignores `section` until U4, so an unknown section shows the default. |
@@ -74,9 +74,9 @@ Build every address with `ROUTES` (or `buildPath` with a pattern), never by join
 | `/watches/create`, `/site-sniper/create` |  | redirect | To `/new`, keeping the query string (§12.19). |
 | anything else |  | `NotFoundPage` | "Page not found" and "Back to Explore". |
 
-Legacy pages render inside `LegacyPageFrame` until the provider-ux stream rebuilds them. It gives them the new pages' gutter (`px-6 py-8 lg:px-8`, `max-w-7xl`), so their `h1`s line up with the new pages', and cancels the `p-6` root that the legacy Site Sniper list still carries.
+Legacy pages render inside `LegacyPageFrame` until the provider-ux stream rebuilds them. It gives them the new pages' gutter (`px-6 py-8 lg:px-8`, `max-w-7xl`), so their `h1`s line up with the new pages', and cancels a `p-6` root a legacy page may still carry.
 
-**Prefill query** for create flows (§12.10): `?provider=<id>&location=<externalId>&arrival=YYYY-MM-DD&departure=YYYY-MM-DD&adults=N&children=N`. `ROUTES.watchNew(prefill)` and `ROUTES.snipeNew(prefill)` build it and leave out empty values, and `parseCreatePrefill(search)` reads it back, dropping values that are not valid. `location` is the provider's external id, not the composite location key. Until U2 rebuilds it, the legacy Create Snipe page reads a ParkStay prefill into its form (E2's bridge); New watch reads it with `parseCreatePrefill` (U1).
+**Prefill query** for create flows (§12.10): `?provider=<id>&location=<externalId>&arrival=YYYY-MM-DD&departure=YYYY-MM-DD&adults=N&children=N`. `ROUTES.watchNew(prefill)` and `ROUTES.snipeNew(prefill)` build it and leave out empty values, and `parseCreatePrefill(search)` reads it back, dropping values that are not valid. `location` is the provider's external id, not the composite location key. New watch (U1) and New snipe (U2) read it with `parseCreatePrefill`, keep the dates to the provider's day with `clampStayParams`, and say which parts of a link they could not use.
 
 **From Explore to a place and back.** Explore's cards and the map preview's "View details" open `ROUTES.placeDetail(providerId, externalId, stay)` with Explore's stay, and history state `{ from: 'explore', search }` (`PlaceLinkState`). "Back to Explore" on the place page goes back one step when it has that state, so Explore returns exactly as it was left: its state is in the URL, and `useExploreScrollMemory` puts back the window's scroll and the number of cards, saved per search in `sessionStorage['ws:explore:scroll:' + search]`. Otherwise it opens Explore with the place's stay. Explore's hidden `h1` is `fixed`, so the focus it takes on arrival never scrolls the list.
 
@@ -162,6 +162,10 @@ With no `window.api` (the renderer opened in a plain browser with `npm run dev:r
 | Place hand-offs | link | Book on {shortName} (opens in your browser) · Watch for availability · Snipe a site, coming soon |
 | Place gallery | button, dialog | Show all {n} photos · Photos of {name} |
 | Place results | region, table, switch | Availability · Availability by night, {dates} · Fully available only |
+| Site Sniper | heading level 1, link, list, article | Site Sniper · New snipe · Snipes · the snipe's name |
+| Snipe card | list, timer, button | Progress · "Opens in 2 days 4 hours" · Arm, Disarm, Arm again or View booking · More actions for {name} (View details · Run now · Delete) |
+| Held snipe | region, timer, button, alert | Hold · "22 minutes left to pay" · Pay now · "Site held at {place}. Pay within {n} minutes." |
+| New snipe | navigation, radiogroup, button | New snipe steps · When are the sites released? · Advanced timing · Create snipe |
 
 ## Testing
 

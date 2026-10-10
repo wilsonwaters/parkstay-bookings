@@ -14,8 +14,9 @@ import { WatchesPage } from '../features/watches/WatchesPage';
 import { NewWatchPage } from '../features/watches/create/NewWatchPage';
 import { WatchDetailPage } from '../features/watches/detail/WatchDetailPage';
 import { EditWatchPage } from '../features/watches/edit/EditWatchPage';
-import SiteSniperPage from '../features/snipes/legacy';
-import CreateSiteSnipe from '../features/snipes/legacy/CreateSiteSnipe';
+import { SnipesPage } from '../features/snipes/SnipesPage';
+import { NewSnipePage } from '../features/snipes/create/NewSnipePage';
+import { SnipeDetailPage } from '../features/snipes/detail/SnipeDetailPage';
 import BookingsList from '../features/bookings/legacy/BookingsList';
 import BookingDetail from '../features/bookings/legacy/BookingDetail';
 import Settings from '../features/settings/legacy/Settings';
@@ -54,10 +55,9 @@ export function AppRoutes() {
         <Route path={PATTERNS.watchDetail} element={<WatchDetailPage />} />
         <Route path={PATTERNS.watchEdit} element={<EditWatchPage />} />
 
-        <Route path={PATTERNS.snipes} element={legacy(<SiteSniperPage />)} />
-        <Route path={PATTERNS.snipeNew} element={legacy(<CreateSiteSnipe />)} />
-        {/* Reserved for U2 (snipe detail). */}
-        <Route path={PATTERNS.snipeDetail} element={<NotFoundPage />} />
+        <Route path={PATTERNS.snipes} element={<SnipesPage />} />
+        <Route path={PATTERNS.snipeNew} element={<NewSnipePage />} />
+        <Route path={PATTERNS.snipeDetail} element={<SnipeDetailPage />} />
 
         <Route path={PATTERNS.bookings} element={legacy(<BookingsList />)} />
         <Route path={PATTERNS.bookingDetail} element={legacy(<BookingDetail />)} />

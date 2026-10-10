@@ -64,4 +64,15 @@ export {
   useWatches,
   useWatchUpdates,
 } from './watches';
-export { useAccountStatus } from './accounts';
+export { useAccountStatus, useCheckAccount, useSignIn } from './accounts';
+export {
+  SNIPE_EVENT_COALESCE_MS,
+  useCreateSnipe,
+  useDeleteSnipe,
+  useOpenSnipePayment,
+  useRunSnipeNow,
+  useSetSnipeActive,
+  useSnipe,
+  useSnipes,
+  useSnipeUpdates,
+} from './snipes';

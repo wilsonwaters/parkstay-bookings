@@ -216,12 +216,11 @@ describe('App shell', () => {
       ['/watches', 'Watches'],
       ['/watches/new', 'New watch'],
       ['/site-sniper', 'Site Sniper'],
-      ['/site-sniper/new', 'Create Site Snipe'],
+      ['/site-sniper/new', 'New snipe'],
       ['/bookings', 'Your Bookings'],
       ['/settings', 'Settings'],
       ['/settings/notifications', 'Settings'],
       ['/places/nowhere/1', "This place isn't available"],
-      ['/site-sniper/4', 'Page not found'],
       ['/does-not-exist', 'Page not found'],
     ])('%s renders "%s" inside the shell', async (route, heading) => {
       renderWithApp({ route });
@@ -234,6 +233,7 @@ describe('App shell', () => {
 
     it.each([
       ['/watches/12', 'watches', 'get', 'Watch not found'],
+      ['/site-sniper/4', 'snipes', 'get', 'Snipe not found'],
       ['/watches/12/edit', 'watches', 'get', 'Watch not found'],
       ['/bookings/3', 'bookings', 'get', 'Booking not found'],
     ])('%s renders its page with its data', async (route, namespace, method, text) => {
