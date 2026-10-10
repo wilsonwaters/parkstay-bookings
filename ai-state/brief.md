@@ -43,7 +43,7 @@ Existing WA ParkStay Bookings users must be carried over to WA Stay without doin
 
 | # | Decision |
 |---|---|
-| D1 | **Process:** sandbox orchestration methodology. One PR from branch `ccr-da6e94c0-litpr7`. Each task is a GitHub issue labelled **`ai-planning`** (plus a `stream:*` label) and is closed by the PR. `ai-state/` is committed in the PR. All git and GitHub activity is authored as the stakeholder, with **no Anthropic/Claude attribution** anywhere. |
+| D1 | **Process:** sandbox orchestration methodology. One PR from branch `ccr-da6e94c0-litpr7`. Each task is a GitHub issue labelled **`ai-planning`** (plus a `stream:*` label) and is closed by the PR. `ai-state/` is committed in the PR. All git and GitHub activity is authored as the stakeholder, with **no tool attribution** anywhere. |
 | D2 | **Sign-in:** no app-level login gate. The app opens on Explore. Accounts are per provider (Settings → Accounts), and the user is prompted to connect only when a feature needs it. Existing ParkStay credentials migrate to the ParkStay account. |
 | D3 | **Map:** Mapbox GL JS. The token comes from `MAPBOX_ACCESS_TOKEN`: a GitHub Actions secret at build time, and a gitignored `.env` for local dev (with a committed `.env.example`). Without a token the app degrades gracefully and Explore still works as a list. |
 | D4 | **Bookings and Site Sniper:** fix the Site Sniper defects (date format and availability parsing). Keep both features marked **"Soon"** in navigation, restyled. |

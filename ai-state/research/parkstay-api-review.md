@@ -1,6 +1,6 @@
 # ParkStay API research (live-probed 2 Oct 2026)
 
-Sample full response: /tmp/claude-0/-home-user/6194b22b-a9ee-5367-bec6-720762fbf758/scratchpad/cgmap.json (GET /api/campground_map/). DBCA backend source cloned in scratchpad (dbca-wa/parkstay_bs_v2).
+Sample full response captured locally from GET /api/campground_map/ (not committed; trimmed samples live in `tests/fixtures/`). DBCA backend source reviewed from dbca-wa/parkstay_bs_v2.
 
 ## Endpoints
 | Method/path | Used by | Auth | Notes |

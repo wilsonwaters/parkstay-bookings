@@ -234,7 +234,7 @@ interface ProviderContext {
 
 ## 11. Git conventions for this project
 
-- Author is the stakeholder (repo git config already set). **Never** add `Co-Authored-By`, `Claude-Session`, "Generated with Claude Code" or any AI attribution to commits, files or GitHub text.
+- Author is the stakeholder (repo git config already set). **Never** add `Co-Authored-By` trailers, session links, "generated with" lines or any tool attribution to commits, files or GitHub text.
 - Use conventional commits with the issue number: `feat(providers): add provider registry (#12)`. One commit (or a small series) per task.
 
 ## 12. Contract amendments (2026-10-02, from stream planning — binding)
