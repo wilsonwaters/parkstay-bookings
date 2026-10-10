@@ -117,6 +117,11 @@ npm run dist:win  # build, then the Windows installer and portable exe in releas
 npm run pack      # build, then an unpacked app in release/ (quicker to try)
 ```
 
+Vite 8 prints a warning that the config is unsupported by `configLoader: 'native'`. It is
+expected: `vite.config.ts` uses ES module syntax in a CommonJS package, which Vite's default
+(bundling) config loader handles. It would need `vite.config.mts` before a Vite release makes the
+native loader the default.
+
 The build starts by removing `dist/` (`scripts/clean-dist.js`): tsc and esbuild never delete
 what they wrote before, and electron-builder packages `dist/**`, so a module whose source was
 deleted would otherwise ship. The preload is bundled by `scripts/build-preload.js` for the
