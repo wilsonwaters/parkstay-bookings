@@ -58,7 +58,11 @@ Upgrade to the latest versions (`npm view <pkg> version`), on Node 24:
    - `electron-devtools-installer` (if still used, else remove);
    - `sharp`, `png-to-ico`;
    - `@types/*`.
-7. CI and docs: the scripts and commands in `CLAUDE.md`, `docs/development.md` and
+7. **React Router 8** (`react-router` latest, ES-module-only, Node >= 22.22). M2 moved to 7 because
+   Jest 29 cannot load ES-module-only packages. With Jest 30, either transform it (as M1 does for
+   htmlparser2 in `jest.config.js`) or load it natively. Apply its breaking changes, and keep the
+   HashRouter, routes, navigation guard, `app:navigate` deep links and prefill queries as they are.
+8. CI and docs: the scripts and commands in `CLAUDE.md`, `docs/development.md` and
    `tests/README.md` match.
 
 ## Non-goals
