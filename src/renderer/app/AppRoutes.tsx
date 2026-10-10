@@ -5,7 +5,7 @@
  * (It is not called `routes.tsx`: `./routes` would then be ambiguous, and every tool resolves
  * it to `routes.ts` first.)
  */
-import { lazy, Suspense, type ReactNode } from 'react';
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Spinner } from '../components/ui';
 import ExplorePage from '../features/explore/ExplorePage';
@@ -14,13 +14,13 @@ import { WatchesPage } from '../features/watches/WatchesPage';
 import { NewWatchPage } from '../features/watches/create/NewWatchPage';
 import { WatchDetailPage } from '../features/watches/detail/WatchDetailPage';
 import { EditWatchPage } from '../features/watches/edit/EditWatchPage';
-import SiteSniperPage from '../features/snipes/legacy';
-import CreateSiteSnipe from '../features/snipes/legacy/CreateSiteSnipe';
+import { SnipesPage } from '../features/snipes/SnipesPage';
+import { NewSnipePage } from '../features/snipes/create/NewSnipePage';
+import { SnipeDetailPage } from '../features/snipes/detail/SnipeDetailPage';
 import { BookingsPage } from '../features/bookings/BookingsPage';
 import { BookingDetailPage } from '../features/bookings/detail/BookingDetailPage';
 import SettingsPage from '../features/settings/SettingsPage';
 import { AppShell } from './AppShell';
-import { LegacyPageFrame } from './LegacyPageFrame';
 import { NotFoundPage } from './NotFoundPage';
 import { LEGACY_REDIRECTS, PATTERNS } from './routes';
 
@@ -40,8 +40,6 @@ function RedirectKeepingQuery({ to }: { to: string }) {
   return <Navigate to={{ pathname: to, search, hash }} replace />;
 }
 
-const legacy = (page: ReactNode) => <LegacyPageFrame>{page}</LegacyPageFrame>;
-
 export function AppRoutes() {
   return (
     <Routes>
@@ -54,10 +52,9 @@ export function AppRoutes() {
         <Route path={PATTERNS.watchDetail} element={<WatchDetailPage />} />
         <Route path={PATTERNS.watchEdit} element={<EditWatchPage />} />
 
-        <Route path={PATTERNS.snipes} element={legacy(<SiteSniperPage />)} />
-        <Route path={PATTERNS.snipeNew} element={legacy(<CreateSiteSnipe />)} />
-        {/* Reserved for U2 (snipe detail). */}
-        <Route path={PATTERNS.snipeDetail} element={<NotFoundPage />} />
+        <Route path={PATTERNS.snipes} element={<SnipesPage />} />
+        <Route path={PATTERNS.snipeNew} element={<NewSnipePage />} />
+        <Route path={PATTERNS.snipeDetail} element={<SnipeDetailPage />} />
 
         <Route path={PATTERNS.bookings} element={<BookingsPage />} />
         <Route path={PATTERNS.bookingDetail} element={<BookingDetailPage />} />

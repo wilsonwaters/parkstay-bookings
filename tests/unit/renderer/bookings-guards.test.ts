@@ -58,11 +58,9 @@ describe('Bookings feature guards (U3)', () => {
     expect(hits(/cancel booking/i)).toEqual([]);
   });
 
-  it('legacy-mapping keeps no booking mapping', () => {
-    const mapping = fs.readFileSync(
-      path.join(SRC, 'renderer/components/forms/legacy-mapping.ts'),
-      'utf8'
+  it('legacy-mapping is gone, booking half and snipe half alike', () => {
+    expect(fs.existsSync(path.join(SRC, 'renderer/components/forms/legacy-mapping.ts'))).toBe(
+      false
     );
-    expect(mapping).not.toMatch(/bookingFormToInput|BookingInput|BookingSchemaType|partySize/);
   });
 });

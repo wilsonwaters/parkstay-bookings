@@ -12,13 +12,20 @@ const NINGALOO = makeLocation({
   area: { name: 'Ningaloo Marine Park', region: 'Coral Coast' },
 });
 
-function Picker({ onChange = jest.fn() }: { onChange?: (l: LocationChoice | null) => void }) {
+function Picker({
+  onChange = jest.fn(),
+  unavailableReason,
+}: {
+  onChange?: (l: LocationChoice | null) => void;
+  unavailableReason?: (location: { bookingMode: string }) => string | undefined;
+}) {
   const [value, setValue] = useState<LocationChoice | null>(null);
   return (
     <>
       <LocationCombobox
         providerId="parkstay"
         providerName="ParkStay"
+        unavailableReason={unavailableReason}
         value={value}
         onChange={(next) => {
           setValue(next);
@@ -160,5 +167,24 @@ describe('LocationCombobox', () => {
     expect(
       await screen.findByText(/Locations from ParkStay are still loading/)
     ).toBeInTheDocument();
+  });
+
+  it('lists places that cannot be chosen as disabled, with the reason', async () => {
+    const onChange = jest.fn();
+    const offline = makeLocation({ externalId: '22', name: 'Osprey Hut', bookingMode: 'offline' });
+    const { user } = renderWithProviders(
+      <Picker
+        onChange={onChange}
+        unavailableReason={(l) => (l.bookingMode === 'online' ? undefined : 'Not bookable online')}
+      />,
+      { api: catalog(results([offline, OSPREY])) }
+    );
+    await user.type(screen.getByRole('combobox', { name: 'Location' }), 'Osprey');
+    const hut = await screen.findByRole('option', { name: /Osprey Hut/ });
+    expect(hut).toHaveAttribute('aria-disabled', 'true');
+    expect(hut).toHaveTextContent('Not bookable online');
+    await user.click(hut);
+    expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({ externalId: '22' }));
+    expect(screen.getByRole('option', { name: /Osprey Bay/ })).not.toHaveAttribute('aria-disabled');
   });
 });

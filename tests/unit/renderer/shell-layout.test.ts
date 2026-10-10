@@ -20,14 +20,18 @@ describe('renderer layout after the shell rebuild', () => {
     // Rebuilt by U4 (features/settings/)
     'features/settings/legacy/Settings.tsx',
     'components/settings/EmailSettingsCard.tsx',
+    'features/snipes/legacy',
+    'components/forms/SiteSniperForm.tsx',
   ])('src/renderer/%s no longer exists', (file) => {
     expect(fs.existsSync(path.join(RENDERER, file))).toBe(false);
   });
 
-  it('keeps the legacy pages under features/<domain>/legacy/', () => {
-    for (const file of ['features/snipes/legacy/index.tsx']) {
-      expect(fs.existsSync(path.join(RENDERER, file))).toBe(true);
-    }
+  it('has no legacy page left under features/ (the provider-ux stream rebuilt them all)', () => {
+    const features = path.join(RENDERER, 'features');
+    const legacy = fs
+      .readdirSync(features)
+      .filter((domain) => fs.existsSync(path.join(features, domain, 'legacy')));
+    expect(legacy).toEqual([]);
   });
 
   it('has main.tsx import nothing from the app but app/App', () => {

@@ -1,6 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
 import { Countdown } from './Countdown';
-import { formatCountdown } from './countdown';
+import { countdownLabel, formatCountdown } from './countdown';
 
 const MINUTE = 60_000;
 
@@ -54,5 +54,44 @@ describe('Countdown', () => {
 
     unmount();
     expect(jest.getTimerCount()).toBe(0);
+  });
+  it('names the timer in words that change at most once a minute', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-10-09T07:00:00Z'));
+    const { unmount } = render(
+      <Countdown to="2026-10-11T11:00:00Z" label={(left) => `Opens in ${left}`} />
+    );
+    expect(screen.getByRole('timer', { name: 'Opens in 2 days 4 hours' })).toHaveTextContent(
+      '2d 4h'
+    );
+    unmount();
+
+    render(<Countdown to="2026-10-09T07:12:00Z" label={(left) => `Pay within ${left}`} />);
+    const timer = screen.getByRole('timer', { name: 'Pay within 12 minutes' });
+    let names = 0;
+    let texts = 0;
+    for (let s = 0; s < 120; s += 1) {
+      const [name, text] = [timer.getAttribute('aria-label'), timer.textContent];
+      act(() => {
+        jest.advanceTimersByTime(1000);
+      });
+      if (timer.getAttribute('aria-label') !== name) names += 1;
+      if (timer.textContent !== text) texts += 1;
+    }
+    expect(texts).toBe(120);
+    expect(names).toBe(2);
+    expect(timer).toHaveAccessibleName('Pay within 10 minutes');
+  });
+});
+
+describe('countdownLabel', () => {
+  it('reads days and hours, hours and minutes, or minutes, rounded up to the minute', () => {
+    expect(countdownLabel(2 * 86_400_000 + 4 * 3_600_000)).toBe('2 days 4 hours');
+    expect(countdownLabel(86_400_000)).toBe('1 day');
+    expect(countdownLabel(4 * 3_600_000 + 5 * MINUTE)).toBe('4 hours 5 minutes');
+    expect(countdownLabel(3_600_000)).toBe('1 hour');
+    expect(countdownLabel(11 * MINUTE + 1)).toBe('12 minutes');
+    expect(countdownLabel(1000)).toBe('1 minute');
+    expect(countdownLabel(-1)).toBe('now');
   });
 });

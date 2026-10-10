@@ -13,6 +13,7 @@ describe('queryKeys', () => {
         'notifiers',
         'providers',
         'settings',
+        'snipes',
         'updater',
         'watches',
       ].sort()
@@ -43,6 +44,8 @@ describe('queryKeys', () => {
       [queryKeys.accountChecks.all, queryKeys.accountChecks.check('parkstay')],
       [queryKeys.settings.all, queryKeys.settings.value('notifications.desktop')],
       [queryKeys.notifiers.all, queryKeys.notifiers.detail('email_smtp')],
+      [queryKeys.snipes.all, queryKeys.snipes.list()],
+      [queryKeys.snipes.all, queryKeys.snipes.detail(7)],
     ] as const;
     for (const [prefix, key] of keys) {
       expect(key.slice(0, prefix.length)).toEqual([...prefix]);

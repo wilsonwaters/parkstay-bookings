@@ -36,3 +36,27 @@ export function formatCountdown(ms: number, format: CountdownFormat = 'clock'): 
   }
   return `${pad(Math.floor(seconds / MINUTE_S))}:${pad(seconds % MINUTE_S)}`;
 }
+
+const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+
+/**
+ * The time left in words, for screen readers, minute by minute: "2 days 4 hours", "4 hours
+ * 5 minutes", "12 minutes" (rounded up, so the last minute reads "1 minute"), and "now" once it
+ * has passed. It changes at most once a minute, so a timer's name never churns.
+ */
+export function countdownLabel(ms: number): string {
+  const left = Number.isFinite(ms) ? Math.max(0, ms) : 0;
+  if (left <= 0) return 'now';
+  const minutes = Math.ceil(left / MINUTE_MS);
+  if (minutes >= 24 * 60) {
+    const days = Math.floor(minutes / (24 * 60));
+    const hours = Math.floor((minutes % (24 * 60)) / 60);
+    return hours ? `${plural(days, 'day')} ${plural(hours, 'hour')}` : plural(days, 'day');
+  }
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest ? `${plural(hours, 'hour')} ${plural(rest, 'minute')}` : plural(hours, 'hour');
+  }
+  return plural(minutes, 'minute');
+}

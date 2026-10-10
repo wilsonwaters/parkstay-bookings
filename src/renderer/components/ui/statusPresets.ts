@@ -53,7 +53,7 @@ export const statusPresets = {
     [SnipeStatus.BOOKED]: { tone: 'available', icon: CircleCheck, label: 'Booked' },
     [SnipeStatus.FAILED]: { tone: 'danger', icon: CircleAlert, label: 'Failed' },
     [SnipeStatus.EXPIRED]: { tone: 'neutral', icon: CircleX, label: 'Expired' },
-    [SnipeStatus.DISABLED]: { tone: 'neutral', icon: CirclePause, label: 'Disarmed' },
+    [SnipeStatus.DISABLED]: { tone: 'neutral', icon: CirclePause, label: 'Paused' },
   },
   /** The outcome of a snipe attempt. */
   snipeResult: {

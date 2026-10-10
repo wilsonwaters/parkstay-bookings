@@ -15,6 +15,7 @@ const bookings = ['bookings'] as const;
 const accountChecks = ['account-checks'] as const;
 const settings = ['settings'] as const;
 const notifiers = ['notifiers'] as const;
+const snipes = ['snipes'] as const;
 
 export const queryKeys = {
   providers: {
@@ -77,5 +78,10 @@ export const queryKeys = {
   notifiers: {
     all: notifiers,
     detail: (channel: string) => [...notifiers, 'detail', channel] as const,
+  },
+  snipes: {
+    all: snipes,
+    list: () => [...snipes, 'list'] as const,
+    detail: (id: number) => [...snipes, 'detail', id] as const,
   },
 } as const;
