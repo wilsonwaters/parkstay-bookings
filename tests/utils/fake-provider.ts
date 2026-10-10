@@ -38,6 +38,7 @@ import {
   createProviderContext,
   type AccessGate,
   type AccommodationProvider,
+  type BrowserAutomation,
   type BrowserSessionAuth,
   type CatalogModule,
   type ExternalBooking,
@@ -659,8 +660,8 @@ export function createMemoryLogger(
 export const FIXED_NOW = new Date('2026-10-02T02:00:00.000Z');
 
 /**
- * Where test contexts keep provider browser profiles. Nothing is created there unless a test
- * really launches a browser (the opt-in smoke test uses its own temporary folder).
+ * Where Playwright test contexts keep provider browser profiles. Nothing is created there
+ * unless a test really launches a browser (the opt-in smoke test uses its own temporary folder).
  */
 export const TEST_PROVIDERS_DIR = path.join(os.tmpdir(), 'wa-stay-test', 'providers');
 
@@ -697,12 +698,42 @@ export function testManifest(
 }
 
 /**
- * A provider context built from in-memory parts: Node HTTP, KV store, fake vault, fixed
- * clock, and browser automation with its profile under `TEST_PROVIDERS_DIR` (tests mock
- * `playwright-core` before using it). Pass the provider's manifest, or an id for a context
- * built from `testManifest(id)`.
+ * The browser of a test context that was given none: using it fails the test, so no test
+ * quietly drives a real browser. `close()` is harmless (registries close every browser).
+ */
+export function unsetBrowser(providerId: string): BrowserAutomation {
+  const fail = (): Promise<never> =>
+    Promise.reject(
+      new Error(
+        `This test did not set up a browser for "${providerId}": pass ` +
+          '{ browser: createFakeBrowser(site) } (tests/utils/fake-browser.ts) to createTestProviderContext'
+      )
+    );
+  return { isAvailable: fail, withPage: fail, close: async () => undefined };
+}
+
+/**
+ * A provider context built from in-memory parts: Node HTTP, KV store, fake vault and a fixed
+ * clock. Its browser is `unsetBrowser` unless `overrides.browser` gives one, usually
+ * `createFakeBrowser(site)` (`tests/utils/fake-browser.ts`). Pass the provider's manifest, or
+ * an id for a context built from `testManifest(id)`.
  */
 export function createTestProviderContext(
+  manifestOrId: ProviderManifest | string,
+  overrides: Partial<Omit<ProviderContext, 'id'>> = {}
+): ProviderContext {
+  // createProviderContext also builds a PlaywrightBrowserAutomation; it is idle (it loads and
+  // launches nothing until used), and replaced here.
+  const context = createPlaywrightTestProviderContext(manifestOrId);
+  return { ...context, browser: unsetBrowser(context.id), ...overrides };
+}
+
+/**
+ * The same context with the real `PlaywrightBrowserAutomation` (its profile under
+ * `TEST_PROVIDERS_DIR`), for tests of browser automation itself: mock `playwright-core` with
+ * `tests/utils/fake-playwright.ts` first.
+ */
+export function createPlaywrightTestProviderContext(
   manifestOrId: ProviderManifest | string,
   overrides: Partial<Omit<ProviderContext, 'id'>> = {}
 ): ProviderContext {

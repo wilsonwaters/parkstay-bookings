@@ -3,8 +3,9 @@
  *
  * "Example Holiday Parks" is a fictional site with no API: the provider reads its pages in
  * the person's installed Edge or Chrome through `ctx.browser.withPage` (playwright-core), and
- * maps what it reads to the normalised SDK types. Tests give it a fake `BrowserAutomation`
- * that loads `fixtures/site.ts` into jsdom (`tests/unit/docs/example-providers.test.ts`).
+ * maps what it reads to the normalised SDK types. Tests give it the fake browser
+ * (`tests/utils/fake-browser.ts`), whose pages come from `site.ts`
+ * (`tests/unit/docs/example-providers.test.ts`).
  *
  * Each region between `// #region docs:<name>` and `// #endregion` is a code block of the
  * guide, word for word; `tests/unit/docs/docs-sync.test.ts` keeps the two in step.

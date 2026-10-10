@@ -19,7 +19,7 @@ jest.mock('node-machine-id', () => ({ machineIdSync: () => 'test-machine-id' }))
 
 import { createContainer } from '@main/app/container';
 import { openDatabase } from '@main/database/connection';
-import { createTestProviderContext } from '@tests/utils/fake-provider';
+import { createPlaywrightTestProviderContext } from '@tests/utils/fake-provider';
 import { TEST_LOGS_DIR } from '@tests/utils/ipc-harness';
 import { containerSecrets, FakeSafeStorage, removeUserData } from '@tests/utils/fake-safe-storage';
 
@@ -32,7 +32,7 @@ describe('loading playwright-core', () => {
       ...secrets,
     });
     expect(container.providers.list().map((m) => m.id)).toContain('parkstay');
-    const ctx = createTestProviderContext('fake');
+    const ctx = createPlaywrightTestProviderContext('fake');
     await ctx.browser.close();
     await container.dispose();
     removeUserData(secrets.userDataDir);
@@ -41,7 +41,7 @@ describe('loading playwright-core', () => {
   });
 
   it('is imported by the first withPage, once', async () => {
-    const ctx = createTestProviderContext('fake');
+    const ctx = createPlaywrightTestProviderContext('fake');
     await ctx.browser.withPage(async () => undefined);
     await ctx.browser.withPage(async () => undefined);
     await ctx.browser.close();
@@ -53,7 +53,7 @@ describe('loading playwright-core', () => {
     jest.resetModules();
     mockPlaywright.missing = true;
     // A fresh module registry, so the mocked module is required (and fails) again.
-    const { createTestProviderContext: freshContext } = jest.requireActual(
+    const { createPlaywrightTestProviderContext: freshContext } = jest.requireActual(
       '@tests/utils/fake-provider'
     ) as typeof import('@tests/utils/fake-provider');
     const ctx = freshContext('fake', {});

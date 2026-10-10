@@ -248,7 +248,7 @@ await ctx.browser.withPage(
 
 ## Testing with a mocked `playwright-core`
 
-Unit and contract tests never start a browser. They mock `playwright-core` with `tests/utils/fake-playwright.ts`:
+Unit and contract tests never start a browser. A provider's own tests give its context the fake browser (`tests/utils/fake-browser.ts`, see [the provider guide](adding-a-provider.md#a-browser-provider-without-a-browser)). Tests of the browser runtime itself (launch failures, crashes, locks) mock `playwright-core` with `tests/utils/fake-playwright.ts`:
 
 ```ts
 jest.mock('playwright-core', () =>
@@ -277,7 +277,7 @@ beforeEach(() => {
   ```ts
   describeProviderContract('my-provider', () => {
     const factory = createMyProviderFactory();
-    const ctx = createTestProviderContext(factory.manifest);
+    const ctx = createPlaywrightTestProviderContext(factory.manifest);
     return {
       provider: factory(ctx),
       sample: { externalId: 'some-park', stay: STAY },
@@ -287,7 +287,7 @@ beforeEach(() => {
   });
   ```
 
-`tests/integration/browser-provider-contract.test.ts` is the reference.
+`tests/unit/providers/browser-automation.test.ts` is the reference.
 
 ## The real-browser smoke test
 

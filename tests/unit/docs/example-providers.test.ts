@@ -6,7 +6,7 @@
  * main process's tsconfig, register in a fresh `ProviderRegistry`, pass the provider contract
  * suite, list normalised `LocationSummary`s and answer availability as `NightStatus`es with
  * `YYYY-MM-DD` dates. The API example runs on `NodeHttpClient` against a loopback server; the
- * browser example on a fake `BrowserAutomation` that loads the example site into jsdom.
+ * browser example on the fake browser (`tests/utils/fake-browser.ts`) over the example site.
  *
  * The regions marked `// #region docs:<name>` are code blocks of the guide
  * (`tests/unit/docs/docs-sync.test.ts`).
@@ -16,18 +16,11 @@ import fs from 'fs';
 import http from 'http';
 import type { AddressInfo } from 'net';
 import path from 'path';
-import { JSDOM } from 'jsdom';
-import type { Page } from 'playwright-core';
 import ts from 'typescript';
-import {
-  createAbortError,
-  isAbortError,
-  ProviderHttpError,
-  ProviderParseError,
-  type BrowserAutomation,
-} from '@main/providers/sdk';
+import { isAbortError, ProviderHttpError, ProviderParseError } from '@main/providers/sdk';
 import { ProviderRegistry, type ProviderWith } from '@main/providers/registry';
 import { isCalendarDate, type StayQuery } from '@shared/types/provider.types';
+import { createFakeBrowser } from '@tests/utils/fake-browser';
 import { createTestProviderContext } from '@tests/utils/fake-provider';
 import { describeProviderContract } from '@tests/utils/provider-contract';
 import {
@@ -95,59 +88,6 @@ async function startFixtureServer(): Promise<FixtureServer> {
   });
   return { ...server, requests };
 }
-
-// ---------------------------------------------------------------------------------------
-// The browser example's fake BrowserAutomation
-// ---------------------------------------------------------------------------------------
-
-// #region docs:test-fake-browser
-/** Settles with `pending`, or rejects with an AbortError as soon as `signal` aborts. */
-function raceAbort<T>(pending: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return pending;
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = (): void => reject(createAbortError(signal));
-    if (signal.aborted) onAbort();
-    signal.addEventListener('abort', onAbort, { once: true });
-    pending.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
-  });
-}
-
-/**
- * A fake `BrowserAutomation`: each page loads the example site's HTML into jsdom, so the
- * provider's real page functions run against it. Results cross back as JSON, as from a real
- * browser. It honours the signal and closes every page, like the real one.
- */
-function createFakeBrowser(site: (url: URL) => { status: number; html: string }) {
-  let openPages = 0;
-  const browser: BrowserAutomation = {
-    isAvailable: async () => ({ available: true, channel: 'chrome' }),
-    async withPage(fn, options = {}) {
-      if (options.signal?.aborted) throw createAbortError(options.signal);
-      let dom = new JSDOM('');
-      const page = {
-        async goto(url: string) {
-          await new Promise((resolve) => setImmediate(resolve)); // a navigation takes a turn
-          const { status, html } = site(new URL(url));
-          dom = new JSDOM(html, { url });
-          return { status: () => status };
-        },
-        async $$eval(selector: string, pageFunction: (elements: unknown[]) => unknown) {
-          const elements = Array.from(dom.window.document.querySelectorAll(selector));
-          return JSON.parse(JSON.stringify(pageFunction(elements) ?? null));
-        },
-      };
-      openPages++;
-      try {
-        return await raceAbort(fn(page as unknown as Page), options.signal);
-      } finally {
-        openPages--;
-      }
-    },
-    close: async () => undefined,
-  };
-  return { browser, openPages: () => openPages };
-}
-// #endregion
 
 // ---------------------------------------------------------------------------------------
 // Compiles
@@ -368,7 +308,7 @@ describe('example browser provider', () => {
   beforeAll(() => {
     const registry = new ProviderRegistry();
     registry.register(createExampleBrowserFactory(), (manifest) =>
-      createTestProviderContext(manifest, { browser: fake.browser })
+      createTestProviderContext(manifest, { browser: fake })
     );
     provider = registry.require('example-browser', 'availability');
   });
@@ -399,6 +339,7 @@ describe('example browser provider', () => {
       expect.objectContaining({ key: 'example-browser:river-gums', kind: 'caravan-park' }),
     ]);
     expect(fake.openPages()).toBe(0);
+    expect(fake.visits).toContain('https://www.example-holiday.test/parks');
   });
 
   it('answers availability as NightStatus with YYYY-MM-DD dates, only the stay nights', async () => {
@@ -448,13 +389,16 @@ describe('example browser provider', () => {
   });
 });
 
+// #region docs:test-fake-browser
 describeProviderContract('example-browser', () => {
+  // Pages come from the example site, in jsdom: the provider's own page code runs.
   const fake = createFakeBrowser(renderExampleSite);
   const factory = createExampleBrowserFactory();
   return {
-    provider: factory(createTestProviderContext(factory.manifest, { browser: fake.browser })),
+    provider: factory(createTestProviderContext(factory.manifest, { browser: fake })),
     sample: { externalId: 'sunset-bay', stay: STAY },
     unknownExternalId: 'nowhere',
     openPages: fake.openPages,
   };
 });
+// #endregion

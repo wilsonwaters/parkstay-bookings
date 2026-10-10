@@ -13,7 +13,11 @@ import { installQuitHold, QUIT_GRACE_MS, type HideableWindow } from '@main/app/q
 import { BROWSER_CLOSE_TIMEOUT_MS } from '@main/providers/sdk';
 import { ProviderRegistry } from '@main/providers/registry';
 import { fakePlaywright } from '@tests/utils/fake-playwright';
-import { createFakeProvider, createTestProviderContext } from '@tests/utils/fake-provider';
+import {
+  createFakeProvider,
+  createPlaywrightTestProviderContext,
+  createTestProviderContext,
+} from '@tests/utils/fake-provider';
 
 /** Electron's `app` for `before-quit`: a quit emits it, and goes ahead unless prevented. */
 class FakeApp extends EventEmitter {
@@ -122,7 +126,7 @@ describe('installQuitHold', () => {
     const kill = jest.spyOn(process, 'kill').mockImplementation(() => true);
     const registry = new ProviderRegistry();
     const fake = createFakeProvider({ id: 'fake' });
-    registry.register(fake.factory, (manifest) => createTestProviderContext(manifest));
+    registry.register(fake.factory, (manifest) => createPlaywrightTestProviderContext(manifest));
     await fake.ctx!.browser.withPage(async () => undefined);
     const [context] = fakePlaywright.contexts;
     context.hangOnClose = true;

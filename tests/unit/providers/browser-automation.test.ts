@@ -2,7 +2,9 @@
  * `PlaywrightBrowserAutomation` (V7) against a mocked `playwright-core`
  * (`tests/utils/fake-playwright.ts`): channel order and caching, the no-browser error,
  * serialised `withPage`, abort and timeouts, headed/headless relaunch, idle close, the kill
- * path, crashes, a locked profile, and `registry.disposeAll()`.
+ * path, crashes, a locked profile, `registry.disposeAll()`, and the browser-driven
+ * FakeProvider on it (its contract and mapping tests run on `tests/utils/fake-browser.ts`, in
+ * `tests/integration/browser-provider-contract.test.ts`).
  */
 
 jest.mock('playwright-core', () =>
@@ -26,6 +28,8 @@ import {
   type PlaywrightBrowserAutomationOptions,
 } from '@main/providers/sdk';
 import { ProviderRegistry } from '@main/providers/registry';
+import { renderFakeSite } from '@tests/fixtures/fake-browser-site';
+import { createFakeBrowserProviderFactory } from '@tests/utils/fake-browser-provider';
 import {
   fakePlaywright,
   type FakeBrowserContext,
@@ -34,7 +38,7 @@ import {
 import {
   createFakeProvider,
   createMemoryLogger,
-  createTestProviderContext,
+  createPlaywrightTestProviderContext,
   TEST_PROVIDERS_DIR,
   type MemoryLogger,
 } from '@tests/utils/fake-provider';
@@ -304,7 +308,7 @@ describe('withPage', () => {
   });
 
   it('launches the persistent context once, with userDataDir ending in providers/fake/browser', async () => {
-    const ctx = createTestProviderContext('fake');
+    const ctx = createPlaywrightTestProviderContext('fake');
     opened.push(ctx.browser as PlaywrightBrowserAutomation);
 
     await ctx.browser.withPage(noop);
@@ -643,7 +647,7 @@ describe('registry.disposeAll()', () => {
     const registry = new ProviderRegistry();
     const fakes = ['fake', 'fake2', 'fake3'].map((id) => createFakeProvider({ id }));
     for (const fake of fakes) {
-      registry.register(fake.factory, (manifest) => createTestProviderContext(manifest));
+      registry.register(fake.factory, (manifest) => createPlaywrightTestProviderContext(manifest));
     }
     const [a, b, c] = fakes.map((fake) => fake.ctx!.browser);
     await a.withPage(noop);
@@ -659,5 +663,48 @@ describe('registry.disposeAll()', () => {
     // Closing fake3, which never launched, launched nothing.
     expect(fakePlaywright.chromium.launchPersistentContext).toHaveBeenCalledTimes(2);
     expect(fakePlaywright.contexts.map((context) => context.isClosed())).toEqual([true, true]);
+  });
+});
+
+describe('the browser-driven FakeProvider on PlaywrightBrowserAutomation', () => {
+  const STAY = { arrival: '2026-11-13', departure: '2026-11-16', adults: 2 };
+  const factory = createFakeBrowserProviderFactory();
+
+  beforeEach(() => {
+    fakePlaywright.site = renderFakeSite;
+  });
+
+  it('does it all in one persistent context, at providers/fake-browser/browser, one page at a time', async () => {
+    const ctx = createPlaywrightTestProviderContext(factory.manifest);
+    opened.push(ctx.browser as PlaywrightBrowserAutomation);
+    const provider = factory(ctx);
+
+    const results = await Promise.all([
+      provider.catalog!.listLocations!(),
+      provider.catalog!.getLocation('busselton-jetty'),
+      provider.availability!.check('busselton-jetty', STAY),
+    ]);
+    expect(results).toHaveLength(3);
+
+    expect(fakePlaywright.chromium.launchPersistentContext).toHaveBeenCalledTimes(1);
+    const [userDataDir, options] = fakePlaywright.chromium.launchPersistentContext.mock.calls[0];
+    expect(userDataDir.endsWith(path.join('providers', 'fake-browser', 'browser'))).toBe(true);
+    // The manifest's time zone reaches the browser.
+    expect(options).toMatchObject({ timezoneId: 'Australia/Perth', locale: 'en-AU' });
+    expect(fakePlaywright.peakOpenPages).toBe(1);
+    expect(fakePlaywright.openPages()).toBe(0);
+  });
+
+  it('turns "no browser installed" into the user-facing BrowserUnavailableError', async () => {
+    const ctx = createPlaywrightTestProviderContext(factory.manifest);
+    opened.push(ctx.browser as PlaywrightBrowserAutomation);
+    const lonely = factory(ctx);
+    fakePlaywright.installed = new Set();
+
+    await expect(lonely.catalog!.listLocations!()).rejects.toMatchObject({
+      name: 'BrowserUnavailableError',
+      reason: 'no-browser',
+      message: 'WA Stay needs Microsoft Edge or Google Chrome installed to use Fake Holiday Parks',
+    });
   });
 });

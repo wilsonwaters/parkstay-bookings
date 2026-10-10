@@ -1,5 +1,11 @@
 /**
- * A fake `playwright-core` for main-process tests of browser automation (V7).
+ * A fake `playwright-core` for main-process tests of browser automation itself (V7):
+ * `PlaywrightBrowserAutomation`'s launch, channels, serialisation, crashes and kill path
+ * (`tests/unit/providers/browser-automation.test.ts`), loading `playwright-core` lazily
+ * (`browser-automation-loading.test.ts`) and a hung browser at quit
+ * (`tests/unit/app/quit-hold.test.ts`). Build their contexts with
+ * `createPlaywrightTestProviderContext`. A provider's own tests use the fake browser
+ * (`tests/utils/fake-browser.ts`) instead, which runs page scripts and has locators.
  *
  *   jest.mock('playwright-core', () =>
  *     jest.requireActual('@tests/utils/fake-playwright').fakePlaywrightModule()

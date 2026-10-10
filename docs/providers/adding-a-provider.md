@@ -1009,63 +1009,30 @@ describeProviderContract('example-api', async () => {
 
 ### A browser provider without a browser
 
-Unit tests never start a browser. Give the context a fake `BrowserAutomation` whose pages load
-your fixture site into jsdom, so your real page functions run against it, and pass
-`openPages` to the contract suite so it checks that no call leaves a page open:
+Unit tests never start a browser. Give the context the fake browser from
+`tests/utils/fake-browser.ts`: its pages load your fixture site into jsdom and run the site's
+scripts, so your real page code runs against it. Pass `openPages` to the contract suite so it
+checks that no call leaves a page open:
 
 <!-- region: tests/unit/docs/example-providers.test.ts#test-fake-browser -->
 
 ```ts
-/** Settles with `pending`, or rejects with an AbortError as soon as `signal` aborts. */
-function raceAbort<T>(pending: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return pending;
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = (): void => reject(createAbortError(signal));
-    if (signal.aborted) onAbort();
-    signal.addEventListener('abort', onAbort, { once: true });
-    pending.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
-  });
-}
-
-/**
- * A fake `BrowserAutomation`: each page loads the example site's HTML into jsdom, so the
- * provider's real page functions run against it. Results cross back as JSON, as from a real
- * browser. It honours the signal and closes every page, like the real one.
- */
-function createFakeBrowser(site: (url: URL) => { status: number; html: string }) {
-  let openPages = 0;
-  const browser: BrowserAutomation = {
-    isAvailable: async () => ({ available: true, channel: 'chrome' }),
-    async withPage(fn, options = {}) {
-      if (options.signal?.aborted) throw createAbortError(options.signal);
-      let dom = new JSDOM('');
-      const page = {
-        async goto(url: string) {
-          await new Promise((resolve) => setImmediate(resolve)); // a navigation takes a turn
-          const { status, html } = site(new URL(url));
-          dom = new JSDOM(html, { url });
-          return { status: () => status };
-        },
-        async $$eval(selector: string, pageFunction: (elements: unknown[]) => unknown) {
-          const elements = Array.from(dom.window.document.querySelectorAll(selector));
-          return JSON.parse(JSON.stringify(pageFunction(elements) ?? null));
-        },
-      };
-      openPages++;
-      try {
-        return await raceAbort(fn(page as unknown as Page), options.signal);
-      } finally {
-        openPages--;
-      }
-    },
-    close: async () => undefined,
+describeProviderContract('example-browser', () => {
+  // Pages come from the example site, in jsdom: the provider's own page code runs.
+  const fake = createFakeBrowser(renderExampleSite);
+  const factory = createExampleBrowserFactory();
+  return {
+    provider: factory(createTestProviderContext(factory.manifest, { browser: fake })),
+    sample: { externalId: 'sunset-bay', stay: STAY },
+    unknownExternalId: 'nowhere',
+    openPages: fake.openPages,
   };
-  return { browser, openPages: () => openPages };
-}
+});
 ```
 
-For a fuller fake (launch failures, crashes, a locked profile) mock `playwright-core` with
-`tests/utils/fake-playwright.ts`, and for a real-browser smoke test against a loopback site see
+For launch failures, crashes and a locked profile, mock `playwright-core` with
+`tests/utils/fake-playwright.ts` and build the context with `createPlaywrightTestProviderContext`;
+for a real-browser smoke test against a loopback site see
 [browser providers](browser-providers.md#the-real-browser-smoke-test).
 
 ### The Electron smoke tests

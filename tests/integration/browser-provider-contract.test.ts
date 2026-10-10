@@ -1,52 +1,41 @@
 /**
- * The browser-driven FakeProvider (V7) through the provider conformance suite, on the real
- * `PlaywrightBrowserAutomation` with a mocked `playwright-core` whose pages render the fake
- * holiday-park site in jsdom. Proves the `ProviderContext.browser` contract end to end: the
- * provider's own DOM code runs, results map to the normalised types, calls are serialised on
- * one persistent context, and no call leaves a page open.
+ * The browser-driven FakeProvider (V7) through the provider conformance suite, on the fake
+ * browser (`tests/utils/fake-browser.ts`) whose pages render the fake holiday-park site in
+ * jsdom. Proves the `ProviderContext.browser` contract end to end: the provider's own DOM code
+ * runs, results map to the normalised types, calls run one page at a time, and no call leaves
+ * a page open. The same provider on `PlaywrightBrowserAutomation` itself (one persistent
+ * context, the no-browser error) is in `tests/unit/providers/browser-automation.test.ts`.
  */
 
-jest.mock('playwright-core', () =>
-  jest.requireActual('@tests/utils/fake-playwright').fakePlaywrightModule()
-);
-
-import path from 'path';
-import type { PlaywrightBrowserAutomation } from '@main/providers/sdk';
 import { ProviderRegistry } from '@main/providers/registry';
 import { FAKE_SITE_PARKS, renderFakeSite } from '@tests/fixtures/fake-browser-site';
+import { createFakeBrowser } from '@tests/utils/fake-browser';
 import {
   createFakeBrowserProviderFactory,
   FAKE_BROWSER_BASE_URL,
 } from '@tests/utils/fake-browser-provider';
-import { fakePlaywright } from '@tests/utils/fake-playwright';
 import { createTestProviderContext, FIXED_NOW } from '@tests/utils/fake-provider';
 import { describeProviderContract } from '@tests/utils/provider-contract';
-
-fakePlaywright.reset();
-fakePlaywright.site = renderFakeSite;
 
 const STAY = { arrival: '2026-11-13', departure: '2026-11-16', adults: 2 };
 
 describeProviderContract('fake-browser', () => {
+  const fake = createFakeBrowser(renderFakeSite);
   const factory = createFakeBrowserProviderFactory();
-  const ctx = createTestProviderContext(factory.manifest);
   return {
-    provider: factory(ctx),
+    provider: factory(createTestProviderContext(factory.manifest, { browser: fake })),
     sample: { externalId: 'swan-valley', stay: STAY },
-    openPages: () => fakePlaywright.openPages(),
-    cleanup: () => ctx.browser.close(),
+    openPages: fake.openPages,
   };
 });
 
 describe('FakeBrowserProvider', () => {
+  const fake = createFakeBrowser(renderFakeSite);
   const factory = createFakeBrowserProviderFactory();
   const registry = new ProviderRegistry();
-  const provider = registry.register(factory, (manifest) => createTestProviderContext(manifest));
-
-  beforeAll(() => {
-    fakePlaywright.reset();
-    fakePlaywright.site = renderFakeSite;
-  });
+  const provider = registry.register(factory, (manifest) =>
+    createTestProviderContext(manifest, { browser: fake })
+  );
 
   afterAll(() => registry.disposeAll());
 
@@ -109,8 +98,8 @@ describe('FakeBrowserProvider', () => {
     expect(onlySite.units.map((u) => u.unitId)).toEqual(['p7']);
   });
 
-  it('does it all in one persistent context, at providers/fake-browser/browser, one page at a time', async () => {
-    fakePlaywright.peakOpenPages = 0;
+  it('reads one page at a time, visits only the pages it needs, and closes every page', async () => {
+    const before = fake.visits.length;
     const results = await Promise.all([
       provider.catalog!.listLocations!(),
       provider.catalog!.getLocation('busselton-jetty'),
@@ -118,13 +107,13 @@ describe('FakeBrowserProvider', () => {
     ]);
     expect(results).toHaveLength(3);
 
-    expect(fakePlaywright.chromium.launchPersistentContext).toHaveBeenCalledTimes(1);
-    const [userDataDir, options] = fakePlaywright.chromium.launchPersistentContext.mock.calls[0];
-    expect(userDataDir.endsWith(path.join('providers', 'fake-browser', 'browser'))).toBe(true);
-    // The manifest's time zone reaches the browser.
-    expect(options).toMatchObject({ timezoneId: 'Australia/Perth', locale: 'en-AU' });
-    expect(fakePlaywright.peakOpenPages).toBe(1);
-    expect(fakePlaywright.openPages()).toBe(0);
+    expect(fake.peakOpenPages).toBe(1);
+    expect(fake.openPages()).toBe(0);
+    expect(fake.visits.slice(before)).toEqual([
+      `${FAKE_BROWSER_BASE_URL}/parks`,
+      `${FAKE_BROWSER_BASE_URL}/parks/busselton-jetty`,
+      `${FAKE_BROWSER_BASE_URL}/parks/busselton-jetty/availability?arrival=2026-11-13&departure=2026-11-16`,
+    ]);
   });
 
   it('reports an unknown park as a 404 ProviderHttpError', async () => {
@@ -133,18 +122,5 @@ describe('FakeBrowserProvider', () => {
       status: 404,
       url: `${FAKE_BROWSER_BASE_URL}/parks/nowhere`,
     });
-  });
-
-  it('turns "no browser installed" into the user-facing BrowserUnavailableError', async () => {
-    const ctx = createTestProviderContext(factory.manifest);
-    const lonely = factory(ctx);
-    fakePlaywright.installed = new Set();
-
-    await expect(lonely.catalog!.listLocations!()).rejects.toMatchObject({
-      name: 'BrowserUnavailableError',
-      reason: 'no-browser',
-      message: 'WA Stay needs Microsoft Edge or Google Chrome installed to use Fake Holiday Parks',
-    });
-    await (ctx.browser as PlaywrightBrowserAutomation).close();
   });
 });
