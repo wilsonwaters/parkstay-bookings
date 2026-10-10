@@ -28,6 +28,41 @@ export const FAKESTAY = {
   },
 } as unknown as ProviderManifest;
 
+/** A provider with holds (automatic holds on watches) and an optional account, but no Site Sniper. */
+export const HOLDSTAY = {
+  ...PARKSTAY_MANIFEST,
+  id: 'holdstay',
+  name: 'Hold Stay',
+  shortName: 'HoldStay',
+  brand: { color: '#1F5A7A', monogram: 'HS' }, // token-guard-ignore: provider brand data
+  capabilities: {
+    ...PARKSTAY_MANIFEST.capabilities,
+    snipes: false,
+    accessGate: false,
+    bookingImport: false,
+    account: 'optional',
+  },
+  releaseModes: [],
+} as unknown as ProviderManifest;
+
+/** A provider with watches and an optional account, but no holds. */
+export const WATCHSTAY = {
+  ...PARKSTAY_MANIFEST,
+  id: 'watchstay',
+  name: 'Watch Stay',
+  shortName: 'WatchStay',
+  brand: { color: '#2E6B3A', monogram: 'WS' }, // token-guard-ignore: provider brand data
+  capabilities: {
+    ...PARKSTAY_MANIFEST.capabilities,
+    holds: false,
+    snipes: false,
+    accessGate: false,
+    bookingImport: false,
+    account: 'optional',
+  },
+  releaseModes: [],
+} as unknown as ProviderManifest;
+
 /** A browse-only provider with no accounts. */
 export const OPENSTAY = {
   ...PARKSTAY_MANIFEST,

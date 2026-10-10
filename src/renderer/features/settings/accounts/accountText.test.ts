@@ -70,22 +70,44 @@ describe('accountRowText', () => {
 });
 
 describe('accountPurpose ("Needed for")', () => {
-  it.each<[string, Partial<ProviderManifest['capabilities']>, string]>([
-    ['none', { account: 'none' }, 'No account needed.'],
+  it.each<[string, Partial<ProviderManifest['capabilities']>, string | null]>([
+    // The status line already says "No account needed": no second line says it again.
+    ['none', { account: 'none' }, null],
+    ['none, with booking import', { account: 'none', bookingImport: true }, null],
     [
-      'optional, with holds (the soft hint, §12.32)',
-      { account: 'optional', holds: true, bookingImport: false },
+      'optional, with Site Sniper and holds (ParkStay: the soft hint, §12.32)',
+      { account: 'optional', holds: true, snipes: true, bookingImport: false },
       'Optional. Connect ParkStay before a release so checkout is quicker. Holds work without it.',
     ],
     [
+      'optional, with holds but no Site Sniper: checkout only, no release',
+      { account: 'optional', holds: true, snipes: false, bookingImport: false },
+      'Optional. Connect ParkStay so checkout is quicker. Holds work without it.',
+    ],
+    [
       'optional, no holds',
-      { account: 'optional', holds: false, bookingImport: false },
+      { account: 'optional', holds: false, snipes: false, bookingImport: false },
       'Optional.',
     ],
     [
-      'required for holds',
+      'required for holds, with Site Sniper and automatic holds (watches)',
       { account: 'required-for-holds', bookingImport: false },
       'Needed for holds (Site Sniper and automatic holds).',
+    ],
+    [
+      'required for holds, Site Sniper but no watches',
+      { account: 'required-for-holds', watches: false, bookingImport: false },
+      'Needed for holds (Site Sniper).',
+    ],
+    [
+      'required for holds, automatic holds but no Site Sniper',
+      { account: 'required-for-holds', snipes: false, bookingImport: false },
+      'Needed for automatic holds.',
+    ],
+    [
+      'required for holds, neither Site Sniper nor watches',
+      { account: 'required-for-holds', snipes: false, watches: false, bookingImport: false },
+      'Needed for holds.',
     ],
     [
       'required',
@@ -99,7 +121,7 @@ describe('accountPurpose ("Needed for")', () => {
     ],
     [
       'optional, with booking import',
-      { account: 'optional', holds: false, bookingImport: true },
+      { account: 'optional', holds: false, snipes: false, bookingImport: true },
       'Optional. Also used to import your bookings.',
     ],
   ])('%s', (_case, capabilities, expected) => {
@@ -118,6 +140,10 @@ describe('accountPurpose when signed in', () => {
         /^Optional\. Connect ParkStay before a release/
       );
     }
+    // With holds but no Site Sniper, the same once signed in
+    expect(
+      accountPurpose(withAccount(PARKSTAY, { snipes: false }), account({ status: 'signed-in' }))
+    ).toBe("Optional. Checkout is quicker while you're signed in.");
     // A required account reads the same either way
     expect(accountPurpose(FAKESTAY, account({ status: 'signed-in' }))).toBe(
       accountPurpose(FAKESTAY, undefined)

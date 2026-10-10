@@ -3,7 +3,7 @@
  * and OpenStay (no accounts), with stored accounts that follow sign-in and sign-out as main's do.
  */
 import { screen, within } from '@testing-library/react';
-import type { ProviderAccount } from '../../../src/shared/types/provider.types';
+import type { ProviderAccount, ProviderManifest } from '../../../src/shared/types/provider.types';
 import { createMockApi, fail, ok } from '../../utils/renderer/createMockApi';
 import { renderWithApp } from '../../utils/renderer/renderWithApp';
 import { FAKESTAY, OPENSTAY, PARKSTAY, account } from './settings';
@@ -28,16 +28,19 @@ type AccountCall = (providerId: string) => Promise<unknown>;
 
 /**
  * Settings → Accounts with ParkStay, FakeStay (needs an account for holds) and OpenStay (no
- * accounts). The stored accounts follow sign-in and sign-out, as main's do; `signIn` and
+ * accounts), or the `providers` given. The stored accounts follow sign-in and sign-out, as main's do; `signIn` and
  * `signOut` give what main answers.
  */
 export function setupAccounts({
+  providers = [PARKSTAY, FAKESTAY, OPENSTAY],
   accounts = [NOT_CONNECTED, FAKE_NOT_CONNECTED],
   route = '/settings/accounts',
   signIn = () => Promise.resolve(fail('not stubbed')),
   signOut = () => Promise.resolve(fail('not stubbed')),
   openSignInLink = jest.fn().mockResolvedValue(ok(undefined)),
 }: {
+  /** The registered providers, in order. Default: ParkStay, FakeStay and OpenStay. */
+  providers?: ProviderManifest[];
   accounts?: ProviderAccount[];
   route?: string;
   signIn?: AccountCall;
@@ -54,7 +57,7 @@ export function setupAccounts({
     return response;
   };
   const mock = createMockApi({
-    providers: { list: jest.fn().mockResolvedValue(ok([PARKSTAY, FAKESTAY, OPENSTAY])) },
+    providers: { list: jest.fn().mockResolvedValue(ok(providers)) },
     accounts: {
       list: jest.fn(() => Promise.resolve(ok(stored))),
       status: jest.fn((id: string) =>

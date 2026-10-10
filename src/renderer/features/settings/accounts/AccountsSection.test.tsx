@@ -9,7 +9,11 @@ import {
   setupAccounts as setup,
 } from '@tests/fixtures/renderer/settings-accounts';
 import {
+  HOLDSTAY,
+  OPENSTAY,
+  PARKSTAY,
   SIGNED_IN,
+  WATCHSTAY,
   account,
   LAST_SIGN_IN,
   politeAnnouncement,
@@ -135,5 +139,66 @@ describe('Settings → Accounts: rows and sign-in', () => {
     expect(
       within(row('ParkStay WA')).getByRole('button', { name: 'Reconnect' })
     ).toBeInTheDocument();
+  });
+});
+
+describe('Settings → Accounts: what each row says follows its manifest', () => {
+  const setupWording = () =>
+    setup({
+      providers: [PARKSTAY, HOLDSTAY, WATCHSTAY, OPENSTAY],
+      accounts: [
+        NOT_CONNECTED,
+        account({ providerId: 'holdstay' }),
+        account({ providerId: 'watchstay' }),
+      ],
+    });
+
+  it('ParkStay (Site Sniper, holds, optional account) still suggests connecting before a release', async () => {
+    setupWording();
+    await rows();
+
+    const parkstay = row('ParkStay WA');
+    expect(within(parkstay).getByText('Not connected')).toBeInTheDocument();
+    expect(
+      within(parkstay).getByText(
+        'Optional. Connect ParkStay before a release so checkout is quicker. Holds work without it.'
+      )
+    ).toBeInTheDocument();
+    expect(within(parkstay).getByRole('button', { name: 'Connect' })).toBeInTheDocument();
+  });
+
+  it('a provider with holds but no Site Sniper talks about checkout only: no release, no Site Sniper', async () => {
+    setupWording();
+    await rows();
+
+    const holdstay = row('Hold Stay');
+    expect(
+      within(holdstay).getByText(
+        'Optional. Connect HoldStay so checkout is quicker. Holds work without it.'
+      )
+    ).toBeInTheDocument();
+    expect(within(holdstay).queryByText(/release/i)).toBeNull();
+    expect(within(holdstay).queryByText(/Site Sniper/)).toBeNull();
+    expect(within(holdstay).getByRole('button', { name: 'Connect' })).toBeInTheDocument();
+  });
+
+  it('a provider with no holds says only that the account is optional', async () => {
+    setupWording();
+    await rows();
+
+    const watchstay = row('Watch Stay');
+    expect(within(watchstay).getByText('Not connected')).toBeInTheDocument();
+    expect(within(watchstay).getByText('Optional.')).toBeInTheDocument();
+    expect(within(watchstay).queryByText(/release|checkout|holds|Site Sniper/i)).toBeNull();
+    expect(within(watchstay).getByRole('button', { name: 'Connect' })).toBeInTheDocument();
+  });
+
+  it('a provider with no accounts says "No account needed" once, with no button', async () => {
+    setupWording();
+    await rows();
+
+    const open = row(OPENSTAY.name);
+    expect(within(open).getAllByText(/No account needed/)).toHaveLength(1);
+    expect(within(open).queryByRole('button')).toBeNull();
   });
 });

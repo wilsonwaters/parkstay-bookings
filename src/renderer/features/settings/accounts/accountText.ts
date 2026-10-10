@@ -64,29 +64,46 @@ export function accountRowText(
 }
 
 /**
- * What the account is needed for, from the manifest's capabilities. Signed in to an optional
- * account, the suggestion to connect becomes what being signed in gives.
+ * "Needed for holds (Site Sniper and automatic holds)", naming only what the provider has:
+ * Site Sniper with `snipes`, automatic holds with `holds` and `watches` (a watch places them).
+ */
+function neededForHolds({ holds, snipes, watches }: ProviderManifest['capabilities']): string {
+  const sniper = snipes;
+  const automatic = holds && watches;
+  if (sniper && automatic) return 'Needed for holds (Site Sniper and automatic holds).';
+  if (sniper) return 'Needed for holds (Site Sniper).';
+  if (automatic) return 'Needed for automatic holds.';
+  return 'Needed for holds.';
+}
+
+/**
+ * What the account is needed for, from the manifest's capabilities, or null for a provider
+ * without accounts (its status line already says "No account needed"). Signed in to an
+ * optional account, the suggestion to connect becomes what being signed in gives. A release
+ * is mentioned only for a provider with Site Sniper (`snipes`).
  */
 export function accountPurpose(
   manifest: ProviderManifest,
   account?: Pick<ProviderAccount, 'status'>
-): string {
-  const { account: requirement, holds, bookingImport } = manifest.capabilities;
+): string | null {
+  const { capabilities } = manifest;
+  const { account: requirement, holds, snipes, bookingImport } = capabilities;
   const name = manifest.shortName;
   const signedIn = account?.status === 'signed-in';
   let purpose: string;
   switch (requirement) {
     case 'none':
-      return 'No account needed.';
+      return null;
     case 'optional':
       if (!holds) purpose = 'Optional.';
       else if (signedIn) purpose = "Optional. Checkout is quicker while you're signed in.";
       else {
-        purpose = `Optional. Connect ${name} before a release so checkout is quicker. Holds work without it.`;
+        const when = snipes ? ' before a release' : '';
+        purpose = `Optional. Connect ${name}${when} so checkout is quicker. Holds work without it.`;
       }
       break;
     case 'required-for-holds':
-      purpose = 'Needed for holds (Site Sniper and automatic holds).';
+      purpose = neededForHolds(capabilities);
       break;
     case 'required':
       purpose = `Needed for everything WA Stay does on ${name}.`;

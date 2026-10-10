@@ -81,6 +81,7 @@ export function AccountRow({
   useAccountCheck(manifest.id, { enabled: hasAccount });
 
   const text = accountRowText(manifest, account);
+  const purpose = accountPurpose(manifest, account);
   const warning = missingAccountWarning(manifest, account);
   const StatusIcon = STATUS_ICON[text.tone];
   const statusId = `account-${manifest.id}-status`;
@@ -103,7 +104,7 @@ export function AccountRow({
           {text.status}
         </p>
         {text.meta && <p className="text-xs text-fg-muted">{text.meta}</p>}
-        <p className="max-w-prose text-sm text-fg-secondary">{accountPurpose(manifest, account)}</p>
+        {purpose && <p className="max-w-prose text-sm text-fg-secondary">{purpose}</p>}
         {warning && <p className="text-sm font-medium text-warning-fg">{warning}</p>}
         {outcome?.kind === 'incomplete' && (
           <p className="text-sm text-fg-muted">Sign-in wasn&apos;t completed.</p>
