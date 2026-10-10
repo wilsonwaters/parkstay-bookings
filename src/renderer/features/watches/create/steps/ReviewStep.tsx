@@ -4,7 +4,7 @@ import type {
   ProviderManifest,
   StayFieldDescriptor as StayField,
 } from '../../../../../shared/types/provider.types';
-import { formatPrice } from '../../../../components/nightGrid';
+import { formatPrice } from '../../../../components/nightGridModel';
 import {
   stayNightsLabel,
   partyLabel,

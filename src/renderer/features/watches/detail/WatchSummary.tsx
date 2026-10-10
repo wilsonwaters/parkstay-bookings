@@ -2,12 +2,12 @@ import type { ReactNode } from 'react';
 import type { UnitSummary } from '../../../../shared/types/catalog.types';
 import type { ProviderManifest } from '../../../../shared/types/provider.types';
 import type { Watch } from '../../../../shared/types/watch.types';
-import { formatPrice } from '../../../components/nightGrid';
+import { formatPrice } from '../../../components/nightGridModel';
 import { partyLabel, stayNightsLabel, stayDatesLabel } from '../../../components/stay/stayFormat';
 import { relativeTime, timeInZone } from '../../../components/timeFormat';
 import { StatusPill } from '../../../components/ui';
 import { intervalLabel } from '../form/watchFormSchema';
-import type { UnitNoun } from '../../../components/nightGrid';
+import type { UnitNoun } from '../../../components/nightGridModel';
 import {
   autoHoldLabel,
   statusPillFor,

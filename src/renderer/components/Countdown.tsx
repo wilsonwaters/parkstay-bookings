@@ -1,5 +1,5 @@
 import { useNow } from '../hooks/useNow';
-import { countdownLabel, formatCountdown, type CountdownFormat } from './countdown';
+import { countdownLabel, formatCountdown, type CountdownFormat } from './countdownFormat';
 import { cx } from './ui/cx';
 
 export interface CountdownProps {

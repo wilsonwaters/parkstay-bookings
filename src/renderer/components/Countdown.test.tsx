@@ -1,6 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
 import { Countdown } from './Countdown';
-import { countdownLabel, formatCountdown } from './countdown';
+import { countdownLabel, formatCountdown } from './countdownFormat';
 
 const MINUTE = 60_000;
 

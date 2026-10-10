@@ -1,7 +1,7 @@
 import type { Ref } from 'react';
 import { Clock } from 'lucide-react';
 import type { LocationAvailability } from '../../../shared/types/provider.types';
-import { stayRangeLabel, type UnitNoun } from '../../components/nightGrid';
+import { stayRangeLabel, type UnitNoun } from '../../components/nightGridModel';
 import { NightGrid } from '../../components/NightGrid';
 import { Notice } from '../../components/ui';
 import { PlaceSection } from './PlaceSections';

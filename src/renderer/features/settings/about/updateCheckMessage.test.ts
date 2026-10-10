@@ -1,4 +1,4 @@
-import { updateCheckMessage } from './updateCheck';
+import { updateCheckMessage } from './updateCheckMessage';
 
 describe('updateCheckMessage', () => {
   it.each([

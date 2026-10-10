@@ -11,7 +11,7 @@ import {
   summaryLine,
   summaryNotes,
   unitStanding,
-} from './nightGrid';
+} from './nightGridModel';
 
 const SITE = { one: 'site', many: 'sites' };
 const NIGHTS = ['2026-11-06', '2026-11-07'];

@@ -25,7 +25,7 @@ import {
   summaryNotes,
   splitNightLabel,
   type UnitNoun,
-} from './nightGrid';
+} from './nightGridModel';
 import { Button, Switch, VisuallyHidden } from './ui';
 import { cx } from './ui/cx';
 

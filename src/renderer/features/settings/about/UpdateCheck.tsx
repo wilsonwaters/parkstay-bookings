@@ -3,7 +3,7 @@ import type { UseMutationResult } from '@tanstack/react-query';
 import type { UpdateCheckOutcome } from '../../../api';
 import { Button } from '../../../components/ui';
 import { cx } from '../../../components/ui/cx';
-import { updateCheckMessage } from './updateCheck';
+import { updateCheckMessage } from './updateCheckMessage';
 
 /** `useCheckForUpdates()`, shared by the button and the result. */
 export type UpdateCheckState = UseMutationResult<UpdateCheckOutcome, Error, void>;

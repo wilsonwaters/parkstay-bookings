@@ -28,7 +28,7 @@ const SCAN_DIRS = [
 ];
 const SCAN_FILE_PREFIXES = [
   'components/Countdown',
-  'components/countdown',
+  'components/countdownFormat',
   'components/ComingSoonBanner',
   'components/LocationCard',
   'components/LocationCombobox',

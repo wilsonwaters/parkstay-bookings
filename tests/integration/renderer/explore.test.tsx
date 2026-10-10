@@ -5,7 +5,7 @@
  * availability on the cards and "Available only" (E3). And Explore with 5,000 places.
  */
 import { act, configure, screen, waitFor, within } from '@testing-library/react';
-import { stayRangeLabel } from '../../../src/renderer/components/nightGrid';
+import { stayRangeLabel } from '../../../src/renderer/components/nightGridModel';
 import { shortRange } from '../../../src/renderer/components/ui/calendar';
 import { addDays, todayIn } from '../../../src/shared/utils/calendar-date';
 import { bulkAvailabilityFor } from '../../fixtures/catalog/bulk-availability';

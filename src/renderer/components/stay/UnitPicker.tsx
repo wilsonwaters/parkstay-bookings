@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from 'react';
 import type { UnitSummary } from '../../../shared/types/catalog.types';
-import type { UnitNoun } from '../nightGrid';
+import type { UnitNoun } from '../nightGridModel';
 import { Checkbox, Disclosure } from '../ui';
 
 export type { UnitNoun };

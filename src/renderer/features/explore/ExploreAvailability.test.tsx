@@ -13,7 +13,7 @@ import { currentRoute, renderWithApp } from '../../../../tests/utils/renderer/re
 import type { LocationSummary } from '../../../shared/types/catalog.types';
 import type { BulkAvailabilityEntry, StayQuery } from '../../../shared/types/provider.types';
 import { addDays, todayIn } from '../../../shared/utils/calendar-date';
-import { stayRangeLabel } from '../../components/nightGrid';
+import { stayRangeLabel } from '../../components/nightGridModel';
 import { SLOW_AVAILABILITY_MS, STAY_DEBOUNCE_MS } from './ExplorePage';
 import { createMapboxController } from './map/mapboxController';
 

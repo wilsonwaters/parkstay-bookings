@@ -7,7 +7,7 @@
  * availability from the bulk fixture (campground_availabilty_view.json) and "Available only".
  */
 
-import { stayRangeLabel } from '../../src/renderer/components/nightGrid';
+import { stayRangeLabel } from '../../src/renderer/components/nightGridModel';
 import { addDays, todayIn } from '../../src/shared/utils/calendar-date';
 import { expect, test, withoutGuardedRequests, withoutRemoteImages } from './support/wa-stay';
 import { expectCurrentNavLink, expectRoute, NAV_PAGES, pageHeading } from './support/shell';

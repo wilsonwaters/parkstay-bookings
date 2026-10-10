@@ -34,7 +34,7 @@ import type { PlaceLinkState } from '../../app/routes';
 import type { StayParams } from '../../app/stayParams';
 import type { CardAvailability } from '../../components/LocationCard';
 import { hasMapLocation, placesLabel } from '../../components/locationFormat';
-import { stayRangeLabel } from '../../components/nightGrid';
+import { stayRangeLabel } from '../../components/nightGridModel';
 import { Button, Notice, Spinner, useAnnounce, type Guests } from '../../components/ui';
 import { cx } from '../../components/ui/cx';
 import { useMinWidth } from '../../components/ui/useMinWidth';
