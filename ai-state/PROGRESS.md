@@ -7,9 +7,9 @@ Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task spe
 
 ## Currently in flight
 - **E3** (#34) Date-aware discovery: implementing (M), lane R.
-- **U5** (#39) Notifications and system surfaces: implementing (M), lane W (reuses V4's desktop-title helper per §12.31).
+- **U5** (#39) Notifications and system surfaces: rebased onto U1 (`f7038a2`; gate ×3 green, 3054; e2e 13/13). Review running (security of `app:navigate`, §12.31, UTC `createdAt` fix). Backup `wip/u5-notifications`.
 - **U4** (#38) Settings and accounts: design approved (`e154c9b`): sections Accounts / Notifications / App / About; no new IPC channels (typed `SETTING_KEYS` gain defaults and `rendererWritable`, new `notifications.desktop`, `notifications.sound`, `app.startMinimised`); Gmail OTP UI removed (OQ7 default; Gmail SMTP preset kept); removed dead controls (tray, log level, DB Open Folder, Clear All Data); v1 upgraders with launch-at-login get Start minimised on; U5 builds a reusable `AboutPanel`. Implementing in lane A; rebase after U5 merges.
-- **U5** (#39) Notifications and system surfaces: IMPLEMENTED on lane/w (`95b5632`; gate ×3 green, 2833; axe 0 on bell/chip/update/About; desktop title "ParkStay · …", click restores the window and navigates via an allow-listed path). Needs a rebase onto U1 (LEGACY_ALLOW_LIST_MAX → 9; `useNow`/`timeFormat` identical), then review. Created reusable `AboutPanel` and `Countdown`; fixed D2 Popover focus return and notification `createdAt` read as UTC.
+- **U5** (#39) Notifications and system surfaces: rebased onto U1 (`f7038a2`; gate ×3 green, 3054; e2e 13/13). Review running (security of `app:navigate`, §12.31, UTC `createdAt` fix). Backup `wip/u5-notifications`.
 - **U2** (#36) Site Sniper provider-first: implementing (M, reusing U1 blocks), lane M. Countdown from U5 when merged.
 - **U3** (#37) Bookings provider-first: implementing (M), lane X.
 - Next (multiple agents approved): reviews of E3, U5, U4, U2, U3 as they finish; then P7 (dead-code cleanup, v10), Q1 phase-2 review, Q2 (docs, CLAUDE.md incl. `RATE_LIMITED`, key components), system verification, final review, PR.
