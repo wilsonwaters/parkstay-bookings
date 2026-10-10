@@ -6,8 +6,16 @@ _Last updated: 2026-10-11 (orchestrator)_
 Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wilsonwaters/wa-stay`). Phase 6 is done: the final review fixes are merged and the PR is open. The stakeholder asked for CI fixes, Node 24, hardening, dependency upgrades and developer-experience fixes on the same PR.
 
 ## Currently in flight
-- Nothing. DX5 is merged (`fea81aa`), and PR #42 waits on CI for its head, then on the stakeholder.
-- The macOS runner's Jest worker SIGSEGV recurred once (`10512b5`). Since `444d840`, CI uploads macOS crash reports on failure, so the next one can be diagnosed (V8 or a native module).
+- **ParkStay details round** (the stakeholder's Windows testing, 2026-10-11).
+  - **The three findings:**
+    1. Per-site details on "Check availability": ParkStay's paragraph per site, plus max people and vehicles.
+    2. A richer campground "About" as an accordion, with the PDF campground map viewable in the app.
+    3. "View on ParkStay" opens an error page. The link `search-availability/campground/?site_id=` was never probed live.
+  - **Step 1 (running):** a research agent reads DBCA's source and makes a few anonymous, read-only live GETs. Findings go to the scratchpad's `parkstay-details/findings.md`.
+  - **Step 2:** specs.
+  - **Step 3:** implementation, then review, then merge.
+  - **Stakeholder instruction:** run in series, one agent at a time (quota). Planned design for the map: a sandboxed in-app document window limited to ParkStay's origin, rather than loosening the main window's CSP.
+- PR #42 is green on `32f43e2`. A safety-net check-in is armed for 02:20 UTC.
 
 ## Notes
 - 2026-10-10 ~04:30 UTC: a third usage limit stopped U4 (final gate), U2 (gate), the U3 fix and the E3 fix; all resumed at 06:25 UTC from saved state (U4 `28f3e40` and U2 `cd243b0` backed up to `wip/*`).
