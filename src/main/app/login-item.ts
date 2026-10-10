@@ -2,21 +2,25 @@
  * Launch at login.
  *
  * - Windows: a `HKCU\...\CurrentVersion\Run` value named after the AppUserModelId
- *   (`com.parkstay.bookings` when packaged, `bootstrap.ts`), running the executable with
- *   `--hidden`. The portable build runs from a temp folder, so the entry points at the
+ *   (`com.parkstay.bookings` when packaged, `bootstrap.ts`), running the executable, with
+ *   `--hidden` only when "Start minimised" is on (the window then opens minimised,
+ *   `main-window.ts`). The portable build runs from a temp folder, so the entry points at the
  *   portable exe itself (`PORTABLE_EXECUTABLE_FILE`). The path is quoted: Electron writes
  *   it as given, and "WA Stay" has a space.
- * - macOS: a login item opened hidden.
+ * - macOS: a login item, opened hidden only when "Start minimised" is on.
  *
  * v1.x never set an AppUserModelId, so its Run value is named with Electron's default,
  * `electron.app.<productName>` (`LEGACY_LOGIN_ITEM_NAMES`), and runs the v1.x executable
  * (`LEGACY_EXE_NAME`) from its install folder with `--hidden`, unquoted (BQ4). After the first-run
  * migration, `replaceLegacyLoginItems` removes it and, when the user had launch at login
- * on, registers the new entry.
+ * on, registers the new entry. v1.x always started hidden, so such a user also gets
+ * "Start minimised" (`legacyStartMinimised`).
  */
 
 import { app as electronApp } from 'electron';
 import path from 'path';
+import { SETTING_KEYS } from '@shared/contracts/settings';
+import type { SettingsRepository } from '../database/repositories';
 import { HIDDEN_ARG } from './single-instance';
 
 /** The v1.x executable name (`productName` + `.exe`). */
@@ -80,23 +84,68 @@ export function launchExecutable(host: Pick<LaunchTarget, 'env' | 'execPath'>): 
   return host.env.PORTABLE_EXECUTABLE_FILE || host.execPath;
 }
 
+/** What a login launch does: start at all, and open minimised. */
+export interface LaunchAtLoginChoice {
+  enabled: boolean;
+  startMinimised: boolean;
+}
+
 /**
  * Turns launch at login on or off. On Windows the Run value takes the default name (the
- * AppUserModelId). The caller refuses `true` when running from source.
+ * AppUserModelId), and is written again when only `startMinimised` changes. The caller
+ * refuses `enabled` when running from source.
  */
 export function setLaunchAtLogin(
-  enabled: boolean,
+  { enabled, startMinimised }: LaunchAtLoginChoice,
   host: LaunchTarget = currentLaunchTarget()
 ): void {
+  const hidden = enabled && startMinimised;
   if (host.platform === 'darwin') {
-    host.app.setLoginItemSettings({ openAtLogin: enabled, openAsHidden: enabled });
+    host.app.setLoginItemSettings({ openAtLogin: enabled, openAsHidden: hidden });
     return;
   }
   host.app.setLoginItemSettings({
     openAtLogin: enabled,
     path: `"${launchExecutable(host)}"`,
-    args: enabled ? [HIDDEN_ARG] : [],
+    args: hidden ? [HIDDEN_ARG] : [],
   });
+}
+
+/** The settings `legacyStartMinimised` reads and writes. */
+export interface StartMinimisedStore {
+  /** The stored choice, or `null` when there is none. */
+  get(): boolean | null;
+  set(value: boolean): void;
+}
+
+/** The stored "Start minimised" choice (`app.startMinimised`) as a `StartMinimisedStore`. */
+export function startMinimisedSetting(
+  settings: Pick<SettingsRepository, 'getValue' | 'set'>
+): StartMinimisedStore {
+  const { valueType, category } = SETTING_KEYS['app.startMinimised'];
+  return {
+    get: () => settings.getValue<boolean>('app.startMinimised'),
+    set: (value) => {
+      settings.set('app.startMinimised', value, valueType, category);
+    },
+  };
+}
+
+/**
+ * "Start minimised" for the launch-at-login entry that replaces a v1.x one. v1.x always
+ * started `--hidden`, so a v1.x user with launch at login on keeps a quiet start: the
+ * setting is turned on, once. A choice already stored (the user's, or an earlier run of this
+ * step) is kept, so running it again changes nothing.
+ */
+export function legacyStartMinimised(
+  launchOnStartup: boolean,
+  store: StartMinimisedStore
+): boolean {
+  const stored = store.get();
+  if (stored !== null) return stored;
+  if (!launchOnStartup) return false;
+  store.set(true);
+  return true;
 }
 
 /** Lower case, quotes removed, `/` as `\`: how Windows compares these paths. */
@@ -138,11 +187,12 @@ export interface ReplaceLegacyLoginItemsResult {
 
 /**
  * After the first-run migration (Windows, packaged only): removes the v1.x Run values, then
- * registers the WA Stay entry if the migrated setting `launchOnStartup` is on. Elsewhere it
- * does nothing: v1.x shipped only for Windows, and a dev build never registers.
+ * registers the WA Stay entry if the migrated setting `launchOnStartup` is on, with
+ * `--hidden` when `startMinimised` is. Elsewhere it does nothing: v1.x shipped only for
+ * Windows, and a dev build never registers.
  */
 export function replaceLegacyLoginItems(
-  launchOnStartup: boolean,
+  { launchOnStartup, startMinimised }: { launchOnStartup: boolean; startMinimised: boolean },
   host: LoginItemHost
 ): ReplaceLegacyLoginItemsResult {
   if (host.platform !== 'win32' || !host.app.isPackaged) return { removed: [], registered: false };
@@ -156,8 +206,10 @@ export function replaceLegacyLoginItems(
   );
 
   if (launchOnStartup) {
-    setLaunchAtLogin(true, host);
-    host.log.info('legacy-install: launch at login registered for WA Stay');
+    setLaunchAtLogin({ enabled: true, startMinimised }, host);
+    host.log.info(
+      `legacy-install: launch at login registered for WA Stay${startMinimised ? ', minimised' : ''}`
+    );
   }
   return { removed, registered: launchOnStartup };
 }

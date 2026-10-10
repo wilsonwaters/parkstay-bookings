@@ -78,7 +78,8 @@ test.describe('account menu', () => {
 
     await chooseAccountMenuItem(window, 'Settings');
 
-    await expectRoute(window, '/settings');
+    // `/settings` opens its first section
+    await expectRoute(window, '/settings/accounts');
     await expectHeadingFocused(window, 'Settings');
     await expectCurrentNavLink(window, null);
   });

@@ -163,6 +163,15 @@ const PAGE_TITLES: [pattern: string, title: string][] = [
   [PATTERNS.design, 'Design language'],
 ];
 
+/**
+ * The page a path belongs to, for focus and the announcement on a change of page
+ * (`useRouteFocus`): the path itself, except that Settings' sections are one page, whose
+ * sub-navigation moves focus to the section's own heading.
+ */
+export function routeFocusKey(pathname: string): string {
+  return matchPath(PATTERNS.settings, pathname) ? '/settings' : pathname;
+}
+
 export function pageTitleFor(pathname: string): string {
   return PAGE_TITLES.find(([pattern]) => matchPath(pattern, pathname))?.[1] ?? 'Page not found';
 }

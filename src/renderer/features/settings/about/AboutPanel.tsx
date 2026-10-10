@@ -35,9 +35,9 @@ export function AboutPanel({ actions, children, align = 'center' }: AboutPanelPr
   return (
     <div>
       <div className={centred ? 'text-center' : 'text-left'}>
-        {info.data && (
+        {(info.data || info.isError) && (
           <p className="text-base font-semibold tabular-nums text-fg">
-            Version {info.data.version}
+            Version {info.data ? info.data.version : 'Unknown'}
           </p>
         )}
         <p className="mt-1 text-sm text-fg-secondary">{APP_DESCRIPTION}</p>

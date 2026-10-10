@@ -138,37 +138,3 @@ export interface Setting {
   description?: string;
   updatedAt: Date;
 }
-
-export interface AppSettings {
-  general: {
-    launchOnStartup: boolean;
-    minimizeToTray: boolean;
-    checkForUpdates: boolean;
-  };
-  notifications: {
-    enabled: boolean;
-    sound: boolean;
-    desktop: boolean;
-    soundFile: string;
-  };
-  watches: {
-    defaultInterval: number;
-    maxConcurrent: number;
-    autoBookEnabled: boolean;
-  };
-  siteSniper: {
-    defaultPollIntervalMs: number;
-    defaultLeadTimeSeconds: number;
-    enabled: boolean;
-  };
-  ui: {
-    theme: 'light' | 'dark' | 'system';
-    language: string;
-    dateFormat: string;
-  };
-  advanced: {
-    logLevel: 'error' | 'warn' | 'info' | 'debug';
-    databasePath: string;
-    maxLogSize: number;
-  };
-}

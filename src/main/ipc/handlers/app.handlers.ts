@@ -1,13 +1,15 @@
 /**
- * `app` handlers: about info, the logs folder and launch at login.
+ * `app` handlers: about info, the logs folder and launch at login. Launch at login is the
+ * only writer of `launchOnStartup` and `app.startMinimised`, so they always match the OS entry.
  */
 
 import { app, shell } from 'electron';
 import fs from 'fs';
 import os from 'os';
-import { contract, SETTING_KEYS } from '@shared/contracts';
+import { contract, SETTING_KEYS, type LaunchAtLogin } from '@shared/contracts';
 import type { AppContainer } from '../../app/container';
 import { setLaunchAtLogin } from '../../app/login-item';
+import { readSetting } from '../../app/settings-values';
 import { logger } from '../../utils/logger';
 import type { Handle } from '../handle';
 
@@ -36,25 +38,38 @@ export function registerAppHandlers(handle: Handle, c: AppContainer): void {
     return true;
   });
 
-  handle(api.setAutoLaunch, ({ enabled }) => {
+  const readLaunchAtLogin = (): LaunchAtLogin => ({
+    enabled: readSetting(settings, 'launchOnStartup'),
+    startMinimised: readSetting(settings, 'app.startMinimised'),
+  });
+
+  handle(api.setAutoLaunch, ({ enabled, startMinimised: requested }) => {
     // In dev mode, process.execPath points to node_modules/electron/dist/electron.exe,
     // which when launched at login has no app context and shows Electron's generic
     // welcome window. Refuse to register — auto-launch only makes sense for packaged builds.
     if (enabled && !app.isPackaged) {
       logger.warn('Auto-launch refused: only available in packaged builds, not in dev mode');
       throw new Error(
-        'Launch on startup is only available in the installed build, not when running from source.'
+        'Starting at sign-in is only available in the installed app, not when running from source.'
       );
     }
 
-    setLaunchAtLogin(enabled);
+    const startMinimised = requested ?? readLaunchAtLogin().startMinimised;
+    setLaunchAtLogin({ enabled, startMinimised });
 
-    const { valueType, category } = SETTING_KEYS.launchOnStartup;
-    settings.set('launchOnStartup', enabled, valueType, category);
+    for (const [key, value] of [
+      ['launchOnStartup', enabled],
+      ['app.startMinimised', startMinimised],
+    ] as const) {
+      const { valueType, category } = SETTING_KEYS[key];
+      settings.set(key, value, valueType, category);
+    }
 
-    logger.info(`Auto-launch ${enabled ? 'enabled' : 'disabled'}`);
-    return true;
+    logger.info(
+      `Auto-launch ${enabled ? 'enabled' : 'disabled'}${enabled && startMinimised ? ', minimised' : ''}`
+    );
+    return { enabled, startMinimised };
   });
 
-  handle(api.getAutoLaunch, () => settings.getValue<boolean>('launchOnStartup') ?? false);
+  handle(api.getAutoLaunch, readLaunchAtLogin);
 }

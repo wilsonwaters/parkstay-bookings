@@ -240,10 +240,12 @@ describe('createContainer', () => {
       r.notifications,
       container.notifierDispatcher,
       container.rendererEvents,
-      { providerName: expect.any(Function) }
+      { providerName: expect.any(Function), preferences: expect.any(Function) }
     );
     const [, , , notificationOptions] = jest.mocked(NotificationService).mock.calls[0];
     expect(notificationOptions?.providerName?.('parkstay')).toBe('ParkStay');
+    // Settings → Notifications, read from the stored settings (defaults while none stored)
+    expect(notificationOptions?.preferences?.()).toEqual({ desktop: true, sound: true });
     expect(AutoUpdaterService).toHaveBeenCalledWith(container.rendererEvents);
     // The catalogue reads the registry, caches in locations and provider_state, and announces
     // syncs on the renderer events bus

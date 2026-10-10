@@ -21,6 +21,12 @@ import type { MethodDef } from '@shared/contracts/define';
 import { NotifierChannel, SMTPPreset } from '@shared/types';
 import type { APIResponse } from '@shared/types';
 import { FakeIpcMain, fakeEvent, TEST_LOGS_DIR } from '@tests/utils/ipc-harness';
+import type { EmailNotifierView } from '../../src/renderer/api/notifiers';
+import {
+  canKeepPassword,
+  emailFormDefaults,
+  toConfigureInput,
+} from '../../src/renderer/features/settings/notifications/email/emailForm';
 import { createFakeProvider, createTestProviderContext } from '@tests/utils/fake-provider';
 import { containerSecrets, removeUserData } from '@tests/utils/fake-safe-storage';
 
@@ -77,6 +83,10 @@ const READS: Array<[string, unknown]> = [
   ['notifiers:list', undefined],
   ['notifiers:get', { channel: NotifierChannel.EMAIL_SMTP }],
   ['settings:get', { key: 'launchOnStartup' }],
+  // U4's keys: plain booleans, swept so a key that ever holds more stays covered
+  ['settings:get', { key: 'app.startMinimised' }],
+  ['settings:get', { key: 'notifications.desktop' }],
+  ['settings:get', { key: 'notifications.sound' }],
   ['settings:get-all', undefined],
   ['app:get-info', undefined],
   ['app:get-auto-launch', undefined],
@@ -371,6 +381,34 @@ describe('secrets never reach the renderer', () => {
       config: { ...SMTP_CONFIG, auth: { user: 'me@example.com', pass: 'a-new-one' } },
     });
     expect(dispatcherPass()).toBe('a-new-one');
+  });
+
+  it("Settings' email form (U4) saves without the password it never sees, and gets none back", async () => {
+    await seed();
+    const stored = await call<EmailNotifierView>('notifiers:get', {
+      channel: NotifierChannel.EMAIL_SMTP,
+    });
+    expect(stored.success).toBe(true);
+    const view = (stored as { data: EmailNotifierView }).data;
+    expect(view.hasPassword).toBe(true);
+
+    // What the form sends when the person only changes the recipient: no password
+    const values = { ...emailFormDefaults(view), toEmail: 'alerts@example.com' };
+    expect(canKeepPassword(view, values)).toBe(true);
+    const input = toConfigureInput(values, { sendPassword: false, enabled: view.enabled });
+    expect(input.config.auth).toEqual({ user: 'me@example.com' });
+
+    const saved = await call('notifiers:configure', input);
+    expect(saved).toMatchObject({ success: true, data: { hasPassword: true } });
+    expect(JSON.stringify(saved)).not.toContain(SMTP_PASS);
+    const test = await call('notifiers:test', { channel: NotifierChannel.EMAIL_SMTP });
+    expect(test).toMatchObject({ success: true, data: { success: true } });
+    expect(JSON.stringify(test)).not.toContain(SMTP_PASS);
+    // The test connected with the stored password, to the stored server
+    expect(mockSmtpConnections.at(-1)).toMatchObject({
+      host: 'smtp.gmail.com',
+      auth: { user: 'me@example.com', pass: SMTP_PASS },
+    });
   });
 
   it('a renderer cannot point the stored SMTP password at another server or account, so notifiers.test cannot either', async () => {

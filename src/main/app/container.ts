@@ -38,7 +38,10 @@ import { BookingService } from '../core/bookings/booking.service';
 import { HoldPaymentService } from '../core/holds/hold-payment.service';
 import { NightGuard } from '../core/holds/night-guard';
 import { NotificationDispatcher } from '../core/notifications/notification-dispatcher';
-import { NotificationService } from '../core/notifications/notification.service';
+import {
+  NotificationService,
+  type NotificationPreferences,
+} from '../core/notifications/notification.service';
 import { SmtpEmailNotifier } from '../core/notifications/notifiers/email-smtp.notifier';
 import { SiteSniperService } from '../core/snipes/snipe.service';
 import { WatchService } from '../core/watches/watch.service';
@@ -60,6 +63,7 @@ import { logger } from '../utils/logger';
 import { getEmailLogoPath } from './paths';
 import { createLocalProfile, LocalProfile } from './profile';
 import { ProviderWindows } from './provider-windows';
+import { readSetting } from './settings-values';
 
 /** A timed snipe in these statuses is in its release: the catalogue sync waits for it. */
 const RELEASE_STATUSES: ReadonlySet<SnipeStatus> = new Set([
@@ -259,11 +263,16 @@ export function createContainer({
   const notifierDispatcher = new NotificationDispatcher(repositories.notifiers, [
     new SmtpEmailNotifier({ providerName, logoPath: getEmailLogoPath() }),
   ]);
+  // Settings → Notifications, read on every notification (a change applies to the next one)
+  const notificationPreferences = (): NotificationPreferences => ({
+    desktop: readSetting(repositories.settings, 'notifications.desktop'),
+    sound: readSetting(repositories.settings, 'notifications.sound'),
+  });
   const notificationService = new NotificationService(
     repositories.notifications,
     notifierDispatcher,
     rendererEvents,
-    { providerName, showMainWindow }
+    { providerName, showMainWindow, preferences: notificationPreferences }
   );
   // Core services resolve every provider through the registry and its capabilities.
   const nightGuard = new NightGuard(repositories.snipes, repositories.watches);

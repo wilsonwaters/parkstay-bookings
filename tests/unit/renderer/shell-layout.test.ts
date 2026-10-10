@@ -17,15 +17,15 @@ describe('renderer layout after the shell rebuild', () => {
     'components/ErrorBoundary.tsx',
     'pages/Login.tsx',
     'pages/Dashboard.tsx',
+    // Rebuilt by U4 (features/settings/)
+    'features/settings/legacy/Settings.tsx',
+    'components/settings/EmailSettingsCard.tsx',
   ])('src/renderer/%s no longer exists', (file) => {
     expect(fs.existsSync(path.join(RENDERER, file))).toBe(false);
   });
 
   it('keeps the legacy pages under features/<domain>/legacy/', () => {
-    for (const file of [
-      'features/snipes/legacy/index.tsx',
-      'features/settings/legacy/Settings.tsx',
-    ]) {
+    for (const file of ['features/snipes/legacy/index.tsx']) {
       expect(fs.existsSync(path.join(RENDERER, file))).toBe(true);
     }
   });

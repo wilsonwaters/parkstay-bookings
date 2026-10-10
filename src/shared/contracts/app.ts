@@ -1,9 +1,13 @@
 /**
  * `app`: application info, the logs folder and launch at login.
+ *
+ * Launch at login is an OS entry, so main writes its two settings (`launchOnStartup`,
+ * `app.startMinimised`) only here, together with the entry; `settings.set` refuses them.
  */
 
 import { z } from 'zod';
 import type { SecretStorageBackend } from '../types/secret.types';
+import { assertTypeEquals } from '../utils/type-equality';
 import { CHANNELS } from './channels';
 import type { Namespace } from './define';
 
@@ -21,6 +25,25 @@ export interface AppInfo {
   secretStorage: { backend: SecretStorageBackend };
 }
 
+/** Launch at login, and whether a login launch opens minimised (`--hidden`). */
+export interface LaunchAtLogin {
+  enabled: boolean;
+  startMinimised: boolean;
+}
+
+/** The `app.setAutoLaunch` payload. An omitted `startMinimised` keeps the stored choice. */
+export interface SetAutoLaunchRequest {
+  enabled: boolean;
+  startMinimised?: boolean;
+}
+
+const setAutoLaunchRequest = z.object({
+  enabled: z.boolean(),
+  startMinimised: z.boolean().optional(),
+});
+assertTypeEquals<z.input<typeof setAutoLaunchRequest>, SetAutoLaunchRequest>(true);
+assertTypeEquals<z.output<typeof setAutoLaunchRequest>, SetAutoLaunchRequest>(true);
+
 const C = CHANNELS.app;
 
 export const app = {
@@ -31,16 +54,17 @@ export const app = {
     args: {} as [],
     response: {} as boolean,
   },
+  /** Registers or removes the login item (refused when running from source) and stores it. */
   setAutoLaunch: {
     channel: C.setAutoLaunch,
-    request: z.object({ enabled: z.boolean() }),
-    args: {} as [enabled: boolean],
-    response: {} as boolean,
+    request: setAutoLaunchRequest,
+    args: {} as [enabled: boolean, startMinimised?: boolean],
+    response: {} as LaunchAtLogin,
   },
   getAutoLaunch: {
     channel: C.getAutoLaunch,
     request: z.void(),
     args: {} as [],
-    response: {} as boolean,
+    response: {} as LaunchAtLogin,
   },
 } satisfies Namespace;

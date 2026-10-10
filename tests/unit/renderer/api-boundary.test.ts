@@ -18,13 +18,11 @@ const TEST_FILE = /\.test\.(ts|tsx)$/;
 /** Pre-redesign code that still calls `window.api` itself, and the task that replaces it. */
 const LEGACY_ALLOW_LIST = [
   'components/forms/SiteSniperForm.tsx', // U2
-  'components/settings/EmailSettingsCard.tsx', // U4
-  'features/settings/legacy/Settings.tsx', // U4
   'features/snipes/legacy/CreateSiteSnipe.tsx', // U2
   'features/snipes/legacy/index.tsx', // U2
 ];
 /** The length LEGACY_ALLOW_LIST had when D3 wrote it. Lower it as entries go; never raise it. */
-const LEGACY_ALLOW_LIST_MAX = 5;
+const LEGACY_ALLOW_LIST_MAX = 3;
 
 /** The globals the preload API hangs off. */
 const GLOBAL = String.raw`\b(?:window|globalThis|self)\b`;

@@ -36,9 +36,28 @@ interface DispatchMeta {
 /** A provider's short name (`ParkStay`), or undefined for an unknown provider. */
 export type ProviderNameResolver = (providerId: string) => string | undefined;
 
+/** The person's notification preferences (Settings → Notifications). */
+export interface NotificationPreferences {
+  /** Show an OS (desktop) notification. The in-app list, events and email are not affected. */
+  desktop: boolean;
+  /** Let the OS notification play its sound (its `silent` flag). */
+  sound: boolean;
+}
+
+/** Desktop notifications with sound: what a fresh install has. */
+export const DEFAULT_NOTIFICATION_PREFERENCES: Readonly<NotificationPreferences> = Object.freeze({
+  desktop: true,
+  sound: true,
+});
+
 export interface NotificationServiceOptions {
   /** Resolves a provider's short name through the registry, for desktop titles. */
   providerName?: ProviderNameResolver;
+  /**
+   * The current preferences, read on every notification, so a change in Settings applies to
+   * the next one with nothing to push. The container reads the stored settings.
+   */
+  preferences?: () => NotificationPreferences;
   /** For the minutes a hold has left. */
   clock?: () => Date;
   /**
@@ -79,8 +98,7 @@ export class NotificationService {
   private readonly clock: () => Date;
   private readonly showMainWindow: () => boolean;
   private readonly liveDesktop = new Set<ElectronNotification>();
-  private soundEnabled: boolean = true;
-  private desktopEnabled: boolean = true;
+  private readonly preferences: () => NotificationPreferences;
 
   /** `events` delivers `notification:created` to trusted renderers. */
   constructor(
@@ -95,6 +113,7 @@ export class NotificationService {
     this.providerName = options.providerName ?? (() => undefined);
     this.clock = options.clock ?? (() => new Date());
     this.showMainWindow = options.showMainWindow ?? (() => false);
+    this.preferences = options.preferences ?? (() => DEFAULT_NOTIFICATION_PREFERENCES);
   }
 
   /**
@@ -106,14 +125,10 @@ export class NotificationService {
     // Store notification in database
     const notification = this.notificationRepo.create(input);
 
-    // Show desktop notification if enabled
-    if (this.desktopEnabled) {
-      await this.showDesktopNotification(notification);
-    }
-
-    // Play sound if enabled
-    if (this.soundEnabled) {
-      await this.playNotificationSound();
+    // The OS notification, if the person wants them; its sound is the OS's own (`silent`)
+    const { desktop, sound } = this.preferences();
+    if (desktop) {
+      await this.showDesktopNotification(notification, { silent: !sound });
     }
 
     // Tell the renderer about the stored notification
@@ -336,12 +351,15 @@ export class NotificationService {
    * Show desktop notification. A click brings the main window forward and opens the
    * notification's page.
    */
-  private async showDesktopNotification(notification: Notification): Promise<void> {
+  private async showDesktopNotification(
+    notification: Notification,
+    { silent }: { silent: boolean }
+  ): Promise<void> {
     try {
       const desktopNotification = new ElectronNotification({
         title: desktopTitle(notification, this.providerName),
         body: notification.message,
-        silent: !this.soundEnabled,
+        silent,
         icon: getBrandIconPath(),
       });
 
@@ -380,15 +398,6 @@ export class NotificationService {
     }
     const path = notificationLinkPath(notification);
     if (path) this.events?.emit('app:navigate', { path });
-  }
-
-  /**
-   * Play notification sound
-   */
-  private async playNotificationSound(): Promise<void> {
-    // Sound playback would be implemented here
-    // Could use a library like node-wav-player or play system sounds
-    log.info('Playing notification sound');
   }
 
   /**
@@ -445,19 +454,5 @@ export class NotificationService {
    */
   async cleanupOld(days: number = 30): Promise<number> {
     return this.notificationRepo.deleteOld(days);
-  }
-
-  /**
-   * Enable/disable desktop notifications
-   */
-  setDesktopEnabled(enabled: boolean): void {
-    this.desktopEnabled = enabled;
-  }
-
-  /**
-   * Enable/disable sound
-   */
-  setSoundEnabled(enabled: boolean): void {
-    this.soundEnabled = enabled;
   }
 }

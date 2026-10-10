@@ -69,7 +69,7 @@ Build every address with `ROUTES` (or `buildPath` with a pattern), never by join
 | `/site-sniper/:id` | `snipeDetail(id)` | `NotFoundPage` | Reserved for U2. |
 | `/bookings` | `bookings` | `BookingsPage` | Upcoming / Past / Cancelled tabs, provider filter and search in the URL (`?tab=&provider=&q=`). |
 | `/bookings/:id` | `bookingDetail(id)` | `BookingDetailPage` | "Manage on {shortName}" hands off to the provider; "Remove from WA Stay" never cancels there. |
-| `/settings/:section?` | `settings(section?)` | legacy Settings | The legacy page ignores `section` until U4, so an unknown section shows the default. |
+| `/settings/:section?` | `settings(section?, { provider? })` | `SettingsPage` | U4. Sections `accounts`, `notifications`, `app` and `about`, in a sub-navigation (`nav` "Settings sections"). `/settings` and an unknown section go to `accounts`, keeping the query; `?provider=<id>` focuses that provider's row on Accounts. |
 | `/__design` | `design` | `DesignPreviewPage` | Development builds only, lazy, outside the shell (it has its own header and main). |
 | `/watches/create`, `/site-sniper/create` |  | redirect | To `/new`, keeping the query string (§12.19). |
 | anything else |  | `NotFoundPage` | "Page not found" and "Back to Explore". |
@@ -83,6 +83,7 @@ Legacy pages render inside `LegacyPageFrame` until the provider-ux stream rebuil
 ## Focus and announcements
 
 - After every change of page (pathname, not the query string), `useRouteFocus` moves focus to the page's `h1` (given `tabIndex={-1}` if it has none), or to `<main>` when there is no `h1` yet, and announces the title through the polite live region. The announcement is the `h1` text, or the route's title from `pageTitleFor()`.
+- Settings' sections are one page (`routeFocusKey()`): its sub-navigation moves focus to the section's `h2` instead. A page that moves focus inside `<main>` itself before the route-focus frame keeps it (Settings → Accounts focusing the row a `?provider=` link asked for); the title is still announced.
 - A page that loads before showing its heading gets two seconds' grace: if its `h1` appears while focus is still on `<main>` (or was lost to the body), focus moves to it. The same applies when a page replaces the `h1` it showed first (heading, spinner, heading again): focus lost with the old heading moves to the new one.
 - The first page after launch is left alone, so the first Tab still reaches the skip link. In a quick run of navigations, only the last page takes focus.
 - A heading focused this way (`h1`–`h3` with `tabindex="-1"`) draws no focus ring (a base rule in `styles/index.css`): it is a reading position, not a control. Everything a person can Tab to keeps the 2 px ring.
@@ -114,9 +115,12 @@ One column, `fixed bottom-4 right-4`, 380 px wide at most, with an 8 px gap, por
 - `queryKeys.ts`: the only place query keys are built, with `providers`, `catalog`, `notifications`, `app` and `updater` namespaces. Invalidate a namespace with its `all` prefix.
 - `events.ts`: `useApiEvent(name, cb)` subscribes for as long as the component is mounted and always calls the latest `cb`. `useInvalidateOn(event, queryKey)` marks a query stale when the event arrives.
 - `providers.ts`: `useProviders()`, `useProvider(id)` and `useProvidersWith(capability)`. Until V1 (#19) adds the shared `ProviderManifest` and `window.api.providers`, they use a local structural type marked `TODO(V1)` and resolve to an empty list when the preload has no `providers` namespace. `useAccessStatus(id)`: a provider's access gate, fetched once and then set from `provider:access-status` (an answer older than the last event is dropped).
-- `app.ts`: `useAppInfo()` and `useOpenLogsFolder()` for About.
+- `app.ts`: `useAppInfo()` and `useOpenLogsFolder()` for About; `useLaunchAtLogin()` and `useSetLaunchAtLogin()` for Settings → App.
+- `settings.ts`: `useSetting(key)` (the stored value, or the key's default) and `useSetSetting(key)` (renderer-writable keys only; optimistic, rolled back on failure).
+- `accounts.ts`: `useAccountStatus(id)`, `useAccounts()` (both reloaded on `account:updated`), `useAccountCheck(id)` (one read-only `accounts.status` per visit, never polled), `useSignIn()`, `useSignOut()` and `useOpenSignInLink()`.
+- `notifiers.ts`: `useEmailNotifier()` (`hasPassword`, never a password), `useConfigureEmailNotifier()`, `useSetEmailNotifierEnabled()` and `useTestEmailNotifier()`.
 - `notifications.ts`: `useNotifications()` (the newest 20), `useUnreadNotificationCount()`, `useNotificationUpdates()` (both stale on `notification:created`), and the actions: `useMarkNotificationRead()`, `useMarkAllNotificationsRead()` and `useDeleteNotification()` change the cache at once and roll back if main refuses; `useClearNotifications()` waits for main.
-- `updater.ts`: `useDownloadUpdate()` and `useInstallUpdate()`.
+- `updater.ts`: `useDownloadUpdate()` and `useInstallUpdate()` (the update card), and `useCheckForUpdates()` (Settings → About).
 - `catalog.ts`: `useCatalogSearch(query)` (`catalog.search` with `limit: 5000`, previous results kept while the next load, 5 minutes fresh), `useCatalogAll()` (the unfiltered catalogue, for filter options and suggestions; the same cache entry as an empty search), `useCatalogStatus()`, `useCatalogRefresh()`, and `useCatalogUpdates()`, which reloads them on `catalog:updated`. The map area is never sent: Explore filters by area in the renderer.
   - `useLocationDetail(key)`: `catalog.get` (10 minutes fresh; main caches it 6 hours), showing the place's summary from a cached search (`isPlaceholderData`) while it loads. `useLocationDetailUpdates(key)` reloads only that detail when its provider's catalogue syncs.
   - `useLocationCheck(key, stay)`: `catalog.checkLocation`, asked only once a stay is given (the person pressed Check), one cache entry per stay, 1 minute fresh as in main, and never retried by itself.
@@ -149,6 +153,8 @@ With no `window.api` (the renderer opened in a plain browser with `npm run dev:r
 | Update card | region, progressbar, button | Update available · Downloading WA Stay {version} · Update ready · WA Stay couldn't update · Update download · Dismiss update |
 | Access chip | region, button | {shortName} queue · {shortName} queue details |
 | Toasts | region | Notifications |
+| Settings | heading level 1, navigation, heading level 2 | Settings · Settings sections · Accounts, Notifications, App or About WA Stay |
+| Settings → Accounts | list, heading level 3 per row | Provider accounts · the provider's name |
 | 404 | heading level 1, button | Page not found · Back to Explore |
 | Route error | heading level 1, buttons | This page hit a problem · Try again · Back to Explore |
 | App error | heading, buttons | WA Stay hit a problem · Reload WA Stay · Copy error details |

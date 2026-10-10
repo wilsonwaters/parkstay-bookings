@@ -144,7 +144,7 @@ All migrations must be added to the `runMigrations()` function in `connection.ts
 
 - **Active pages:** Explore, Watches, Settings (no login gate)
 - **Marked "Soon" in sidebar (greyed pill) but still usable:** Bookings and Site Sniper — both are navigable and show a `ComingSoonBanner` on the page (being finalized)
-- **Settings page** includes email/SMTP configuration (`EmailSettingsCard`) and "Connect ParkStay" (`accounts.signIn('parkstay')`, the in-app sign-in window; optional)
+- **Settings** (`features/settings/`, `/settings/:section`): Accounts (one row per provider: connect in the in-app sign-in window, sign out, pasted sign-in link; ParkStay's account is optional), Notifications (desktop and sound switches, the email notifier with a write-only password and "Send test email"), App (launch at login, start minimised to the taskbar) and About. Typed settings are `SETTING_KEYS`; `launchOnStartup` and `app.startMinimised` are main-only (written by `app.setAutoLaunch`)
 - **Key components:** StepFlow, ProviderPicker, LocationCombobox, ProviderStayFields, UnitPicker (shared create-flow blocks, U1), QueueStatus, NotificationBell, SiteSniperForm, UpdateNotification, AboutDialog
 
 ## Testing

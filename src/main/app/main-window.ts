@@ -36,8 +36,12 @@ export interface MainWindowOptions {
   entry: RendererEntry;
   preloadPath: string;
   trustedWebContents: TrustedWebContents;
-  /** Launched at login with `--hidden`: the window is created but not shown. */
-  startHidden: boolean;
+  /**
+   * Launched at login with `--hidden` ("Start minimised"): the window opens minimised to the
+   * taskbar instead of on screen (master plan OQ8). There is no tray, so a window that was
+   * never shown could not be reached except by launching the app again.
+   */
+  startMinimised: boolean;
   /** The window icon (`getBrandIconPath`). Omitted, the window uses the executable's icon. */
   icon?: string;
 }
@@ -46,7 +50,7 @@ export function createMainWindow({
   entry,
   preloadPath,
   trustedWebContents,
-  startHidden,
+  startMinimised,
   icon,
 }: MainWindowOptions): BrowserWindow {
   const hasPreload = fs.existsSync(preloadPath);
@@ -90,8 +94,10 @@ export function createMainWindow({
   }
 
   window.once('ready-to-show', () => {
-    if (startHidden) {
-      log.info('App launched hidden at login — window will not be shown');
+    if (startMinimised) {
+      // Electron shows a window that was never shown as minimised, without bringing it forward
+      log.info('Launched minimised at login');
+      window.minimize();
       return;
     }
     window.show();

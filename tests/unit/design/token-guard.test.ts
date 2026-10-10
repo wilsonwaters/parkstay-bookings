@@ -44,12 +44,11 @@ const IGNORE_MARKER = 'token-guard-ignore';
  * an entry when they rebuild its page. The list never grows: a new file is held to the guard.
  */
 const LEGACY_FILES = [
-  'features/settings/legacy/Settings.tsx',
   'features/snipes/legacy/CreateSiteSnipe.tsx',
   'features/snipes/legacy/index.tsx',
 ];
 /** The length LEGACY_FILES had when D3 wrote it. Lower it as entries go; never raise it. */
-const LEGACY_FILES_MAX = 3;
+const LEGACY_FILES_MAX = 2;
 
 /** Every Tailwind utility that takes a colour. */
 const COLOUR_UTILITY =

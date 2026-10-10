@@ -128,7 +128,9 @@ describe('preload window.api', () => {
     await api.notifications.list(20);
     await api.notifications.clearAll();
     await api.notifiers.test(NotifierChannel.EMAIL_SMTP);
-    await api.settings.set('launchOnStartup', true);
+    await api.settings.set('notifications.desktop', false);
+    await api.app.setAutoLaunch(true);
+    await api.app.setAutoLaunch(true, false);
     await api.gmail.setCredentials({ clientId: 'client-id', clientSecret: 'client-secret' });
 
     expect(ipcRenderer.invoke.mock.calls).toEqual([
@@ -144,7 +146,10 @@ describe('preload window.api', () => {
       ['notifications:list', { limit: 20 }],
       ['notifications:clear-all', undefined],
       ['notifiers:test', { channel: 'email_smtp' }],
-      ['settings:set', { key: 'launchOnStartup', value: true }],
+      ['settings:set', { key: 'notifications.desktop', value: false }],
+      // An omitted start minimised keeps the stored choice: the payload leaves it out
+      ['app:set-auto-launch', { enabled: true }],
+      ['app:set-auto-launch', { enabled: true, startMinimised: false }],
       ['gmail:set-credentials', { clientId: 'client-id', clientSecret: 'client-secret' }],
     ]);
     expect(JSON.stringify(ipcRenderer.invoke.mock.calls)).not.toContain('userId');

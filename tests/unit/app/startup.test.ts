@@ -17,6 +17,8 @@ const mockState = {
   hasLock: true,
   migrationOutcome: 'migrated' as string,
   launchOnStartup: true as boolean | null,
+  /** The stored `app.startMinimised` (null: none stored). */
+  startMinimised: null as boolean | null,
   finishOptions: null as null | Record<string, unknown>,
   openDatabaseError: null as Error | null,
   containerOptions: null as null | Record<string, unknown>,
@@ -107,7 +109,16 @@ jest.mock('@main/app/container', () => ({
       repositories: {
         notifications: { name: 'notifications-repository' },
         settings: {
-          getValue: (key: string) => (key === 'launchOnStartup' ? mockState.launchOnStartup : null),
+          getValue: (key: string) =>
+            key === 'launchOnStartup'
+              ? mockState.launchOnStartup
+              : key === 'app.startMinimised'
+                ? mockState.startMinimised
+                : null,
+          set: (key: string, value: boolean) => {
+            mockOrder.push(`settings.set ${key} ${value}`);
+            if (key === 'app.startMinimised') mockState.startMinimised = value;
+          },
         },
       },
       dispose: mockContainer.dispose,
@@ -127,13 +138,22 @@ jest.mock('@main/migration/legacy-install', () => ({
   }),
 }));
 
-jest.mock('@main/app/login-item', () => ({
-  currentLaunchTarget: jest.fn(() => ({ platform: 'win32' })),
-  replaceLegacyLoginItems: jest.fn((launchOnStartup: boolean) => {
-    mockOrder.push(`replaceLegacyLoginItems ${launchOnStartup}`);
-    return { removed: [], registered: launchOnStartup };
-  }),
-}));
+jest.mock('@main/app/login-item', () => {
+  const actual = jest.requireActual('@main/app/login-item');
+  return {
+    currentLaunchTarget: jest.fn(() => ({ platform: 'win32' })),
+    legacyStartMinimised: actual.legacyStartMinimised,
+    startMinimisedSetting: actual.startMinimisedSetting,
+    replaceLegacyLoginItems: jest.fn(
+      (choice: { launchOnStartup: boolean; startMinimised: boolean }) => {
+        mockOrder.push(
+          `replaceLegacyLoginItems ${choice.launchOnStartup} minimised ${choice.startMinimised}`
+        );
+        return { removed: [], registered: choice.launchOnStartup };
+      }
+    ),
+  };
+});
 
 jest.mock('@main/ipc', () => ({
   registerIpcHandlers: jest.fn(() => mockOrder.push('registerIpcHandlers')),
@@ -185,6 +205,7 @@ beforeEach(() => {
   mockState.hasLock = true;
   mockState.migrationOutcome = 'migrated';
   mockState.launchOnStartup = true;
+  mockState.startMinimised = null;
   mockState.finishOptions = null;
   mockState.openDatabaseError = null;
   mockState.containerOptions = null;
@@ -279,7 +300,26 @@ describe('main process startup', () => {
     });
     mockOrder.length = 0;
     options.replaceLoginItems(true);
-    expect(mockOrder).toEqual(['replaceLegacyLoginItems true']);
+    // v1.x always started hidden: the new entry starts minimised, and the setting says so
+    expect(mockOrder).toEqual([
+      'settings.set app.startMinimised true',
+      'replaceLegacyLoginItems true minimised true',
+    ]);
+
+    // Run again (the follow-up retried): nothing new is stored, the entry still matches
+    mockOrder.length = 0;
+    options.replaceLoginItems(true);
+    expect(mockOrder).toEqual(['replaceLegacyLoginItems true minimised true']);
+  });
+
+  it('a v1.x user without launch at login gets no start minimised setting', async () => {
+    mockState.launchOnStartup = false;
+    await launch();
+    const options = mockState.finishOptions as { replaceLoginItems: (on: boolean) => unknown };
+
+    mockOrder.length = 0;
+    options.replaceLoginItems(false);
+    expect(mockOrder).toEqual(['replaceLegacyLoginItems false minimised false']);
   });
 
   it.each<[boolean | null, boolean]>([

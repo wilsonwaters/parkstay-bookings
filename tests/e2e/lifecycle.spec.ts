@@ -24,8 +24,8 @@ import {
 
 /** The preload's settings API, as the renderer sees it. */
 interface SettingsApi {
-  get(key: 'launchOnStartup'): Promise<unknown>;
-  set(key: 'launchOnStartup', value: boolean): Promise<unknown>;
+  get(key: 'notifications.desktop'): Promise<unknown>;
+  set(key: 'notifications.desktop', value: boolean): Promise<unknown>;
 }
 
 // Writes and reads through the real preload, IPC handler and SQLite database. No page can
@@ -33,7 +33,7 @@ interface SettingsApi {
 function readSetting(window: Page): Promise<unknown> {
   return window.evaluate(() =>
     (globalThis as unknown as { api: { settings: SettingsApi } }).api.settings.get(
-      'launchOnStartup'
+      'notifications.desktop'
     )
   );
 }
@@ -42,7 +42,7 @@ function writeSetting(window: Page, value: boolean): Promise<unknown> {
   return window.evaluate(
     (v) =>
       (globalThis as unknown as { api: { settings: SettingsApi } }).api.settings.set(
-        'launchOnStartup',
+        'notifications.desktop',
         v
       ),
     value
@@ -81,7 +81,8 @@ test('quits within 10 s with exit code 0, and a relaunch on the same profile kee
 }) => {
   const first = await launchWaStay();
   // A fresh profile has no value; this one is written to the database
-  expect(await readSetting(first.window)).toEqual({ success: true, data: null });
+  // Nothing stored yet: main answers the key's default
+  expect(await readSetting(first.window)).toEqual({ success: true, data: true });
   expect(await writeSetting(first.window, false)).toEqual({ success: true, data: true });
 
   const exitCode = await within(first.close(), 10_000, 'Quitting WA Stay');

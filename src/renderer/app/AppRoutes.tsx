@@ -18,7 +18,7 @@ import SiteSniperPage from '../features/snipes/legacy';
 import CreateSiteSnipe from '../features/snipes/legacy/CreateSiteSnipe';
 import { BookingsPage } from '../features/bookings/BookingsPage';
 import { BookingDetailPage } from '../features/bookings/detail/BookingDetailPage';
-import Settings from '../features/settings/legacy/Settings';
+import SettingsPage from '../features/settings/SettingsPage';
 import { AppShell } from './AppShell';
 import { LegacyPageFrame } from './LegacyPageFrame';
 import { NotFoundPage } from './NotFoundPage';
@@ -62,8 +62,8 @@ export function AppRoutes() {
         <Route path={PATTERNS.bookings} element={<BookingsPage />} />
         <Route path={PATTERNS.bookingDetail} element={<BookingDetailPage />} />
 
-        {/* The legacy page ignores `:section` until U4 rebuilds Settings. */}
-        <Route path={PATTERNS.settings} element={legacy(<Settings />)} />
+        {/* `/settings` and an unknown section go to Accounts */}
+        <Route path={PATTERNS.settings} element={<SettingsPage />} />
 
         {LEGACY_REDIRECTS.map(({ from, to }) => (
           <Route key={from} path={from} element={<RedirectKeepingQuery to={to} />} />

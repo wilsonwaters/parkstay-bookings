@@ -61,7 +61,7 @@ describe('NotificationList', () => {
     const backend = notificationsBackend([
       notification({ ...fields, relatedId: fields.id, title: 'Open me' }),
     ]);
-    const { user } = await openWith(backend, '/settings');
+    const { user } = await openWith(backend, '/settings/accounts');
 
     await user.click(within(item('Open me')).getByRole('link', { name: 'Open me' }));
 
@@ -83,11 +83,11 @@ describe('NotificationList', () => {
         relatedId: undefined,
       }),
     ]);
-    const { user } = await openWith(backend, '/settings');
+    const { user } = await openWith(backend, '/settings/accounts');
 
     expect(within(item('Suspicious')).queryByRole('link')).toBeNull();
     await user.click(within(item('Suspicious')).getByText('Suspicious'));
-    expect(currentRoute()).toBe('/settings');
+    expect(currentRoute()).toBe('/settings/accounts');
     expect(popover()).toBeInTheDocument();
     expect(backend.stubs.markRead).not.toHaveBeenCalled();
   });
