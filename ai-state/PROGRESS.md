@@ -108,6 +108,18 @@ Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wils
 ## Notes
 - Spec files in `ai-state/streams/*/tasks/` are canonical. Orchestrator addenda are added there, and issue bodies are synced at the end.
 
+## Stakeholder next steps (noted 2026-10-11; after this round or after merging)
+- [ ] Delete the 11 merged `wip/*` branches on GitHub (the git proxy refuses deletes): `wip/e1-explore`, `wip/e3-dates`, `wip/p7-cleanup`, `wip/u1-watches`, `wip/u2-snipes`, `wip/u3-bookings`, `wip/u4-settings`, `wip/u5-notifications`, `wip/v3-class-listed`, `wip/v4-core-scheduler`, `wip/v6-accounts-phase1`.
+- [ ] Add the `MAPBOX_ACCESS_TOKEN` Actions secret (or variable), a public `pk.` token.
+- [ ] Check that the old name's `releases/latest` and `releases.atom` redirect to `wa-stay`.
+- [ ] Tag `v2.0.0` (builds a draft), run the manual Windows checks on the draft's installer (`docs/release-checklist-2.0.md`), publish, then check a real v1.2.0 auto-update.
+- [ ] Optional provider DX round, if wanted:
+  - fixture mode for `ctx.browser` (the most valuable next fix);
+  - a typed `defineProvider`;
+  - contract-suite messages and checks;
+  - SDK helpers: `requestJson`, a rate limiter, `Retry-After`, per-provider timeouts;
+  - model gaps for RAC, Hipcamp and Airbnb-like providers: minimum stay, tax and fees, OAuth sign-in.
+
 ## Active blockers
 - None. Stakeholder actions (non-blocking, all in `docs/release-checklist-2.0.md`): add the `MAPBOX_ACCESS_TOKEN` Actions secret; the manual Windows checks, the ParkStay sign-in checks (PQ1/PQ2) and the GPU check; delete the 11 `wip/*` branches on GitHub (the git proxy refuses deletes). Done by the stakeholder: repo renamed to `wa-stay` with its description; LICENSE holder decided (WA Stay).
 - Provider DX follow-ups not yet approved: fixture mode for `ctx.browser` (the most valuable next fix: it would let the preview spec cover browser providers), a typed `defineProvider`, contract-suite messages and checks, SDK helpers (`requestJson`, a rate limiter, `Retry-After`, per-provider timeouts), and the model gaps (minimum stay, tax and fees, `credentials`/OAuth sign-in, an access-gate base class).
