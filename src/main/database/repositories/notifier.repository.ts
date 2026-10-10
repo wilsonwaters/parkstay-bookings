@@ -366,22 +366,17 @@ export class NotifierRepository extends BaseRepository<Notifier> {
   }
 
   /**
-   * Clean up old delivery logs
+   * Deletes up to `limit` delivery logs created before `cutoff` and returns how many.
+   * `created_at` is compared as an instant (`julianday`), whatever its text format.
    */
-  cleanupDeliveryLogs(daysOld: number = 30): number {
-    try {
-      const result = this.db
-        .prepare(
-          `
-          DELETE FROM notification_delivery_logs
-          WHERE created_at < datetime('now', '-' || ? || ' days')
-        `
-        )
-        .run(daysOld);
-      return result.changes;
-    } catch (error) {
-      logger.error('Error cleaning up delivery logs:', error);
-      throw error;
-    }
+  deleteDeliveryLogsCreatedBefore(cutoff: Date, limit: number): number {
+    return this.db
+      .prepare(
+        `DELETE FROM notification_delivery_logs WHERE id IN (
+           SELECT id FROM notification_delivery_logs
+           WHERE julianday(created_at) < julianday(?) LIMIT ?
+         )`
+      )
+      .run(cutoff.toISOString(), limit).changes;
   }
 }

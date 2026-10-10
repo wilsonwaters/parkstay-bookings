@@ -97,14 +97,19 @@ export class NotificationRepository extends BaseRepository<Notification> {
   }
 
   /**
-   * Delete old notifications
+   * Deletes up to `limit` notifications created before `cutoff`, read or not, and returns how
+   * many (their delivery logs go with them: ON DELETE CASCADE). `created_at` is compared as an
+   * instant (`julianday`), so `CURRENT_TIMESTAMP` text and ISO strings both count; a value
+   * SQLite cannot read is kept.
    */
-  deleteOld(days: number): number {
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - days);
+  deleteCreatedBefore(cutoff: Date, limit: number): number {
     return this.db
-      .prepare('DELETE FROM notifications WHERE created_at < ?')
-      .run(cutoffDate.toISOString()).changes;
+      .prepare(
+        `DELETE FROM notifications WHERE id IN (
+           SELECT id FROM notifications WHERE julianday(created_at) < julianday(?) LIMIT ?
+         )`
+      )
+      .run(cutoff.toISOString(), limit).changes;
   }
 
   /**

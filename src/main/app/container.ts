@@ -119,7 +119,8 @@ export interface AppContainer {
   /**
    * Cuts the renderer off (no webContents is trusted any more, so no invoke reaches a
    * handler and no event is sent), stops the account and payment services and closes the
-   * provider windows, stops the scheduler (aborting every check and attempt in flight) and the catalogue service (aborting any sync in flight), and starts disposing
+   * provider windows, stops the scheduler (aborting every check, attempt and retention run
+   * in flight) and the catalogue service (aborting any sync in flight), and starts disposing
    * the providers (and with them ParkStay's queue gate), all before it returns. The
    * database closes once the scheduler's jobs have settled (at most
    * `SCHEDULER_STOP_GRACE_MS`), so no job writes to a closed database. The promise resolves
@@ -320,6 +321,12 @@ export function createContainer({
     snipes: siteSniperService,
     providers,
     power: powerMonitor,
+    // Old notifications and delivery logs, 5 min after start, then daily
+    retention: {
+      notifications: repositories.notifications,
+      notifiers: repositories.notifiers,
+      settings: repositories.settings,
+    },
   });
 
   let disposed: Promise<void> | null = null;

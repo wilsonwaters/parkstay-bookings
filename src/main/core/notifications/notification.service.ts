@@ -448,11 +448,4 @@ export class NotificationService {
   async deleteAll(userId: number): Promise<number> {
     return this.notificationRepo.deleteAllForUser(userId);
   }
-
-  /**
-   * Clean up old notifications
-   */
-  async cleanupOld(days: number = 30): Promise<number> {
-    return this.notificationRepo.deleteOld(days);
-  }
 }

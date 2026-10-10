@@ -282,6 +282,7 @@ describe('createContainer', () => {
       snipes: container.siteSniperService,
       providers: container.providers,
       power: expect.objectContaining({ on: expect.any(Function) }),
+      retention: { notifications: r.notifications, notifiers: r.notifiers, settings: r.settings },
     });
     expect(GmailOTPService).toHaveBeenCalledWith(jest.mocked(OAuth2Handler).mock.results[0].value);
     expect(NotificationDispatcher).toHaveBeenCalledWith(r.notifiers, [

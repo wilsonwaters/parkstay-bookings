@@ -90,3 +90,42 @@ export function todayIn(timeZone: string, now: Date = new Date()): CalendarDate 
     Number(parts.find((p) => p.type === type)?.value);
   return `${pad(part('year'), 4)}-${pad(part('month'), 2)}-${pad(part('day'), 2)}`;
 }
+
+/** The time-zone offset (ms ahead of UTC) of `timeZone` at `at`. */
+function zoneOffsetMs(timeZone: string, at: number): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(new Date(at));
+  const part = (type: Intl.DateTimeFormatPartTypes): number =>
+    Number(parts.find((p) => p.type === type)?.value);
+  const wallClock = Date.UTC(
+    part('year'),
+    part('month') - 1,
+    part('day'),
+    part('hour'),
+    part('minute'),
+    part('second')
+  );
+  return wallClock - Math.floor(at / 1000) * 1000;
+}
+
+/** The instant it is `time` on calendar date `date` in `timeZone`. */
+export function zonedInstant(
+  date: CalendarDate,
+  time: { hour: number; minute: number },
+  timeZone: string
+): Date {
+  const [year, month, day] = date.split('-').map(Number);
+  const wallClock = Date.UTC(year, month - 1, day, time.hour, time.minute);
+  // Twice, so a guess on the far side of a daylight-saving change settles.
+  let instant = wallClock - zoneOffsetMs(timeZone, wallClock);
+  instant = wallClock - zoneOffsetMs(timeZone, instant);
+  return new Date(instant);
+}

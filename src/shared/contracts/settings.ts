@@ -10,6 +10,7 @@
  */
 
 import { z } from 'zod';
+import { NOTIFICATION_RETENTION_DAYS } from '../constants/app-constants';
 import { SettingCategory, SettingValueType } from '../types/common.types';
 import { CHANNELS } from './channels';
 import type { Namespace } from './define';
@@ -26,6 +27,9 @@ export interface SettingDefinition {
    */
   readonly rendererWritable?: false;
 }
+
+/** A retention period: whole days, at least one, at most ten years. */
+const RETENTION_DAYS = z.number().int().min(1).max(3650);
 
 export const SETTING_KEYS = {
   /** Launch at login, written by `app.setAutoLaunch` (the name v1.x stored it under). */
@@ -57,6 +61,25 @@ export const SETTING_KEYS = {
     valueType: SettingValueType.BOOLEAN,
     category: SettingCategory.NOTIFICATIONS,
     default: true,
+  },
+  /**
+   * Days a notification is kept, read or not (the scheduler's retention job). Main-only: no
+   * screen sets it.
+   */
+  'retention.notificationDays': {
+    schema: RETENTION_DAYS,
+    valueType: SettingValueType.NUMBER,
+    category: SettingCategory.NOTIFICATIONS,
+    default: NOTIFICATION_RETENTION_DAYS,
+    rendererWritable: false,
+  },
+  /** Days a notifier delivery log (an email sent or failed) is kept. Main-only. */
+  'retention.deliveryLogDays': {
+    schema: RETENTION_DAYS,
+    valueType: SettingValueType.NUMBER,
+    category: SettingCategory.NOTIFICATIONS,
+    default: NOTIFICATION_RETENTION_DAYS,
+    rendererWritable: false,
   },
 } as const satisfies Record<string, SettingDefinition>;
 

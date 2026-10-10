@@ -85,6 +85,23 @@ describe('instants SQLite writes read as UTC, whatever the host zone', () => {
     readsAsStored(n.createdAt, raw('SELECT created_at FROM notifications WHERE id = ?', n.id));
   });
 
+  it('retention compares CURRENT_TIMESTAMP text as the UTC instant it is', () => {
+    const insert = (title: string, modifier: string) =>
+      db
+        .prepare(
+          `INSERT INTO notifications (user_id, type, title, message, created_at)
+           VALUES (?, 'info', ?, 'm', datetime('now', '-30 days', ?))`
+        )
+        .run(userId, title, modifier);
+    // Four hours either side of the cutoff: half of Perth's offset, so a zone mix-up shows
+    insert('older', '-4 hours');
+    insert('younger', '+4 hours');
+    const repo = new NotificationRepository(db);
+
+    expect(repo.deleteCreatedBefore(new Date(Date.now() - 30 * 86_400_000), 10)).toBe(1);
+    expect(db.prepare('SELECT title FROM notifications').pluck().all()).toEqual(['younger']);
+  });
+
   it('bookings created_at, updated_at and synced_at', () => {
     const repo = new BookingRepository(db);
     const booking = repo.create(userId, mockBookingInput);

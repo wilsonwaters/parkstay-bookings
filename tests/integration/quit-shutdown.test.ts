@@ -1,13 +1,14 @@
 /**
  * Quit with a job in flight (V4 addendum from V7): `AppContainer.dispose` (run by the quit
- * hold) aborts the scheduler's checks and waits for them, with a bound, before it closes the
- * database, so no job writes to a closed database.
+ * hold) aborts the scheduler's checks and its retention run and waits for them, with a bound,
+ * before it closes the database, so no job writes to a closed database.
  */
 
 import { EventEmitter } from 'events';
 import { openDatabase } from '@main/database/connection';
 import { createContainer, AppContainer } from '@main/app/container';
 import { SCHEDULER_STOP_GRACE_MS } from '@main/scheduler/job-scheduler';
+import { RETENTION_BATCH_SIZE, RETENTION_FIRST_RUN_DELAY_MS } from '@main/scheduler/retention-job';
 import { QUIT_GRACE_MS } from '@main/app/quit-hold';
 import { TEST_LOGS_DIR } from '@tests/utils/ipc-harness';
 import {
@@ -124,5 +125,33 @@ describe('quit with a job in flight', () => {
     expect(recordRun).not.toHaveBeenCalled();
     // The bound fits inside the quit hold, with the browsers closing alongside
     expect(SCHEDULER_STOP_GRACE_MS).toBeLessThan(QUIT_GRACE_MS);
+  });
+
+  it('a retention run in flight stops between batches and settles before the database closes', async () => {
+    // Always a full batch: the run would go on by itself
+    const deletes = jest
+      .spyOn(container.repositories.notifications, 'deleteCreatedBefore')
+      .mockImplementation(() => {
+        order.push('batch');
+        return RETENTION_BATCH_SIZE;
+      });
+    container.scheduler.start();
+    await jest.advanceTimersByTimeAsync(RETENTION_FIRST_RUN_DELAY_MS);
+    // The first batch is done; the run waits for its yield
+    expect(deletes).toHaveBeenCalledTimes(1);
+    const run = container.scheduler.runCleanup().then((result) => {
+      order.push('retention settled');
+      return result;
+    });
+
+    const disposing = container.dispose();
+    expect(container.db.open).toBe(true);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(order).toEqual(['batch', 'retention settled', 'database closed']);
+    await jest.advanceTimersByTimeAsync(QUIT_GRACE_MS);
+    await disposing;
+
+    await expect(run).resolves.toMatchObject({ complete: false });
+    expect(deletes).toHaveBeenCalledTimes(1);
   });
 });
