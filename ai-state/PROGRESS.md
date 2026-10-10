@@ -7,7 +7,7 @@ Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task spe
 
 ## Currently in flight
 - **P7** (#18) Dead code cleanup: implementing (M), lane P: constants, leftover types, migration v10 (drop `job_logs`), real retention job for notifications/delivery logs, remove the Gmail OTP back end and `electron-store`/`googleapis`, stale root docs, de-flake the ExploreMap timing test. Stays out of U2's files.
-- **Q1 phase 2** (#40): full independent review of the e2e suite (coverage vs success criteria, test-hook gating, 3 runs for flakes, CI) running on lane/v.
+- **Q1 phase 2** (#40): review REQUEST_CHANGES (3/3 green, no flakes, hooks gated, guard real). Fixes running in lane V: attribute selectors vs the grep criterion, leftover `test.fail`, force online so Explore dates do not depend on the host network, hooks also require a non-asar app path, Perth dates in the snipe spec, CI artifacts `if: always()`, `test:tz` in the release-gating job, a packaged Linux smoke job if feasible; new journeys place → watch (+ relaunch), held snipe + notification deep link (seeded, no hold), legacy v5 upgrade; all Settings sections walked.
 - Next (multiple agents approved): P7 review; Q2 (docs, CLAUDE.md incl. `RATE_LIMITED`, key components), system verification, final review, PR.
 
 ## Notes
