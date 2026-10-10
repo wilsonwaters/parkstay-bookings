@@ -16,6 +16,10 @@
  *   guard cancels any other http(s) request the app's sessions make.
  * - `WA_STAY_E2E_ALLOW_HOSTS` lists the hosts the guard lets through in fixture mode,
  *   comma-separated, empty by default. An entry also allows its subdomains.
+ * - `WA_STAY_PROVIDERS` lists the built-in providers to register, by id, comma-separated
+ *   (`parkstay`); the others are left out. The Electron smoke tests set it, so a journey sees
+ *   the providers it was written for however many are built in. An id that is not a built-in
+ *   provider fails start-up (`selectProviders`).
  */
 
 import path from 'path';
@@ -26,6 +30,7 @@ export const TEST_ENV = {
   legacyDataDir: 'WA_STAY_LEGACY_DATA_DIR',
   fixturesDir: 'WA_STAY_E2E_FIXTURES_DIR',
   allowHosts: 'WA_STAY_E2E_ALLOW_HOSTS',
+  providers: 'WA_STAY_PROVIDERS',
 } as const;
 
 export interface FixtureModeConfig {
@@ -46,6 +51,11 @@ export interface TestHooks {
   readonly legacyDataDir?: string | null;
   /** Set only in fixture mode. */
   readonly fixtureMode?: FixtureModeConfig;
+  /**
+   * The ids `WA_STAY_PROVIDERS` lists, as given (possibly none, or unknown ids:
+   * `selectProviders` refuses those). Undefined when it is not set: every built-in provider.
+   */
+  readonly providers?: readonly string[];
 }
 
 export type TestEnv = Readonly<Record<string, string | undefined>>;
@@ -69,6 +79,41 @@ export function parseAllowHosts(value: string | undefined): string[] {
     .filter((host) => host.length > 0);
 }
 
+/** `WA_STAY_PROVIDERS`'s ids; undefined when it is unset or blank. */
+export function parseProviderIds(value: string | undefined): string[] | undefined {
+  if (!value?.trim()) return undefined;
+  return value
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+}
+
+/**
+ * The built-in providers to register: those `hooks.providers` lists, in their built-in order,
+ * or all of `builtIns` when the hook is not set. Throws when the list names no provider or an
+ * id that is not built in, so a mistyped list stops start-up instead of running a test with
+ * other providers than it was written for.
+ */
+export function selectProviders<T extends { readonly id: string }>(
+  hooks: TestHooks,
+  builtIns: readonly T[]
+): readonly T[] {
+  const ids = hooks.providers;
+  if (!ids) return builtIns;
+  const known = builtIns.map((factory) => factory.id);
+  const unknown = ids.filter((id) => !known.includes(id));
+  if (ids.length === 0 || unknown.length > 0) {
+    const problem =
+      ids.length === 0
+        ? 'names no provider'
+        : `names ${unknown.map((id) => `"${id}"`).join(', ')}, not a built-in provider`;
+    throw new Error(
+      `${TEST_ENV.providers} ${problem}. The built-in providers are: ${known.join(', ')}.`
+    );
+  }
+  return builtIns.filter((factory) => ids.includes(factory.id));
+}
+
 /**
  * The hooks the environment asks for. Unless the app runs from source (`isPackaged` false and
  * `appPath` outside any asar archive): none, whatever the environment says. Relative paths
@@ -88,6 +133,7 @@ export function resolveTestHooks(options: {
   const userDataDir = readPath(env, TEST_ENV.userDataDir, cwd);
   const legacyOverride = readPath(env, TEST_ENV.legacyDataDir, cwd);
   const fixturesDir = readPath(env, TEST_ENV.fixturesDir, cwd);
+  const providers = parseProviderIds(env[TEST_ENV.providers]);
 
   return {
     ...(userDataDir ? { userDataDir } : {}),
@@ -99,6 +145,7 @@ export function resolveTestHooks(options: {
     ...(fixturesDir
       ? { fixtureMode: { fixturesDir, allowHosts: parseAllowHosts(env[TEST_ENV.allowHosts]) } }
       : {}),
+    ...(providers ? { providers } : {}),
   };
 }
 

@@ -15,6 +15,7 @@ import winston from 'winston';
 import { openDatabase } from '@main/database/connection';
 import { createContainer, AppContainer } from '@main/app/container';
 import { registerIpcHandlers } from '@main/ipc';
+import { parkstayFactory } from '@main/providers/parkstay';
 import { logger } from '@main/utils/logger';
 import { contract } from '@shared/contracts';
 import type { MethodDef } from '@shared/contracts/define';
@@ -143,10 +144,12 @@ describe('secrets never reach the renderer', () => {
 
     const secrets = containerSecrets();
     userDataDir = secrets.userDataDir;
+    // The seeded secrets are ParkStay's: ParkStay alone, however many providers are built in
     container = createContainer({
       db: openDatabase(':memory:'),
       logsDir: TEST_LOGS_DIR,
       ...secrets,
+      providerFactories: [parkstayFactory],
     });
     container.profile.ensureLocalProfile();
     container.providers.register(createFakeProvider().factory, createTestProviderContext);

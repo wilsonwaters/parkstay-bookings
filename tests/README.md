@@ -281,6 +281,12 @@ The `launchWaStay()` fixture starts the app with:
   written to `<userData>/e2e-unexpected-requests.log`; the lifecycle spec requires it to be
   empty. `WA_STAY_E2E_ALLOW_HOSTS` (comma-separated hosts, subdomains included) lets some
   through, for documentation screenshots.
+- **Only the providers the journey was written for** (`WA_STAY_PROVIDERS`, comma-separated
+  provider ids): `parkstay` (`DEFAULT_PROVIDERS`) unless the launch passes `{ providers }`. The
+  other built-in providers are not registered, so the journeys' counts and pre-selections
+  (ParkStay's 11 places, ParkStay chosen for you) hold however many providers are built in. A
+  journey that counts or expects a pre-selection passes its list explicitly. An id that is not
+  a built-in provider stops the app at start-up, with the reason in the main process's output.
 - **A production renderer**: `NODE_ENV=production`, no `ELECTRON_RENDERER_URL`, no Mapbox
   token, `TZ=Australia/Perth`, `LANG=en_AU.UTF-8`.
 - **An online window, whatever the host.** Chromium reads `navigator.onLine` from the host's
@@ -374,14 +380,16 @@ integrity hash, and exactly one better-sqlite3 binary ships (`linux-x64.node` on
 file of it outside the archive, with none of its C sources. It reads the executable's Electron fuses back with `@electron/fuses`
 (`getCurrentFuseWire`) and checks each one `electron-builder.json` sets
 ([security](../docs/security.md#the-packaged-app-electron-fuses)). Every start gets a temp
-`XDG_CONFIG_HOME` and every test-only hook set. The executable as shipped is started with
+`XDG_CONFIG_HOME` and every test-only hook set (`WA_STAY_PROVIDERS` names a provider that is
+not built in, which would stop an app that read it). The executable as shipped is started with
 `--inspect=0` and `--remote-debugging-port=0`: Node's inspector must stay off, the window
 (seen through Chromium's DevTools endpoint) must show the page from `app.asar`, and closing it
 must quit with code 0 within 10 s. Playwright's launcher needs Node's inspector, so the other
 two starts use copies with only `EnableNodeCliInspectArguments` turned back on: the
 executable, then a copy named `electron`, which Electron reports as unpackaged. Each waits for
 the window's `h1` and requires that userData is the temp `WA Stay` folder, the page comes from
-`app.asar`, and `app.quit()` exits with code 0 within 10 s.
+`app.asar`, `window.api.providers.list()` has the built-in providers, and `app.quit()` exits
+with code 0 within 10 s.
 
 The release build (`build.yml`, job "Build Windows") checks the Windows package with the same
 helpers (`scripts/lib/packaged-app.js`): `node scripts/check-windows-package.js

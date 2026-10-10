@@ -4,7 +4,8 @@
  * even one whose executable was renamed to `electron` (so Electron reports it unpackaged),
  * ignores every variable, sets no userData and installs no network guard. In fixture mode the
  * guard cancels http(s)/ws(s) requests on the default session and every later session
- * (provider partitions), except to allowed hosts, and logs them.
+ * (provider partitions), except to allowed hosts, and logs them. `WA_STAY_PROVIDERS` narrows the
+ * built-in providers to those it lists, and refuses an id that is not built in.
  */
 
 import fs from 'fs';
@@ -17,6 +18,7 @@ import {
   isBlockedRequest,
   readUnexpectedRequests,
   resolveTestHooks,
+  selectProviders,
   startFixtureMode,
   type GuardRequestDetails,
   type GuardableSession,
@@ -32,6 +34,7 @@ const ALL_HOOKS = {
   WA_STAY_LEGACY_DATA_DIR: '/tmp/wa-stay-e2e-legacy',
   WA_STAY_E2E_FIXTURES_DIR: 'tests/e2e/fixtures/http',
   WA_STAY_E2E_ALLOW_HOSTS: 'api.mapbox.com, Events.Mapbox.com',
+  WA_STAY_PROVIDERS: ' parkstay , example-api',
 };
 
 type Listener = (
@@ -175,13 +178,16 @@ describe('from source (unpackaged, not in an asar archive)', () => {
         fixturesDir: path.resolve('/repo', 'tests/e2e/fixtures/http'),
         allowHosts: ['api.mapbox.com', 'events.mapbox.com'],
       },
+      providers: ['parkstay', 'example-api'],
     });
   });
 
   it('with no variables (or empty ones) changes nothing', () => {
     const app = new FakeApp(false);
 
-    expect(applyTestEnvHooks(app, { WA_STAY_USER_DATA_DIR: ' ' }, '/repo')).toEqual({});
+    expect(
+      applyTestEnvHooks(app, { WA_STAY_USER_DATA_DIR: ' ', WA_STAY_PROVIDERS: ' ' }, '/repo')
+    ).toEqual({});
     expect(app.setPath).not.toHaveBeenCalled();
   });
 
@@ -266,5 +272,55 @@ describe('the network guard', () => {
     app.listeners.forEach((listener) => listener(session));
 
     expect(session.webRequest.onBeforeRequest).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('WA_STAY_PROVIDERS: the built-in providers to register', () => {
+  const BUILT_INS = [{ id: 'parkstay' }, { id: 'example-api' }, { id: 'rac' }];
+  const fromSource = (value: string) =>
+    resolveTestHooks({
+      env: { WA_STAY_PROVIDERS: value },
+      isPackaged: false,
+      appPath: SOURCE_APP_PATH,
+      cwd: '/repo',
+    });
+
+  it('unset: every built-in provider, as built in', () => {
+    expect(selectProviders({}, BUILT_INS)).toBe(BUILT_INS);
+  });
+
+  it('registers only the listed ones, in their built-in order', () => {
+    expect(selectProviders(fromSource('parkstay'), BUILT_INS)).toEqual([{ id: 'parkstay' }]);
+    expect(selectProviders(fromSource('rac,parkstay,rac'), BUILT_INS)).toEqual([
+      { id: 'parkstay' },
+      { id: 'rac' },
+    ]);
+  });
+
+  it('fails loudly on an id that is not built in, naming it and the built-in ones', () => {
+    expect(() => selectProviders(fromSource('parkstay,ParkStay,bush-camps'), BUILT_INS)).toThrow(
+      'WA_STAY_PROVIDERS names "ParkStay", "bush-camps", not a built-in provider. ' +
+        'The built-in providers are: parkstay, example-api, rac.'
+    );
+  });
+
+  it('fails loudly on a list that names no provider', () => {
+    expect(fromSource(' , ')).toEqual({ providers: [] });
+    expect(() => selectProviders(fromSource(' , '), BUILT_INS)).toThrow(
+      'WA_STAY_PROVIDERS names no provider. The built-in providers are: parkstay, example-api, rac.'
+    );
+  });
+
+  it.each(PACKAGED_APPS)('%s: ignored, even naming a provider that is not built in', (_, make) => {
+    const app = make();
+    const hooks = resolveTestHooks({
+      env: { WA_STAY_PROVIDERS: 'not-a-provider' },
+      isPackaged: app.isPackaged,
+      appPath: app.getAppPath(),
+      cwd: '/repo',
+    });
+
+    expect(hooks).toEqual({});
+    expect(selectProviders(hooks, BUILT_INS)).toBe(BUILT_INS);
   });
 });

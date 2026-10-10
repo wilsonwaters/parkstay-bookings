@@ -200,6 +200,8 @@ not count as a map move (`explore-resize.spec.ts`). The harness
 - its own temp userData (`WA_STAY_USER_DATA_DIR`), checked before anything else;
 - **fixture mode** (`WA_STAY_E2E_FIXTURES_DIR`): providers answer from
   `tests/e2e/fixtures/http/`, and a network guard cancels every other request;
+- only the providers the journey was written for (`WA_STAY_PROVIDERS`): ParkStay unless the
+  launch passes `providers`, however many providers are built in;
 - a production renderer, Perth time, Australian English, and a window forced online
   (`forceOnline`), so the suite passes with no network at all;
 - seeding before launch (`support/seed.ts`: a held snipe, a v1.x data folder) and temp folders

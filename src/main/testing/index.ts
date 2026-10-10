@@ -8,7 +8,9 @@
  *
  * `src/main/index.ts` calls:
  * 1. `applyTestEnvHooks(app)` before the single-instance lock, for the userData override;
- * 2. `startFixtureMode(hooks, …)` after `ready` and before the container, which gives every
+ * 2. `selectProviders(hooks, BUILT_IN_PROVIDERS)` after `ready`, for the providers the
+ *    container registers (`WA_STAY_PROVIDERS`);
+ * 3. `startFixtureMode(hooks, …)` after `ready` and before the container, which gives every
  *    provider a `FixtureHttpClient` when it returns a config.
  */
 

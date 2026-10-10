@@ -234,8 +234,11 @@ describe('the first start after the copy', () => {
     });
     try {
       const { db, vault } = container;
-      // The ParkStay "password" is not carried over (v9): connect ParkStay once instead
-      expect(container.accounts.list()).toEqual([
+      // The ParkStay "password" is not carried over (v9): connect ParkStay once instead. (Every
+      // built-in provider is registered, as at a real start: ParkStay's account is the one.)
+      expect(
+        container.accounts.list().filter((account) => account.providerId === 'parkstay')
+      ).toEqual([
         expect.objectContaining({ providerId: 'parkstay', email: 'fixture.user@example.com' }),
       ]);
       const notifier = new NotifierRepository(db, vault).findByChannel(NotifierChannel.EMAIL_SMTP);

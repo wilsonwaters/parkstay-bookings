@@ -14,6 +14,8 @@ import { expectCurrentNavLink, expectRoute, NAV_PAGES, pageHeading } from './sup
 
 /** The 11 campgrounds in the ParkStay catalogue fixture. */
 const FIXTURE_CAMPGROUNDS = 11;
+/** The counts and suggestions below are ParkStay's alone, however many providers are built in. */
+const PARKSTAY_ONLY = { providers: ['parkstay'] };
 
 test('opens straight on Explore, with no login gate', async ({ launchWaStay }) => {
   const { window } = await launchWaStay();
@@ -56,7 +58,7 @@ test('Explore shows the search pill, the filters and, with no token, the list in
 test('Explore lists the ParkStay campgrounds from the catalogue fixture', async ({
   launchWaStay,
 }) => {
-  const wa = await launchWaStay();
+  const wa = await launchWaStay(PARKSTAY_ONLY);
   const { window } = wa;
   const results = window.getByRole('region', { name: 'Results' });
 
@@ -94,7 +96,7 @@ test('Explore lists the ParkStay campgrounds from the catalogue fixture', async 
 test('Explore with dates shows each campground’s availability and narrows to "Available only"', async ({
   launchWaStay,
 }) => {
-  const wa = await launchWaStay();
+  const wa = await launchWaStay(PARKSTAY_ONLY);
   const { window } = wa;
   const results = window.getByRole('region', { name: 'Results' });
   await expect(
@@ -161,7 +163,7 @@ test('Explore with dates shows each campground’s availability and narrows to "
 test('Explore’s "Where" shows 8 two-line suggestions without scrolling at the 960 × 640 minimum', async ({
   launchWaStay,
 }) => {
-  const { app, window } = await launchWaStay();
+  const { app, window } = await launchWaStay(PARKSTAY_ONLY);
   await app.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()[0].setContentSize(960, 640);
   });

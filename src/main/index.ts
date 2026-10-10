@@ -41,7 +41,8 @@ import {
   finishLegacyInstall,
   migrateLegacyInstall,
 } from './migration/legacy-install';
-import { startFixtureMode } from './testing';
+import { BUILT_IN_PROVIDERS } from './providers';
+import { selectProviders, startFixtureMode } from './testing';
 import { initFileLogging, logger } from './utils/logger';
 
 const crashPolicy = installCrashPolicy({ process, app, dialog, log: logger });
@@ -124,6 +125,10 @@ async function start(): Promise<void> {
   const logsDir = initFileLogging(path.join(paths.userData, 'logs'));
   logger.info('Initializing application...');
 
+  // Every built-in provider, or (test-only, WA_STAY_PROVIDERS) those listed; an id that is not
+  // built in fails start-up here, before anything is written
+  const providerFactories = selectProviders(testHooks, BUILT_IN_PROVIDERS);
+
   // Test-only network-free mode (WA_STAY_E2E_FIXTURES_DIR), before anything can send a request
   const fixtureMode = startFixtureMode(testHooks, {
     app,
@@ -155,6 +160,7 @@ async function start(): Promise<void> {
     safeStorage,
     isReady: () => app.isReady(),
     fixtureMode,
+    providerFactories,
     showMainWindow,
   });
   container = ready;

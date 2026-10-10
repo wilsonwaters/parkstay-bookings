@@ -22,6 +22,8 @@ test('a held snipe: its notification opens it, it shows the hold and countdown, 
   const arrival = addDays(todayIn('Australia/Perth'), 40);
   let snipeId = 0;
   const wa = await launchWaStay({
+    // ParkStay alone: its fixture is the "11 places" below, however many providers are built in
+    providers: ['parkstay'],
     prepare: (userDataDir) => {
       ({ snipeId } = seedHeldSnipe(userDataDir, {
         snipe: {

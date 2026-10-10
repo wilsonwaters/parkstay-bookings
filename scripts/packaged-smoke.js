@@ -24,14 +24,16 @@
  *
  * Each start gets a temp `XDG_CONFIG_HOME`, so the data folder is `<temp>/WA Stay` and no real
  * profile is touched. The test-only and development hooks are set on purpose
- * (`WA_STAY_USER_DATA_DIR`, `WA_STAY_E2E_FIXTURES_DIR`, `ELECTRON_RENDERER_URL`,
- * `NODE_ENV=development`): a packaged app must ignore them (architecture-notes §12.14). Three
- * starts:
+ * (`WA_STAY_USER_DATA_DIR`, `WA_STAY_E2E_FIXTURES_DIR`, `WA_STAY_PROVIDERS`,
+ * `ELECTRON_RENDERER_URL`, `NODE_ENV=development`): a packaged app must ignore them
+ * (architecture-notes §12.14). `WA_STAY_PROVIDERS` names a provider that is not built in, which
+ * would stop an app that read it at start-up. Three starts:
  *
  * 1. the executable as shipped, given `--inspect=0` and `--remote-debugging-port=0`: Node's
  *    inspector stays off (the fuse), and through Chromium's DevTools endpoint the window shows
  *    the built page from app.asar; closing it quits the app with exit code 0 within 10 s.
- * 2. the executable driven by Playwright: `app.isPackaged` is true;
+ * 2. the executable driven by Playwright: `app.isPackaged` is true, and the window's
+ *    `providers.list()` has the built-in providers;
  * 3. a copy named `electron`, which Electron reports as unpackaged (it decides by the
  *    executable's name) while the code still comes from `resources/app.asar`.
  *
@@ -56,6 +58,8 @@ const ROOT = path.resolve(__dirname, '..');
 const DEFAULT_EXECUTABLE = path.join(ROOT, 'release', 'linux-unpacked', 'wa-stay');
 const STARTUP_TIMEOUT_MS = 30_000;
 const QUIT_TIMEOUT_MS = 10_000;
+/** `WA_STAY_PROVIDERS` for every start: not a built-in provider, so honouring it fails start-up. */
+const IGNORED_PROVIDER = 'not-a-built-in-provider';
 
 function within(promise, ms, what) {
   let timer;
@@ -85,6 +89,7 @@ function launchEnv(configHome, hookDir) {
     WA_STAY_USER_DATA_DIR: path.join(hookDir, 'user-data'),
     WA_STAY_LEGACY_DATA_DIR: path.join(hookDir, 'legacy'),
     WA_STAY_E2E_FIXTURES_DIR: path.join(ROOT, 'tests', 'e2e', 'fixtures', 'http'),
+    WA_STAY_PROVIDERS: IGNORED_PROVIDER,
     ELECTRON_RENDERER_URL: 'http://127.0.0.1:9/',
     NODE_ENV: 'development',
   };
@@ -298,6 +303,14 @@ async function smoke(executable, label, expectPackaged) {
     check(
       !fs.existsSync(path.join(userData, 'e2e-unexpected-requests.log')),
       'fixture mode is off'
+    );
+    // The window asks main for its providers, as Explore does (`window.api`, the preload's)
+    const providers = await window.evaluate(async () =>
+      (await globalThis.api.providers.list()).data?.map((manifest) => manifest.id)
+    );
+    check(
+      Array.isArray(providers) && providers.includes('parkstay'),
+      `WA_STAY_PROVIDERS is ignored: the built-in providers registered (${providers})`
     );
 
     const quitting = app.close();

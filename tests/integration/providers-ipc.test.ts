@@ -1,6 +1,7 @@
 /**
  * The `providers` namespace (and the `accounts` payload validation) through P3's harness: a
- * real container (with the built-in ParkStay provider), every handler registered through
+ * real container (with ParkStay alone, however many providers are built in; fakes added where a
+ * test needs them), every handler registered through
  * handle(), and invokes from the trusted fake renderer. `catalog` and `accounts` have their
  * own suites (`catalog.test.ts`, `accounts-ipc.test.ts`).
  */
@@ -11,6 +12,7 @@ import { createContainer, AppContainer } from '@main/app/container';
 import { createAppUrlMatcher } from '@main/app/renderer-entry';
 import { registerIpcHandlers } from '@main/ipc';
 import { createSenderGuard } from '@main/ipc/sender-guard';
+import { parkstayFactory } from '@main/providers/parkstay';
 import {
   ProviderManifestSchema,
   type AccessStatus,
@@ -57,6 +59,7 @@ describe('providers / accounts over IPC', () => {
       db: openDatabase(':memory:'),
       logsDir: TEST_LOGS_DIR,
       ...containerSecrets(),
+      providerFactories: [parkstayFactory],
     });
     before?.(container);
     mainWindow = fakeWebContents(TRUSTED_SENDER_ID);
@@ -78,7 +81,7 @@ describe('providers / accounts over IPC', () => {
     autoUpdater.removeAllListeners();
   });
 
-  describe('with the built-in providers', () => {
+  describe('with ParkStay', () => {
     beforeEach(() => start());
 
     it('providers.list() returns one manifest, parkstay, that passes the manifest schema', async () => {

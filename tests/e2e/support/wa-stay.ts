@@ -7,6 +7,9 @@
  *   and checks that the app really uses it before anything else (the isolation guarantee);
  * - runs in fixture mode (`WA_STAY_E2E_FIXTURES_DIR`): providers answer from
  *   `tests/e2e/fixtures/http`, and every other request is cancelled and logged;
+ * - registers only the providers the journey was written for (`WA_STAY_PROVIDERS`): ParkStay
+ *   (`DEFAULT_PROVIDERS`) unless the launch passes its own `providers`, however many providers
+ *   are built in;
  * - runs as a production build (`NODE_ENV=production`, no `ELECTRON_RENDERER_URL`, no Mapbox
  *   token), in Perth time and Australian English;
  * - is online as far as the window can tell (`navigator.onLine`), whatever the host's network
@@ -38,6 +41,12 @@ import {
   type UnexpectedRequest,
 } from '../../../src/main/testing/request-log';
 import { HTTP_FIXTURES_DIR, REPO_ROOT } from './paths';
+
+/**
+ * The providers a launch registers unless it passes its own: the journeys' counts and
+ * pre-selections (11 places, ParkStay chosen for you) are ParkStay's fixture.
+ */
+const DEFAULT_PROVIDERS: readonly string[] = ['parkstay'];
 
 /** How long a launch may take to show its first page heading. */
 const STARTUP_TIMEOUT_MS = 30_000;
@@ -77,6 +86,11 @@ export interface LaunchOptions {
    */
   prepare?: (userDataDir: string) => void | Promise<void>;
   /**
+   * The built-in providers to register, by id (`WA_STAY_PROVIDERS`). Default:
+   * `DEFAULT_PROVIDERS`. An id that is not built in stops the app at start-up.
+   */
+  providers?: readonly string[];
+  /**
    * Extra environment, e.g. `WA_STAY_E2E_ALLOW_HOSTS` for documentation screenshots or
    * `WA_STAY_LEGACY_DATA_DIR` for the v1.x upgrade.
    */
@@ -113,6 +127,7 @@ export function withoutRemoteImages(requests: readonly UnexpectedRequest[]): Une
 
 function launchEnv(
   userDataDir: string,
+  providers: readonly string[],
   extra: Record<string, string> = {}
 ): Record<string, string> {
   const env: Record<string, string> = {};
@@ -130,6 +145,7 @@ function launchEnv(
     LANG: 'en_AU.UTF-8',
     WA_STAY_USER_DATA_DIR: userDataDir,
     WA_STAY_E2E_FIXTURES_DIR: HTTP_FIXTURES_DIR,
+    WA_STAY_PROVIDERS: providers.join(','),
     ...extra,
   };
 }
@@ -297,7 +313,7 @@ async function startWaStay(
       ...(options.args ?? []),
     ],
     cwd: REPO_ROOT,
-    env: launchEnv(userDataDir, options.env),
+    env: launchEnv(userDataDir, options.providers ?? DEFAULT_PROVIDERS, options.env),
   });
   const tracePath = testInfo.outputPath(`trace-${launches.length + 1}.zip`);
   const launch = new Launch(app, app.process(), userDataDir, tracePath);

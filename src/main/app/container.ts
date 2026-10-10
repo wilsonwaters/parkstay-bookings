@@ -49,9 +49,13 @@ import { AutoUpdaterService } from '../services/updater/auto-updater.service';
 import { JobScheduler } from '../scheduler/job-scheduler';
 import { RendererEvents } from '../ipc/events';
 import { TrustedWebContents } from '../ipc/trusted-web-contents';
-import { registerBuiltInProviders } from '../providers';
+import { BUILT_IN_PROVIDERS, registerBuiltInProviders } from '../providers';
 import { ProviderRegistry } from '../providers/registry';
-import { createProviderContext, type ProviderContextDeps } from '../providers/sdk';
+import {
+  createProviderContext,
+  type ProviderContextDeps,
+  type ProviderFactory,
+} from '../providers/sdk';
 import { ElectronSessionHttpClient } from '../providers/sdk/http-electron';
 import { legacyMachineId } from '../security/legacy-decryptors';
 import { migrateLegacySecrets, removeRetiredGmailStore } from '../security/legacy-migration';
@@ -97,7 +101,7 @@ export interface AppContainer {
   readonly trustedWebContents: TrustedWebContents;
   readonly rendererEvents: RendererEvents;
   readonly profile: LocalProfile;
-  /** The accommodation providers (`providers/index.ts` lists the built-in ones). */
+  /** The accommodation providers: `providerFactories`, by default the built-in ones. */
   readonly providers: ProviderRegistry;
   /** Every provider's locations: sync, search, detail and availability (`catalog.*`). */
   readonly catalogService: LocationCatalogService;
@@ -148,6 +152,12 @@ export interface ContainerOptions {
    */
   readonly fixtureMode?: FixtureModeOptions;
   /**
+   * The providers to register, each on its own context. Default: every built-in provider
+   * (`BUILT_IN_PROVIDERS`). The app passes a subset only for the test-only `WA_STAY_PROVIDERS`
+   * hook; tests pass the providers they are about.
+   */
+  readonly providerFactories?: readonly ProviderFactory[];
+  /**
    * Brings the main window forward (restored, shown, focused) for a click on a desktop
    * notification; false when there is no window or the app is quitting.
    */
@@ -161,6 +171,7 @@ export function createContainer({
   safeStorage,
   isReady,
   fixtureMode,
+  providerFactories = BUILT_IN_PROVIDERS,
   showMainWindow,
 }: ContainerOptions): AppContainer {
   // Lazy: no safeStorage call and no key file until the first secret is read or written
@@ -217,6 +228,7 @@ export function createContainer({
   };
   const providers = new ProviderRegistry({ logger });
   registerBuiltInProviders(providers, (manifest) => createProviderContext(manifest, providerDeps), {
+    factories: providerFactories,
     logger,
   });
 

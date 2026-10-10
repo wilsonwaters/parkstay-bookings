@@ -18,7 +18,8 @@ const CATALOGUE_TIMEOUT_MS = 30_000;
 
 test('creates a ParkStay watch through the provider-first flow', async ({ launchWaStay }) => {
   test.setTimeout(90_000);
-  const wa = await launchWaStay();
+  // ParkStay alone, so it is the only provider with watches, however many are built in
+  const wa = await launchWaStay({ providers: ['parkstay'] });
   const { window } = wa;
 
   await navLink(window, NAV_PAGES.watches.link).click();

@@ -6,11 +6,14 @@
  * install migration has no legacy source, so a test never reads a real profile. A packaged
  * app does none of it, even with every variable set, and neither does one whose executable
  * was renamed to `electron` (Electron then reports it unpackaged, but its code is in app.asar):
- * it also loads its own page, whatever `ELECTRON_RENDERER_URL` says.
+ * it also loads its own page, whatever `ELECTRON_RENDERER_URL` says. `WA_STAY_PROVIDERS` picks
+ * the providers the container registers; an id that is not built in fails start-up before the
+ * database opens. A packaged app registers every built-in provider whatever it says.
  */
 
 import { EventEmitter } from 'events';
 import path from 'path';
+import { BUILT_IN_PROVIDERS } from '@main/providers';
 
 const mockOrder: string[] = [];
 const SOURCE_APP_PATH = '/repo';
@@ -84,6 +87,9 @@ jest.mock('@main/app/container', () => ({
       repositories: { notifications: {}, settings: { getValue: () => null } },
       trustedWebContents: { isTrusted: () => true },
       scheduler: { start: jest.fn() },
+      providerWindows: { attachMainWindow: jest.fn() },
+      catalogService: { start: jest.fn() },
+      accounts: { startRefresh: jest.fn() },
       autoUpdater: { scheduleUpdateCheck: jest.fn() },
       notificationService: { notifyError: jest.fn() },
       dispose: jest.fn(),
@@ -122,6 +128,20 @@ const mainWindow = jest.requireMock('@main/app/main-window') as {
   createMainWindow: jest.Mock;
 };
 
+const crashPolicy = jest.requireMock('@main/app/crash-policy') as {
+  installCrashPolicy: jest.Mock;
+};
+/** The ids of the providers the last launch gave the container (each launch loads its own modules). */
+const containerProviders = (): string[] | undefined =>
+  (mockState.containerOptions?.providerFactories as Array<{ id: string }> | undefined)?.map(
+    (factory) => factory.id
+  );
+const BUILT_IN_IDS = BUILT_IN_PROVIDERS.map((factory) => factory.id);
+
+/** The crash policy's `failStartup` of the last launch. */
+const failStartup = (): jest.Mock =>
+  crashPolicy.installCrashPolicy.mock.results.at(-1)?.value.failStartup;
+
 const electron = jest.requireMock('electron') as {
   app: EventEmitter & { isPackaged: boolean; setPath: jest.Mock };
   session: { defaultSession: { webRequest: { onBeforeRequest: jest.Mock } } };
@@ -150,11 +170,12 @@ beforeEach(() => {
   electron.app.removeAllListeners();
   jest.clearAllMocks();
   Object.assign(process.env, HOOK_VARS);
+  delete process.env.WA_STAY_PROVIDERS;
 });
 
 afterEach(() => {
   delete (process as { resourcesPath?: string }).resourcesPath;
-  for (const name of [...Object.keys(HOOK_VARS), 'ELECTRON_RENDERER_URL']) {
+  for (const name of [...Object.keys(HOOK_VARS), 'ELECTRON_RENDERER_URL', 'WA_STAY_PROVIDERS']) {
     if (savedEnv[name] === undefined) delete process.env[name];
     else process.env[name] = savedEnv[name];
   }
@@ -184,6 +205,36 @@ describe('test-only hooks at startup', () => {
         logFile: path.join(userData, 'e2e-unexpected-requests.log'),
       },
     });
+    // No WA_STAY_PROVIDERS: every built-in provider
+    expect(containerProviders()).toEqual(BUILT_IN_IDS);
+    expect(failStartup()).not.toHaveBeenCalled();
+  });
+
+  it('unpackaged: the container registers only the providers WA_STAY_PROVIDERS lists', async () => {
+    process.env.WA_STAY_PROVIDERS = 'parkstay';
+
+    await launch();
+
+    expect(containerProviders()).toEqual(['parkstay']);
+    expect(failStartup()).not.toHaveBeenCalled();
+  });
+
+  it('unpackaged: a provider that is not built in fails start-up before the database opens', async () => {
+    process.env.WA_STAY_PROVIDERS = 'parkstay,not-a-provider';
+
+    await launch();
+
+    expect(failStartup()).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringMatching(
+          /^WA_STAY_PROVIDERS names "not-a-provider", not a built-in provider\. The built-in providers are: .*parkstay/
+        ),
+      })
+    );
+    expect(mockOrder).not.toContainEqual(
+      expect.stringMatching(/^(migrateLegacyInstall|openDatabase)/)
+    );
+    expect(mockOrder).not.toContain('createContainer');
   });
 
   it.each([
@@ -197,6 +248,8 @@ describe('test-only hooks at startup', () => {
       // Electron sets it; a packaged window's icon is read from it
       (process as { resourcesPath?: string }).resourcesPath = path.dirname(PACKAGED_APP_PATH);
       process.env.ELECTRON_RENDERER_URL = 'https://evil.example/';
+      // Would fail start-up if it were read
+      process.env.WA_STAY_PROVIDERS = 'not-a-provider';
 
       await launch();
 
@@ -216,6 +269,8 @@ describe('test-only hooks at startup', () => {
         'createContainer',
       ]);
       expect(mockState.containerOptions?.fixtureMode).toBeUndefined();
+      expect(containerProviders()).toEqual(BUILT_IN_IDS);
+      expect(failStartup()).not.toHaveBeenCalled();
       expect(mainWindow.createMainWindow).toHaveBeenCalledWith(
         expect.objectContaining({ entry: expect.objectContaining({ kind: 'file' }) })
       );

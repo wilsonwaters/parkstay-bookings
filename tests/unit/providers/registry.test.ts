@@ -597,17 +597,25 @@ describe('ProviderRegistry.disposeAll', () => {
 });
 
 describe('registerBuiltInProviders', () => {
-  it('registers ParkStay by default, with a context built from its manifest', () => {
-    expect(BUILT_IN_PROVIDERS).toEqual([parkstayFactory]);
+  it('registers every built-in provider by default, ParkStay among them, each with a context built from its own manifest', () => {
+    const ids = BUILT_IN_PROVIDERS.map((factory) => factory.id);
+    expect(BUILT_IN_PROVIDERS).toContain(parkstayFactory);
+    expect(new Set(ids).size).toBe(ids.length);
     const registry = new ProviderRegistry();
     const makeContext = jest.fn(createTestProviderContext);
 
     const result = registerBuiltInProviders(registry, makeContext);
 
-    expect(result).toEqual({ registered: ['parkstay'], failed: [] });
-    expect(registry.list().map((m) => m.id)).toEqual(['parkstay']);
-    expect(makeContext.mock.results[0].value).toMatchObject({
-      id: 'parkstay',
+    expect(result).toEqual({ registered: ids, failed: [] });
+    expect(
+      registry
+        .list()
+        .map((m) => m.id)
+        .sort()
+    ).toEqual([...ids].sort());
+    const contexts = makeContext.mock.results.map((r) => r.value as ProviderContext);
+    expect(contexts.map((ctx) => ctx.id)).toEqual(ids);
+    expect(contexts.find((ctx) => ctx.id === 'parkstay')).toMatchObject({
       timezone: 'Australia/Perth',
       limits: { minWatchIntervalMinutes: 15 },
     });

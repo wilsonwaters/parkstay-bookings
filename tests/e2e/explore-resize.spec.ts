@@ -18,6 +18,8 @@ import { expect, test } from './support/wa-stay';
 
 /** The 11 campgrounds in the ParkStay catalogue fixture. */
 const FIXTURE_CAMPGROUNDS = 11;
+/** The count is ParkStay's alone, however many providers are built in. */
+const PROVIDERS = ['parkstay'];
 /** The catalogue syncs from the fixture 5 s after the window opens (V5). */
 const CATALOGUE_TIMEOUT_MS = 30_000;
 /** Explore writes the camera 500 ms after a move ends; this leaves room for the move itself. */
@@ -56,7 +58,7 @@ function resultsHeading(window: Page) {
 test('resizing the window keeps the list as it is and writes no map= (list-only)', async ({
   launchWaStay,
 }) => {
-  const { app, window } = await launchWaStay();
+  const { app, window } = await launchWaStay({ providers: PROVIDERS });
   await resize(app, window, [1280, 800]);
   await expect(resultsHeading(window)).toHaveText(`${FIXTURE_CAMPGROUNDS} places`, {
     timeout: CATALOGUE_TIMEOUT_MS,
@@ -76,6 +78,7 @@ test('with the map: resizing the window is not a map move, a zoom button is (M1)
   test.skip(!MAP, 'Needs a build with a Mapbox token and Mapbox reachable: set E2E_MAP=1');
   test.setTimeout(120_000);
   const { app, window } = await launchWaStay({
+    providers: PROVIDERS,
     env: { WA_STAY_E2E_ALLOW_HOSTS: 'api.mapbox.com' },
     args: MAP_ARGS,
   });

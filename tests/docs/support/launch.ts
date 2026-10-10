@@ -3,9 +3,9 @@
  *
  * It follows the Electron smoke-test harness (`tests/e2e/support/wa-stay.ts`): a temp userData
  * (`WA_STAY_USER_DATA_DIR`, checked before anything else), network-free fixture mode
- * (`WA_STAY_E2E_FIXTURES_DIR`, the same recorded ParkStay responses), a production build, Perth
- * time, Australian English and a window forced online. Two things differ, which the harness
- * cannot do yet (it takes no launch arguments):
+ * (`WA_STAY_E2E_FIXTURES_DIR`, the same recorded ParkStay responses), ParkStay alone
+ * (`WA_STAY_PROVIDERS`), a production build, Perth time, Australian English and a window forced
+ * online. Two things differ, which the harness cannot do yet (it takes no launch arguments):
  *
  * - **The map.** With a Mapbox token in the build, Mapbox's API host is let through the network
  *   guard (`WA_STAY_E2E_ALLOW_HOSTS`); nothing else leaves the machine. Without a token Explore is
@@ -65,6 +65,8 @@ function launchEnv(userDataDir: string, map: boolean): Record<string, string> {
     LANG: 'en_AU.UTF-8',
     WA_STAY_USER_DATA_DIR: userDataDir,
     WA_STAY_E2E_FIXTURES_DIR: HTTP_FIXTURES_DIR,
+    // The images show ParkStay's fixture, however many providers are built in
+    WA_STAY_PROVIDERS: 'parkstay',
     ...(map ? { WA_STAY_E2E_ALLOW_HOSTS: MAPBOX_HOSTS.join(',') } : {}),
   };
 }

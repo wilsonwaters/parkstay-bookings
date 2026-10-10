@@ -1,6 +1,7 @@
 /**
- * The `accounts` namespace through P3's harness: a real container (the built-in ParkStay
- * provider and its real sign-in definition), every handler registered through handle(),
+ * The `accounts` namespace through P3's harness: a real container (ParkStay alone, however many
+ * providers are built in, with its real sign-in definition), every handler registered through
+ * handle(),
  * provider windows on the mocked `electron` (`FakeBrowserWindow`), and ParkStay's
  * `/api/profile` answer stubbed at `auth.isSignedIn` (no network in tests).
  *
@@ -20,6 +21,7 @@ import type { BrowserWindow } from 'electron';
 import { openDatabase } from '@main/database/connection';
 import { createContainer, AppContainer } from '@main/app/container';
 import { registerIpcHandlers } from '@main/ipc';
+import { parkstayFactory } from '@main/providers/parkstay';
 import { SnipeStatus } from '@shared/types/common.types';
 import type { AccountStatus, ProviderAccount } from '@shared/types/provider.types';
 import type { APIResponse } from '@shared/types';
@@ -84,7 +86,12 @@ describe('accounts over IPC', () => {
 
   function start(db: Database.Database = openDatabase(':memory:')): void {
     electron.BrowserWindow.instances.length = 0;
-    container = createContainer({ db, logsDir: TEST_LOGS_DIR, ...containerSecrets() });
+    container = createContainer({
+      db,
+      logsDir: TEST_LOGS_DIR,
+      ...containerSecrets(),
+      providerFactories: [parkstayFactory],
+    });
     container.profile.ensureLocalProfile();
     renderer = fakeWebContents(TRUSTED_SENDER_ID);
     container.trustedWebContents.register(renderer);
@@ -121,6 +128,7 @@ describe('accounts over IPC', () => {
         db,
         logsDir: TEST_LOGS_DIR,
         ...containerSecrets(new FakeSafeStorage()),
+        providerFactories: [parkstayFactory],
       });
       container.profile.ensureLocalProfile();
       container.providers.register(

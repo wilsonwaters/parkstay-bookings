@@ -17,6 +17,7 @@ import { LocationCatalogService } from '@main/core/catalog/location-catalog.serv
 import { openDatabase } from '@main/database/connection';
 import { LocationRepository, ProviderStateRepository } from '@main/database/repositories';
 import { registerIpcHandlers } from '@main/ipc';
+import { parkstayFactory } from '@main/providers/parkstay';
 import { ProviderRegistry } from '@main/providers/registry';
 import { AccessGateError, ProviderHttpError } from '@main/providers/sdk/errors';
 import type { EventName } from '@shared/contracts/channels';
@@ -499,10 +500,12 @@ describe('catalog.* over IPC (P3 harness, real container)', () => {
   beforeEach(() => {
     const secrets = containerSecrets();
     userDataDir = secrets.userDataDir;
+    // ParkStay alone (with no network here) plus the fake, however many providers are built in
     container = createContainer({
       db: openDatabase(':memory:'),
       logsDir: TEST_LOGS_DIR,
       ...secrets,
+      providerFactories: [parkstayFactory],
     });
     fake = createFakeProvider();
     container.providers.register(fake.factory, createTestProviderContext);

@@ -2,7 +2,10 @@
  * Composition root: every service is built once, with shared instances; nothing is a
  * singleton (two containers share nothing); dispose cuts the renderer off, stops the
  * scheduler, disposes the providers (ParkStay's queue gate with them), then closes the
- * database. Watches and snipes get the registry's ParkStay provider. The SecretVault is
+ * database. Watches and snipes get the registry's ParkStay provider. The container registers
+ * every built-in provider by default, or only the `providerFactories` it is given; the tests
+ * about ParkStay pin `[parkstayFactory]`, so they hold however many providers are built in.
+ * The SecretVault is
  * shared by every consumer, including each provider's ScopedSecretVault, and building the
  * container on a fresh install does not touch `safeStorage` or read the machine id.
  */
@@ -29,11 +32,17 @@ import { LocationCatalogService } from '@main/core/catalog/location-catalog.serv
 import { JobScheduler } from '@main/scheduler/job-scheduler';
 import { RendererEvents } from '@main/ipc/events';
 import { TrustedWebContents } from '@main/ipc/trusted-web-contents';
-import { createProviderContext, type ProviderContextDeps } from '@main/providers/sdk';
+import { BUILT_IN_PROVIDERS } from '@main/providers';
+import { parkstayFactory } from '@main/providers/parkstay';
+import {
+  createProviderContext,
+  type ProviderContextDeps,
+  type ProviderFactory,
+} from '@main/providers/sdk';
 import { SecretVault } from '@main/security/secret-vault';
 import { TEST_LOGS_DIR } from '@tests/utils/ipc-harness';
 import { containerSecrets, FakeSafeStorage, removeUserData } from '@tests/utils/fake-safe-storage';
-import { testManifest } from '@tests/utils/fake-provider';
+import { createFakeProvider, testManifest } from '@tests/utils/fake-provider';
 import { SnipeReleaseMode, SnipeStatus } from '@shared/types/common.types';
 import { createMockSiteSnipeInput } from '@tests/fixtures/site-sniper';
 import { createMockWatchInput } from '@tests/fixtures/watches';
@@ -127,7 +136,7 @@ const CONSTRUCTED_ONCE = {
   ProviderStateRepository: repositories.ProviderStateRepository,
   ProviderAccountRepository: repositories.ProviderAccountRepository,
   LocationRepository: repositories.LocationRepository,
-  // One per provider; ParkStay is the only built-in one
+  // One per provider; `build` registers ParkStay alone unless told otherwise
   SqliteKeyValueStore: repositories.SqliteKeyValueStore,
   ProviderAccountService,
   ProviderWindows,
@@ -151,7 +160,11 @@ describe('createContainer', () => {
   const opened: AppContainer[] = [];
   const userDataDirs: string[] = [];
 
-  function build(safeStorage: FakeSafeStorage = new FakeSafeStorage()): {
+  /** A container with ParkStay alone, unless `providers` says otherwise ('built-in': the default). */
+  function build(
+    safeStorage: FakeSafeStorage = new FakeSafeStorage(),
+    providers: readonly ProviderFactory[] | 'built-in' = [parkstayFactory]
+  ): {
     container: AppContainer;
     db: Database.Database;
     userDataDir: string;
@@ -159,7 +172,12 @@ describe('createContainer', () => {
     const db = openDatabase(':memory:');
     const secrets = containerSecrets(safeStorage);
     userDataDirs.push(secrets.userDataDir);
-    const container = createContainer({ db, logsDir: TEST_LOGS_DIR, ...secrets });
+    const container = createContainer({
+      db,
+      logsDir: TEST_LOGS_DIR,
+      ...secrets,
+      ...(providers === 'built-in' ? {} : { providerFactories: providers }),
+    });
     opened.push(container);
     return { container, db, userDataDir: secrets.userDataDir };
   }
@@ -344,12 +362,39 @@ describe('createContainer', () => {
     ).toBe(false);
   });
 
-  it('registers the built-in providers, each on its own session partition', () => {
-    const { container } = build();
+  it('registers every built-in provider by default, each on its own session partition', () => {
+    const { container } = build(undefined, 'built-in');
+    const { session } = jest.requireMock('electron') as { session: { fromPartition: jest.Mock } };
+    const ids = BUILT_IN_PROVIDERS.map((factory) => factory.id);
+
+    expect(ids).toContain('parkstay');
+    expect(
+      container.providers
+        .list()
+        .map((m) => m.id)
+        .sort()
+    ).toEqual([...ids].sort());
+    for (const id of ids) {
+      expect(session.fromPartition).toHaveBeenCalledWith(`persist:provider-${id}`);
+    }
+  });
+
+  it('registers only the providerFactories it is given, each on its own context and partition', () => {
+    const fake = createFakeProvider({ id: 'fake2' });
+    const { container } = build(undefined, [fake.factory]);
     const { session } = jest.requireMock('electron') as { session: { fromPartition: jest.Mock } };
 
-    expect(container.providers.list().map((m) => m.id)).toEqual(['parkstay']);
-    expect(session.fromPartition).toHaveBeenCalledWith('persist:provider-parkstay');
+    expect(container.providers.list().map((m) => m.id)).toEqual(['fake2']);
+    expect(container.providers.tryGet('parkstay')).toBeUndefined();
+    expect(container.providers.get('fake2').holds).toBe(fake.holds);
+    expect(fake.ctx?.id).toBe('fake2');
+    expect(repositories.SqliteKeyValueStore).toHaveBeenCalledTimes(1);
+    expect(repositories.SqliteKeyValueStore).toHaveBeenCalledWith(
+      container.repositories.providerState,
+      'fake2'
+    );
+    expect(session.fromPartition).toHaveBeenCalledWith('persist:provider-fake2');
+    expect(session.fromPartition).not.toHaveBeenCalledWith('persist:provider-parkstay');
   });
 
   describe('development hooks only from source (architecture-notes §12.34)', () => {
