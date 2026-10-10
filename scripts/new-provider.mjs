@@ -388,11 +388,12 @@ function main() {
   try {
     for (const [file, text] of Object.entries(files)) {
       const target = path.join(root, file);
-      const made = fs.mkdirSync(path.dirname(target), { recursive: true });
-      // mkdirSync returns the first folder it made; everything from there down is new.
-      for (let dir = path.dirname(target); made && dir.startsWith(made); dir = path.dirname(dir)) {
+      // The folders this run makes, found before making them: mkdirSync's own answer is not
+      // comparable with path.join's on Windows.
+      for (let dir = path.dirname(target); !fs.existsSync(dir); dir = path.dirname(dir)) {
         madeDirs.push(dir);
       }
+      fs.mkdirSync(path.dirname(target), { recursive: true });
       fs.writeFileSync(target, text.endsWith('\n') ? text : `${text}\n`, { flag: 'wx' });
       written.push(target);
     }
@@ -400,11 +401,9 @@ function main() {
     // Undo it all, so a second try is not refused as "taken".
     for (const target of written) fs.rmSync(target, { force: true });
     for (const dir of [...new Set(madeDirs)].sort((a, b) => b.length - a.length)) {
-      try {
-        fs.rmdirSync(dir); // only once empty: never anything this run did not write
-      } catch {
-        // not empty or already gone: leave it
-      }
+      // Made by this run, so all it holds is what this run wrote. Windows may hold a file
+      // briefly after a write (an indexer, a virus scan): retry rather than leave it behind.
+      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
     throw error;
   }

@@ -379,8 +379,11 @@ describe('scripts/new-provider.mjs: registering, naming and undoing', () => {
     fs.writeFileSync(at(root, 'tests/fixtures/providers'), 'in the way');
     const failed = scaffold(root, 'scaffold-check-other', '--no-register');
     expect(failed.status).toBe(1);
-    expect(fs.existsSync(provider(''))).toBe(false);
-    expect(fs.existsSync(at(root, 'tests/integration'))).toBe(false);
+    // With the run's own output, so a failure on another platform says why.
+    const left = ['src/main/providers/scaffold-check-other', 'tests/integration'].filter((dir) =>
+      fs.existsSync(at(root, dir))
+    );
+    expect({ left, stderr: failed.stderr }).toEqual({ left: [], stderr: expect.any(String) });
 
     fs.rmSync(at(root, 'tests/fixtures/providers'));
     const again = scaffold(root, 'scaffold-check-other', '--no-register');
