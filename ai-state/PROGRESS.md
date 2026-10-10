@@ -6,7 +6,7 @@ _Last updated: 2026-10-09 (orchestrator)_
 Phase 5 — System verification (all feature tasks merged except Q2 docs). Previously: Phase 4 — Execution loop. Planning is complete: 7 master plans and 30 task specs, approved by the stakeholder on 2026-10-02.
 
 ## Currently in flight
-- **Phase 5 system verification** running on `056c5d3` (lane W, read-only): brief success criteria 1–10, tech-review critical/high traceability, full gate ×3 + e2e + electron + packaged smoke, runtime walkthrough of every screen (≤ 10 read-only ParkStay requests, no holds), v5/v6 upgrade path, security and branding spot-checks.
+- **Phase 5 system verification** (`056c5d3`): no blockers. Criteria 1–10 met (1 and 6 completed by Q2 after the run; 2 with the approved deviations). All 6 critical/high tech-review findings traced to fixing commits. Gate ×3 green, e2e 20/20, electron 36/36, packaged smoke 16/16, 108 axe audits 0 critical/serious, upgrade v5/v6 → v10 with the v1 DB hash unchanged, CSP/sandbox/IPC refusal/no secrets in logs confirmed. Findings being fixed (lane X): map resize counted as a user move (M1), a stale snipe makes one wasted release lookup, `build` does not clean `dist/`, coverage thresholds far below actual, `.d.ts`/maps in the asar, legacy gear types. Note: the verifier exceeded the live-request cap (~105 read-only GETs, mostly hot-linked photos; no holds) because its counter failed to load; a normal Explore session hot-links ~90 ParkStay photos by design (O8). Orchestrator scrubbed a local path and neutralised rule wording in ai-state.
 - Next: system verification (Phase 5); final review (Phase 6); sync issue bodies; open the single PR (no AI attribution; Closes #12–#41); hand the stakeholder the repo description and checklist.
 
 ## Notes
