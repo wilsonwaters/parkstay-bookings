@@ -8,13 +8,7 @@ import type { Namespace } from './define';
 
 export interface UpdateStatus {
   state:
-    | 'idle'
-    | 'checking'
-    | 'available'
-    | 'not-available'
-    | 'downloading'
-    | 'downloaded'
-    | 'error';
+    'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
   version?: string;
   releaseNotes?: string;
   percent?: number;

@@ -12,8 +12,7 @@ import {
 export const CAMERA_WRITE_DELAY_MS = 500;
 
 export type ExploreParamsPatch =
-  | Partial<ExploreParams>
-  | ((current: ExploreParams) => Partial<ExploreParams>);
+  Partial<ExploreParams> | ((current: ExploreParams) => Partial<ExploreParams>);
 
 export interface UseExploreParams {
   params: ExploreParams;

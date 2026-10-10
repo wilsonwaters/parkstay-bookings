@@ -165,12 +165,7 @@ export interface HoldRequest {
 }
 
 export type HoldFailureReason =
-  | 'taken'
-  | 'in-progress'
-  | 'auth-required'
-  | 'closed'
-  | 'invalid'
-  | 'error';
+  'taken' | 'in-progress' | 'auth-required' | 'closed' | 'invalid' | 'error';
 
 export interface HoldSuccess {
   ok: true;

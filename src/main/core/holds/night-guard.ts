@@ -44,8 +44,7 @@ export interface Reservation {
  * only by a hold still being placed (`transient: true`), which may yet fail: try again later.
  */
 export type ReserveResult =
-  | { ok: true; reservation: Reservation }
-  | { ok: false; reason: string; transient: boolean };
+  { ok: true; reservation: Reservation } | { ok: false; reason: string; transient: boolean };
 
 export const NIGHT_CONFLICT_MESSAGE =
   'Another hold or booking covers these nights (one booking per night)';

@@ -68,11 +68,7 @@ export interface SecretVaultOptions {
 }
 
 export type SecretUnreadableReason =
-  | 'not-an-envelope'
-  | 'newer-version'
-  | 'os-unavailable'
-  | 'key-missing'
-  | 'decrypt-failed';
+  'not-an-envelope' | 'newer-version' | 'os-unavailable' | 'key-missing' | 'decrypt-failed';
 
 /** A stored secret that cannot be decrypted. The message never contains the secret. */
 export class SecretUnreadableError extends Error {
@@ -109,8 +105,7 @@ export class SecretVerificationError extends Error {
 
 /** The result of reading a stored secret. */
 export type SecretRead =
-  | { state: 'ok'; value: string }
-  | { state: Exclude<SecretState, 'ok'>; reason?: string };
+  { state: 'ok'; value: string } | { state: Exclude<SecretState, 'ok'>; reason?: string };
 
 const PREFIX = 'vault:';
 const VERSION = 'v1';

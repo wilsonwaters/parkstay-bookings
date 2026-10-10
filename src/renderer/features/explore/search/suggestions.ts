@@ -140,25 +140,21 @@ export function suggest(index: SuggestionIndex, query: string): Suggestion[] {
 
   return [
     ...regions.slice(0, regionTake).map(regionOf),
-    ...areas.slice(0, areaTake).map(
-      (entry): Suggestion => ({
-        kind: 'area',
-        value: `area:${entry.name}`,
-        label: entry.name,
-        description: [entry.region, placesCount(entry.count)].filter(Boolean).join(' · '),
-        group: 'Areas',
-        target: entry.name,
-      })
-    ),
-    ...places.slice(0, placeTake).map(
-      (place): Suggestion => ({
-        kind: 'place',
-        value: `place:${place.key}`,
-        label: place.name,
-        description: [place.area?.name, place.area?.region].filter(Boolean).join(' · '),
-        group: 'Places',
-        target: place.key,
-      })
-    ),
+    ...areas.slice(0, areaTake).map((entry): Suggestion => ({
+      kind: 'area',
+      value: `area:${entry.name}`,
+      label: entry.name,
+      description: [entry.region, placesCount(entry.count)].filter(Boolean).join(' · '),
+      group: 'Areas',
+      target: entry.name,
+    })),
+    ...places.slice(0, placeTake).map((place): Suggestion => ({
+      kind: 'place',
+      value: `place:${place.key}`,
+      label: place.name,
+      description: [place.area?.name, place.area?.region].filter(Boolean).join(' · '),
+      group: 'Places',
+      target: place.key,
+    })),
   ];
 }

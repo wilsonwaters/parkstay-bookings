@@ -15,8 +15,7 @@ function deepFreeze<T>(value: T): T {
 }
 
 export type ManifestParseResult =
-  | { ok: true; manifest: Readonly<ProviderManifest> }
-  | { ok: false; issues: string[] };
+  { ok: true; manifest: Readonly<ProviderManifest> } | { ok: false; issues: string[] };
 
 /** Parses and freezes a manifest; `issues` are `path: message` lines when it is invalid. */
 export function parseProviderManifest(manifest: unknown): ManifestParseResult {

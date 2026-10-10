@@ -228,11 +228,7 @@ export class AccessGateError extends ProviderError {
  * - `closing`: the app is quitting, so no browser is launched.
  */
 export type BrowserUnavailableReason =
-  | 'runtime-missing'
-  | 'no-browser'
-  | 'profile-locked'
-  | 'launch-failed'
-  | 'closing';
+  'runtime-missing' | 'no-browser' | 'profile-locked' | 'launch-failed' | 'closing';
 
 export class BrowserUnavailableError extends ProviderError {
   readonly reason: BrowserUnavailableReason;

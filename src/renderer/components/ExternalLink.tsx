@@ -4,8 +4,10 @@ import { VisuallyHidden, type ButtonSize, type ButtonVariant } from './ui';
 import { buttonClassName } from './ui/Button';
 import { cx } from './ui/cx';
 
-export interface ExternalLinkProps
-  extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href' | 'target' | 'rel' | 'children'> {
+export interface ExternalLinkProps extends Omit<
+  AnchorHTMLAttributes<HTMLAnchorElement>,
+  'href' | 'target' | 'rel' | 'children'
+> {
   /** An http(s) address on another site: a provider's page, its website. */
   href: string;
   children: ReactNode;

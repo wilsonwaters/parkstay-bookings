@@ -355,8 +355,7 @@ export function applyMigration(
 /** The AUTOINCREMENT high-water mark of `table`, if it has one. */
 function readSequence(db: Database.Database, table: string): number | undefined {
   const row = db.prepare('SELECT seq FROM sqlite_sequence WHERE name = ?').get(table) as
-    | { seq: number }
-    | undefined;
+    { seq: number } | undefined;
   return row?.seq;
 }
 
@@ -862,8 +861,7 @@ const PROFILE_OWNED_TABLES = ['watches', 'site_snipes', 'bookings', 'notificatio
  */
 function v8AdoptOrphans(db: Database.Database): void {
   const profile = db.prepare('SELECT id FROM users ORDER BY id LIMIT 1').get() as
-    | { id: number }
-    | undefined;
+    { id: number } | undefined;
   if (!profile) return;
   for (const table of PROFILE_OWNED_TABLES) {
     if (!hasTable(db, table)) continue;

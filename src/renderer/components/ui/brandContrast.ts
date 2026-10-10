@@ -10,8 +10,7 @@ const LIGHT_TEXT = tokens.colors['fg-inverse'];
 const DARK_TEXT = tokens.colors.fg;
 
 export type MonogramStyle =
-  | { fill: 'solid'; text: 'fg-inverse' | 'fg'; ratio: number }
-  | { fill: 'outlined'; ratio: number };
+  { fill: 'solid'; text: 'fg-inverse' | 'fg'; ratio: number } | { fill: 'outlined'; ratio: number };
 
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 

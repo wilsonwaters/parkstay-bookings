@@ -77,12 +77,7 @@ export type SourceKind = 'legacy' | 'snapshot';
  * source (the old data folder), `unwritable` the WA Stay data folder.
  */
 export type FailureKind =
-  | 'locked'
-  | 'corrupt'
-  | 'disk-full'
-  | 'unreadable'
-  | 'unwritable'
-  | 'error';
+  'locked' | 'corrupt' | 'disk-full' | 'unreadable' | 'unwritable' | 'error';
 
 export interface MigrationMarker {
   version: 1;

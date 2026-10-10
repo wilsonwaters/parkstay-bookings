@@ -135,7 +135,7 @@ export function bookableClassNights(
   }
 
   const chosen: boolean[] = Array(nights).fill(false);
-  for (let k = nights; k > 0; ) {
+  for (let k = nights; k > 0;) {
     const start = from[k];
     if (start < 0) {
       k--;

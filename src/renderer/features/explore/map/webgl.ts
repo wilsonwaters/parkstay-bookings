@@ -7,9 +7,7 @@ export function supportsWebGL(doc: Document = document): boolean {
   try {
     const canvas = doc.createElement('canvas');
     const context = (canvas.getContext('webgl2') ?? canvas.getContext('webgl')) as
-      | WebGLRenderingContext
-      | WebGL2RenderingContext
-      | null;
+      WebGLRenderingContext | WebGL2RenderingContext | null;
     if (!context) return false;
     context.getExtension('WEBGL_lose_context')?.loseContext();
     return true;

@@ -36,7 +36,7 @@ describe('bookableClassNights', () => {
 
   /** Whether every run of chosen nights is free on one site (runs are apart by definition). */
   const valid = (free: boolean[][], chosen: boolean[]): boolean => {
-    for (let start = 0; start < chosen.length; ) {
+    for (let start = 0; start < chosen.length;) {
       if (!chosen[start]) {
         start++;
         continue;

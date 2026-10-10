@@ -180,16 +180,14 @@ describe('SnipeRunner daily-rollover start (m1)', () => {
       find: jest.fn(() => snipe),
       getActive: jest.fn(() => [snipe]),
       getHeld: jest.fn(() => []),
-      plan: jest.fn(
-        (s: SiteSnipe): SnipePlan => ({
-          provider: {} as SnipePlan['provider'],
-          releaseAt: s.releaseAt,
-          warmupAt: s.releaseAt,
-          windowEnd: new Date(s.releaseAt!.getTime() + s.windowDurationMs),
-          pollIntervalMs: 1500,
-          timeZone: 'Australia/Perth',
-        })
-      ),
+      plan: jest.fn((s: SiteSnipe): SnipePlan => ({
+        provider: {} as SnipePlan['provider'],
+        releaseAt: s.releaseAt,
+        warmupAt: s.releaseAt,
+        windowEnd: new Date(s.releaseAt!.getTime() + s.windowDurationMs),
+        pollIntervalMs: 1500,
+        timeZone: 'Australia/Perth',
+      })),
       setStatus: jest.fn((_id: number, status: SnipeStatus) => {
         snipe = { ...snipe, status };
       }),

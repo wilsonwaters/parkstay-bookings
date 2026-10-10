@@ -65,13 +65,7 @@ import { SnipeReleaseMode } from '@shared/types/common.types';
 import { makeLocationKey } from '@shared/utils/location-key';
 
 export type FakeModule =
-  | 'catalog'
-  | 'availability'
-  | 'access'
-  | 'release'
-  | 'holds'
-  | 'bookings'
-  | 'auth';
+  'catalog' | 'availability' | 'access' | 'release' | 'holds' | 'bookings' | 'auth';
 
 export interface FakeCall {
   module: FakeModule;

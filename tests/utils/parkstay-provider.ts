@@ -92,18 +92,21 @@ export function luckyBayView(freeSite?: number): RawCampsiteAvailabilityView {
   if (freeSite === undefined) return view;
   return {
     ...view,
-    sites: view.sites.map(
-      (entry): RawCampsite => ({
-        ...entry,
-        id: freeSite,
-        price: '$60.00',
-        site_left: '1',
-        availability: entry.availability.map(
-          (night): RawNightTuple => [true, `$${night[2]}`, night[2], [0, 0], null, night[5]]
-        ),
-        breakdown: [],
-      })
-    ),
+    sites: view.sites.map((entry): RawCampsite => ({
+      ...entry,
+      id: freeSite,
+      price: '$60.00',
+      site_left: '1',
+      availability: entry.availability.map((night): RawNightTuple => [
+        true,
+        `$${night[2]}`,
+        night[2],
+        [0, 0],
+        null,
+        night[5],
+      ]),
+      breakdown: [],
+    })),
   };
 }
 

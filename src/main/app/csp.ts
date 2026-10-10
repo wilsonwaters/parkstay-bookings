@@ -14,8 +14,7 @@
  */
 
 export type CspOptions =
-  | { readonly dev: false }
-  | { readonly dev: true; readonly devOrigin: string };
+  { readonly dev: false } | { readonly dev: true; readonly devOrigin: string };
 
 const MAPBOX_CONNECT = [
   'https://api.mapbox.com',

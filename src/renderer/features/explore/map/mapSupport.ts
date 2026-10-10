@@ -2,8 +2,7 @@ import { getMapboxToken } from './mapboxToken';
 import { supportsWebGL } from './webgl';
 
 export type MapSupport =
-  | { available: true; token: string }
-  | { available: false; reason: 'no-token' | 'no-webgl' };
+  { available: true; token: string } | { available: false; reason: 'no-token' | 'no-webgl' };
 
 /**
  * Whether Explore can show the map: it needs a public token in the build and WebGL. Without

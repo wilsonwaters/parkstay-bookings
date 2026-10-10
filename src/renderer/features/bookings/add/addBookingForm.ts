@@ -28,13 +28,7 @@ export interface AddBookingValues {
 }
 
 export type AddBookingField =
-  | 'location'
-  | 'dates'
-  | 'adults'
-  | 'unit'
-  | 'reference'
-  | 'totalCost'
-  | 'notes';
+  'location' | 'dates' | 'adults' | 'unit' | 'reference' | 'totalCost' | 'notes';
 export type AddBookingErrors = Partial<Record<AddBookingField, string>>;
 
 export const REFERENCE_MAX = 50;
