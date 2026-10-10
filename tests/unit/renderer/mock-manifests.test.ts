@@ -12,6 +12,11 @@ describe('renderer test manifests', () => {
     expect(PARKSTAY_MANIFEST.capabilities.holds).toBe(parkstayManifest.capabilities.holds);
     expect(PARKSTAY_MANIFEST.capabilities.watches).toBe(parkstayManifest.capabilities.watches);
     expect(PARKSTAY_MANIFEST.capabilities.account).toBe(parkstayManifest.capabilities.account);
+    expect(PARKSTAY_MANIFEST.capabilities.bookingImport).toBe(
+      parkstayManifest.capabilities.bookingImport
+    );
+    expect(PARKSTAY_MANIFEST.capabilities.catalog).toBe(parkstayManifest.capabilities.catalog);
+    expect(PARKSTAY_MANIFEST.website).toBe(parkstayManifest.website);
     expect(PARKSTAY_MANIFEST.limits).toEqual(parkstayManifest.limits);
     expect(PARKSTAY_MANIFEST.timezone).toBe(parkstayManifest.timezone);
     expect(PARKSTAY_MANIFEST.currency).toBe(parkstayManifest.currency);

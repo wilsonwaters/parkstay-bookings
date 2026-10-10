@@ -23,8 +23,9 @@ export interface ExternalLinkProps
 const ICON_SIZE: Record<ButtonSize, number> = { sm: 16, md: 18, lg: 20 };
 
 /**
- * A link that leaves WA Stay for the system browser: `target="_blank"` with no referrer, which
- * the app window hands to the browser (`setWindowOpenHandler` → `shell.openExternal`). It ends
+ * A link that leaves WA Stay for the system browser: `target="_blank"` with
+ * `rel="noopener noreferrer"`, which the app window hands to the browser
+ * (`setWindowOpenHandler` → `shell.openExternal`). It ends
  * with the `ExternalLink` icon, and screen readers hear "(opens in your browser)". A text link
  * by default (with an optional `detail` line); pass `variant` for a link that looks like a
  * Button.
@@ -44,7 +45,7 @@ export function ExternalLink({
       {...rest}
       href={href}
       target="_blank"
-      rel="noreferrer"
+      rel="noopener noreferrer"
       className={
         variant
           ? buttonClassName({ variant, size, fullWidth, className })

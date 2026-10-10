@@ -7,7 +7,7 @@ describe('ExternalLink', () => {
     const link = screen.getByRole('link', { name: 'View on ParkStay (opens in your browser)' });
     expect(link).toHaveAttribute('href', 'https://parkstay.dbca.wa.gov.au');
     expect(link).toHaveAttribute('target', '_blank');
-    expect(link).toHaveAttribute('rel', 'noreferrer');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     // The trailing icon is decorative.
     expect(link.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
   });

@@ -35,10 +35,14 @@ export function useProvider(id: string) {
   return useQuery({ queryKey: queryKeys.providers.list(), queryFn: listProviders, select });
 }
 
-/** The providers that offer `capability`, for a create flow's provider step (§12.9). */
-export function useProvidersWith(capability: ProviderCapability) {
+/**
+ * The providers that offer `capability`, for a create flow's provider step (§12.9); with no
+ * capability, every provider (adding a booking by hand needs none).
+ */
+export function useProvidersWith(capability?: ProviderCapability) {
   const select = useCallback(
-    (manifests: ProviderManifest[]) => manifests.filter((m) => m.capabilities[capability] === true),
+    (manifests: ProviderManifest[]) =>
+      capability ? manifests.filter((m) => m.capabilities[capability] === true) : manifests,
     [capability]
   );
   return useQuery({ queryKey: queryKeys.providers.list(), queryFn: listProviders, select });

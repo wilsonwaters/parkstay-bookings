@@ -34,7 +34,7 @@ test.describe('primary navigation', () => {
     }
   });
 
-  test('Bookings opens its page as the current item, with focus on main', async ({
+  test('Bookings opens its page as the current item, with "Add booking"', async ({
     launchWaStay,
   }) => {
     const { window } = await launchWaStay();
@@ -42,14 +42,10 @@ test.describe('primary navigation', () => {
     await navLink(window, NAV_PAGES.bookings.link).click();
     await expectRoute(window, NAV_PAGES.bookings.route);
     await expectCurrentNavLink(window, NAV_PAGES.bookings.link);
-    await expect(window.getByRole('heading', { name: 'Your Bookings' })).toBeVisible();
-    await expect(window.getByRole('main')).toBeFocused();
+    await expect(window.getByRole('button', { name: 'Add booking' })).toBeVisible();
   });
 
   test('the Bookings page has the h1 "Bookings"', async ({ launchWaStay }) => {
-    // U3 rebuilds Bookings. The legacy page has no h1 (its heading is the h2 "Your Bookings"),
-    // so D3 focuses main instead. Remove this line when U3 lands.
-    test.fail(true, 'The legacy Bookings page has no h1 until U3');
     const { window } = await launchWaStay();
 
     await navLink(window, NAV_PAGES.bookings.link).click();

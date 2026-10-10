@@ -1,6 +1,6 @@
 /**
- * Maps the legacy ParkStay snipe and booking forms to and from the provider-aware domain types
- * (V2). Watches have their own provider-first form (features/watches, U1).
+ * Maps the legacy ParkStay snipe form to and from the provider-aware domain types (V2).
+ * Watches (U1) and bookings (U3) have their own provider-first forms.
  *
  * The forms keep their own values (date pickers, ParkStay field names) and their look; only
  * what crosses IPC changed. A date input with `valueAsDate` holds UTC midnight of the picked
@@ -8,21 +8,13 @@
  * The U tasks replace the forms and this file.
  */
 
-import type {
-  BookingInput,
-  BookingLocationRef,
-  SiteSnipe,
-  SiteSnipeInput,
-  Stay,
-  StayParams,
-} from '../../../shared/types';
+import type { SiteSnipe, SiteSnipeInput, StayParams } from '../../../shared/types';
 import type { RefCallback } from 'react';
 import type { UseFormRegisterReturn } from 'react-hook-form';
 import type { CreatePrefill } from '../../app/routes';
-import type { BookingSchemaType } from '../../../shared/schemas/booking.schema';
 import type { SiteSnipeSchemaType } from '../../../shared/schemas/site-sniper.schema';
 
-/** The legacy forms create ParkStay snipes and bookings only. */
+/** The legacy form creates ParkStay snipes only. */
 export const LEGACY_FORM_PROVIDER_ID = 'parkstay';
 
 /** The calendar date a date input's `valueAsDate` means (UTC midnight of the picked day). */
@@ -63,11 +55,6 @@ export function dateInputRef(
     const date = value();
     if (date instanceof Date && !Number.isNaN(date.getTime())) input.valueAsDate = date;
   };
-}
-
-/** Everyone in the party. */
-export function partySize(stay: Stay): number {
-  return stay.adults + stay.children + stay.infants + stay.concessions;
 }
 
 /** A stay field as text, or undefined when it is not set. */
@@ -173,26 +160,4 @@ export function snipeToFormValues(
     postcode: stayParamText(snipe?.stayParams, 'postcode'),
     queueEnabled: snipe?.accessGateEnabled ?? false,
   };
-}
-
-// ---------------------------------------------------------------------------------------
-// Bookings
-// ---------------------------------------------------------------------------------------
-
-export function bookingFormToInput(form: BookingSchemaType): BookingInput {
-  const location: BookingLocationRef = { name: form.campgroundName, areaName: form.parkName };
-  return defined({
-    providerId: LEGACY_FORM_PROVIDER_ID,
-    bookingReference: form.bookingReference,
-    location,
-    stay: {
-      arrival: toCalendarDate(form.arrivalDate),
-      departure: toCalendarDate(form.departureDate),
-      adults: form.numGuests,
-    },
-    unitIds: form.siteNumber ? [form.siteNumber] : [],
-    stayParams: compactParams({ siteType: form.siteType }),
-    totalCost: form.totalCost,
-    notes: form.notes,
-  });
 }

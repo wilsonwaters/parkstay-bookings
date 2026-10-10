@@ -7,13 +7,10 @@
 import { contract } from '../../../shared/contracts';
 import { SnipeReleaseMode } from '../../../shared/types';
 import type { SiteSnipe } from '../../../shared/types';
-import type { BookingSchemaType } from '../../../shared/schemas/booking.schema';
 import type { SiteSnipeSchemaType } from '../../../shared/schemas/site-sniper.schema';
 import {
-  bookingFormToInput,
   dateInputRef,
   formDate,
-  partySize,
   snipeFormToInput,
   snipeFromPrefill,
   snipeToFormValues,
@@ -114,42 +111,9 @@ describe('legacy form mapping', () => {
     expect(snipeToFormValues(undefined)).toMatchObject({ siteType: 'all', numVehicle: 1 });
   });
 
-  it('maps the manual booking form, with the site number as the unit', () => {
-    const form: BookingSchemaType = {
-      bookingReference: 'PS0012345',
-      parkName: 'Cape Range National Park',
-      campgroundName: 'Osprey Bay',
-      siteNumber: '12',
-      siteType: '',
-      arrivalDate: picked('2026-01-10'),
-      departureDate: picked('2026-01-13'),
-      numGuests: 2,
-      totalCost: 85.5,
-      notes: 'Ocean side',
-    };
-
-    const input = bookingFormToInput(form);
-
-    expect(input).toEqual({
-      providerId: 'parkstay',
-      bookingReference: 'PS0012345',
-      location: { name: 'Osprey Bay', areaName: 'Cape Range National Park' },
-      stay: { arrival: '2026-01-10', departure: '2026-01-13', adults: 2 },
-      unitIds: ['12'],
-      stayParams: {},
-      totalCost: 85.5,
-      notes: 'Ocean side',
-    });
-    expect(contract.bookings.create.request.parse(input)).toEqual(input);
-    expect(bookingFormToInput({ ...form, siteNumber: '' }).unitIds).toEqual([]);
-  });
-
   it('converts between picked dates and calendar dates both ways', () => {
     expect(toCalendarDate(picked('2028-02-29'))).toBe('2028-02-29');
     expect(formDate('2028-02-29')).toEqual(picked('2028-02-29'));
-    expect(
-      partySize({ arrival: '', departure: '', adults: 2, children: 1, infants: 1, concessions: 1 })
-    ).toBe(5);
   });
 
   describe.each(['UTC', 'Australia/Perth', 'America/Los_Angeles'])('on a host in %s', (zone) => {

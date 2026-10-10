@@ -10,11 +10,18 @@ import {
 import { renderWithProviders } from '@tests/utils/renderer/renderWithProviders';
 import { ProviderPicker } from './ProviderPicker';
 
-function Picker({ onChange = jest.fn() }: { onChange?: (id: string) => void }) {
+function Picker({
+  onChange = jest.fn(),
+  anyProvider = false,
+}: {
+  onChange?: (id: string) => void;
+  /** No capability: every provider. */
+  anyProvider?: boolean;
+}) {
   const [value, setValue] = useState<string>();
   return (
     <ProviderPicker
-      capability="watches"
+      capability={anyProvider ? undefined : 'watches'}
       label="Provider"
       value={value}
       onChange={(id) => {
@@ -40,6 +47,18 @@ describe('ProviderPicker', () => {
     expect(screen.getByRole('radio', { name: 'ParkStay WA' })).not.toBeChecked();
     expect(screen.getByRole('radio', { name: 'Fake Stay Holidays' })).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: 'Browse Only' })).toBeNull();
+  });
+
+  it('lists every provider when the flow needs no capability', async () => {
+    renderWithProviders(<Picker anyProvider />, {
+      api: providers([PARKSTAY_MANIFEST, BROWSE_ONLY_MANIFEST, FAKE_MANIFEST]),
+    });
+    await screen.findByRole('radiogroup', { name: 'Provider' });
+    expect(screen.getAllByRole('radio').map((radio) => radio.getAttribute('value'))).toEqual([
+      'parkstay',
+      'browseonly',
+      'fakestay',
+    ]);
   });
 
   it('pre-selects a single qualifying provider, still showing it', async () => {
