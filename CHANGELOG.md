@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Notifications, and the record of each notification email sent, are deleted automatically once they are 30 days old.
 
 ### Removed
-- Gmail OTP sign-in. Nothing used it any more. A saved Gmail sign-in is deleted from the app's data folder on the first start; to revoke the access you gave it, remove your OAuth client at https://myaccount.google.com/permissions.
+- Gmail OTP sign-in. Nothing used it any more. WA Stay deletes any saved Gmail sign-in from its own data folder on start. If you used Gmail OTP in v1.x, a copy of that sign-in (`gmail-oauth.json`, with a still-valid access token) remains in the old v1 data folder (`%APPDATA%\parkstay-bookings`), which WA Stay keeps untouched as your backup; it is safe to delete that file. To revoke the access you gave the app, remove it from your Google account at https://myaccount.google.com/permissions.
 
 ## [1.2.0] - 2026-05-18
 

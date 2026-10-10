@@ -36,7 +36,9 @@ const sqliteText = (at: Date) => at.toISOString().slice(0, 19).replace('T', ' ')
 const isoText = (at: Date) => at.toISOString();
 const daysAgo = (days: number) => new Date(NOW.getTime() - days * DAY);
 
-type Stores = Pick<RetentionJobDeps, 'notifications' | 'notifiers' | 'settings'>;
+type Stores = Pick<RetentionJobDeps, 'notifications' | 'notifiers'> & {
+  settings: SettingsRepository;
+};
 
 function storesOf(db: Database.Database): Stores {
   return {
