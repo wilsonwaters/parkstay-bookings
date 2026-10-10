@@ -80,7 +80,6 @@ export class TestDatabaseHelper {
       'notification_delivery_logs',
       'notifications',
       'notifiers',
-      'job_logs',
       'site_snipes',
       'watches',
       'bookings',

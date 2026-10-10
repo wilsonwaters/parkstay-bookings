@@ -52,7 +52,6 @@ export const RATE_LIMIT_BURST = 10;
 export const SESSION_TIMEOUT_HOURS = 24;
 
 // Cleanup
-export const JOB_LOG_RETENTION_DAYS = 30;
 export const ERROR_LOG_RETENTION_DAYS = 90;
 export const NOTIFICATION_RETENTION_DAYS = 30;
 export const MAX_NOTIFICATIONS_PER_USER = 1000;

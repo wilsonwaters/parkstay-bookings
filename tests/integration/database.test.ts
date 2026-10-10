@@ -52,7 +52,8 @@ describe('Database Integration', () => {
       expect(tableNames).toContain('site_snipes');
       expect(tableNames).toContain('notifications');
       expect(tableNames).toContain('settings');
-      expect(tableNames).toContain('job_logs');
+      // v10: the never-written job_logs is gone
+      expect(tableNames).not.toContain('job_logs');
       expect(tableNames).toContain('migrations');
     });
 
