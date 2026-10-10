@@ -117,3 +117,11 @@ M. This was S in `streams.md`. It includes a migration, the cleanup wiring and f
 ## Orchestrator addendum (2026-10-04, from P5)
 - [ ] Remove the now-unused `electron-store` dependency (P5 moved Gmail secrets to the vault). Confirm nothing imports it, then update package.json and the lockfile.
 - [ ] Hand stale docs that describe the old AES-256-GCM / electron-store secret scheme to Q2: CLAUDE.md, README.md, docs/installation.md, docs/gmail-otp-setup.md and GMAIL-INTEGRATION-SUMMARY.md.
+
+## Orchestrator addendum (2026-10-10, before dispatch)
+- Already done by V4: the booking placeholders and `booking:sync*` channels, `runSnipeWindow`, and the no-op cleanup cron (node-cron is gone; the scheduler is chained timers). P7 still wires a real **retention job** for `notifications` and `notification_delivery_logs` into V4's scheduler (chained `setTimeout`, daily, bounded batch deletes, aborted on `stop()`), with the retention periods as typed settings keys (main-owned) and tests with fake timers.
+- **Gmail OTP back end.** U4 removed the Gmail OTP UI (OQ7 default: nothing consumes it). Remove `GmailOTPService`, the `gmail.*` contract, handlers and preload bindings, its vault keys' readers (leave stored secrets inert or delete them in a migration step — decide and document), and the `googleapis` dependency if nothing else uses it. The SMTP notifier's "Gmail" preset is SMTP and stays. Update parity tests and the secret sweep.
+- **Migration v10** drops `job_logs` (§12.26 numbering). Follow the connection.ts rules and add upgrade tests from the v5/v6 fixtures.
+- **Flaky test.** `ExploreMap` timing test (E1) fails under heavy CPU load (seen twice by U3). Make it deterministic (fake timers or event-driven waits); no weakened assertions.
+- **Coordinate:** U2 (Site Sniper, lane M) is about to merge and deletes `legacy-mapping` and the snipe legacy files. Don't touch `src/renderer/features/snipes/**`, `components/forms/**` or `legacy-mapping*`; if a constant P7 would delete is used by U2's lane, leave it and note it.
+- Stale root docs: delete status/fix logs; fold anything still true into `docs/` (Q2 does the full docs pass, so keep folding minimal and factual).
