@@ -4,6 +4,7 @@ import { APP_DESCRIPTION, APP_ISSUES_URL, APP_REPO_URL } from '@shared/constants
 import { useAppInfo, useOpenLogsFolder } from '../../../api';
 import { ExternalLink } from '../../../components/ExternalLink';
 import { Button, Notice, Spinner } from '../../../components/ui';
+import { cx } from '../../../components/ui/cx';
 
 export interface AboutPanelProps {
   /**
@@ -13,6 +14,11 @@ export interface AboutPanelProps {
   actions?: ReactNode;
   /** More content under the actions, above the licence line (a result message, a Notice). */
   children?: ReactNode;
+  /**
+   * `center` (default) under the dialog's centred logo; `start` for a page section, such as
+   * Settings → About, where everything lines up with the section heading.
+   */
+  align?: 'center' | 'start';
 }
 
 /**
@@ -21,13 +27,14 @@ export interface AboutPanelProps {
  * account menu's About dialog wraps it, and Settings → About renders it with its own `actions`
  * and `children`. It has no heading of its own, so it fits under either one.
  */
-export function AboutPanel({ actions, children }: AboutPanelProps) {
+export function AboutPanel({ actions, children, align = 'center' }: AboutPanelProps) {
   const info = useAppInfo();
   const openLogs = useOpenLogsFolder();
+  const centred = align === 'center';
 
   return (
     <div>
-      <div className="text-center">
+      <div className={centred ? 'text-center' : 'text-left'}>
         {info.data && (
           <p className="text-base font-semibold tabular-nums text-fg">
             Version {info.data.version}
@@ -37,7 +44,7 @@ export function AboutPanel({ actions, children }: AboutPanelProps) {
       </div>
 
       {info.isLoading && (
-        <div className="flex justify-center py-4">
+        <div className={cx('flex py-4', centred ? 'justify-center' : 'justify-start')}>
           <Spinner label="Loading app details" />
         </div>
       )}
@@ -62,7 +69,12 @@ export function AboutPanel({ actions, children }: AboutPanelProps) {
         </dl>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm">
+      <div
+        className={cx(
+          'mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm',
+          centred ? 'justify-center' : 'justify-start'
+        )}
+      >
         <ExternalLink href={APP_REPO_URL}>GitHub</ExternalLink>
         <ExternalLink href={APP_ISSUES_URL}>Report an issue</ExternalLink>
         <Button
@@ -82,7 +94,9 @@ export function AboutPanel({ actions, children }: AboutPanelProps) {
       )}
       {children && <div className="mt-4">{children}</div>}
 
-      <p className="mt-4 text-center text-xs text-fg-muted">MIT License</p>
+      <p className={cx('mt-4 text-xs text-fg-muted', centred ? 'text-center' : 'text-left')}>
+        MIT License
+      </p>
     </div>
   );
 }

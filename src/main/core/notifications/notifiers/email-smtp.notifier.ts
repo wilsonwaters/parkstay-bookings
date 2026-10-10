@@ -298,11 +298,14 @@ export class SmtpEmailNotifier extends BaseNotifier {
   }
 
   /**
-   * `WA Stay: <title> · <provider> · <location>`, leaving out the parts the message lacks.
+   * `WA Stay: <title> · <provider> · <location>`, leaving out the parts the message lacks, and
+   * the location when the title already names it ("Sites available at Dales").
    */
   private buildSubject(message: NotificationMessage, provider: string | undefined): string {
-    const parts = [message.title, provider, message.locationName].filter((part): part is string =>
-      Boolean(part)
+    const location = message.locationName;
+    const named = location && message.title.toLowerCase().includes(location.toLowerCase());
+    const parts = [message.title, provider, named ? undefined : location].filter(
+      (part): part is string => Boolean(part)
     );
     return `${APP_NAME}: ${parts.join(' · ')}`;
   }

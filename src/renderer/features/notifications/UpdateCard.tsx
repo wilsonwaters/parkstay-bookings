@@ -2,7 +2,7 @@ import { useId, useReducer, type ReactNode } from 'react';
 import { CircleAlert, Download, RotateCw, X, type LucideIcon } from 'lucide-react';
 import { APP_NAME } from '@shared/constants';
 import { useApiEvent, useDownloadUpdate, useInstallUpdate } from '../../api';
-import { Button, IconButton } from '../../components/ui';
+import { Button, Card, IconButton } from '../../components/ui';
 import { cx } from '../../components/ui/cx';
 import {
   INITIAL_UPDATE_STATE,
@@ -115,9 +115,12 @@ export function UpdateCard() {
   }
 
   return (
-    <section
+    <Card
+      as="section"
       aria-labelledby={titleId}
-      className="pointer-events-auto rounded-lg border border-border bg-surface p-4 shadow-pop"
+      padding="sm"
+      elevation="floating"
+      className="pointer-events-auto"
     >
       <div className="flex items-start gap-3">
         <Icon size={20} aria-hidden="true" className={cx('mt-0.5 shrink-0', tone)} />
@@ -156,7 +159,7 @@ export function UpdateCard() {
           />
         )}
       </div>
-    </section>
+    </Card>
   );
 }
 

@@ -8,7 +8,7 @@ import {
   type WatchMatch,
 } from '@shared/types';
 import { NotificationType, RelatedType } from '@shared/types/common.types';
-import { isAppLinkPath } from '@shared/utils/app-links';
+import { isAppLinkPath, notificationLinkPath, relatedPath } from '@shared/utils/app-links';
 import { isCalendarDate, nightsBetween } from '@shared/utils/calendar-date';
 import { NotificationRepository } from '../../database/repositories';
 import { NotificationDispatcher } from './notification-dispatcher';
@@ -46,32 +46,6 @@ export interface NotificationServiceOptions {
    * Returns false when there is no window or the app is quitting: the click is then ignored.
    */
   showMainWindow?: () => boolean;
-}
-
-/** The in-app page of a watch, snipe or booking. */
-export function relatedPath(type: RelatedType, id: number): string {
-  switch (type) {
-    case RelatedType.WATCH:
-      return `/watches/${id}`;
-    case RelatedType.SNIPE:
-      return `/site-sniper/${id}`;
-    case RelatedType.BOOKING:
-      return `/bookings/${id}`;
-  }
-}
-
-/**
- * Where a clicked notification opens: its `actionUrl` when that is an allowed in-app path
- * (`isAppLinkPath`), otherwise the page of its watch, snipe or booking, otherwise nowhere.
- */
-export function notificationPath(
-  notification: Pick<Notification, 'actionUrl' | 'relatedType' | 'relatedId'>
-): string | null {
-  if (isAppLinkPath(notification.actionUrl)) return notification.actionUrl;
-  const { relatedType, relatedId } = notification;
-  if (!relatedType || relatedId === undefined) return null;
-  const path = relatedPath(relatedType, relatedId);
-  return isAppLinkPath(path) ? path : null;
 }
 
 /**
@@ -404,7 +378,7 @@ export class NotificationService {
     if (notification.actionUrl && !isAppLinkPath(notification.actionUrl)) {
       log.warn(`Notification ${notification.id} links outside the allowed in-app pages; ignored`);
     }
-    const path = notificationPath(notification);
+    const path = notificationLinkPath(notification);
     if (path) this.events?.emit('app:navigate', { path });
   }
 

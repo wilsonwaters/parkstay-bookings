@@ -3,10 +3,10 @@
  * clock. A countdown never shows a negative value.
  */
 
-const SECOND = 1000;
-const MINUTE = 60 * SECOND;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
+const MINUTE_MS = 60_000;
+const MINUTE_S = 60;
+const HOUR_S = 60 * MINUTE_S;
+const DAY_S = 24 * HOUR_S;
 
 export type CountdownFormat = 'clock' | 'minutes';
 
@@ -21,17 +21,18 @@ const pad = (n: number) => String(n).padStart(2, '0');
 export function formatCountdown(ms: number, format: CountdownFormat = 'clock'): string {
   const left = Number.isFinite(ms) ? Math.max(0, ms) : 0;
   if (format === 'minutes') {
-    const minutes = Math.ceil(left / MINUTE);
+    const minutes = Math.ceil(left / MINUTE_MS);
     if (minutes < 60) return `${minutes} min`;
     return `${Math.floor(minutes / 60)} h ${pad(minutes % 60)} min`;
   }
   if (left <= 0) return 'now';
-  const seconds = Math.ceil(left / SECOND);
-  if (left >= DAY) {
-    return `${Math.floor(left / DAY)}d ${Math.floor((left % DAY) / HOUR)}h`;
+  // Whole seconds left, rounded up, decide the format: 59:59.5 is "1h 00m", never "60:00".
+  const seconds = Math.ceil(left / 1000);
+  if (seconds >= DAY_S) {
+    return `${Math.floor(seconds / DAY_S)}d ${Math.floor((seconds % DAY_S) / HOUR_S)}h`;
   }
-  if (left >= HOUR) {
-    return `${Math.floor(left / HOUR)}h ${pad(Math.floor((left % HOUR) / MINUTE))}m`;
+  if (seconds >= HOUR_S) {
+    return `${Math.floor(seconds / HOUR_S)}h ${pad(Math.floor((seconds % HOUR_S) / MINUTE_S))}m`;
   }
-  return `${pad(Math.floor(seconds / 60))}:${pad(seconds % 60)}`;
+  return `${pad(Math.floor(seconds / MINUTE_S))}:${pad(seconds % MINUTE_S)}`;
 }

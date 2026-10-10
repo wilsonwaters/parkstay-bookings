@@ -3,7 +3,7 @@
  * Handles CRUD operations for bookings
  */
 
-import { BaseRepository } from './base.repository';
+import { BaseRepository, readInstant } from './base.repository';
 import {
   Booking,
   BookingInput,
@@ -67,8 +67,8 @@ export class BookingRepository extends BaseRepository<Booking> {
       status: row.status as BookingStatus,
       bookingData: this.parseJson(row.booking_data),
       notes: row.notes || undefined,
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at),
+      createdAt: readInstant(row.created_at) ?? new Date(0),
+      updatedAt: readInstant(row.updated_at) ?? new Date(0),
       syncedAt: this.parseDate(row.synced_at),
     };
   }

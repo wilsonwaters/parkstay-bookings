@@ -1,13 +1,15 @@
 import Database from 'better-sqlite3';
 
 /**
- * Reads an instant column written either as ISO (`toISOString`) or by a
- * `DEFAULT CURRENT_TIMESTAMP` ('YYYY-MM-DD HH:MM:SS', which SQLite writes in UTC but `new Date`
- * would read as local time). NULL or empty reads as `undefined`.
+ * Reads an instant column written either as ISO (`toISOString`) or by SQLite itself
+ * (`DEFAULT CURRENT_TIMESTAMP`, `SET x = CURRENT_TIMESTAMP`: 'YYYY-MM-DD HH:MM:SS', which SQLite
+ * writes in UTC but `new Date` would read as local time, 8 h off in Perth). NULL or empty reads
+ * as `undefined`. Every instant a repository reads goes through here; calendar dates
+ * (`YYYY-MM-DD`) are not instants and never do.
  */
 export function readInstant(value: string | null | undefined): Date | undefined {
   if (!value) return undefined;
-  return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+  return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(value)
     ? new Date(`${value.replace(' ', 'T')}Z`)
     : new Date(value);
 }
@@ -74,10 +76,10 @@ export abstract class BaseRepository<T, K extends number | string = number> {
     return JSON.stringify(value);
   }
 
-  /** Parses a date/time column. NULL or empty reads as `undefined`. */
+  /** Parses an instant column (`readInstant`). NULL or empty reads as `undefined`. */
   protected parseDate(value: string | number | null | undefined): Date | undefined {
     if (value === null || value === undefined || value === '') return undefined;
-    return new Date(value);
+    return typeof value === 'number' ? new Date(value) : readInstant(value);
   }
 
   /** Formats a date for storage as an ISO-8601 string. */

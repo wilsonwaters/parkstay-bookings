@@ -7,7 +7,7 @@
  * migration v9 dropped the v1.x ParkStay password columns (§12.32).
  */
 
-import { BaseRepository } from './base.repository';
+import { BaseRepository, readInstant } from './base.repository';
 import { User, UserInput } from '@shared/types';
 import { logger } from '../../utils/logger';
 
@@ -32,8 +32,8 @@ export class UserRepository extends BaseRepository<User> {
       firstName: row.first_name || undefined,
       lastName: row.last_name || undefined,
       phone: row.phone || undefined,
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at),
+      createdAt: readInstant(row.created_at) ?? new Date(0),
+      updatedAt: readInstant(row.updated_at) ?? new Date(0),
     };
   }
 

@@ -442,6 +442,26 @@ describe('App shell', () => {
       expect(update.closest('[inert]')).toBeNull();
     });
 
+    it('sets the update card aside while the notification list is open, so they never overlap', async () => {
+      const mock = createMockApi();
+      const { user } = renderWithApp({ api: mock });
+      mock.emit('updater:available', { version: '2.1.0' });
+      const update = await screen.findByText('Update available');
+      const tray = screen.getByTestId('tray');
+
+      await user.click(screen.getByRole('button', { name: 'Notifications' }));
+      expect(screen.getByRole('dialog', { name: 'Notifications' })).toBeInTheDocument();
+      await waitFor(() => expect(update.closest('[inert]')).not.toBeNull());
+      expect(tray).toHaveAttribute('data-set-aside');
+      expect(
+        within(tray).getByRole('region', { name: 'Notifications' }).closest('[inert]')
+      ).toBeNull();
+
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(update.closest('[inert]')).toBeNull());
+      expect(tray).not.toHaveAttribute('data-set-aside');
+    });
+
     it('raises one error toast, without retry loops, when providers cannot be loaded', async () => {
       const list = jest.fn().mockResolvedValue(fail('Registry offline', 'INTERNAL'));
       renderWithApp({ api: { providers: { list } } });

@@ -18,8 +18,17 @@ import { NotificationList } from './NotificationList';
  * click outside closes it and returns focus to the bell. New notifications update the count
  * as they arrive and are announced politely.
  */
-export function NotificationBell() {
-  const [open, setOpen] = useState(false);
+export interface NotificationBellProps {
+  /** The list opened or closed (the shell sets the tray aside while it is open). */
+  onOpenChange?: (open: boolean) => void;
+}
+
+export function NotificationBell({ onOpenChange }: NotificationBellProps = {}) {
+  const [open, setOpenState] = useState(false);
+  const setOpen = (next: boolean) => {
+    setOpenState(next);
+    onOpenChange?.(next);
+  };
   const [confirmingClear, setConfirmingClear] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const { data: unread = 0 } = useUnreadNotificationCount();

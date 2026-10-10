@@ -1,27 +1,15 @@
-import { RelatedType } from '../../../shared/types/common.types';
 import type { Notification } from '../../../shared/types/notification.types';
-import { isAppLinkPath } from '../../../shared/utils/app-links';
-import { ROUTES } from '../../app/routes';
+import { notificationLinkPath } from '../../../shared/utils/app-links';
 
 /**
  * Where a notification leads inside WA Stay: its `actionUrl` when that is an allowed in-app
  * page (`/watches/:id`, `/site-sniper/:id`, `/bookings/:id`, `/settings/:section`), otherwise
- * the page of its watch, snipe or booking, otherwise nowhere. Never an external address.
+ * the page of its watch, snipe or booking, otherwise nowhere. Never an external address. The
+ * one mapping is shared with main (`shared/utils/app-links.ts`); `deepLink.test.ts` holds it to
+ * `ROUTES`.
  */
 export function notificationLink(
   notification: Pick<Notification, 'actionUrl' | 'relatedType' | 'relatedId'>
 ): string | null {
-  if (isAppLinkPath(notification.actionUrl)) return notification.actionUrl;
-  const { relatedType, relatedId } = notification;
-  if (relatedId === undefined || !Number.isInteger(relatedId) || relatedId < 1) return null;
-  switch (relatedType) {
-    case RelatedType.WATCH:
-      return ROUTES.watchDetail(relatedId);
-    case RelatedType.SNIPE:
-      return ROUTES.snipeDetail(relatedId);
-    case RelatedType.BOOKING:
-      return ROUTES.bookingDetail(relatedId);
-    default:
-      return null;
-  }
+  return notificationLinkPath(notification);
 }

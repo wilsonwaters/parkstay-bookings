@@ -3,7 +3,7 @@
  * Handles CRUD operations for application settings
  */
 
-import { BaseRepository } from './base.repository';
+import { BaseRepository, readInstant } from './base.repository';
 import { Setting, SettingValueType, SettingCategory } from '@shared/types';
 import { logger } from '../../utils/logger';
 
@@ -30,7 +30,7 @@ export class SettingsRepository extends BaseRepository<Setting, string> {
       valueType: row.value_type as SettingValueType,
       category: row.category as SettingCategory,
       description: row.description || undefined,
-      updatedAt: new Date(row.updated_at),
+      updatedAt: readInstant(row.updated_at) ?? new Date(0),
     };
   }
 

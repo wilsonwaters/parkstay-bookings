@@ -12,11 +12,13 @@ export interface CountdownProps {
 
 /**
  * The time left until `to`, as a `role="timer"` (not a live region: changes are announced, if
- * at all, by whoever owns the countdown). Every countdown on screen re-renders from one shared
- * one-second ticker (`useNow`), and only this leaf re-renders on each tick. Never negative.
+ * at all, by whoever owns the countdown). Countdowns re-render from the shared `useNow`
+ * tickers (one second for `clock`, one minute for `minutes`), and only this leaf re-renders on
+ * each tick. Never negative.
  */
 export function Countdown({ to, format = 'clock', className }: CountdownProps) {
-  const now = useNow(1000);
+  // A minute-only countdown changes once a minute: tick with the minute clock.
+  const now = useNow(format === 'minutes' ? 60_000 : 1000);
   const target = typeof to === 'string' ? Date.parse(to) : to.getTime();
   return (
     <span role="timer" className={cx('tabular-nums', className)}>

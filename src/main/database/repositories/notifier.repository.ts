@@ -7,7 +7,7 @@
  */
 
 import Database from 'better-sqlite3';
-import { BaseRepository } from './base.repository';
+import { BaseRepository, readInstant } from './base.repository';
 import {
   Notifier,
   NotifierInput,
@@ -85,10 +85,10 @@ export class NotifierRepository extends BaseRepository<Notifier> {
       config,
       secretState,
       status: unreadable ? NotifierStatus.ERROR : (row.status as NotifierStatus),
-      lastTestedAt: row.last_tested_at ? new Date(row.last_tested_at) : undefined,
+      lastTestedAt: readInstant(row.last_tested_at),
       lastError: unreadable ? NOTIFIER_SECRET_UNREADABLE : row.last_error || undefined,
-      createdAt: new Date(row.created_at),
-      updatedAt: new Date(row.updated_at),
+      createdAt: readInstant(row.created_at) ?? new Date(0),
+      updatedAt: readInstant(row.updated_at) ?? new Date(0),
     };
   }
 
@@ -331,8 +331,8 @@ export class NotifierRepository extends BaseRepository<Notifier> {
         status: row.status as 'sent' | 'failed' | 'pending',
         messageId: row.message_id || undefined,
         errorMessage: row.error_message || undefined,
-        sentAt: row.sent_at ? new Date(row.sent_at) : undefined,
-        createdAt: new Date(row.created_at),
+        sentAt: readInstant(row.sent_at),
+        createdAt: readInstant(row.created_at) ?? new Date(0),
       };
     } catch (error) {
       logger.error('Error getting delivery log:', error);
@@ -356,8 +356,8 @@ export class NotifierRepository extends BaseRepository<Notifier> {
         status: row.status as 'sent' | 'failed' | 'pending',
         messageId: row.message_id || undefined,
         errorMessage: row.error_message || undefined,
-        sentAt: row.sent_at ? new Date(row.sent_at) : undefined,
-        createdAt: new Date(row.created_at),
+        sentAt: readInstant(row.sent_at),
+        createdAt: readInstant(row.created_at) ?? new Date(0),
       }));
     } catch (error) {
       logger.error('Error getting delivery logs for notification:', error);

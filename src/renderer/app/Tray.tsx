@@ -21,32 +21,43 @@ function useModalOpen(): boolean {
   return open;
 }
 
+export interface TrayProps {
+  /**
+   * Another floating layer is open where the tray sits (the notification list): set the
+   * update card and access chips aside, as for a modal, so the two never overlap.
+   */
+  setAside?: boolean;
+}
+
 /**
  * The one bottom-right stack for floating messages, top to bottom: toasts, the update card,
  * then one access-status chip per provider whose queue is in use. They stack in one column and
  * never overlap. Portalled outside `#root`, so a modal's `inert` never silences it. The column
  * never takes clicks itself (`pointer-events-none`); only the cards in it do.
  *
- * It sits at `z-tray`, under the modal scrim. While a modal is open it rises to `z-toast` so
- * toasts stay readable and clickable above the scrim, and the other slots are hidden (keeping
- * their space, so toasts do not move) until the modal closes.
+ * It sits at `z-tray`, under the modal scrim and popovers. While a modal or the notification
+ * list is open it rises to `z-toast` so toasts stay readable and clickable above it, and the
+ * other slots are hidden (keeping their space, so toasts do not move) until it closes: one
+ * floating layer at a time (design-language.md, Elevation).
  */
-export function Tray() {
+export function Tray({ setAside = false }: TrayProps) {
   const modalOpen = useModalOpen();
+  const aside = modalOpen || setAside;
   return (
     <Portal>
       <div
         data-testid="tray"
         data-modal-open={modalOpen || undefined}
+        data-set-aside={aside || undefined}
         className={`pointer-events-none fixed bottom-4 right-4 flex w-[23.75rem] max-w-[calc(100vw-2rem)] flex-col items-stretch gap-2 ${
-          modalOpen ? 'z-toast' : 'z-tray'
+          aside ? 'z-toast' : 'z-tray'
         }`}
       >
         <ToastViewport />
-        <TraySlot hidden={modalOpen}>
+        <TraySlot hidden={aside}>
           <UpdateCard />
         </TraySlot>
-        <TraySlot hidden={modalOpen}>
+        <TraySlot hidden={aside}>
           <AccessStatusChips />
         </TraySlot>
       </div>

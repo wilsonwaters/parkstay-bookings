@@ -1,4 +1,5 @@
 import { RelatedType } from '../../../shared/types/common.types';
+import { ROUTES } from '../../app/routes';
 import { notificationLink } from './deepLink';
 
 describe('notificationLink', () => {
@@ -47,5 +48,20 @@ describe('notificationLink', () => {
     expect(notificationLink({ relatedType: RelatedType.WATCH })).toBeNull();
     expect(notificationLink({ relatedType: RelatedType.WATCH, relatedId: 0 })).toBeNull();
     expect(notificationLink({ relatedType: RelatedType.WATCH, relatedId: 1.5 })).toBeNull();
+  });
+
+  it("derives the same paths as the renderer's ROUTES", () => {
+    expect(notificationLink({ relatedType: RelatedType.WATCH, relatedId: 12 })).toBe(
+      ROUTES.watchDetail(12)
+    );
+    expect(notificationLink({ relatedType: RelatedType.SNIPE, relatedId: 7 })).toBe(
+      ROUTES.snipeDetail(7)
+    );
+    expect(notificationLink({ relatedType: RelatedType.BOOKING, relatedId: 3 })).toBe(
+      ROUTES.bookingDetail(3)
+    );
+    expect(notificationLink({ actionUrl: ROUTES.settings('notifications') })).toBe(
+      '/settings/notifications'
+    );
   });
 });

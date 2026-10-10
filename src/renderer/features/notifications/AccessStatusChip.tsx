@@ -11,7 +11,7 @@ import type { AccessStatus } from '../../../shared/types/provider.types';
 import { useAccessStatus, useProvidersWith, type ProviderManifest } from '../../api';
 import { Countdown } from '../../components/Countdown';
 import { timeInZone } from '../../components/timeFormat';
-import { IconButton, useAnnounce, useDisclosure } from '../../components/ui';
+import { Card, IconButton, useAnnounce, useDisclosure } from '../../components/ui';
 import { cx } from '../../components/ui/cx';
 import {
   accessAnnouncement,
@@ -64,9 +64,12 @@ export function AccessStatusChip({ status, provider }: AccessStatusChipProps) {
   const { open, buttonProps, panelProps } = useDisclosure();
   const { icon: Icon, tone } = lookOf(status.state);
   return (
-    <section
+    <Card
+      as="section"
       aria-label={`${provider.shortName} queue`}
-      className="pointer-events-auto rounded-lg border border-border bg-surface shadow-pop"
+      padding="none"
+      elevation="floating"
+      className="pointer-events-auto"
     >
       <div className="flex items-center gap-2 py-1 pl-3 pr-1">
         <Icon size={16} aria-hidden="true" className={cx('shrink-0', tone)} />
@@ -101,7 +104,7 @@ export function AccessStatusChip({ status, provider }: AccessStatusChipProps) {
           Updated {timeInZone(new Date(status.updatedAt), provider.timezone)}
         </p>
       </div>
-    </section>
+    </Card>
   );
 }
 

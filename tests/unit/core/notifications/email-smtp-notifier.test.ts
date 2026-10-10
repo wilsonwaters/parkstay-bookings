@@ -53,7 +53,7 @@ async function sent(
 }
 
 const WATCH_FOUND: NotificationMessage = {
-  title: 'Availability Found!',
+  title: 'Sites available at Dales',
   message: 'Found 2 sites available at Dales for 10/01/2027 - 12/01/2027',
   actionUrl: '/watches/7',
   providerId: 'parkstay',
@@ -72,9 +72,14 @@ describe('SmtpEmailNotifier: sender and subject', () => {
     expect(mail.to).toBe(SENDER);
   });
 
-  it('names the title, the provider and the location in the subject', async () => {
+  it('names the title and the provider, and the place only once', async () => {
     const mail = await sent(WATCH_FOUND);
-    expect(mail.subject).toBe('WA Stay: Availability Found! · ParkStay · Dales');
+    expect(mail.subject).toBe('WA Stay: Sites available at Dales · ParkStay');
+  });
+
+  it('adds the location when the title does not name it', async () => {
+    const mail = await sent({ ...WATCH_FOUND, title: 'Booking confirmed' });
+    expect(mail.subject).toBe('WA Stay: Booking confirmed · ParkStay · Dales');
   });
 
   it('leaves out a missing provider or location, and a provider the registry does not know', async () => {
@@ -96,7 +101,7 @@ describe('SmtpEmailNotifier: sender and subject', () => {
   it('names no provider when it was given no way to look one up', async () => {
     const n = new SmtpEmailNotifier();
     n.configure({ host: 'h', port: 587, secure: false, auth: { user: SENDER, pass: 'p' } });
-    expect((await sent(WATCH_FOUND, n)).subject).toBe('WA Stay: Availability Found! · Dales');
+    expect((await sent(WATCH_FOUND, n)).subject).toBe('WA Stay: Sites available at Dales');
   });
 });
 

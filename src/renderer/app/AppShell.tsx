@@ -1,4 +1,4 @@
-import { Suspense, useRef, type MouseEvent } from 'react';
+import { Suspense, useRef, useState, type MouseEvent } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { API_UNAVAILABLE_MESSAGE, isApiAvailable } from '../api';
 import { Logo } from '../components/brand/Logo';
@@ -23,6 +23,8 @@ export function AppShell() {
   // Outside the app (a plain browser on the Vite dev server) there is no main process: the
   // bell is left out (it has nothing to count), and a Notice says why.
   const apiAvailable = isApiAvailable();
+  // The open notification list and the tray share the bottom-right corner on short windows.
+  const [listOpen, setListOpen] = useState(false);
   useRouteFocus(mainRef);
   // A click on a desktop notification opens its page (main sends `app:navigate`).
   useAppNavigate();
@@ -52,7 +54,7 @@ export function AppShell() {
           </Link>
           <TopNav />
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            {apiAvailable && <NotificationBell />}
+            {apiAvailable && <NotificationBell onOpenChange={setListOpen} />}
             <AccountMenu />
           </div>
         </div>
@@ -79,7 +81,7 @@ export function AppShell() {
         </RouteErrorBoundary>
       </main>
 
-      <Tray />
+      <Tray setAside={listOpen} />
     </div>
   );
 }

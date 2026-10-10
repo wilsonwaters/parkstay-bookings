@@ -10,6 +10,10 @@ describe('formatCountdown', () => {
     expect(formatCountdown(4 * 3_600_000 + 5 * MINUTE + 30_000)).toBe('4h 05m');
     expect(formatCountdown(23 * MINUTE + 10_000)).toBe('23:10');
     expect(formatCountdown(999)).toBe('00:01');
+    // The last half second of the hour rounds up to the hour, never "60:00".
+    expect(formatCountdown(3_599_500)).toBe('1h 00m');
+    expect(formatCountdown(3_599_000)).toBe('59:59');
+    expect(formatCountdown(86_399_500)).toBe('1d 0h');
   });
 
   it('minutes: rounded up, with hours past the hour', () => {

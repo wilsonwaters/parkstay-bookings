@@ -7,6 +7,8 @@ type CardOwnProps<E extends ElementType> = {
   /** The element to render: `div` (default), `article`, `section`, `li`, `a`, `button`… */
   as?: E;
   padding?: CardPadding;
+  /** `rest` (default) sits on the page; `floating` sits above it, as the tray's cards do. */
+  elevation?: 'rest' | 'floating';
   /** Lifts on hover. Render it as a link or button so it is focusable. */
   interactive?: boolean;
   className?: string;
@@ -23,10 +25,11 @@ const PADDING: Record<CardPadding, string> = {
   lg: 'p-6',
 };
 
-/** A surface resting on the page: hairline border, card shadow, 12 px radius. */
+/** A surface on the page (or floating above it): hairline border, shadow, 12 px radius. */
 export function Card<E extends ElementType = 'div'>({
   as,
   padding = 'md',
+  elevation = 'rest',
   interactive,
   className,
   children,
@@ -36,7 +39,8 @@ export function Card<E extends ElementType = 'div'>({
   return (
     <Tag
       className={cx(
-        'block rounded-lg border border-border bg-surface text-left text-fg shadow-card',
+        'block rounded-lg border border-border bg-surface text-left text-fg',
+        elevation === 'floating' ? 'shadow-pop' : 'shadow-card',
         PADDING[padding],
         interactive &&
           'cursor-pointer transition-shadow duration-fast ease-standard hover:shadow-pop',

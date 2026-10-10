@@ -98,7 +98,7 @@ One column, `fixed bottom-4 right-4`, 380 px wide at most, with an 8 px gap, por
 
 - The column never takes clicks itself (`pointer-events-none`); only the cards in it do.
 - Each card sits in a slot with no box of its own (`display: contents`), so a card that renders nothing (the chips while every gate is idle) leaves no gap.
-- **Layers.** The tray is at `z-tray` (40), under the modal scrim (`z-overlay`, 50). Being portalled, it is never made `inert` by a modal. While a modal is open (the overlay stack marks `#root` inert), the tray rises to `z-toast` (60) so toasts stay readable and clickable above the scrim, and the update and access slots are made `inert` and invisible, keeping their space so toasts do not move. Everything returns when the modal closes.
+- **Layers.** The tray is at `z-tray` (40), under the modal scrim (`z-overlay`, 50). Being portalled, it is never made `inert` by a modal. While a modal is open (the overlay stack marks `#root` inert), or the notification list is open (it shares the bottom-right corner on short windows), the tray rises to `z-toast` (60) so toasts stay readable and clickable above it, and the update and access slots are made `inert` and invisible, keeping their space so toasts do not move. Everything returns when the modal or the list closes: one floating layer at a time.
 - **Explore (E1):** the tray covers the bottom-right corner of the map, so the Mapbox logo and attribution sit bottom-left, where it never covers them (Mapbox terms).
 
 ## Errors
