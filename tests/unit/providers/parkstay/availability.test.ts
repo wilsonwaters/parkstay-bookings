@@ -287,8 +287,8 @@ describe('ParkStay availability', () => {
       const entries = await parkstay.provider.availability.search(BUNGARRA_STAY);
       // (Object keys that look like numbers come back in numeric order.)
       expect(entries).toEqual([
-        { key: 'parkstay:18', availableUnits: 26, bookableUnits: 6 },
-        { key: 'parkstay:20', availableUnits: 5, bookableUnits: 3 },
+        { key: 'parkstay:18', availableUnits: 6, bookableUnits: 26 },
+        { key: 'parkstay:20', availableUnits: 3, bookableUnits: 5 },
       ]);
       // 85, 5, 16, 182 and the unknown 1 have no totals (not bookable online).
       expect(entries.map((e) => e.key)).not.toContain('parkstay:85');
@@ -301,6 +301,23 @@ describe('ParkStay availability', () => {
         features: '[]',
         featurescs: '[]',
       });
+    });
+
+    it('counts free sites from total_bookable (the sites free every night), out of total_available', async () => {
+      const body = parkStayFixture('campground_availabilty_view.json');
+      // Bungarra: 5 sites, 2 free for the whole stay; Kurrajong past the 180-day horizon,
+      // where ParkStay zeroes both totals.
+      body.campground_available['20'] = { sites: [3, 4], total_available: 5, total_bookable: 2 };
+      body.campground_available['18'] = { sites: [], total_available: 0, total_bookable: 0 };
+      server.overrides.set('/api/campground_availabilty_view/', { status: 200, body });
+      const entries = await parkstay.provider.availability.search(BUNGARRA_STAY);
+      server.overrides.clear();
+      expect(entries).toEqual([
+        { key: 'parkstay:18', availableUnits: 0, bookableUnits: 0 },
+        { key: 'parkstay:20', availableUnits: 2, bookableUnits: 5 },
+      ]);
+      for (const entry of entries)
+        expect(entry.availableUnits).toBeLessThanOrEqual(entry.bookableUnits);
     });
 
     it('returns a campground the map does not know, when it has totals (the catalogue filters it)', async () => {

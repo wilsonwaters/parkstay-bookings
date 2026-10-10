@@ -346,10 +346,13 @@ export function createAvailability({
       if (!Number.isFinite(value?.total_available) || !Number.isFinite(value?.total_bookable)) {
         continue;
       }
+      // ParkStay's names read the other way round (`api.py:1100-1169`): `total_available` is
+      // how many sites the campground has, `total_bookable` how many are free on every night
+      // (its `sites`). Both are 0 past the 180-day horizon and for stays over 28 nights.
       entries.push({
         key: makeLocationKey(ctx.id, id),
-        availableUnits: value.total_available!,
-        bookableUnits: value.total_bookable!,
+        availableUnits: value.total_bookable!,
+        bookableUnits: value.total_available!,
       });
     }
     return entries;
