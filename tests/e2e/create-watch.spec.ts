@@ -51,11 +51,16 @@ test('creates a ParkStay watch through the provider-first flow', async ({ launch
   // 3. Stay: two nights, picked with the keyboard.
   await expect(window.getByRole('heading', { level: 2, name: /Your stay$/ })).toBeFocused();
   await window.getByRole('button', { name: /^Dates/ }).click();
+  // Each step waits for the calendar's answer, as a person would: keys sent before the grid has
+  // focus are lost on a slow machine.
+  await expect(window.locator('[role="grid"] button:focus')).toHaveCount(1);
   await window.keyboard.press('ArrowRight');
   await window.keyboard.press('Enter');
+  await expect(window.getByRole('button', { name: /, check-in$/ })).toHaveCount(1);
   await window.keyboard.press('ArrowRight');
   await window.keyboard.press('ArrowRight');
   await window.keyboard.press('Enter');
+  await expect(window.getByRole('button', { name: /, check-out$/ })).toHaveCount(1);
   await window
     .getByRole('dialog', { name: 'Choose dates' })
     .getByRole('button', { name: 'Done' })

@@ -110,13 +110,18 @@ test('Explore with dates shows each campground’s availability and narrows to "
   await availableOnly.focus();
   await expect(window.getByRole('tooltip')).toHaveText('Add dates to filter by availability');
 
-  // Dates from the search pill: tomorrow, for 2 nights (Perth).
+  // Dates from the search pill: tomorrow, for 2 nights (Perth). Each step waits for the
+  // calendar's answer, as a person would: on a slow machine, keys sent before the grid has focus
+  // are lost.
   await window.getByRole('button', { name: /^When/ }).click();
+  await expect(window.locator('[role="grid"] button:focus')).toHaveCount(1);
   await window.keyboard.press('ArrowRight');
   await window.keyboard.press('Enter');
+  await expect(window.getByRole('button', { name: /, check-in$/ })).toHaveCount(1);
   await window.keyboard.press('ArrowRight');
   await window.keyboard.press('ArrowRight');
   await window.keyboard.press('Enter');
+  await expect(window.getByRole('button', { name: /, check-out$/ })).toHaveCount(1);
   await window.keyboard.press('Escape');
   const arrival = addDays(todayIn('Australia/Perth'), 1);
   const departure = addDays(arrival, 2);

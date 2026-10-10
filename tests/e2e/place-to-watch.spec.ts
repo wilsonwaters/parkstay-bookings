@@ -39,7 +39,9 @@ test('a place’s "Watch for availability" opens a prefilled watch, which a rela
   const datesButton = stayCard.getByRole('button', { name: /^Dates/ });
   await datesButton.click();
   // Each pick is written to the address and read back; wait for it before the next key, as a
-  // person would, or a slow machine reads the second Enter as another check-in.
+  // person would, or a slow machine reads the second Enter as another check-in. Keys sent before
+  // the grid has focus are lost.
+  await expect(window.locator('[role="grid"] button:focus')).toHaveCount(1);
   await window.keyboard.press('ArrowRight');
   await window.keyboard.press('Enter');
   await expect(datesButton).toHaveAccessibleName(/add check-out/);
