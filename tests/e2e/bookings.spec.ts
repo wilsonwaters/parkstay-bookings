@@ -95,9 +95,12 @@ test('lists seeded trips in tabs and opens one with its manage link, then remove
     'true'
   );
 
-  // The detail page.
+  // The detail page. Each change lands in the address before the next one, so a slow machine
+  // cannot have the tab's update bring the old search back.
   await window.getByRole('tab', { name: /^Upcoming/ }).click();
+  await expectRoute(window, '/bookings?q=karijini');
   await window.getByRole('searchbox', { name: 'Search trips' }).fill('');
+  await expectRoute(window, '/bookings');
   await window.getByRole('link', { name: 'Bungarra', exact: true }).click();
   await expect(window.getByRole('heading', { level: 1, name: 'Bungarra' })).toBeVisible();
   const manage = window.getByRole('link', { name: 'Manage on ParkStay (opens in your browser)' });

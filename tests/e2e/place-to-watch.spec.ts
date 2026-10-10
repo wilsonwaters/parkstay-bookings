@@ -36,10 +36,17 @@ test('a place’s "Watch for availability" opens a prefilled watch, which a rela
 
   // Dates on the place's page: tomorrow for two nights (Perth), with the keyboard.
   const stayCard = window.getByRole('region', { name: 'Check your dates' });
-  await stayCard.getByRole('button', { name: /^Dates/ }).click();
-  for (const key of ['ArrowRight', 'Enter', 'ArrowRight', 'ArrowRight', 'Enter']) {
-    await window.keyboard.press(key);
-  }
+  const datesButton = stayCard.getByRole('button', { name: /^Dates/ });
+  await datesButton.click();
+  // Each pick is written to the address and read back; wait for it before the next key, as a
+  // person would, or a slow machine reads the second Enter as another check-in.
+  await window.keyboard.press('ArrowRight');
+  await window.keyboard.press('Enter');
+  await expect(datesButton).toHaveAccessibleName(/add check-out/);
+  await window.keyboard.press('ArrowRight');
+  await window.keyboard.press('ArrowRight');
+  await window.keyboard.press('Enter');
+  await expect(datesButton).not.toHaveAccessibleName(/add check-out/);
   await window
     .getByRole('dialog', { name: 'Choose dates' })
     .getByRole('button', { name: 'Done' })
