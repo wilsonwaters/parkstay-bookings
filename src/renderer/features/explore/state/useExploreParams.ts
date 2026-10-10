@@ -45,24 +45,34 @@ export function useExploreParams(known: KnownValues = {}): UseExploreParams {
   // The latest state, for callbacks that outlive a render (map events, debounced writes).
   const latest = useRef({ params, search: location.search, pathname: location.pathname });
   latest.current = { params, search: location.search, pathname: location.pathname };
-  // What was last written and from which address, so two updates in one tick build on each
-  // other instead of the second undoing the first.
-  const pending = useRef<{ from: string; params: ExploreParams } | null>(null);
+  // What was last written (`to`, `params`) and from which rendered address (`from`). Until the
+  // router renders the write, the address is `to`, not `location.search`: two updates in one
+  // tick build on each other, and an update that undoes a write not yet rendered (the camera's
+  // timer, then a click) is still written. Once the router renders another address, the write
+  // is history: after Back to `from`, it must not come back.
+  const pending = useRef<{ from: string; to: string; params: ExploreParams } | null>(null);
+  if (pending.current && pending.current.from !== location.search) pending.current = null;
 
-  const current = useCallback((): ExploreParams => {
-    const { params: now, search } = latest.current;
-    return pending.current && pending.current.from === search ? pending.current.params : now;
+  const unrendered = useCallback(() => {
+    const { search } = latest.current;
+    return pending.current && pending.current.from === search ? pending.current : null;
   }, []);
+
+  const current = useCallback(
+    (): ExploreParams => unrendered()?.params ?? latest.current.params,
+    [unrendered]
+  );
 
   const write = useCallback(
     (next: ExploreParams, replace: boolean) => {
       const { search, pathname } = latest.current;
-      const target = replaceExploreParams(search, next);
-      if (target === search) return;
-      pending.current = { from: search, params: next };
+      const address = unrendered()?.to ?? search;
+      const target = replaceExploreParams(address, next);
+      if (target === address) return;
+      pending.current = { from: search, to: target, params: next };
       navigate({ pathname, search: target }, { replace });
     },
-    [navigate]
+    [navigate, unrendered]
   );
 
   const cameraTimer = useRef<ReturnType<typeof setTimeout>>();

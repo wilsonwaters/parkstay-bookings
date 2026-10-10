@@ -151,6 +151,17 @@ describe('Explore map', () => {
     expect(currentRoute()).toBe('/?online=1');
   });
 
+  it('does not bring back a search left with Back when the camera is written', async () => {
+    const { user } = await renderMap();
+    await user.click(screen.getByRole('button', { name: 'Book online' }));
+    await screen.findByRole('heading', { level: 2, name: /^106 places/ });
+    act(() => window.history.back());
+    await screen.findByRole('heading', { level: 2, name: '169 places' });
+    expect(currentRoute()).toBe('/');
+    afterCameraDelay(() => maps.current.emitMove(KIMBERLEY_BBOX));
+    expect(currentRoute()).toBe('/?map=125.25,-16.75,6');
+  });
+
   it('frames the results at once when opened at a search with no camera (a link, or Back)', async () => {
     await renderMap('/?regions=Pilbara', '39 places');
     await waitFor(() => expect(maps.current.fits).toHaveLength(1));
@@ -370,20 +381,61 @@ describe('Explore map', () => {
       expect(screen.queryByRole('button', { name: 'Search this area' })).not.toBeInTheDocument();
     });
 
+    /** Open sea east of Victoria: no place of WA's in it. */
+    const EMPTY_SEA: [number, number, number, number] = [150, -40, 155, -35];
+    const SHOW_ALL_FIT = {
+      bbox: [112.5, -35.6, 129.2, -13.5],
+      maxZoom: undefined,
+      animate: undefined,
+    };
+
     it('says when no place is in the map area, and shows all of WA again', async () => {
-      const { user } = await renderMap();
-      maps.current.emitMove([150, -40, 155, -35]);
-      expect(
-        screen.getByRole('heading', { name: 'No places in this part of the map' })
-      ).toBeInTheDocument();
-      await user.click(screen.getByRole('button', { name: 'Show all of WA' }));
-      expect(maps.current.fits.at(-1)).toEqual({
-        bbox: [112.5, -35.6, 129.2, -13.5],
-        maxZoom: undefined,
-        animate: undefined,
+      await renderMap();
+      // Fake timers: the move's camera write is still waiting when the button is pressed, as
+      // it is for a person, however slow the machine running the test.
+      afterCameraDelay(() => {
+        maps.current.emitMove(EMPTY_SEA);
+        expect(
+          screen.getByRole('heading', { name: 'No places in this part of the map' })
+        ).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Show all of WA' }));
       });
+      expect(maps.current.fits.at(-1)).toEqual(SHOW_ALL_FIT);
       expect(resultsHeading()).toHaveTextContent(/^169 places$/);
       expect(currentRoute()).not.toContain('map=');
+    });
+
+    it('"Show all of WA" also drops a camera already written to the URL', async () => {
+      const { user } = await renderMap();
+      afterCameraDelay(() => maps.current.emitMove(EMPTY_SEA));
+      expect(currentRoute()).toBe('/?map=152.5,-37.5,6');
+      await user.click(screen.getByRole('button', { name: 'Show all of WA' }));
+      expect(maps.current.fits.at(-1)).toEqual(SHOW_ALL_FIT);
+      expect(resultsHeading()).toHaveTextContent(/^169 places$/);
+      expect(currentRoute()).toBe('/');
+    });
+
+    it('"Show all of WA" drops a camera written the moment before, while the page has not redrawn yet', async () => {
+      await renderMap();
+      jest.useFakeTimers();
+      try {
+        maps.current.emitMove(EMPTY_SEA);
+        const showAll = screen.getByRole('button', { name: 'Show all of WA' });
+        // One act: the camera write lands, then the click, before React renders the write
+        act(() => {
+          jest.advanceTimersByTime(CAMERA_WRITE_DELAY_MS);
+          expect(currentRoute()).toBe('/?map=152.5,-37.5,6');
+          fireEvent.click(showAll);
+        });
+        act(() => {
+          jest.advanceTimersByTime(CAMERA_WRITE_DELAY_MS * 2);
+        });
+      } finally {
+        jest.useRealTimers();
+      }
+      expect(maps.current.fits.at(-1)).toEqual(SHOW_ALL_FIT);
+      expect(resultsHeading()).toHaveTextContent(/^169 places$/);
+      expect(currentRoute()).toBe('/');
     });
   });
 
