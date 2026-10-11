@@ -23,11 +23,13 @@ Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wils
     - The minor finding is fixed: a unit without details keeps its old heading width. The test compares `outerHTML` and fails without the fix.
     - Gate: 4006 tests; e2e 21 passed (the review's run).
     - The `wip/pd1-parkstay-details` backup can be deleted.
-  - **PD2 is implemented and under review:** `aabeb69`, backed up to `wip/pd2-campground-sections`.
-    - What it does: `LocationDetail.sections` and `notices`; ParkStay reads its campground page (`campground-page.ts`); the About becomes an accordion with notices above.
-    - Gate: 4044 tests; e2e 21 passed.
-    - Screenshots are in the scratchpad's `shots/PD2/`.
-  - **Next:** PD2's review, then the merge, then PD3 (map viewer).
+  - **PD2 is merged:** `76ccfdf`, review fixes `e9e916d`. Review APPROVE.
+    - The minor finding is fixed: the sanitiser maps `b`→`strong` and `i`→`em`.
+    - The README terms line now says the page request goes with the app's ParkStay session.
+    - Open nit for the stakeholder: Bungarra's 11 notices take about 290 px above the accordion.
+    - Gate: 4045 tests; e2e 21 passed (the review's run).
+    - The `wip/pd2-campground-sections` backup can be deleted.
+  - **Next:** PD3, the campground map in a sandboxed document window.
   - **Also merged:** `e18a6e7`, the Explore map test now waits for the map's data. It raced on macOS at `249ea90`.
   - **Open for the stakeholder:**
     - PD2 reads ParkStay's public page HTML, so DBCA's terms for reusing page content are unknown.
