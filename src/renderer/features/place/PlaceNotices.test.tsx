@@ -40,6 +40,15 @@ const shown = () =>
     .map((item) => item.textContent);
 
 describe('PlaceNotices', () => {
+  it('sorts before it collapses: a warning listed last is among the notices shown', () => {
+    renderNotices([...notices(NOTICES_SHOWN), { level: 'warning', text: 'No campfires' }]);
+    expect(shown()).toHaveLength(NOTICES_SHOWN);
+    expect(shown()[0]).toBe('Warning: No campfires');
+    expect(
+      screen.getByRole('button', { name: `Show all ${NOTICES_SHOWN + 1} notices` })
+    ).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('shows warnings, then cautions, then information, in the provider’s order within each', async () => {
     const { user } = renderNotices([
       { level: 'info', text: 'Book now for stays to 30 April 2027' },
