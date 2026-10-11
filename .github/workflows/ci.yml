@@ -101,7 +101,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: crash-reports-macos
-          path: ~/Library/Logs/DiagnosticReports/node*
+          # Per-user and system-wide reports; a crashed worker's may be named after node or Jest.
+          path: |
+            ~/Library/Logs/DiagnosticReports/*node*
+            ~/Library/Logs/DiagnosticReports/*jest*
+            /Library/Logs/DiagnosticReports/*node*
           if-no-files-found: ignore
           retention-days: 14
 

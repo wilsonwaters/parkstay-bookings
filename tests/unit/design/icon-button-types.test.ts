@@ -1,48 +1,36 @@
 /**
  * @jest-environment node
  *
- * IconButton's `label` is required at the type level: a fixture without it must fail
- * type-checking under the renderer tsconfig, and the same fixture with it must pass.
+ * IconButton's `label` is required at the type level. The check itself is
+ * `src/renderer/components/ui/IconButton.type-test.tsx`, run by `npm run type-check`; this only
+ * makes sure that file stays in place and in the renderer type-check, so the check cannot
+ * disappear quietly. It reads files and builds no TypeScript program (one in a Jest worker
+ * crashed the macOS runner's Node more than once).
  */
+import fs from 'fs';
 import path from 'path';
-import ts from 'typescript';
 
 const ROOT = path.resolve(__dirname, '../../..');
-const FIXTURE = path.join(ROOT, 'src/renderer/components/ui/__icon-button-type-fixture__.tsx');
-
-function typeErrors(source: string): string[] {
-  const configFile = ts.readConfigFile(path.join(ROOT, 'tsconfig.renderer.json'), ts.sys.readFile);
-  const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, ROOT);
-  const options = { ...parsed.options, noEmit: true, noUnusedLocals: false };
-  const host = ts.createCompilerHost(options);
-  const getSourceFile = host.getSourceFile.bind(host);
-  host.getSourceFile = (fileName, languageVersion, ...rest) =>
-    path.resolve(fileName) === FIXTURE
-      ? ts.createSourceFile(fileName, source, languageVersion, true, ts.ScriptKind.TSX)
-      : getSourceFile(fileName, languageVersion, ...rest);
-  const fileExists = host.fileExists.bind(host);
-  host.fileExists = (fileName) => path.resolve(fileName) === FIXTURE || fileExists(fileName);
-
-  const program = ts.createProgram([FIXTURE], options, host);
-  return ts
-    .getPreEmitDiagnostics(program, program.getSourceFile(FIXTURE))
-    .map((d) => ts.flattenDiagnosticMessageText(d.messageText, '\n'));
-}
+const TYPE_TEST = 'src/renderer/components/ui/IconButton.type-test.tsx';
 
 describe('IconButton types', () => {
-  it('type-checks with a label', () => {
-    expect(
-      typeErrors(
-        'import { IconButton } from \'./IconButton\';\nexport const ok = <IconButton label="Close" icon={null} />;\n'
-      )
-    ).toEqual([]);
+  const source = fs.readFileSync(path.join(ROOT, TYPE_TEST), 'utf8');
+
+  it('type-checks a button with a label', () => {
+    expect(source).toMatch(/<IconButton label="[^"]+" icon=\{null\} \/>/);
   });
 
-  it('fails type-check without a label', () => {
-    const errors = typeErrors(
-      "import { IconButton } from './IconButton';\nexport const bad = <IconButton icon={null} />;\n"
+  it('expects a type error for a button without one', () => {
+    expect(source).toMatch(
+      /\/\/ @ts-expect-error[^\n]*\nexport const \w+ = <IconButton icon=\{null\} \/>;/
     );
-    expect(errors).toHaveLength(1);
-    expect(errors[0]).toMatch(/Property 'label' is missing/);
+  });
+
+  it('is part of the renderer type-check', () => {
+    const config = JSON.parse(fs.readFileSync(path.join(ROOT, 'tsconfig.renderer.json'), 'utf8'));
+    expect(config.include).toContain('src/renderer/**/*');
+    expect(
+      config.exclude.some((pattern: string) => TYPE_TEST.endsWith(pattern.replace('**/*', '')))
+    ).toBe(false);
   });
 });

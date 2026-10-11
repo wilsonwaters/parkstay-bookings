@@ -123,6 +123,8 @@ module.exports = {
     '!src/**/*.test.{ts,tsx}',
     '!src/**/*.spec.{ts,tsx}',
     '!src/**/*.types.ts',
+    // Type-level checks, run by `npm run type-check`, never executed.
+    '!src/**/*.type-test.tsx',
     '!src/main/index.ts',
     '!src/renderer/main.tsx',
   ],
