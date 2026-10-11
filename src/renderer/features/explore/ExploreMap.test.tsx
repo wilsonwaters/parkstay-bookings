@@ -110,7 +110,9 @@ describe('Explore map', () => {
     expect(mapRegion()).toBeInTheDocument();
     expect(createMapboxController).toHaveBeenCalledTimes(1);
     expect(maps.current.options).toMatchObject({ token: 'pk.test-token', camera: null });
-    expect(maps.current.data).toHaveLength(169);
+    // The heading and the map's data are set by separate effects: on a loaded runner the list
+    // can show "169 places" a moment before the map is given them.
+    await waitFor(() => expect(maps.current.data).toHaveLength(169));
     expect(screen.getByRole('switch', { name: 'Search as I move the map' })).toBeChecked();
     expect(screen.queryByText(/The map isn't available in this build/)).not.toBeInTheDocument();
   });
