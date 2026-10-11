@@ -19,19 +19,11 @@ Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wils
     3. PD3: the campground map in a sandboxed document window.
 
     All are in `ai-state/streams/providers/tasks/`.
-  - **PD1 is implemented but not yet reviewed:** commit `1de03ce` (base `29619cc`), backed up to the GitHub branch `wip/pd1-parkstay-details`. The stakeholder paused the session for quota right after it.
-    - **The agent's report:**
-      - "View on ParkStay" and "Book on ParkStay" open `/search-availability/information/?campground_id=<id>[&arrival&departure]`. `getLocation` also replaces a stored summary's old `bookingUrl`.
-      - Per-site description, people and vehicle limits show in the night grid, joined by `unitId`.
-      - The About marks the 10 unavailable Bungarra items "(not available)" (`description.ts`).
-      - Gate: 4006 tests, `test:tz`, and e2e with 21 passed.
-    - Screenshots are in the orchestrator's scratchpad, `shots/PD1/`.
-    - `docs/images/place-detail.png` is not regenerated.
-  - **To resume:**
-    1. `git fetch origin wip/pd1-parkstay-details`.
-    2. Rebase onto the feature branch, which has moved only in `ai-state`.
-    3. Run an independent review of PD1, apply its fixes, merge and push.
-    4. Then PD2, then PD3, one agent at a time.
+  - **PD1 is merged:** `e98457f`, review fix `249ea90`. Review APPROVE.
+    - The minor finding is fixed: a unit without details keeps its old heading width. The test compares `outerHTML` and fails without the fix.
+    - Gate: 4006 tests; e2e 21 passed (the review's run).
+    - The `wip/pd1-parkstay-details` backup can be deleted.
+  - **Next:** PD2 (sections and notices), then PD3 (map viewer), one agent at a time.
   - **Open for the stakeholder:**
     - PD2 reads ParkStay's public page HTML, so DBCA's terms for reusing page content are unknown.
     - The queue endpoint change is noted as a follow-up under "Next to dispatch".
