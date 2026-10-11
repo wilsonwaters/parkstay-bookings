@@ -29,7 +29,11 @@ Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wils
     - Open nit for the stakeholder: Bungarra's 11 notices take about 290 px above the accordion.
     - Gate: 4045 tests; e2e 21 passed (the review's run).
     - The `wip/pd2-campground-sections` backup can be deleted.
-  - **PD3 is running** (lane/a, base `f5eba48`): the campground map in a sandboxed document window.
+  - **PD3 is running** (lane/a, base `f5eba48`; told to rebase onto `6c89bdf`): the campground map in a sandboxed document window.
+  - **PD4 is merged:** `77a5d52`, review fix `6c89bdf`. Review APPROVE.
+    - What it does: 3 notices shown, ordered warning, then caution, then info, with "Show all N notices" for the rest. Bungarra's row drops from about 280 px to 104 px.
+    - The minor finding is fixed: a collapsed test on an unsorted list.
+    - Bungarra's seasonal-closure caution sits behind the toggle (the reviewer advises keeping the rule; closed nights show in the night grid). A possible follow-up names the hidden cautions in the button.
   - **Queue endpoint: out of this PR** (stakeholder, 2026-10-11). Tracked as the bug issue [#43](https://github.com/wilsonwaters/wa-stay/issues/43). A read-only research agent is still running; its findings go to #43 as a comment, never into this PR.
   - **Also merged:** `e18a6e7`, the Explore map test now waits for the map's data. It raced on macOS at `249ea90`.
   - **Open for the stakeholder:**
