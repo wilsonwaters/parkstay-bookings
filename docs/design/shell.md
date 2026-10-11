@@ -20,7 +20,7 @@ The accessible names in [Stable names](#stable-names) are a contract with the El
 | `app/useRouteFocus.ts` | Focus and announcements on page changes. |
 | `app/NotFoundPage.tsx` | The 404 page. |
 | `features/explore/ExplorePage.tsx` | Explore, the home screen (E1): search pill, filters, results and the map ([map.md](map.md)). |
-| `features/place/PlaceDetailPage.tsx` | A place's detail page (E2): gallery, description, facilities, sites, booking rules, and the "Check your dates" card with the night grid and the hand-offs. |
+| `features/place/PlaceDetailPage.tsx` | A place's detail page (E2): gallery, About (the provider's notices, then its description, in sections as an accordion when it has them), facilities, sites, booking rules, and the "Check your dates" card with the night grid and the hand-offs. |
 | `app/stayParams.ts` | The stay in a query string (`arrival`, `departure`, `adults`, `children`, `infants`): parsed, validated and written in one order. |
 
 ## Header

@@ -51,6 +51,23 @@ describe('sanitizeProviderHtml', () => {
     expect(sanitizeProviderHtml('<h3>Only</h3>', BASE)).toBe('<h3>Only</h3>');
   });
 
+  it('nests headings lower under a section’s own title with topHeading, never past h6', () => {
+    expect(sanitizeProviderHtml('<h6>A</h6><p>x</p>', BASE, { topHeading: 4 })).toBe(
+      '<h4>A</h4><p>x</p>'
+    );
+    expect(sanitizeProviderHtml('<h1>A</h1><h3>B</h3><h5>C</h5>', BASE, { topHeading: 4 })).toBe(
+      '<h4>A</h4><h6>B</h6><h6>C</h6>'
+    );
+    // Sanitising again with the same level changes nothing.
+    expect(sanitizeProviderHtml('<h4>A</h4><h5>B</h5>', BASE, { topHeading: 4 })).toBe(
+      '<h4>A</h4><h5>B</h5>'
+    );
+    // Out of range or not a number: clamped to 3–6, or the default.
+    expect(sanitizeProviderHtml('<h1>A</h1>', BASE, { topHeading: 1 })).toBe('<h3>A</h3>');
+    expect(sanitizeProviderHtml('<h1>A</h1>', BASE, { topHeading: 9 })).toBe('<h6>A</h6>');
+    expect(sanitizeProviderHtml('<h1>A</h1>', BASE, { topHeading: NaN })).toBe('<h3>A</h3>');
+  });
+
   it('leaves out images the page already shows, however their address is written', () => {
     const gallery = [`${BASE}/media/parkstay/campground_images/a.jpg`];
     expect(

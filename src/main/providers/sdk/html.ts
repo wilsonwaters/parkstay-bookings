@@ -15,7 +15,8 @@
  *   (`setWindowOpenHandler`), while a plain navigation away from the app is blocked, so this
  *   is what makes a description's links open at all.
  * - Headings nest under the page's own sections (`h2`): the provider's highest heading
- *   becomes `h3` and the others keep their depth below it, down to `h6`.
+ *   becomes `h3` and the others keep their depth below it, down to `h6`. `topHeading` moves
+ *   the highest one lower: `4` under a section's own `h3` title (`LocationDetail.sections`).
  * - `dropImages` leaves out images the page already shows (the place's photos).
  */
 
@@ -62,7 +63,7 @@ function withUrl(
   return result;
 }
 
-/** The level the provider's highest heading takes: just under the page's `h2` sections. */
+/** The level the provider's highest heading takes by default: under the page's `h2` sections. */
 const TOP_HEADING = 3;
 const HEADINGS = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] as const;
 
@@ -84,6 +85,8 @@ function canonicalUrl(url: string, baseUrl: string): string | undefined {
 export interface SanitizeOptions {
   /** Image URLs to leave out, such as the photos the page already shows in its gallery. */
   dropImages?: readonly string[];
+  /** The level the provider's highest heading takes, 3 (the default) to 6. */
+  topHeading?: number;
 }
 
 export function sanitizeProviderHtml(
@@ -91,9 +94,13 @@ export function sanitizeProviderHtml(
   baseUrl: string,
   options: SanitizeOptions = {}
 ): string {
-  const top = topHeadingLevel(html) ?? TOP_HEADING;
+  const wanted = Math.trunc(options.topHeading ?? TOP_HEADING);
+  const highest = Number.isFinite(wanted)
+    ? Math.min(6, Math.max(TOP_HEADING, wanted))
+    : TOP_HEADING;
+  const top = topHeadingLevel(html) ?? highest;
   const nestHeading = (tagName: string) => ({
-    tagName: `h${Math.min(6, Math.max(TOP_HEADING, Number(tagName[1]) - top + TOP_HEADING))}`,
+    tagName: `h${Math.min(6, Math.max(highest, Number(tagName[1]) - top + highest))}`,
     attribs: {},
   });
   const dropped = new Set(

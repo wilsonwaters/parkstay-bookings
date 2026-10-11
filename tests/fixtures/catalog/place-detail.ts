@@ -28,6 +28,31 @@ export const DESCRIPTION_HTML =
   '<ul><li>Bring your own water</li><li>No generators</li></ul>' +
   '<p>Read the <a href="https://exploreparks.dbca.wa.gov.au/park/cape-range-national-park" target="_blank" rel="noopener noreferrer">park guide</a> before you go.</p>';
 
+/** Bungarra's description in sections, as main returns ParkStay's campground page (PD2). */
+export const DESCRIPTION_SECTIONS: NonNullable<LocationDetail['sections']> = [
+  {
+    title: 'Overview',
+    html: '<p>Bungarra is a small campground 600m walk from a special purpose zone of Ningaloo Marine Park.</p>',
+  },
+  {
+    title: 'Booking',
+    html: '<p>Bookings open monthly on the first Tuesday of the month at 10:00am AWST.</p>',
+  },
+  { title: 'Facilities', html: '<p>A no-flush pit toilet is the only facility.</p>' },
+  {
+    title: 'Fees',
+    html: '<p><a href="https://exploreparks.dbca.wa.gov.au/fees" target="_blank" rel="noopener noreferrer">More about fees</a></p>',
+  },
+];
+
+/** Bungarra's notices, one of each level and a second warning. */
+export const NOTICES: NonNullable<LocationDetail['notices']> = [
+  { level: 'warning', text: 'No campfires at any time' },
+  { level: 'warning', text: 'No dogs or other domestic animals' },
+  { level: 'caution', text: 'SEASONAL CLOSURE FROM 1 NOVEMBER 2026, REOPENING ON 15 MARCH 2027' },
+  { level: 'info', text: 'Book now for stays to 30 April 2027' },
+];
+
 const TYPES = ['Tent site', 'Campervan site', 'Caravan site'];
 
 /**

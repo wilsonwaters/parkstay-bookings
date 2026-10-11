@@ -61,6 +61,8 @@ import {
   type CatalogSearchResult,
   type CatalogStatus,
   type LocationDetail,
+  type LocationNotice,
+  type LocationSection,
   type LocationSummary,
 } from '@shared/types/catalog.types';
 import {
@@ -836,7 +838,9 @@ export class LocationCatalogService {
     const cacheKey = makeLocationKey(providerId, externalId);
     let pending = this.details.get(cacheKey);
     if (!pending) {
-      pending = this.fetchDetail(provider, summary).finally(() => this.details.delete(cacheKey));
+      pending = this.fetchDetail(provider, summary, cached?.detail).finally(() =>
+        this.details.delete(cacheKey)
+      );
       this.details.set(cacheKey, pending);
     }
     try {
@@ -853,23 +857,29 @@ export class LocationCatalogService {
 
   private async fetchDetail(
     provider: AccommodationProvider,
-    summary: LocationSummary
+    summary: LocationSummary,
+    previous: LocationDetail | undefined
   ): Promise<LocationDetail> {
     const { providerId, externalId } = summary;
     const fetched = await withDeadline(
       providerId,
       this.timings.detailTimeoutMs,
       this.lifetime.signal,
-      (signal) => provider.catalog!.getLocation(externalId, signal, { summary })
+      (signal) =>
+        provider.catalog!.getLocation(externalId, signal, {
+          summary,
+          ...(previous ? { previous } : {}),
+        })
     );
     const at = this.clock();
     // Defence in depth: whatever the provider did, main sanitises before IPC.
+    // The place's photos are its gallery; the description does not repeat them.
+    const dropImages = Array.isArray(fetched.imageUrls) ? fetched.imageUrls : [];
     const descriptionHtml = fetched.descriptionHtml
-      ? sanitizeProviderHtml(fetched.descriptionHtml, provider.manifest.website, {
-          // The place's photos are its gallery; the description does not repeat them.
-          dropImages: Array.isArray(fetched.imageUrls) ? fetched.imageUrls : [],
-        })
+      ? sanitizeProviderHtml(fetched.descriptionHtml, provider.manifest.website, { dropImages })
       : undefined;
+    const sections = cleanSections(fetched.sections, provider.manifest.website, dropImages);
+    const notices = cleanNotices(fetched.notices);
     const detail: LocationDetail = {
       ...fetched,
       key: summary.key,
@@ -880,11 +890,18 @@ export class LocationCatalogService {
     };
     if (descriptionHtml) detail.descriptionHtml = descriptionHtml;
     else delete detail.descriptionHtml;
+    if (sections.length > 0) detail.sections = sections;
+    else delete detail.sections;
+    if (notices.length > 0) detail.notices = notices;
+    else delete detail.notices;
     delete detail.stale;
 
     if (this.stopped) return detail;
     this.locations.setDetail(providerId, externalId, detail, at);
-    const derived = summary.summary ? undefined : summaryFromHtml(descriptionHtml);
+    // The first section is the intro when a provider gives its description in sections.
+    const derived = summary.summary
+      ? undefined
+      : summaryFromHtml(descriptionHtml ?? sections[0]?.html);
     if (derived) this.locations.setSummaryIfEmpty(providerId, externalId, derived);
     return detail;
   }
@@ -1023,6 +1040,44 @@ export class LocationCatalogService {
     for (const [k, entry] of cache) if (!this.within(entry.at, ttlMs)) cache.delete(k);
     cache.set(key, { at: this.clock().getTime(), value });
   }
+}
+
+const NOTICE_LEVELS: ReadonlySet<string> = new Set(['warning', 'caution', 'info']);
+
+/** Whether an HTML fragment has any text once its tags are left out. */
+const hasText = (html: string): boolean => /\S/.test(html.replace(/<[^>]*>/g, ''));
+
+/**
+ * A provider's sections, sanitised (their headings under the section's `h3` title) and kept
+ * only with a title and some text or an image.
+ */
+function cleanSections(
+  sections: unknown,
+  website: string,
+  dropImages: readonly string[]
+): LocationSection[] {
+  if (!Array.isArray(sections)) return [];
+  const clean: LocationSection[] = [];
+  for (const section of sections as Array<Partial<LocationSection> | null>) {
+    const title = typeof section?.title === 'string' ? section.title.trim() : '';
+    if (!title || typeof section?.html !== 'string') continue;
+    const html = sanitizeProviderHtml(section.html, website, { dropImages, topHeading: 4 });
+    if (hasText(html) || /<img\b/.test(html)) clean.push({ title, html });
+  }
+  return clean;
+}
+
+/** A provider's notices with a known level and some text, trimmed. */
+function cleanNotices(notices: unknown): LocationNotice[] {
+  if (!Array.isArray(notices)) return [];
+  const clean: LocationNotice[] = [];
+  for (const notice of notices as Array<Partial<LocationNotice> | null>) {
+    const text = typeof notice?.text === 'string' ? notice.text.trim() : '';
+    if (text && typeof notice?.level === 'string' && NOTICE_LEVELS.has(notice.level)) {
+      clean.push({ level: notice.level, text });
+    }
+  }
+  return clean;
 }
 
 function safeParseKey(key: unknown): ReturnType<typeof parseLocationKey> | undefined {

@@ -48,6 +48,7 @@ import {
 } from '@tests/utils/ipc-harness';
 import {
   parkStayFixture,
+  readParkStayFixture,
   startParkStayFixtureServer,
   type ParkStayFixtureServer,
 } from '@tests/utils/parkstay-fixture-server';
@@ -327,11 +328,16 @@ describe('the location catalogue on a real database', () => {
       await catalog.sync('parkstay');
       const getLocation = jest.spyOn(registry.get('parkstay').catalog!, 'getLocation');
 
+      const pages = () => server.requestsTo('/search-availability/campground/').length;
+      const pagesBefore = pages();
+
       const first = await catalog.get('parkstay:20');
       later(6 * HOUR - 60_000);
       const second = await catalog.get('parkstay:20');
 
       expect(getLocation).toHaveBeenCalledTimes(1);
+      // The campground page shares the detail cache: one request in 6 h.
+      expect(pages() - pagesBefore).toBe(1);
       expect(second).toEqual(first);
       expect(first).toMatchObject({
         key: 'parkstay:20',
@@ -339,11 +345,36 @@ describe('the location catalogue on a real database', () => {
         fetchedAt: FIXED_NOW.toISOString(),
         units: expect.arrayContaining([expect.objectContaining({ unitId: '3' })]),
       });
-      expect(first.descriptionHtml).toContain('This campground is in the Gascoyne Region');
-      expect(first.descriptionHtml).not.toContain('<style');
-      expect(first.descriptionHtml).not.toMatch(/style=|class=/);
-      // The empty map summary was filled from the description, so search finds the text
-      expect(catalog.search({ text: 'gascoyne' }).items.map((l) => l.key)).toEqual(['parkstay:20']);
+      // The campground page's sections replace the legacy description.
+      expect(first.descriptionHtml).toBeUndefined();
+      expect(first.sections?.map((section) => section.title)).toContain('Campground Rules');
+      expect(first.notices).toContainEqual({ level: 'warning', text: 'No generators' });
+      for (const section of first.sections ?? []) {
+        expect(section.html).not.toMatch(/<style|<script|style=|class=/);
+      }
+      // The empty map summary was filled from the intro, so search finds the text
+      expect(catalog.search({ text: 'shore-based' }).items.map((l) => l.key)).toEqual([
+        'parkstay:20',
+      ]);
+    });
+
+    it('after the TTL, keeps the stored sections when the campground page shows "Oops!"', async () => {
+      const { catalog } = await build({ parkstay: true });
+      await catalog.sync('parkstay');
+      const first = await catalog.get('parkstay:20');
+      later(6 * HOUR + 1);
+      server.pages.set('20', { body: readParkStayFixture('campground_page_oops.html') });
+
+      try {
+        const again = await catalog.get('parkstay:20');
+        expect(again.stale).toBeUndefined();
+        expect(again.fetchedAt).not.toBe(first.fetchedAt);
+        expect(again.sections).toEqual(first.sections);
+        expect(again.notices).toEqual(first.notices);
+        expect(again.descriptionHtml).toBeUndefined();
+      } finally {
+        server.pages.delete('20');
+      }
     });
 
     it('after the TTL, with ParkStay failing (the queue is on), returns the cached detail marked stale', async () => {

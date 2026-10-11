@@ -16,6 +16,7 @@ http/
     ├── campground_map.json      # the catalogue the app syncs 5 s after launch (V5), Explore's places (E1)
     ├── campground_availabilty_view.json   # every campground's free sites for any stay, Explore's dates (E3)
     ├── campsite_availablity_view_20.json  # Bungarra's sites and description, for its detail page (E2) and a new watch's first check (U1)
+    ├── campground_page_20.html  # Bungarra's campground page: its About's notices and sections (E2, PD2)
     ├── profile-signed-out.json  # /api/profile signed out (403), the account check at launch (V6)
     └── queue-active.json        # the DBCA queue letting the session through, before a payment window (V6)
 ```
@@ -98,6 +99,13 @@ test attaches that log as `unexpected-requests`, which lists exactly the routes 
   watch's first check, for any dates. `profile-signed-out.json` is Django REST Framework's standard 403
   body for `GET /api/profile` without a session, which the account service's startup check (V6)
   sends 5 s after launch; it is written by hand, not recorded, and holds no personal data.
+- **ParkStay, the campground page** (PD2): `campground_page_20.html` is the Jest fixture
+  `tests/fixtures/parkstay/campground_page_20.html`, copied unchanged: Bungarra's public
+  campground page (`/search-availability/campground/?site_id=20`, fetched with the ParkStay
+  `Referer` on 10 Oct 2026, no sign-in), trimmed to its notices, one search box,
+  `#campground-details` and its own scripts. Its route matches `site_id=20` only (`query`);
+  the host and the `Referer` are not compared. It holds no queue key or personal detail; the
+  DBCA office contact links in it are public.
 - **ParkStay, the DBCA queue** (Q1 phase 2): `queue-active.json` is the Jest fixture
   `tests/fixtures/parkstay/queue-active.json`, copied unchanged: an `Active` answer to
   `queue.dbca.wa.gov.au`'s `GET /api/check-create-session/` (`queue_group=parkstayv2`; the host

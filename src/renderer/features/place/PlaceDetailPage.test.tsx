@@ -5,7 +5,12 @@
  */
 import { act, configure, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { availabilityFor, placeDetail } from '../../../../tests/fixtures/catalog/place-detail';
+import {
+  availabilityFor,
+  DESCRIPTION_SECTIONS,
+  NOTICES,
+  placeDetail,
+} from '../../../../tests/fixtures/catalog/place-detail';
 import { placeApi } from '../../../../tests/utils/renderer/catalog';
 import { fail, ok, PARKSTAY_MANIFEST } from '../../../../tests/utils/renderer/createMockApi';
 import { currentRoute, renderWithApp } from '../../../../tests/utils/renderer/renderWithApp';
@@ -73,6 +78,118 @@ describe('Place detail page', () => {
       'target',
       '_blank'
     );
+  });
+
+  describe('a description in sections, with notices', () => {
+    const withSections = () =>
+      placeApi({
+        detail: placeDetail({ sections: DESCRIPTION_SECTIONS, notices: NOTICES }),
+      });
+
+    it('shows the notices first, each with an icon and its level in words', async () => {
+      await renderPlace('/places/parkstay/20', withSections());
+      const about = screen.getByRole('region', { name: 'About' });
+      const notices = within(about).getByRole('list', { name: 'Notices from ParkStay' });
+      expect(
+        within(notices)
+          .getAllByRole('listitem')
+          .map((item) => item.textContent)
+      ).toEqual([
+        'Warning: No campfires at any time',
+        'Warning: No dogs or other domestic animals',
+        'Caution: SEASONAL CLOSURE FROM 1 NOVEMBER 2026, REOPENING ON 15 MARCH 2027',
+        'Information: Book now for stays to 30 April 2027',
+      ]);
+      // The level is also an icon, a different shape (drawing) for each, hidden from screen
+      // readers.
+      const icons = within(notices)
+        .getAllByRole('listitem')
+        .map((item) => item.querySelector('svg'));
+      expect(icons.every((icon) => icon?.getAttribute('aria-hidden') === 'true')).toBe(true);
+      expect(new Set(icons.map((icon) => icon?.innerHTML)).size).toBe(3);
+      // Above the accordion.
+      const first = within(about).getByRole('button', { name: 'Overview' });
+      expect(
+        notices.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+    });
+
+    it('shows the sections as an accordion: heading buttons, the intro open and the rest closed', async () => {
+      await renderPlace('/places/parkstay/20', withSections());
+      const about = screen.getByRole('region', { name: 'About' });
+      expect(
+        within(about)
+          .getAllByRole('heading', { level: 3 })
+          .map((heading) => heading.textContent)
+      ).toEqual(['Overview', 'Booking', 'Facilities', 'Fees']);
+      const panel = (button: HTMLElement) =>
+        document.getElementById(button.getAttribute('aria-controls') ?? '')!;
+
+      const overview = within(about).getByRole('button', { name: 'Overview' });
+      expect(within(about).getByRole('heading', { level: 3, name: 'Overview' })).toContainElement(
+        overview
+      );
+      expect(overview).toHaveAttribute('aria-expanded', 'true');
+      expect(panel(overview)).toBeVisible();
+      expect(panel(overview)).toHaveTextContent('Bungarra is a small campground');
+
+      for (const title of ['Booking', 'Facilities', 'Fees']) {
+        const button = within(about).getByRole('button', { name: title });
+        expect(button).toHaveAttribute('aria-expanded', 'false');
+        expect(panel(button)).not.toBeVisible();
+      }
+
+      // The WAI-ARIA disclosure pattern: a click, Enter or Space toggles it.
+      const booking = within(about).getByRole('button', { name: 'Booking' });
+      await userEvent.click(booking);
+      expect(booking).toHaveAttribute('aria-expanded', 'true');
+      expect(panel(booking)).toBeVisible();
+      expect(panel(booking)).toHaveTextContent('Bookings open monthly');
+      await userEvent.keyboard('{Enter}');
+      expect(booking).toHaveAttribute('aria-expanded', 'false');
+      const fees = within(about).getByRole('button', { name: 'Fees' });
+      fees.focus();
+      await userEvent.keyboard(' ');
+      expect(fees).toHaveAttribute('aria-expanded', 'true');
+      expect(within(panel(fees)).getByRole('link', { name: 'More about fees' })).toHaveAttribute(
+        'target',
+        '_blank'
+      );
+      await userEvent.click(overview);
+      expect(overview).toHaveAttribute('aria-expanded', 'false');
+      expect(panel(overview)).not.toBeVisible();
+    });
+
+    it('shows the sections instead of the one-text description', async () => {
+      await renderPlace('/places/parkstay/20', withSections());
+      const about = screen.getByRole('region', { name: 'About' });
+      expect(within(about).queryByText('Ningaloo coast')).not.toBeInTheDocument();
+    });
+
+    it('keeps the stay card first in the page order', async () => {
+      await renderPlace(`/places/parkstay/20${STAY}`, withSections());
+      const about = screen.getByRole('region', { name: 'About' });
+      expect(card().compareDocumentPosition(about) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+  });
+
+  it('looks as before for a provider without sections or notices: no list, no accordion', async () => {
+    await renderPlace();
+    const about = screen.getByRole('region', { name: 'About' });
+    expect(within(about).queryByRole('list', { name: /Notices/ })).not.toBeInTheDocument();
+    expect(within(about).queryByRole('heading', { level: 3 })).not.toBeInTheDocument();
+    expect(within(about).queryByRole('button')).not.toBeInTheDocument();
+    expect(within(about).getByText('Ningaloo coast')).toBeVisible();
+  });
+
+  it('shows notices above a one-text description too', async () => {
+    await renderPlace(
+      '/places/parkstay/20',
+      placeApi({ detail: placeDetail({ notices: NOTICES }) })
+    );
+    const about = screen.getByRole('region', { name: 'About' });
+    expect(within(about).getByRole('list', { name: 'Notices from ParkStay' })).toBeInTheDocument();
+    expect(within(about).getByText('Ningaloo coast')).toBeVisible();
   });
 
   it('falls back to the summary, then to a sentence and the info link', async () => {

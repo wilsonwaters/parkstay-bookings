@@ -11,7 +11,9 @@
  * - **The DBCA queue.** While the queue is on, an `/api/` request without an active queue
  *   session is answered with a 200 `text/html` page whose script sends the browser to the
  *   waiting room (`queue_middleware.py:99,116`), or a redirect there. Either one is an
- *   `AccessGateError` with state `waiting`, never a JSON parse error.
+ *   `AccessGateError` with state `waiting`, never a JSON parse error. ParkStay's pages
+ *   (`getPage`) are gated the same way; their own scripts call `window.location.replace`
+ *   too, so a page is the queue's only when the script goes to the waiting room.
  */
 
 import type { ProviderId } from '@shared/types/provider.types';
@@ -25,7 +27,7 @@ import {
 } from '../sdk/errors';
 import type { FormFields, HttpClient, HttpResponse, QueryValue } from '../sdk/http';
 import { PARKSTAY_API_BASE_URL, QUEUE_API_BASE_URL } from './constants';
-import { parkstayApiHeaders, queueApiHeaders } from './headers';
+import { parkstayApiHeaders, parkstayPageHeaders, queueApiHeaders } from './headers';
 
 /** Where the client sends requests. Tests point both at a local fixture server. */
 export interface ParkStayEndpoints {
@@ -53,6 +55,23 @@ export function toParkStayDate(date: string): string {
 /** The queue middleware's redirect page: `<script>window.location.replace('…');</script>`. */
 export function isQueueInterstitial(contentType: string | null, body: string): boolean {
   return /text\/html/i.test(contentType ?? '') && body.includes('window.location.replace(');
+}
+
+/** The queue's redirect page for a ParkStay page: its script goes to the waiting room. */
+export function isWaitingRoomPage(contentType: string | null, body: string): boolean {
+  return (
+    /text\/html/i.test(contentType ?? '') &&
+    /window\.location\.replace\(\s*(['"`])[^'"`]*waiting-room/i.test(body)
+  );
+}
+
+/** A ParkStay page as it came back, after any redirects. */
+export interface PageResponse {
+  status: number;
+  /** The final URL, after any redirects. */
+  url: string;
+  contentType: string | null;
+  body: string;
 }
 
 export interface ParkStayRequestOptions {
@@ -94,6 +113,7 @@ function withoutQuery(url: string): string {
 export class ParkStayClient {
   private readonly limit: Limiter;
   private readonly apiBase: string;
+  private readonly siteOrigin: string;
   private readonly queueOrigin: string;
 
   constructor(
@@ -104,6 +124,8 @@ export class ParkStayClient {
   ) {
     this.limit = createLimiter(maxConcurrent);
     this.apiBase = endpoints.apiBaseUrl.replace(/\/+$/, '');
+    // The site and its API share an origin (`https://parkstay.dbca.wa.gov.au`).
+    this.siteOrigin = new URL(this.apiBase).origin;
     this.queueOrigin = new URL(endpoints.queueBaseUrl).origin;
   }
 
@@ -166,6 +188,40 @@ export class ParkStayClient {
     return { status: response.status, body: await this.parseJson(response, body) };
   }
 
+  /**
+   * GET a ParkStay page (`/search-availability/campground/`) with the ParkStay `Referer`,
+   * following redirects. Rejects with an `AccessGateError` when the DBCA queue answers
+   * instead, and a `ProviderHttpError` for a status that is not 2xx.
+   */
+  async getPage(path: string, options: ParkStayRequestOptions = {}): Promise<PageResponse> {
+    const url = `${this.siteOrigin}${path}`;
+    const response = await this.send(options.signal, () =>
+      this.http.request('GET', url, {
+        query: options.query,
+        headers: parkstayPageHeaders(),
+        signal: options.signal,
+      })
+    );
+    if (this.isQueueUrl(response.url, url)) {
+      throw new AccessGateError(
+        this.providerId,
+        'waiting',
+        `${this.providerId}: ParkStay sent the page request to the DBCA queue`
+      );
+    }
+    const body = await response.text();
+    const contentType = response.headers.get('content-type');
+    if (isWaitingRoomPage(contentType, body)) {
+      throw new AccessGateError(
+        this.providerId,
+        'waiting',
+        `${this.providerId}: ParkStay answered the page request with the DBCA queue page`
+      );
+    }
+    if (!response.ok) throw this.statusError(response);
+    return { status: response.status, url: response.url, contentType, body };
+  }
+
   /** GET a queue API path (`/api/check-create-session/`), expecting 2xx JSON. */
   async getQueue<T>(path: string, options: ParkStayRequestOptions = {}): Promise<T> {
     const url = `${this.queueOrigin}${path}`;
@@ -221,7 +277,9 @@ export class ParkStayClient {
     if (!finalUrl || withoutQuery(finalUrl) === withoutQuery(requestUrl)) return false;
     try {
       const url = new URL(finalUrl);
-      return url.origin === this.queueOrigin || url.pathname.startsWith('/site-queue/');
+      // The queue's own origin counts only when it is not the site's (tests serve both).
+      const queueSite = url.origin === this.queueOrigin && this.queueOrigin !== this.siteOrigin;
+      return queueSite || url.pathname.startsWith('/site-queue/');
     } catch {
       return false;
     }

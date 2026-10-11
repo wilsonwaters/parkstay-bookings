@@ -700,6 +700,13 @@ The rules the normalised types carry (`src/shared/types/provider.types.ts`,
 - **`LocationDetail`** adds `units` (`UnitSummary[]`), and optionally `descriptionHtml` and a
   `releaseInfo` sentence. Return the provider's HTML as you found it: main sanitises it
   (`sanitizeProviderHtml`) before it crosses IPC, and its links open in the system browser.
+  A description in titled parts can be `sections` (`{ title, html }`, in the provider's order;
+  the place page shows them as an accordion, the first open, instead of `descriptionHtml`), and
+  short notices `notices` (`{ level: 'warning' | 'caution' | 'info', text }`, plain text). Main
+  sanitises each section too, its headings from `h4`, and drops a section with no title or text
+  and a notice with another level. `getLocation`'s `options.previous` is the detail main stored
+  last, however old: reuse part of it when one of your sources fails (ParkStay keeps the
+  sections when its campground page cannot be read).
 - **Availability.** `check` returns a `LocationAvailability`: one `UnitAvailability` per unit,
   each with one `NightStatus` per night of the stay (`available`, `booked`, `closed`,
   `not-released` or `unknown`, and `price` when known), `fullyAvailable` only when every night

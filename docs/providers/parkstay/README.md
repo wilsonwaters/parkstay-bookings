@@ -61,6 +61,16 @@ style, which strikes through what a campground lacks (`<span class="disable">`),
 first adds "(not available)" to each such item ("Campfires permitted (not available)"). Each
 site's `short_description` is plain text and is only ever shown as text.
 
+A campground's About comes from its campground page, the detail ParkStay shows under "MORE
+DETAILS", which no JSON endpoint serves (`campground-page.ts`,
+[endpoints](endpoints.md#api-endpoints-wa-stay-calls)): its notices ("No campfires at any
+time"), each with its level, and its sections (an intro, then Booking, Campsites, Facilities,
+Campground Rules, Fees, Your safety and health and Location), sanitised in main like the
+description. With sections, `long_description` is not shown: it is out of date. When the page
+cannot be read (the DBCA queue, a redirect away, the "Oops!" page while a hold is in progress,
+a closure or a new layout), the sections stored last are kept, or else the About shows
+`long_description` as above; the place page never fails because of it.
+
 "View on ParkStay" and "Book on ParkStay" open ParkStay's search page with the campground
 (and the dates) chosen, not its campground page, which refuses a browser that sends no
 `Referer` ([endpoints](endpoints.md#pages-wa-stay-opens-or-links-to)).
@@ -76,12 +86,25 @@ WA Stay follows DBCA's booking terms, and so must its users:
 - no booking for others, no transfer or resale;
 - payment is always completed by the person, on ParkStay's own pages.
 
+WA Stay reads ParkStay's public campground page (`/search-availability/campground/`) for a
+campground's About: anonymously (it needs no account, and WA Stay never signs in for it; it
+goes through the app's ParkStay session, as every ParkStay request does, so the DBCA queue
+lets it through), at most once per campground per 6 hours (the detail cache), and only when
+someone opens that place. It is shown in the app beside a link to ParkStay, and never
+redistributed.
+
 ## Tests
 
 - `tests/unit/providers/parkstay/`: each module against the loopback fixture server
   (`tests/utils/parkstay-fixture-server.ts`), which serves the trimmed live samples in
   `tests/fixtures/parkstay/` and behaves as the DBCA backend does where tests depend on it
-  (HTTP 500 without the Referer or with `YYYY-MM-DD` dates, the queue's redirect page).
+  (HTTP 500 without the Referer or with `YYYY-MM-DD` dates, the queue's redirect page, the
+  campground page and its redirect away without the Referer).
+- `tests/unit/providers/parkstay/campground-page.test.ts`: the campground page's sections and
+  notices from the trimmed live page (`campground_page_20.html`), and each page that comes back
+  instead: the queue's, a redirect away (`campground_page_redirected.html`), the "Oops!" page
+  (`campground_page_oops.html`, built from DBCA's template, not recorded), a closure and a
+  changed layout.
 - `tests/integration/parkstay-provider-contract.test.ts`: the provider contract suite.
 - `tests/unit/providers/parkstay-manifest.test.ts`: the manifest.
 - `npm run test:electron`: the module on the production transport (`ElectronSessionHttpClient`),

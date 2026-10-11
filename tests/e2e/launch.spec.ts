@@ -88,6 +88,23 @@ test('Explore lists the ParkStay campgrounds from the catalogue fixture', async 
   // Its detail page (E2): the name, and its sites from the fixture.
   await expect(window.getByRole('heading', { level: 1, name: 'Bungarra' })).toBeVisible();
   await expect(window.getByRole('heading', { level: 2, name: 'Sites' })).toBeVisible();
+  // Its About from the campground page (PD2): the notices, then the sections as an accordion,
+  // the intro open and the rest closed until opened.
+  const about = window.getByRole('region', { name: 'About' });
+  await expect(
+    about.getByRole('list', { name: 'Notices from ParkStay' }).getByRole('listitem')
+  ).toHaveCount(11);
+  await expect(about.getByText('Warning: No campfires at any time')).toBeVisible();
+  await expect(about.getByRole('button', { name: 'Overview' })).toHaveAttribute(
+    'aria-expanded',
+    'true'
+  );
+  await expect(about.getByText(/shore-based fishing is permitted/)).toBeVisible();
+  const fees = about.getByRole('button', { name: 'Fees' });
+  await expect(fees).toHaveAttribute('aria-expanded', 'false');
+  await fees.click();
+  await expect(fees).toHaveAttribute('aria-expanded', 'true');
+  await expect(about.getByRole('link', { name: 'More about fees' })).toBeVisible();
 
   expect(withoutGuardedRequests(await wa.consoleErrors(), wa.unexpectedRequests())).toEqual([]);
   expect(withoutRemoteImages(wa.unexpectedRequests())).toEqual([]);

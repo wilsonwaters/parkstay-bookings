@@ -53,9 +53,40 @@ export interface UnitSummary {
   description?: string;
 }
 
+/**
+ * A titled part of a location's description, such as ParkStay's "Booking" or "Fees". The
+ * place page shows each as a disclosure, the first open.
+ */
+export interface LocationSection {
+  /** Plain text. A provider's untitled intro gets a title of its own ("Overview"). */
+  title: string;
+  /**
+   * Sanitised in main before it crosses IPC, as `descriptionHtml` is. Its headings nest under
+   * the section's title: the highest is `h4`.
+   */
+  html: string;
+}
+
+/** How serious a location notice is. The place page shows it with an icon and in words. */
+export type LocationNoticeLevel = 'warning' | 'caution' | 'info';
+
+/** A short notice the provider shows on the location, such as "No campfires at any time". */
+export interface LocationNotice {
+  level: LocationNoticeLevel;
+  /** Plain text, never HTML: shown as text. */
+  text: string;
+}
+
 export interface LocationDetail extends LocationSummary {
   /** Sanitised in main before it crosses IPC. */
   descriptionHtml?: string;
+  /**
+   * The description in titled parts, in the provider's order. When present, the place page
+   * shows these instead of `descriptionHtml`.
+   */
+  sections?: LocationSection[];
+  /** The provider's notices about the location, in its order. */
+  notices?: LocationNotice[];
   units: UnitSummary[];
   /** A human sentence, e.g. "Bookings open 180 days ahead at midnight AWST". */
   releaseInfo?: string;
