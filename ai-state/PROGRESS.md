@@ -6,7 +6,7 @@ _Last updated: 2026-10-11 (orchestrator)_
 Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wilsonwaters/wa-stay`). Phase 6 is done: the final review fixes are merged and the PR is open. The stakeholder asked for CI fixes, Node 24, hardening, dependency upgrades and developer-experience fixes on the same PR.
 
 ## Currently in flight
-- **ParkStay details round** (the stakeholder's Windows testing, 2026-10-11). Run in series, one agent at a time (stakeholder instruction, quota).
+- **ParkStay details round** (the stakeholder's Windows testing, 2026-10-11). Parallel agents allowed again (stakeholder, 2026-10-11 after the quota reset; earlier: series only).
   - **Research:** done, in `ai-state/research/parkstay-details.md`.
     - "View on ParkStay" fails because ParkStay's campground page refuses requests without its `Referer`. The fix is the information page with `campground_id`.
     - Per-site details are already in the availability view.
@@ -29,7 +29,8 @@ Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wils
     - Open nit for the stakeholder: Bungarra's 11 notices take about 290 px above the accordion.
     - Gate: 4045 tests; e2e 21 passed (the review's run).
     - The `wip/pd2-campground-sections` backup can be deleted.
-  - **Next:** PD3, the campground map in a sandboxed document window.
+  - **PD3 is running** (lane/a, base `f5eba48`): the campground map in a sandboxed document window.
+  - **Queue endpoint research is running in parallel:** DBCA's GitHub history for `queue-endpoint.dbca.wa.gov.au`, then a read-only check of both hosts. Findings go to the scratchpad's `queue-endpoint/`.
   - **Also merged:** `e18a6e7`, the Explore map test now waits for the map's data. It raced on macOS at `249ea90`.
   - **Open for the stakeholder:**
     - PD2 reads ParkStay's public page HTML, so DBCA's terms for reusing page content are unknown.
