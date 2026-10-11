@@ -1,5 +1,12 @@
-import { useId, type ReactNode } from 'react';
-import { Clock, Info, OctagonAlert, TriangleAlert, type LucideIcon } from 'lucide-react';
+import { useId, useState, type ReactNode } from 'react';
+import {
+  ChevronDown,
+  Clock,
+  Info,
+  OctagonAlert,
+  TriangleAlert,
+  type LucideIcon,
+} from 'lucide-react';
 import type {
   LocationDetail,
   LocationNotice,
@@ -11,7 +18,7 @@ import { amenityIcon } from '../../components/amenityIcons';
 import { ExternalLink } from '../../components/ExternalLink';
 import { unitCountLabel, unitNoun } from '../../components/locationFormat';
 import { RichText } from '../../components/RichText';
-import { Disclosure, Notice, VisuallyHidden } from '../../components/ui';
+import { Button, Disclosure, Notice, VisuallyHidden } from '../../components/ui';
 import { BADGE_TONE_CLASS } from '../../components/ui/Badge';
 import { cx } from '../../components/ui/cx';
 import { guestRangeLabel, unitTypeBreakdown, type PlaceLinks } from './placeModel';
@@ -56,9 +63,26 @@ const NOTICE_LEVELS: Record<
   info: { icon: Info, label: 'Information', className: BADGE_TONE_CLASS.brand },
 };
 
+/** The order notices are shown in: warnings, then cautions, then information. */
+const NOTICE_RANK: Record<LocationNoticeLevel, number> = { warning: 0, caution: 1, info: 2 };
+
 /**
- * The provider's notices as a compact row: each with its level's icon (a different shape for
- * each level) and its level in words for screen readers, so colour is never the only signal.
+ * How many notices show before "Show all {n} notices": about two lines of the row at 1440 × 900
+ * and at 960 × 640 with ParkStay's longer notices (Bungarra's).
+ */
+export const NOTICES_SHOWN = 3;
+
+/** The notices by level, warnings first, keeping the provider's order within each level. */
+function orderNotices(notices: readonly LocationNotice[]): LocationNotice[] {
+  // An unknown level shows as information, so it sorts with it. The sort is stable.
+  const rank = (notice: LocationNotice) => NOTICE_RANK[notice.level] ?? NOTICE_RANK.info;
+  return [...notices].sort((a, b) => rank(a) - rank(b));
+}
+
+/**
+ * The provider's notices as a compact row, warnings first: each with its level's icon (a
+ * different shape for each level) and its level in words for screen readers, so colour is
+ * never the only signal. Past {@link NOTICES_SHOWN}, the rest are behind "Show all {n} notices".
  */
 export function PlaceNotices({
   notices,
@@ -67,33 +91,64 @@ export function PlaceNotices({
   notices: readonly LocationNotice[];
   shortName: string;
 }) {
+  const listId = useId();
+  const [showAll, setShowAll] = useState(false);
   if (notices.length === 0) return null;
+  const ordered = orderNotices(notices);
+  const collapsible = ordered.length > NOTICES_SHOWN;
+  const shown = collapsible && !showAll ? ordered.slice(0, NOTICES_SHOWN) : ordered;
   return (
-    <ul
-      role="list"
-      aria-label={`Notices from ${shortName}`}
-      className="flex max-w-2xl flex-wrap gap-2"
-    >
-      {notices.map((notice, index) => {
-        const level = NOTICE_LEVELS[notice.level] ?? NOTICE_LEVELS.info;
-        const Icon = level.icon;
-        return (
-          <li
-            key={`${index}:${notice.text}`}
-            className={cx(
-              'inline-flex max-w-full items-start gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium',
-              level.className
-            )}
-          >
-            <Icon size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
-            <span>
-              <VisuallyHidden>{level.label}: </VisuallyHidden>
-              {notice.text}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
+    <div className="flex flex-col items-start gap-2">
+      <ul
+        id={listId}
+        role="list"
+        aria-label={`Notices from ${shortName}`}
+        className="flex max-w-2xl flex-wrap gap-2"
+      >
+        {shown.map((notice, index) => {
+          const level = NOTICE_LEVELS[notice.level] ?? NOTICE_LEVELS.info;
+          const Icon = level.icon;
+          return (
+            <li
+              key={`${index}:${notice.text}`}
+              className={cx(
+                'inline-flex max-w-full items-start gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium',
+                level.className
+              )}
+            >
+              <Icon size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
+              <span>
+                <VisuallyHidden>{level.label}: </VisuallyHidden>
+                {notice.text}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {collapsible && (
+        <Button
+          variant="ghost"
+          size="sm"
+          // Its text lines up with the notices' edge.
+          className="-ml-3"
+          aria-expanded={showAll}
+          aria-controls={listId}
+          trailingIcon={
+            <ChevronDown
+              size={16}
+              aria-hidden="true"
+              className={cx(
+                'shrink-0 transition-transform duration-base ease-standard',
+                showAll && 'rotate-180'
+              )}
+            />
+          }
+          onClick={() => setShowAll((all) => !all)}
+        >
+          {showAll ? 'Show fewer notices' : `Show all ${ordered.length} notices`}
+        </Button>
+      )}
+    </div>
   );
 }
 

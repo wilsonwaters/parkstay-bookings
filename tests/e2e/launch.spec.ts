@@ -88,13 +88,25 @@ test('Explore lists the ParkStay campgrounds from the catalogue fixture', async 
   // Its detail page (E2): the name, and its sites from the fixture.
   await expect(window.getByRole('heading', { level: 1, name: 'Bungarra' })).toBeVisible();
   await expect(window.getByRole('heading', { level: 2, name: 'Sites' })).toBeVisible();
-  // Its About from the campground page (PD2): the notices, then the sections as an accordion,
-  // the intro open and the rest closed until opened.
+  // Its About from the campground page (PD2): the notices, the first 3 shown and the rest
+  // behind "Show all 11 notices" (PD4), then the sections as an accordion, the intro open and
+  // the rest closed until opened.
   const about = window.getByRole('region', { name: 'About' });
-  await expect(
-    about.getByRole('list', { name: 'Notices from ParkStay' }).getByRole('listitem')
-  ).toHaveCount(11);
+  const notices = about.getByRole('list', { name: 'Notices from ParkStay' }).getByRole('listitem');
+  await expect(notices).toHaveCount(3);
   await expect(about.getByText('Warning: No campfires at any time')).toBeVisible();
+  const allNotices = about.getByRole('button', { name: 'Show all 11 notices' });
+  await expect(allNotices).toHaveAttribute('aria-expanded', 'false');
+  await allNotices.click();
+  await expect(notices).toHaveCount(11);
+  const fewerNotices = about.getByRole('button', { name: 'Show fewer notices' });
+  await expect(fewerNotices).toHaveAttribute('aria-expanded', 'true');
+  await expect(fewerNotices).toBeFocused();
+  await expect(
+    about.getByText(
+      "Information: To pay entry fee separately: deselect 'Pay park entry' at next screen"
+    )
+  ).toBeVisible();
   await expect(about.getByRole('button', { name: 'Overview' })).toHaveAttribute(
     'aria-expanded',
     'true'

@@ -90,6 +90,9 @@ describe('Place detail page', () => {
       await renderPlace('/places/parkstay/20', withSections());
       const about = screen.getByRole('region', { name: 'About' });
       const notices = within(about).getByRole('list', { name: 'Notices from ParkStay' });
+      // The first 3 show; the 4th is behind "Show all 4 notices" (PlaceNotices.test.tsx).
+      expect(within(notices).getAllByRole('listitem')).toHaveLength(3);
+      await userEvent.click(within(about).getByRole('button', { name: 'Show all 4 notices' }));
       expect(
         within(notices)
           .getAllByRole('listitem')
