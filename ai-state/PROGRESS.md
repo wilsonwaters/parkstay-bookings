@@ -23,7 +23,12 @@ Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wils
     - The minor finding is fixed: a unit without details keeps its old heading width. The test compares `outerHTML` and fails without the fix.
     - Gate: 4006 tests; e2e 21 passed (the review's run).
     - The `wip/pd1-parkstay-details` backup can be deleted.
-  - **Next:** PD2 (sections and notices), then PD3 (map viewer), one agent at a time.
+  - **PD2 is implemented and under review:** `aabeb69`, backed up to `wip/pd2-campground-sections`.
+    - What it does: `LocationDetail.sections` and `notices`; ParkStay reads its campground page (`campground-page.ts`); the About becomes an accordion with notices above.
+    - Gate: 4044 tests; e2e 21 passed.
+    - Screenshots are in the scratchpad's `shots/PD2/`.
+  - **Next:** PD2's review, then the merge, then PD3 (map viewer).
+  - **Also merged:** `e18a6e7`, the Explore map test now waits for the map's data. It raced on macOS at `249ea90`.
   - **Open for the stakeholder:**
     - PD2 reads ParkStay's public page HTML, so DBCA's terms for reusing page content are unknown.
     - The queue endpoint change is noted as a follow-up under "Next to dispatch".
