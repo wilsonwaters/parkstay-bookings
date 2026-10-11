@@ -87,9 +87,10 @@ WA Stay follows DBCA's booking terms, and so must its users:
 - payment is always completed by the person, on ParkStay's own pages.
 
 WA Stay reads ParkStay's public campground page (`/search-availability/campground/`) for a
-campground's About: anonymously (it needs no account, and WA Stay never signs in for it; it
-goes through the app's ParkStay session, as every ParkStay request does, so the DBCA queue
-lets it through), at most once per campground per 6 hours (the detail cache), and only when
+campground's About. It needs no account and WA Stay never signs in for it, but it is sent
+with the app's ParkStay session, as every ParkStay request is: the DBCA queue needs that
+session, and a signed-in person's cookies go with it (which is why a hold in progress shows
+ParkStay's "Oops!" page instead, and the stored copy is kept). It is read at most once per campground per 6 hours (the detail cache), and only when
 someone opens that place. It is shown in the app beside a link to ParkStay, and never
 redistributed.
 

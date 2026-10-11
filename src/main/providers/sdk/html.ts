@@ -118,6 +118,10 @@ export function sanitizeProviderHtml(
     allowProtocolRelative: false,
     transformTags: {
       ...Object.fromEntries(HEADINGS.map((tag) => [tag, nestHeading])),
+      // Presentational emphasis keeps its meaning as the semantic tags (ParkStay's sections bold
+      // their key sentences with `b`).
+      b: 'strong',
+      i: 'em',
       a: (tagName, attribs) => {
         const link = withUrl(attribs, 'href', baseUrl);
         // The provider's own target (`_top`, a frame name) never survives.

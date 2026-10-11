@@ -40,6 +40,12 @@ describe('sanitizeProviderHtml', () => {
     expect(clean).toBe('Bigcell<ul><li><em>a</em></li></ul><hr /><br />');
   });
 
+  it('keeps presentational bold and italic as strong and em, and is stable when run again', () => {
+    const once = sanitizeProviderHtml('<p><b>Bookings open monthly</b> and <i>fill fast</i>.</p>');
+    expect(once).toBe('<p><strong>Bookings open monthly</strong> and <em>fill fast</em>.</p>');
+    expect(sanitizeProviderHtml(once)).toBe(once);
+  });
+
   it("nests the provider's headings under the page's sections, keeping their depth", () => {
     expect(sanitizeProviderHtml('<h1 class="x">A</h1><h2>B</h2><h4>C</h4><h6>D</h6>', BASE)).toBe(
       '<h3>A</h3><h4>B</h4><h6>C</h6><h6>D</h6>'
