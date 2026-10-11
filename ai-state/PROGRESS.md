@@ -29,7 +29,11 @@ Post-PR follow-ups on PR #42 (open, `ccr-da6e94c0-litpr7` → `main`, repo `wils
     - Open nit for the stakeholder: Bungarra's 11 notices take about 290 px above the accordion.
     - Gate: 4045 tests; e2e 21 passed (the review's run).
     - The `wip/pd2-campground-sections` backup can be deleted.
-  - **PD3 is running** (lane/a, base `f5eba48`; told to rebase onto `6c89bdf`): the campground map in a sandboxed document window.
+  - **PD3 is implemented and under review:** `aeed004` on `9a44593`, backed up to `wip/pd3-campground-map`.
+    - The window module is `document-windows.ts`. It opens through `catalog.openDocument`; no URL crosses IPC.
+    - Fixture mode serves a generated PDF.
+    - Gate: 4097 tests; e2e 22 passed; `test:electron` 4/4.
+  - **Also merged:** `9a44593`. IconButton's required label is now checked by `tsc` (`IconButton.type-test.tsx`) rather than a TypeScript program in Jest, after the macOS SIGSEGV in that test twice (`10512b5`, `6921509`). The crash-report upload paths are widened, since no report was found.
   - **PD4 is merged:** `77a5d52`, review fix `6c89bdf`. Review APPROVE.
     - What it does: 3 notices shown, ordered warning, then caution, then info, with "Show all N notices" for the rest. Bungarra's row drops from about 280 px to 104 px.
     - The minor finding is fixed: a collapsed test on an unsorted list.
