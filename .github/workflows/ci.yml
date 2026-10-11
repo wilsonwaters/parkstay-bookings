@@ -86,7 +86,17 @@ jobs:
         run: npm ci
 
       - name: Run unit tests
+        if: runner.os != 'macOS'
         run: npm run test:coverage
+
+      # Node 24.21 on Apple silicon now and then crashes a Jest worker inside V8's garbage
+      # collector (macOS crash report: EXC_BAD_ACCESS in ClearStaleLeftTrimmedPointerVisitor,
+      # reached from a Sparkplug baseline prologue's stack check), in a different test file each
+      # time; the same Node on x64 (Ubuntu, Windows) never has. Without Sparkplug that path never
+      # runs. Jest's workers inherit the flag through execArgv (NODE_OPTIONS refuses it).
+      - name: Run unit tests (macOS, without Sparkplug)
+        if: runner.os == 'macOS'
+        run: node scripts/check-native-abi.js && node --no-sparkplug node_modules/jest/bin/jest.js --coverage
 
       # SQLite's own timestamps are UTC with no zone: read them with the host in Perth (UTC+8).
       # TZ is set before Jest starts, since a running test cannot change its zone.
