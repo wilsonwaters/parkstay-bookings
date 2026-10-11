@@ -109,12 +109,18 @@ export interface NightGridProps {
   unitDetails?: ReadonlyMap<string, UnitSummary>;
 }
 
+/** Whether `unit` has anything for `UnitFacts` to show. */
+function hasUnitFacts(unit: UnitSummary | undefined): unit is UnitSummary {
+  return Boolean(
+    unit && (unitPeopleLabel(unit) || unitVehiclesLabel(unit) || unit.description?.trim())
+  );
+}
+
 /** A unit's limits ("1–6 people", "3 vehicles") and description, under its name. Text only. */
 function UnitFacts({ unit }: { unit: UnitSummary }) {
   const people = unitPeopleLabel(unit);
   const vehicles = unitVehiclesLabel(unit);
   const description = unit.description?.trim();
-  if (!people && !vehicles && !description) return null;
   return (
     <span className="mt-1 block max-w-60 font-normal">
       {(people || vehicles) && (
@@ -313,7 +319,10 @@ export function NightGrid({
               </thead>
               <tbody>
                 {shown.map((unit) => {
-                  const facts = unitDetails?.get(unit.unitId);
+                  // Only a unit with something to show gets the wider heading, so a unit
+                  // without details (or a provider that gives none) looks as it always has.
+                  const entry = unitDetails?.get(unit.unitId);
+                  const facts = hasUnitFacts(entry) ? entry : undefined;
                   return (
                     <tr key={unit.unitId} className="border-b border-border last:border-b-0">
                       <th

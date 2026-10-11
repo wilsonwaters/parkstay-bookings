@@ -353,7 +353,7 @@ describe('NightGrid layout (with the real stylesheet)', () => {
       const plain = (name: string) =>
         screen
           .getAllByRole('rowheader', { name: new RegExp(`^${name} `) })
-          .map((cell) => cell.innerHTML);
+          .map((cell) => cell.outerHTML);
       // Each name now has two rows: the grid with details, and the one without.
       for (const unit of [second, third]) {
         const [withDetails, without] = plain(unit.unitName);
