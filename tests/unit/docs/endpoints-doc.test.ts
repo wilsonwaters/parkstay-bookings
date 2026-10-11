@@ -99,6 +99,7 @@ describe(DOC, () => {
       '/campground_availabilty_view/',
       '/create_booking',
       '/api/check-create-session/',
+      '/search-availability/campground/',
     ]) {
       expect(sources).toContain(used);
       expect(called.some((doc) => doc.includes(used))).toBe(true);

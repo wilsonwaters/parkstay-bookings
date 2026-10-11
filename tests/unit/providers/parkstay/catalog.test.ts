@@ -15,6 +15,7 @@ import type { LocationSummary } from '@shared/types/catalog.types';
 import { createMemoryLogger } from '@tests/utils/fake-provider';
 import {
   parkStayFixture,
+  readParkStayFixture,
   startParkStayFixtureServer,
   type ParkStayFixtureServer,
 } from '@tests/utils/parkstay-fixture-server';
@@ -120,14 +121,27 @@ describe('ParkStay catalogue', () => {
   });
 
   describe('detail', () => {
-    it('returns Bungarra with its sanitised description, sites and release sentence', async () => {
+    it('returns Bungarra with its page’s sections and notices, sites and release sentence', async () => {
       const detail = await parkstay.provider.catalog.getLocation('20');
       expect(detail).toMatchObject({ ...byId.get('20'), fetchedAt: '2026-10-02T02:00:00.000Z' });
-      expect(detail.descriptionHtml).toContain('This campground is in the Gascoyne Region');
-      expect(detail.descriptionHtml).not.toMatch(/<style|style=|class=/);
-      // What Bungarra lacks reads as such, not as if it had it.
-      expect(detail.descriptionHtml).toContain('Campfires permitted (not available)');
-      expect(detail.descriptionHtml).toContain('Pets permitted (not available)');
+      expect(detail.sections?.map((s) => s.title)).toEqual([
+        'Overview',
+        'Booking',
+        'Campsites',
+        'Facilities',
+        'Campground Rules',
+        'Fees',
+        'Your safety and health',
+        'Location',
+      ]);
+      expect(detail.sections?.[0].html).toContain('shore-based fishing is permitted');
+      expect(detail.notices).toHaveLength(11);
+      expect(detail.notices?.[0]).toEqual({
+        level: 'warning',
+        text: 'Drinking water not supplied: bring your own',
+      });
+      // With sections, the legacy, out-of-date long_description is left out.
+      expect(detail.descriptionHtml).toBeUndefined();
       expect(detail.units).toHaveLength(5);
       expect(detail.units[0]).toEqual({
         unitId: '1',
@@ -144,6 +158,67 @@ describe('ParkStay catalogue', () => {
       expect(detail.releaseInfo).toBe(
         'Bookable up to 31 March 2027; later dates are released in blocks — use a scheduled snipe'
       );
+    });
+
+    it('reads the campground page once per detail, with the ParkStay Referer', async () => {
+      const before = server.requestsTo('/search-availability/campground/').length;
+      await parkstay.provider.catalog.getLocation('20');
+      const pages = server.requestsTo('/search-availability/campground/').slice(before);
+      expect(pages).toHaveLength(1);
+      expect(Object.fromEntries(pages[0].query)).toEqual({ site_id: '20' });
+      expect(pages[0].headers.referer).toBe('https://parkstay.dbca.wa.gov.au/');
+    });
+
+    describe('when the campground page cannot be read', () => {
+      const oops = { body: readParkStayFixture('campground_page_oops.html') };
+      afterEach(() => {
+        server.pages.clear();
+        server.queueGate = 'off';
+      });
+
+      it('falls back to the long_description, its missing items in words, with no sections stored', async () => {
+        server.pages.set('20', oops);
+        const fresh = createTestParkStay(server);
+        const detail = await fresh.provider.catalog.getLocation('20');
+        expect(detail.sections).toBeUndefined();
+        expect(detail.notices).toBeUndefined();
+        expect(detail.descriptionHtml).toContain('This campground is in the Gascoyne Region');
+        expect(detail.descriptionHtml).not.toMatch(/<style|style=|class=/);
+        // What Bungarra lacks reads as such, not as if it had it.
+        expect(detail.descriptionHtml).toContain('Campfires permitted (not available)');
+        expect(detail.descriptionHtml).toContain('Pets permitted (not available)');
+        expect(detail.units).toHaveLength(5);
+        expect(fresh.logger.lines.map((l) => l.message)).toContain(
+          'ParkStay campground 20: no details from /search-availability/campground/: ' +
+            'ParkStay showed its "Oops!" page (a booking is in progress)'
+        );
+      });
+
+      it('keeps the sections and notices the core stored last, and leaves the long_description out', async () => {
+        const previous = await parkstay.provider.catalog.getLocation('20');
+        server.pages.set('20', oops);
+        const fresh = createTestParkStay(server);
+        const detail = await fresh.provider.catalog.getLocation('20', undefined, { previous });
+        expect(detail.sections).toEqual(previous.sections);
+        expect(detail.notices).toEqual(previous.notices);
+        expect(detail.descriptionHtml).toBeUndefined();
+      });
+
+      it('never takes another campground’s sections', async () => {
+        const previous = await parkstay.provider.catalog.getLocation('20');
+        server.pages.set('18', oops);
+        const fresh = createTestParkStay(server);
+        const detail = await fresh.provider.catalog.getLocation('18', undefined, { previous });
+        expect(detail.sections).toBeUndefined();
+        expect(detail.descriptionHtml).toContain('This campground is in the Gascoyne Region');
+      });
+
+      it('never fails the detail for it, even when the queue answers the page', async () => {
+        server.pages.set('20', { redirect: '/site-queue/waiting-room/parkstayv2/' });
+        const detail = await createTestParkStay(server).provider.catalog.getLocation('20');
+        expect(detail.units).toHaveLength(5);
+        expect(detail.descriptionHtml).toContain('This campground is in the Gascoyne Region');
+      });
     });
 
     it('probes a one-night stay from tomorrow (Perth) for one adult, with ParkStay dates', async () => {
@@ -179,8 +254,13 @@ describe('ParkStay catalogue', () => {
     it('reads an offline campground’s description, with no sites and no release', async () => {
       const detail = await parkstay.provider.catalog.getLocation('85');
       expect(detail).toMatchObject({ bookingMode: 'offline', units: [] });
-      expect(detail.descriptionHtml).toBe('<p>Book with the park office.</p>');
+      expect(detail.sections?.length).toBeGreaterThan(0);
       expect(detail.releaseInfo).toBeUndefined();
+
+      server.pages.set('85', { status: 404, body: 'Not found' });
+      const fallback = await createTestParkStay(server).provider.catalog.getLocation('85');
+      server.pages.delete('85');
+      expect(fallback.descriptionHtml).toBe('<p>Book with the park office.</p>');
     });
 
     it('rejects a campground that is not in the map with a ProviderError', async () => {
@@ -204,7 +284,7 @@ describe('ParkStay catalogue', () => {
       expect(server.requestsTo('/api/campsite_availablity_view/20/').length - views).toBe(1);
       expect(detail).toMatchObject({ ...byId.get('20'), fetchedAt: '2026-10-02T02:00:00.000Z' });
       expect(detail.units).toHaveLength(5);
-      expect(detail.descriptionHtml).toContain('This campground is in the Gascoyne Region');
+      expect(detail.sections?.[0].title).toBe('Overview');
       expect(detail.releaseInfo).toMatch(/^Bookable up to 31 March 2027/);
 
       // Again in the same run: still no map.

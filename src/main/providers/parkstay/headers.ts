@@ -33,6 +33,17 @@ export function parkstayApiHeaders(method: 'GET' | 'POST' = 'GET'): Record<strin
     : { ...BROWSER_HEADERS };
 }
 
+/**
+ * Headers for a ParkStay page (the campground page), as a browser sends them for a page:
+ * HTML first. The campground page refuses a request without a ParkStay `Referer`.
+ */
+export function parkstayPageHeaders(): Record<string, string> {
+  return {
+    ...BROWSER_HEADERS,
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  };
+}
+
 /** Headers for a request to the queue API, which the ParkStay site calls cross-site. */
 export function queueApiHeaders(): Record<string, string> {
   return { ...BROWSER_HEADERS, Origin: PARKSTAY_BASE_URL };

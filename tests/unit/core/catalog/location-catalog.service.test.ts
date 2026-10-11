@@ -658,6 +658,70 @@ describe('detail', () => {
     );
   });
 
+  it('sanitises sections again in main, headings under their titles, and keeps only valid notices', async () => {
+    const s = setup();
+    await s.catalog.sync();
+    const original = s.fake.catalog!.getLocation.bind(s.fake.catalog);
+    jest.spyOn(s.fake.catalog!, 'getLocation').mockImplementation(async (id, signal) => ({
+      ...(await original(id, signal)),
+      imageUrls: ['https://fake.example/img/hero.jpg'],
+      sections: [
+        {
+          title: ' Fees ',
+          html: '<h2>Prices</h2><p style="x" onclick="y()">$10</p><script>z()</script>',
+        },
+        { title: 'Photos', html: '<img src="/img/hero.jpg">' },
+        { title: '', html: '<p>No title</p>' },
+        { title: 'Empty', html: '<p> </p><style>p{}</style>' },
+      ],
+      notices: [
+        { level: 'warning', text: ' No fires ' },
+        { level: 'urgent', text: 'Not a level' } as never,
+        { level: 'info', text: '  ' },
+        { level: 'caution', text: 3 } as never,
+      ],
+    }));
+
+    const detail = await s.catalog.get('fake:1');
+
+    expect(detail.sections).toEqual([{ title: 'Fees', html: '<h4>Prices</h4><p>$10</p>' }]);
+    expect(detail.notices).toEqual([{ level: 'warning', text: 'No fires' }]);
+    expect(s.locations.getDetail('fake', '1')?.detail.sections).toEqual(detail.sections);
+  });
+
+  it('gives the provider the detail it stored last, however old, so it can keep parts of it', async () => {
+    const s = setup();
+    await s.catalog.sync();
+    const spy = jest.spyOn(s.fake.catalog!, 'getLocation');
+    const first = await s.catalog.get('fake:1');
+    expect(spy.mock.calls[0][2]).not.toHaveProperty('previous');
+
+    advance(s, 7 * HOUR);
+    await s.catalog.get('fake:1');
+
+    expect(spy.mock.calls[1][2]).toMatchObject({
+      summary: expect.objectContaining({ key: 'fake:1' }),
+      previous: first,
+    });
+  });
+
+  it("fills an empty summary from the first section's text when there is no description", async () => {
+    const s = setup();
+    await s.catalog.sync();
+    jest.spyOn(s.fake.catalog!, 'getLocation').mockResolvedValueOnce({
+      ...(s.locations.get('fake', '1') as LocationDetail),
+      units: [],
+      sections: [
+        { title: 'Overview', html: '<p>Turquoise water and white sand</p>' },
+        { title: 'Fees', html: '<p>Ten dollars</p>' },
+      ],
+    });
+
+    await s.catalog.get('fake:1');
+
+    expect(s.locations.get('fake', '1')?.summary).toBe('Turquoise water and white sand');
+  });
+
   it("fills an empty summary from the description's text, so search finds it", async () => {
     const s = setup();
     await s.catalog.sync();

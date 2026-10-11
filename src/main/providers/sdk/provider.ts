@@ -52,6 +52,11 @@ export interface GetLocationOptions {
    * instead of listing its catalogue again (ParkStay: no 1.2 MB map download).
    */
   summary?: LocationSummary;
+  /**
+   * The detail the core last stored for the location, however old. A provider may reuse part
+   * of it when one of its sources fails (ParkStay keeps its campground page's sections).
+   */
+  previous?: LocationDetail;
 }
 
 /**

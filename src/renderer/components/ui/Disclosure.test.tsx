@@ -38,4 +38,23 @@ describe('Disclosure', () => {
     expect(screen.getByRole('button')).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('Body')).toBeVisible();
   });
+
+  it('can title a part of the page: its button inside a heading of the level given', async () => {
+    render(
+      <Disclosure summary="Fees" headingLevel={3} size="md">
+        Ten dollars
+      </Disclosure>
+    );
+    const heading = screen.getByRole('heading', { level: 3, name: 'Fees' });
+    const button = screen.getByRole('button', { name: 'Fees' });
+    expect(heading).toContainElement(button);
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(button);
+    expect(screen.getByText('Ten dollars')).toBeVisible();
+  });
+
+  it('has no heading unless asked', () => {
+    render(<Disclosure summary="Advanced options">Body</Disclosure>);
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+  });
 });

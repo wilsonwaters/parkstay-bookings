@@ -12,6 +12,14 @@
     },
     {
       "method": "GET",
+      "path": "/search-availability/campground/",
+      "query": {
+        "site_id": "20"
+      },
+      "file": "campground_page_20.html"
+    },
+    {
+      "method": "GET",
       "path": "/api/campground_availabilty_view/",
       "file": "campground_availabilty_view.json"
     },

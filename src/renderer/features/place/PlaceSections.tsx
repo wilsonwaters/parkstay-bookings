@@ -1,11 +1,19 @@
 import { useId, type ReactNode } from 'react';
-import { Clock } from 'lucide-react';
-import type { LocationDetail, UnitSummary } from '../../../shared/types/catalog.types';
+import { Clock, Info, OctagonAlert, TriangleAlert, type LucideIcon } from 'lucide-react';
+import type {
+  LocationDetail,
+  LocationNotice,
+  LocationNoticeLevel,
+  LocationSection,
+  UnitSummary,
+} from '../../../shared/types/catalog.types';
 import { amenityIcon } from '../../components/amenityIcons';
 import { ExternalLink } from '../../components/ExternalLink';
 import { unitCountLabel, unitNoun } from '../../components/locationFormat';
 import { RichText } from '../../components/RichText';
-import { Disclosure, Notice } from '../../components/ui';
+import { Disclosure, Notice, VisuallyHidden } from '../../components/ui';
+import { BADGE_TONE_CLASS } from '../../components/ui/Badge';
+import { cx } from '../../components/ui/cx';
 import { guestRangeLabel, unitTypeBreakdown, type PlaceLinks } from './placeModel';
 
 /** A titled part of the place page's main column. */
@@ -38,22 +46,105 @@ export function InfoLink({ links, shortName }: { links: PlaceLinks; shortName: s
   return null;
 }
 
+/** Each notice level's icon, its word for screen readers, and its colours. */
+const NOTICE_LEVELS: Record<
+  LocationNoticeLevel,
+  { icon: LucideIcon; label: string; className: string }
+> = {
+  warning: { icon: OctagonAlert, label: 'Warning', className: BADGE_TONE_CLASS.danger },
+  caution: { icon: TriangleAlert, label: 'Caution', className: BADGE_TONE_CLASS.warning },
+  info: { icon: Info, label: 'Information', className: BADGE_TONE_CLASS.brand },
+};
+
 /**
- * About: the provider's description (sanitised by main), or its summary, or a plain sentence
- * that it has none, with the link to read more.
+ * The provider's notices as a compact row: each with its level's icon (a different shape for
+ * each level) and its level in words for screen readers, so colour is never the only signal.
+ */
+export function PlaceNotices({
+  notices,
+  shortName,
+}: {
+  notices: readonly LocationNotice[];
+  shortName: string;
+}) {
+  if (notices.length === 0) return null;
+  return (
+    <ul
+      role="list"
+      aria-label={`Notices from ${shortName}`}
+      className="flex max-w-2xl flex-wrap gap-2"
+    >
+      {notices.map((notice, index) => {
+        const level = NOTICE_LEVELS[notice.level] ?? NOTICE_LEVELS.info;
+        const Icon = level.icon;
+        return (
+          <li
+            key={`${index}:${notice.text}`}
+            className={cx(
+              'inline-flex max-w-full items-start gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium',
+              level.className
+            )}
+          >
+            <Icon size={16} aria-hidden="true" className="mt-0.5 shrink-0" />
+            <span>
+              <VisuallyHidden>{level.label}: </VisuallyHidden>
+              {notice.text}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * The description's sections as an accordion of disclosures, each titled by a heading button:
+ * the first (the intro) open, the rest closed.
+ */
+export function DescriptionSections({ sections }: { sections: readonly LocationSection[] }) {
+  return (
+    <div className="max-w-2xl divide-y divide-border border-y border-border">
+      {sections.map((section, index) => (
+        <Disclosure
+          key={`${index}:${section.title}`}
+          summary={section.title}
+          headingLevel={3}
+          size="md"
+          defaultOpen={index === 0}
+        >
+          <RichText html={section.html} />
+        </Disclosure>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * About: the provider's notices, then its description in sections (an accordion), or as one
+ * text (sanitised by main), or its summary, or a plain sentence that it has none, with the
+ * link to read more.
  */
 export function AboutSection({
   detail,
   shortName,
   links,
 }: {
-  detail: Pick<LocationDetail, 'descriptionHtml' | 'summary'>;
+  detail: Pick<LocationDetail, 'descriptionHtml' | 'summary' | 'sections' | 'notices'>;
   shortName: string;
   links: PlaceLinks;
 }) {
+  const sections = Array.isArray(detail.sections) ? detail.sections : [];
+  const notices = Array.isArray(detail.notices) ? detail.notices : [];
   return (
     <PlaceSection title="About">
-      {detail.descriptionHtml ? (
+      {notices.length > 0 && (
+        <div className="mb-6">
+          <PlaceNotices notices={notices} shortName={shortName} />
+        </div>
+      )}
+      {sections.length > 0 ? (
+        <DescriptionSections sections={sections} />
+      ) : detail.descriptionHtml ? (
         <RichText html={detail.descriptionHtml} />
       ) : detail.summary ? (
         <p className="max-w-2xl text-base text-fg-secondary">{detail.summary}</p>

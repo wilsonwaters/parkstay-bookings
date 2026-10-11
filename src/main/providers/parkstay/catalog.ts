@@ -1,7 +1,10 @@
 /**
  * The ParkStay catalogue: every campground from `GET /api/campground_map/` (one 1.2 MB
- * GeoJSON call) as `LocationSummary`s, and a campground's detail (description, sites,
- * release sentence) from `campsite_availablity_view`.
+ * GeoJSON call) as `LocationSummary`s, and a campground's detail: its sites and release
+ * sentence from `campsite_availablity_view`, and its sections and notices from its campground
+ * page (`campground-page.ts`), fetched side by side. When the page cannot be read, the
+ * sections the core stored last are kept; with none, the view's legacy `long_description` is
+ * the description. With sections, it is left out: it is out of date.
  *
  * The map's `description` is empty for every campground, so summaries have no `summary`;
  * the description comes with the detail. Booking modes follow `campground_type`
@@ -24,6 +27,7 @@ import type { ProviderContext, ProviderLogger } from '../sdk/context';
 import { ProviderError, ProviderParseError, throwIfAborted } from '../sdk/errors';
 import type { CatalogModule, GetLocationOptions } from '../sdk/provider';
 import type { CampsiteViews } from './availability';
+import { fetchCampgroundPage } from './campground-page';
 import type { ParkStayClient } from './client';
 import { PARKSTAY_BASE_URL, PARKSTAY_PROVIDER_ID } from './constants';
 import { campgroundDescriptionHtml } from './description';
@@ -316,8 +320,20 @@ export function createCatalog({ ctx, client, facts, views, release }: CatalogDep
     if (summary.bookingMode === 'online') detail.bookingUrl = parkstayLinks.location(externalId)!;
     // Only online and offline campgrounds have an availability view (types 2 and 4 are 400).
     if (summary.bookingMode === 'online' || summary.bookingMode === 'offline') {
-      const view = await views.fetch(externalId, probeStay(), signal);
-      if (view.long_description) {
+      const [view, page] = await Promise.all([
+        views.fetch(externalId, probeStay(), signal),
+        fetchCampgroundPage(client, externalId, ctx.logger, signal),
+      ]);
+      const previous = options?.previous;
+      const kept =
+        previous?.providerId === ctx.id && previous.externalId === externalId
+          ? { sections: previous.sections ?? [], notices: previous.notices ?? [] }
+          : undefined;
+      const details = page ?? kept;
+      if (details && details.sections.length > 0) {
+        detail.sections = details.sections;
+        if (details.notices.length > 0) detail.notices = details.notices;
+      } else if (view.long_description) {
         detail.descriptionHtml = campgroundDescriptionHtml(view.long_description);
       }
       detail.units = isClassListing(view)

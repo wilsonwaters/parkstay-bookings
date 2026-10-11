@@ -64,7 +64,7 @@ Run `npm run dev` and open `#/__design` to see every primitive with its variants
 | `Tabs`, `TabList`, `Tab`, `TabPanel` | Switching between sections of one thing (a location's overview, sites, rules). With no `value` or `defaultValue`, the first enabled tab is selected. | Name the `TabList` and keep tab labels to one or two words. | Use tabs for steps in a flow or for navigation between pages. |
 | `SegmentedControl` | Two to four views of the same content (Map / List). | Keep the options parallel and short. | Use it for settings or for more than four options. |
 | `RadioCard` + `RadioCardGroup` | A prominent choice with descriptions, such as the provider step of a create flow. | Put a `ProviderBadge` or "Soon" badge in `trailing`, and disable cards that cannot be chosen yet. | Put links or buttons inside a card; the whole card is the radio. |
-| `Disclosure` | Optional detail that most people skip: advanced options, an explanation. | Write the `summary` as what is hidden ("Advanced options"). | Hide required fields or errors in it. |
+| `Disclosure` | Optional detail that most people skip: advanced options, an explanation. With `headingLevel` its button sits in a heading, and `size="md"` sets it in body text, for the parts of a text (a place's About sections, an accordion of disclosures, the first open). | Write the `summary` as what is hidden ("Advanced options"), or the part's title. | Hide required fields or errors in it. |
 
 ## Overlays
 

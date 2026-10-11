@@ -17,6 +17,12 @@
  *   stands for them, its nights read from the view and its `id` as the site. Holds placed
  *   are recorded in `classHolds`.
  *
+ * - the campground page (`/search-availability/campground/?site_id=`) answers with
+ *   `campground_page_20.html` (Bungarra's, for any campground), or the page set in `pages`;
+ *   without a ParkStay `Referer`, or with a `site_id` that is not a number, it redirects to
+ *   `/` and on to `/search-availability/information/` (`views.py:1279-1330`), which answers
+ *   with `campground_page_redirected.html`. `queueGate` gates it as it gates `/api/`.
+ *
  * `campsite_availablity_view_43_classes.json` is Lucky Bay (43), a campground listed by class,
  * for 6–9 Nov 2026, recorded live on 9 Oct 2026 (its description trimmed; no booking or
  * person in it): one class, 56 sites, one free each night but never the same one.
@@ -62,6 +68,14 @@ export interface FixtureAnswer {
   body: unknown;
 }
 
+/** A page's answer: HTML unless `contentType` says otherwise, or a 302 to `redirect`. */
+export interface PageAnswer {
+  status?: number;
+  contentType?: string;
+  body?: string;
+  redirect?: string;
+}
+
 /** What the server reads of a view that lists campsite classes. */
 interface ClassListing {
   site_type?: number;
@@ -103,6 +117,8 @@ export interface ParkStayFixtureServer {
   views: Map<string, unknown>;
   /** Forces an answer for a path (`/api/campground_map/`). */
   overrides: Map<string, FixtureAnswer>;
+  /** Replaces the campground page, by campground id. */
+  pages: Map<string, PageAnswer>;
   /** The sites of campgrounds listed by class, by campground id, for `create_booking`. */
   classSites: Map<string, ClassSite[]>;
   /** The class holds placed at campgrounds listed by class, in order. */
@@ -115,6 +131,7 @@ export interface ParkStayFixtureServer {
 const PARKSTAY_REFERER = 'https://parkstay.dbca.wa.gov.au';
 const SLASH_DATE = /^\d{4}\/\d{2}\/\d{2}$/;
 const WAITING_ROOM = '/site-queue/waiting-room/parkstayv2/';
+const CAMPGROUND_PAGE = '/search-availability/campground/';
 
 /** The nights of a stay posted as `YYYY/MM/DD`, as `YYYY-MM-DD`; none when unreadable. */
 function stayNights(arrival: string, departure: string): string[] {
@@ -151,7 +168,21 @@ export async function startParkStayFixtureServer(): Promise<ParkStayFixtureServe
     queueAnswers: [{ status: 200, body: parkStayFixture('queue-active.json') }],
     views: new Map<string, unknown>(),
     overrides: new Map<string, FixtureAnswer>(),
+    pages: new Map<string, PageAnswer>(),
   };
+
+  function html(res: http.ServerResponse, answer: PageAnswer): void {
+    if (answer.redirect) return redirect(res, answer.redirect);
+    res.writeHead(answer.status ?? 200, {
+      'content-type': answer.contentType ?? 'text/html; charset=utf-8',
+    });
+    res.end(answer.body ?? '');
+  }
+
+  function redirect(res: http.ServerResponse, location: string): void {
+    res.writeHead(302, { location });
+    res.end();
+  }
 
   function route(req: http.IncomingMessage, res: http.ServerResponse, record: RecordedRequest) {
     const { path: p, query, headers } = record;
@@ -166,13 +197,30 @@ export async function startParkStayFixtureServer(): Promise<ParkStayFixtureServe
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end('<html><body>DBCA waiting room</body></html>');
     }
-    if (p.startsWith('/api/') && state.queueGate === 'html') {
+    const gated = p.startsWith('/api/') || p === CAMPGROUND_PAGE;
+    if (gated && state.queueGate === 'html') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end(readParkStayFixture('queue-interstitial.html'));
     }
-    if (p.startsWith('/api/') && state.queueGate === 'redirect') {
+    if (gated && state.queueGate === 'redirect') {
       res.writeHead(302, { location: WAITING_ROOM });
       return res.end();
+    }
+    if (p === CAMPGROUND_PAGE && req.method === 'GET') {
+      const id = query.get('site_id') ?? '';
+      const referer = String(headers.referer ?? '');
+      if (!/^\d+$/.test(id)) return redirect(res, '/search-availability/information/');
+      if (!referer.startsWith(PARKSTAY_REFERER)) return redirect(res, '/');
+      return html(
+        res,
+        state.pages.get(id) ?? { body: readParkStayFixture('campground_page_20.html') }
+      );
+    }
+    if (p === '/' && req.method === 'GET') {
+      return redirect(res, '/search-availability/information/?arrival=2026%2F10%2F03');
+    }
+    if (p === '/search-availability/information/' && req.method === 'GET') {
+      return html(res, { body: readParkStayFixture('campground_page_redirected.html') });
     }
     if (p === '/api/campground_map/' && req.method === 'GET') return json(res, 200, map);
     if (p === '/api/campground_availabilty_view/' && req.method === 'GET') {
@@ -340,6 +388,7 @@ export async function startParkStayFixtureServer(): Promise<ParkStayFixtureServe
     },
     views: state.views,
     overrides: state.overrides,
+    pages: state.pages,
     classSites,
     classHolds,
     requestsTo: (prefix) => requests.filter((r) => r.path.startsWith(prefix)),
